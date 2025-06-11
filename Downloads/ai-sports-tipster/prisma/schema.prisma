@@ -1,0 +1,241 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Core Business Models
+model Country {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  name          String
+  flagEmoji     String?
+  currencyCode  String?
+  currencySymbol String?
+  brandName     String?
+  tagline       String?
+  marketContext String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now())
+
+  // Relations
+  paymentMethods PaymentMethod[]
+  pricingPlans   PricingPlan[]
+  flexibleOptions FlexibleOption[]
+  users          User[]
+  platformStats  PlatformStat[]
+  testimonials   Testimonial[]
+}
+
+model PaymentMethod {
+  id         String   @id @default(cuid())
+  countryId  String
+  name       String
+  type       String?  // 'mobile_money', 'bank', 'card'
+  isActive   Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  country    Country  @relation(fields: [countryId], references: [id])
+}
+
+model PricingPlan {
+  id             String   @id @default(cuid())
+  countryId      String
+  planType       String   // 'free', 'vip', 'pro'
+  name           String
+  priceAmount    Decimal
+  originalPrice  Decimal?
+  billingPeriod  String   // 'month', 'year', 'forever'
+  description    String?
+  isPopular      Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  features       Json?    // Array of features
+  createdAt      DateTime @default(now())
+  country        Country  @relation(fields: [countryId], references: [id])
+}
+
+model FlexibleOption {
+  id          String   @id @default(cuid())
+  countryId   String
+  name        String
+  priceAmount Decimal
+  description String?
+  category    String   // 'single', 'weekend', 'tournament'
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  country     Country  @relation(fields: [countryId], references: [id])
+}
+
+// Sports & Predictions Models
+model League {
+  id          String   @id @default(cuid())
+  name        String
+  countryCode String?
+  sport       String   @default("football")
+  isActive    Boolean  @default(true)
+  logoUrl     String?
+  teams       Team[]
+  matches     Match[]
+}
+
+model Team {
+  id        String   @id @default(cuid())
+  name      String
+  leagueId  String
+  logoUrl   String?
+  isActive  Boolean  @default(true)
+  league    League   @relation(fields: [leagueId], references: [id])
+  homeMatches Match[] @relation("HomeTeam")
+  awayMatches Match[] @relation("AwayTeam")
+}
+
+model Match {
+  id            String   @id @default(cuid())
+  homeTeamId    String
+  awayTeamId    String
+  leagueId      String
+  matchDate     DateTime
+  status        String   @default("scheduled") // 'live', 'finished', 'cancelled'
+  homeScore     Int?
+  awayScore     Int?
+  minutePlayed  Int?
+  createdAt     DateTime @default(now())
+  
+  // Relations
+  homeTeam      Team     @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam      Team     @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  league        League   @relation(fields: [leagueId], references: [id])
+  predictions   Prediction[]
+}
+
+model Prediction {
+  id              String   @id @default(cuid())
+  matchId         String
+  predictionType  String
+  confidenceScore Int      @db.SmallInt
+  odds            Decimal
+  valueRating     String   // 'High', 'Medium', 'Low'
+  explanation     String?
+  isFree          Boolean  @default(true)
+  isFeatured      Boolean  @default(false)
+  status          String   @default("pending") // 'won', 'lost', 'void'
+  createdAt       DateTime @default(now())
+  resultUpdatedAt DateTime?
+  
+  // Relations
+  match           Match    @relation(fields: [matchId], references: [id])
+  userPredictions UserPrediction[]
+}
+
+// User Management Models
+model User {
+  id                    String   @id @default(cuid())
+  email                 String   @unique
+  password              String
+  fullName              String?
+  countryId             String?
+  phone                 String?
+  subscriptionPlan      String?  // 'free', 'vip', 'pro'
+  subscriptionExpiresAt DateTime?
+  totalWinnings         Decimal  @default(0)
+  winStreak             Int      @default(0)
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  lastLoginAt           DateTime?
+  role                  String   @default("user")
+  
+  // Relations
+  country               Country? @relation(fields: [countryId], references: [id])
+  userPredictions       UserPrediction[]
+  referralsGiven        Referral[] @relation("Referrer")
+  referralsReceived     Referral[] @relation("Referred")
+  chatMessages          ChatMessage[]
+}
+
+model UserPrediction {
+  id              String   @id @default(cuid())
+  userId          String
+  predictionId    String
+  stakeAmount     Decimal
+  potentialReturn Decimal
+  actualReturn    Decimal?
+  status          String   // 'pending', 'won', 'lost'
+  placedAt        DateTime @default(now())
+  
+  // Relations
+  user            User     @relation(fields: [userId], references: [id])
+  prediction      Prediction @relation(fields: [predictionId], references: [id])
+}
+
+model Referral {
+  id              String   @id @default(cuid())
+  referrerId      String
+  referredId      String
+  referralCode    String
+  commissionAmount Decimal
+  status          String   @default("pending") // 'active', 'paid'
+  createdAt       DateTime @default(now())
+  
+  // Relations
+  referrer        User     @relation("Referrer", fields: [referrerId], references: [id])
+  referred        User     @relation("Referred", fields: [referredId], references: [id])
+}
+
+// Analytics & Content Models
+model PlatformStat {
+  id                    String   @id @default(cuid())
+  statDate              DateTime
+  countryId             String
+  totalUsers            Int      @default(0)
+  activeUsers           Int      @default(0)
+  vipUsers              Int      @default(0)
+  totalPredictions      Int      @default(0)
+  successfulPredictions Int      @default(0)
+  revenueAmount         Decimal  @default(0)
+  createdAt             DateTime @default(now())
+  
+  // Relations
+  country               Country  @relation(fields: [countryId], references: [id])
+}
+
+model Testimonial {
+  id              String   @id @default(cuid())
+  userName        String
+  countryId       String
+  rating          Int      @db.SmallInt
+  testimonialText String
+  profitAmount    String
+  timeframe       String
+  isFeatured      Boolean  @default(false)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  
+  // Relations
+  country         Country  @relation(fields: [countryId], references: [id])
+}
+
+model ChatMessage {
+  id          String   @id @default(cuid())
+  userId      String
+  message     String
+  isVipUser   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  
+  // Relations
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+model Notification {
+  id              String   @id @default(cuid())
+  title           String
+  message         String
+  type            String?  // 'win', 'new_prediction', 'system'
+  targetCountries Json?    // Array of country codes
+  targetUserTypes Json?    // ['free', 'vip', 'pro']
+  isActive        Boolean  @default(true)
+  expiresAt       DateTime?
+  createdAt       DateTime @default(now())
+} 
