@@ -2,7 +2,8 @@
 
 import type React from "react"
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
+import { signIn } from "next-auth/react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,6 +15,8 @@ import { logger } from "@/lib/logger"
 
 export function SignInForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const callbackUrl = searchParams.get("callbackUrl") || "/dashboard"
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
@@ -39,37 +42,23 @@ export function SignInForm() {
     try {
       logger.info('Attempting sign in', { tags: ['auth', 'signin'], data: { email: formData.email } })
 
-      const response = await fetch('/api/auth/signin', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: formData.email,
-          password: formData.password,
-          remember: formData.remember
-        }),
+      const result = await signIn("credentials", {
+        email: formData.email,
+        password: formData.password,
+        redirect: false,
       })
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        if (response.status === 429) {
-          logger.warn('Rate limit exceeded for sign in attempt', { 
-            tags: ['auth', 'signin', 'rate-limit'],
-            data: { email: formData.email }
-          })
-          throw new Error('Too many login attempts. Please try again later.')
-        }
+      if (result?.error) {
         logger.error('Sign in failed', { 
           tags: ['auth', 'signin'],
-          data: { email: formData.email, status: response.status }
+          data: { email: formData.email, error: result.error }
         })
-        throw new Error(data.error || 'Invalid email or password')
+        throw new Error(result.error)
       }
 
-      logger.info('Sign in successful', { tags: ['auth', 'signin'], data: { email: formData.email } })
-      router.push('/dashboard')
+      logger.info("Sign in successful", { tags: ["auth", "signin"] })
+      router.push(callbackUrl)
+      router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
       logger.error('Sign in error', { 

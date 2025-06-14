@@ -6,11 +6,13 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Crown, Bell, Settings, User, TrendingUp, Zap, FlameIcon as Fire, Target } from "lucide-react"
 import { useRouter } from 'next/navigation'
+import { useAuth } from "@/components/auth-provider"
 
 export function DashboardHeader() {
   const [streak, setStreak] = useState(5)
   const [showCelebration, setShowCelebration] = useState(false)
   const router = useRouter()
+  const { logout } = useAuth()
 
   useEffect(() => {
     // Simulate streak celebration
@@ -21,8 +23,8 @@ export function DashboardHeader() {
   }, [streak])
 
   const handleSignOut = async () => {
-    await fetch('/api/auth/signout', { method: 'POST' })
-    router.push('/signin')
+    await logout()
+    router.push("/")
   }
 
   return (

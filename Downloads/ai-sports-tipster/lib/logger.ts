@@ -1,69 +1,61 @@
-type LogLevel = 'error' | 'info' | 'debug' | 'warn'
+type LogLevel = "info" | "warn" | "error" | "debug"
 
-interface LogOptions {
-  level?: LogLevel
-  error?: Error
-  data?: any
+type LogOptions = {
   tags?: string[]
+  data?: Record<string, any>
+  error?: Error
 }
 
 class Logger {
-  private static instance: Logger
-  private isDevelopment = process.env.NODE_ENV === 'development'
+  private isDev = process.env.NODE_ENV !== "production"
 
-  private constructor() {}
-
-  static getInstance(): Logger {
-    if (!Logger.instance) {
-      Logger.instance = new Logger()
+  log(level: LogLevel, message: string, options: LogOptions = {}) {
+    // In production, only log warnings and errors
+    if (!this.isDev && level !== "warn" && level !== "error") {
+      return
     }
-    return Logger.instance
-  }
 
-  private formatMessage(message: string, options: LogOptions): string {
+    const { tags = [], data = {}, error } = options
     const timestamp = new Date().toISOString()
-    const level = options.level?.toUpperCase() || 'INFO'
-    const tags = options.tags?.length ? `[${options.tags.join(', ')}]` : ''
-    return `[${timestamp}] ${level} ${tags} ${message}`
-  }
+    const tagString = tags.length ? `[${tags.join(", ")}]` : ""
 
-  private log(level: LogLevel, message: string, options: LogOptions = {}) {
-    const formattedMessage = this.formatMessage(message, { ...options, level })
-    
+    // Format the log message
+    const logMessage = `[${timestamp}] [${level.toUpperCase()}] ${message} ${tagString}`
+
+    // Log to console with appropriate level
     switch (level) {
-      case 'error':
-        console.error(formattedMessage, options.error || options.data)
-        // Add your error reporting service here (e.g., Sentry)
+      case "info":
+        console.info(logMessage, data)
         break
-      case 'warn':
-        console.warn(formattedMessage, options.data)
+      case "warn":
+        console.warn(logMessage, data)
         break
-      case 'info':
-        console.info(formattedMessage, options.data)
+      case "error":
+        console.error(logMessage, error || data)
         break
-      case 'debug':
-        if (this.isDevelopment) {
-          console.debug(formattedMessage, options.data)
+      case "debug":
+        if (this.isDev) {
+          console.debug(logMessage, data)
         }
         break
     }
   }
 
-  error(message: string, options: LogOptions = {}) {
-    this.log('error', message, options)
+  info(message: string, options?: LogOptions) {
+    this.log("info", message, options)
   }
 
-  warn(message: string, options: LogOptions = {}) {
-    this.log('warn', message, options)
+  warn(message: string, options?: LogOptions) {
+    this.log("warn", message, options)
   }
 
-  info(message: string, options: LogOptions = {}) {
-    this.log('info', message, options)
+  error(message: string, options?: LogOptions) {
+    this.log("error", message, options)
   }
 
-  debug(message: string, options: LogOptions = {}) {
-    this.log('debug', message, options)
+  debug(message: string, options?: LogOptions) {
+    this.log("debug", message, options)
   }
 }
 
-export const logger = Logger.getInstance() 
+export const logger = new Logger()

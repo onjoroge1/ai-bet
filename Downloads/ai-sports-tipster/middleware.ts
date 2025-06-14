@@ -1,74 +1,133 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { verifyToken } from './lib/auth'
-import { jwtVerify } from 'jose'
+import { getToken } from 'next-auth/jwt'
+import { logger } from '@/lib/logger'
 
-// Add paths that don't require authentication
-const publicPaths = ['/signin', '/signup', '/forgot-password', '/reset-password']
+// Paths that don't require authentication
+const publicPaths = [
+  '/',
+  '/signin',
+  '/signup',
+  '/api/auth/signin',
+  '/api/auth/signup',
+  '/api/auth/callback',
+  '/api/auth/session',
+  '/api/auth/csrf',
+  '/api/auth/providers',
+  '/api/auth/signout',
+  '/api/auth/error',
+]
 
-// Add admin paths that require admin role
-const adminPaths = ['/admin']
+// Paths that require admin role
+const adminPaths = [
+  '/admin',
+  '/api/admin',
+  '/api/predictions',
+]
+
+// Paths that require authentication
+const protectedPaths = [
+  '/dashboard',
+  '/profile',
+  '/settings',
+]
 
 export async function middleware(request: NextRequest) {
-  const token = request.cookies.get('token')?.value
-  const { pathname } = request.nextUrl
+  const path = request.nextUrl.pathname
 
-  // Allow public paths
-  if (publicPaths.includes(pathname)) {
-    // If user is already logged in, redirect to dashboard
-    if (token) {
-      const isValid = await verifyToken(token)
-      if (isValid) {
-        return NextResponse.redirect(new URL('/dashboard', request.url))
+  try {
+    // Get the token using next-auth
+    const token = await getToken({ 
+      req: request,
+      secret: process.env.JWT_SECRET,
+      secureCookie: process.env.NODE_ENV === 'production'
+    })
+
+    logger.debug('Middleware - Token check', {
+      tags: ['auth', 'middleware'],
+      data: { 
+        path,
+        hasToken: !!token,
+        // Only log non-sensitive token data
+        tokenData: token ? { 
+          role: token.role,
+          exp: token.exp
+        } : null
+      }
+    })
+
+    // Check if path requires authentication
+    const isProtectedPath = protectedPaths.some(p => path.startsWith(p))
+    const isAdminPath = adminPaths.some(p => path.startsWith(p))
+    const isPublicPath = publicPaths.some(p => path.startsWith(p))
+
+    // If user is authenticated and tries to access signin/signup, redirect to dashboard
+    if (token && (path === '/signin' || path === '/signup')) {
+      return NextResponse.redirect(new URL('/dashboard', request.url))
+    }
+
+    // If path requires authentication and no token exists, redirect to signin
+    if ((isProtectedPath || isAdminPath) && !token) {
+      logger.warn('Middleware - Unauthorized access attempt', {
+        tags: ['auth', 'middleware'],
+        data: { path, isProtectedPath, isAdminPath }
+      })
+      const signInUrl = new URL('/signin', request.url)
+      signInUrl.searchParams.set('callbackUrl', path)
+      return NextResponse.redirect(signInUrl)
+    }
+
+    // If path requires admin role, check token role
+    if (isAdminPath && token) {
+      const userRole = token.role as string
+      if (!userRole || userRole.toLowerCase() !== 'admin') {
+        logger.warn('Middleware - Unauthorized admin access attempt', {
+          tags: ['auth', 'middleware', 'admin'],
+          data: { path, role: userRole }
+        })
+        return new NextResponse(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { 'Content-Type': 'application/json' } }
+        )
       }
     }
+
+    // Allow access to public paths or authenticated requests
+    logger.debug('Middleware - Access granted', {
+      tags: ['auth', 'middleware'],
+      data: { 
+        path,
+        isPublicPath,
+        isProtectedPath,
+        isAdminPath,
+        hasToken: !!token
+      }
+    })
     return NextResponse.next()
-  }
 
-  // Check authentication for protected routes
-  if (!token) {
-    return NextResponse.redirect(new URL('/signin', request.url))
+  } catch (error) {
+    logger.error('Middleware error', {
+      tags: ['auth', 'middleware'],
+      error: error instanceof Error ? error : undefined,
+      data: { path }
+    })
+    return new NextResponse(
+      JSON.stringify({ error: 'Internal Server Error' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    )
   }
-
-  // Verify token and check role for admin routes
-  if (adminPaths.some(path => pathname.startsWith(path))) {
-    try {
-      const encoder = new TextEncoder()
-      const secretKey = encoder.encode(process.env.JWT_SECRET || 'your-secret-key')
-      const { payload } = await jwtVerify(token, secretKey)
-      
-      // Check if user has Admin role
-      if (payload.role !== 'Admin') {
-        return NextResponse.redirect(new URL('/dashboard', request.url))
-      }
-    } catch (error) {
-      console.error('Admin access error:', error)
-      return NextResponse.redirect(new URL('/signin', request.url))
-    }
-  }
-
-  // Verify token for other protected routes
-  const isValid = await verifyToken(token)
-  if (!isValid) {
-    // Clear invalid token
-    const response = NextResponse.redirect(new URL('/signin', request.url))
-    response.cookies.delete('token')
-    return response
-  }
-
-  return NextResponse.next()
 }
 
-// Configure which routes to run middleware on
+// Configure which paths the middleware should run on
 export const config = {
   matcher: [
     /*
      * Match all request paths except for the ones starting with:
-     * - api (API routes)
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
+     * - public folder
      */
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    '/((?!_next/static|_next/image|favicon.ico|public/).*)',
   ],
 } 

@@ -1,3 +1,6 @@
+"use client"
+
+import { useQuery } from "@tanstack/react-query"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -5,69 +8,99 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Search, Download, CheckCircle, XCircle, Clock } from "lucide-react"
 
+// Prediction type (matches normalized structure)
+type Prediction = {
+  id: string
+  match: {
+    homeTeam: { id: string; name: string }
+    awayTeam: { id: string; name: string }
+    league: { id: string; name: string }
+    dateTime: string
+    status: string
+  }
+  league: string
+  dateTime: string
+  prediction: string
+  odds: string
+  confidence: number
+  analysis: string
+  status: string
+  result: string
+  isFree: boolean
+  isFeatured: boolean
+  showInDailyTips: boolean
+  showInWeeklySpecials: boolean
+  type: string
+  matchesInAccumulator: Array<{
+    match: string
+    prediction: string
+    odds: string
+  }>
+  totalOdds: string
+  stake: string
+  potentialReturn: string
+  valueRating: string
+  createdAt: string
+  updatedAt: string
+}
+
+const fetchPredictions = async (): Promise<Prediction[]> => {
+  const response = await fetch('/api/predictions')
+  if (!response.ok) {
+    throw new Error('Failed to fetch predictions')
+  }
+  const data = await response.json()
+  return data.map((p: any) => ({
+    id: p.id,
+    match: typeof p.match === 'string'
+      ? {
+          homeTeam: { id: '', name: p.match.split(' vs ')[0] || '' },
+          awayTeam: { id: '', name: p.match.split(' vs ')[1] || '' },
+          league: { id: '', name: p.league || '' },
+          dateTime: p.dateTime,
+          status: p.status
+        }
+      : {
+          homeTeam: p.match?.homeTeam || { id: '', name: '' },
+          awayTeam: p.match?.awayTeam || { id: '', name: '' },
+          league: p.match?.league || { id: '', name: '' },
+          dateTime: p.match?.matchDate || p.match?.dateTime || p.dateTime || '',
+          status: p.match?.status || p.status || ''
+        },
+    league: p.league || p.match?.league?.name || '',
+    dateTime: p.dateTime || p.match?.matchDate || '',
+    prediction: p.predictionType || p.prediction || '',
+    odds: p.odds?.toString() || '',
+    confidence: p.confidenceScore ?? p.confidence ?? 0,
+    analysis: p.explanation || p.analysis || '',
+    status: p.status || '',
+    result: p.result || 'pending',
+    isFree: p.isFree,
+    isFeatured: p.isFeatured,
+    showInDailyTips: p.showInDailyTips || false,
+    showInWeeklySpecials: p.showInWeeklySpecials || false,
+    type: p.type || 'single',
+    matchesInAccumulator: Array.isArray(p.matchesInAccumulator)
+      ? p.matchesInAccumulator.map((m: any) => ({
+          match: typeof m === 'string' ? m : m.match,
+          prediction: typeof m === 'string' ? '' : m.prediction,
+          odds: typeof m === 'string' ? '' : m.odds
+        }))
+      : [],
+    totalOdds: p.totalOdds?.toString() || '',
+    stake: p.stake?.toString() || '',
+    potentialReturn: p.potentialReturn?.toString() || '',
+    valueRating: p.valueRating || 'Medium',
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt
+  }))
+}
+
 export function TipsHistory() {
-  const tips = [
-    {
-      id: 1,
-      date: "2024-01-15",
-      match: "Arsenal vs Chelsea",
-      league: "Premier League",
-      prediction: "Over 2.5 Goals",
-      confidence: 92,
-      odds: "1.85",
-      stake: "KES 2,000",
-      status: "won",
-      profit: "+KES 3,500",
-    },
-    {
-      id: 2,
-      date: "2024-01-14",
-      match: "Barcelona vs Madrid",
-      league: "La Liga",
-      prediction: "Barcelona Win",
-      confidence: 78,
-      odds: "2.10",
-      stake: "KES 1,500",
-      status: "lost",
-      profit: "-KES 1,500",
-    },
-    {
-      id: 3,
-      date: "2024-01-13",
-      match: "Bayern vs Dortmund",
-      league: "Bundesliga",
-      prediction: "BTTS",
-      confidence: 84,
-      odds: "1.65",
-      stake: "KES 2,500",
-      status: "won",
-      profit: "+KES 4,125",
-    },
-    {
-      id: 4,
-      date: "2024-01-12",
-      match: "PSG vs Marseille",
-      league: "Ligue 1",
-      prediction: "PSG -1.5",
-      confidence: 89,
-      odds: "1.95",
-      stake: "KES 3,000",
-      status: "won",
-      profit: "+KES 5,850",
-    },
-    {
-      id: 5,
-      date: "2024-01-11",
-      match: "Man City vs Liverpool",
-      league: "Premier League",
-      prediction: "Under 3.5",
-      confidence: 76,
-      odds: "2.20",
-      stake: "KES 1,000",
-      status: "pending",
-      profit: "KES 2,200",
-    },
-  ]
+  const { data: predictions = [], isLoading, error } = useQuery({
+    queryKey: ['predictions'],
+    queryFn: fetchPredictions,
+  })
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -94,6 +127,16 @@ export function TipsHistory() {
         return "text-slate-400"
     }
   }
+
+  if (isLoading) {
+    return <Card className="bg-slate-800/50 border-slate-700 p-6">Loading tips history...</Card>
+  }
+  if (error) {
+    return <Card className="bg-slate-800/50 border-slate-700 p-6 text-red-400">Failed to load tips history.</Card>
+  }
+
+  // Sort by date descending
+  const sorted = [...predictions].sort((a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime())
 
   return (
     <Card className="bg-slate-800/50 border-slate-700 p-6">
@@ -141,13 +184,13 @@ export function TipsHistory() {
             </tr>
           </thead>
           <tbody>
-            {tips.map((tip) => (
+            {sorted.map((tip) => (
               <tr key={tip.id} className="border-b border-slate-800 hover:bg-slate-900/30">
-                <td className="py-4 text-slate-300">{tip.date}</td>
+                <td className="py-4 text-slate-300">{new Date(tip.dateTime).toLocaleDateString()}</td>
                 <td className="py-4">
                   <div>
-                    <div className="text-white font-medium">{tip.match}</div>
-                    <div className="text-slate-400 text-sm">{tip.league}</div>
+                    <div className="text-white font-medium">{tip.match.homeTeam.name} vs {tip.match.awayTeam.name}</div>
+                    <div className="text-slate-400 text-sm">{tip.league || tip.match.league?.name}</div>
                   </div>
                 </td>
                 <td className="py-4 text-white">{tip.prediction}</td>
@@ -158,11 +201,11 @@ export function TipsHistory() {
                 <td className="py-4 text-slate-300">{tip.stake}</td>
                 <td className="py-4">
                   <div className="flex items-center space-x-2">
-                    {getStatusIcon(tip.status)}
-                    <span className={`capitalize ${getStatusColor(tip.status)}`}>{tip.status}</span>
+                    {getStatusIcon(tip.result)}
+                    <span className={`capitalize ${getStatusColor(tip.result)}`}>{tip.result}</span>
                   </div>
                 </td>
-                <td className={`py-4 font-semibold ${getStatusColor(tip.status)}`}>{tip.profit}</td>
+                <td className={`py-4 font-semibold ${getStatusColor(tip.result)}`}>{tip.potentialReturn || '-'}</td>
               </tr>
             ))}
           </tbody>

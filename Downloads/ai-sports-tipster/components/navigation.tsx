@@ -11,22 +11,24 @@ import {
   NavigationMenuList,
   NavigationMenuTrigger,
 } from "@/components/ui/navigation-menu"
-import { Menu, X, TrendingUp, Users, Crown, HelpCircle, CreditCard, Globe, Moon, Sun } from "lucide-react"
+import { Menu, X, TrendingUp, Users, Crown, HelpCircle, CreditCard, Globe, Moon, Sun, User, LogOut } from "lucide-react"
 import { CountrySelector } from "@/components/country-selector"
-import { getCountryFromDomain } from "@/lib/country-pricing"
+import { useCountry } from "@/contexts/country-context"
+import { useAuth } from "@/components/auth-provider"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 
 export function Navigation() {
   const [isOpen, setIsOpen] = useState(false)
   const [isDark, setIsDark] = useState(true)
-  const [selectedCountry, setSelectedCountry] = useState("kenya")
+  const { selectedCountry, setSelectedCountry } = useCountry()
+  const { user, isAuthenticated, logout } = useAuth()
+  const router = useRouter()
 
-  useState(() => {
-    if (typeof window !== "undefined") {
-      const detectedCountry = getCountryFromDomain(window.location.hostname)
-      setSelectedCountry(detectedCountry)
-    }
-  })
+  const handleSignOut = async () => {
+    await logout()
+    router.push("/")
+  }
 
   return (
     <nav className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800">
@@ -124,13 +126,35 @@ export function Navigation() {
               {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
 
+            {/* Auth Buttons - Show different options based on auth state */}
             <div className="hidden md:flex items-center space-x-2">
-              <Button variant="ghost" className="text-slate-300 hover:text-white">
-                <Link href="/signin">Login</Link>
-              </Button>
-              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                <Link href="/signup">Sign Up</Link>
-              </Button>
+              {isAuthenticated ? (
+                <>
+                  <Button variant="ghost" className="text-slate-300 hover:text-white">
+                    <Link href="/dashboard" className="flex items-center">
+                      <User className="w-4 h-4 mr-2" />
+                      {user?.name || "Dashboard"}
+                    </Link>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="border-slate-600 text-slate-300 hover:bg-slate-700"
+                    onClick={handleSignOut}
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Sign Out
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button variant="ghost" className="text-slate-300 hover:text-white">
+                    <Link href="/signin">Login</Link>
+                  </Button>
+                  <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                    <Link href="/signup">Sign Up</Link>
+                  </Button>
+                </>
+              )}
             </div>
 
             {/* Mobile Menu Button */}
@@ -168,13 +192,36 @@ export function Navigation() {
               <a href="#" className="block px-3 py-2 text-slate-300 hover:text-white">
                 Pricing
               </a>
+
+              {/* Mobile Auth Buttons */}
               <div className="pt-4 space-y-2">
-                <Button variant="ghost" className="w-full text-slate-300 hover:text-white">
-                  <Link href="/signin">Login</Link>
-                </Button>
-                <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
-                  <Link href="/signup">Sign Up</Link>
-                </Button>
+                {isAuthenticated ? (
+                  <>
+                    <Button variant="ghost" className="w-full text-slate-300 hover:text-white">
+                      <Link href="/dashboard" className="flex items-center justify-center w-full">
+                        <User className="w-4 h-4 mr-2" />
+                        Dashboard
+                      </Link>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full border-slate-600 text-slate-300 hover:bg-slate-700"
+                      onClick={handleSignOut}
+                    >
+                      <LogOut className="w-4 h-4 mr-2" />
+                      Sign Out
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="ghost" className="w-full text-slate-300 hover:text-white">
+                      <Link href="/signin">Login</Link>
+                    </Button>
+                    <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
+                      <Link href="/signup">Sign Up</Link>
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           </div>

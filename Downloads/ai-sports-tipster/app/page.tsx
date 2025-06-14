@@ -3,6 +3,7 @@ import { ResponsivePredictions } from "@/components/responsive/responsive-predic
 import { StatsSection } from "@/components/stats-section"
 import { TrustBadges } from "@/components/trust-badges"
 import { TestimonialsSection } from "@/components/testimonials-section"
+import { PayAsYouGo } from "@/components/pay-as-you-go"
 import { PricingPreview } from "@/components/pricing-preview"
 
 export default function HomePage() {
@@ -11,6 +12,7 @@ export default function HomePage() {
       <ResponsiveHero />
       <StatsSection />
       <ResponsivePredictions />
+      <PayAsYouGo />
       <TrustBadges />
       <TestimonialsSection />
       <PricingPreview />

@@ -72,7 +72,7 @@ model FlexibleOption {
 // Sports & Predictions Models
 model League {
   id          String   @id @default(cuid())
-  name        String
+  name        String   @unique
   countryCode String?
   sport       String   @default("football")
   isActive    Boolean  @default(true)
@@ -90,6 +90,8 @@ model Team {
   league    League   @relation(fields: [leagueId], references: [id])
   homeMatches Match[] @relation("HomeTeam")
   awayMatches Match[] @relation("AwayTeam")
+
+  @@unique([name, leagueId])
 }
 
 model Match {
@@ -124,6 +126,15 @@ model Prediction {
   status          String   @default("pending") // 'won', 'lost', 'void'
   createdAt       DateTime @default(now())
   resultUpdatedAt DateTime?
+  
+  // New fields for admin interface
+  showInDailyTips      Boolean  @default(true)
+  showInWeeklySpecials Boolean  @default(false)
+  type                 String   @default("single") // 'single', 'accumulator', 'special'
+  matchesInAccumulator Json?    // Array of match predictions for accumulators
+  totalOdds            Decimal?
+  stake               Decimal?
+  potentialReturn     Decimal?
   
   // Relations
   match           Match    @relation(fields: [matchId], references: [id])

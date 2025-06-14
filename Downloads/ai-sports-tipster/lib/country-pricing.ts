@@ -31,6 +31,7 @@ export interface CountryPricing {
     description: string
   }[]
   paymentMethods: string[]
+  globalPaymentMethods: string[]
   marketContext: string
 }
 
@@ -83,7 +84,8 @@ export const countryPricing: Record<string, CountryPricing> = {
       { name: "EPL Gameweek", price: "₦1,500", description: "Full Premier League gameweek" },
       { name: "AFCON Special", price: "₦8,000", description: "Complete tournament coverage" },
     ],
-    paymentMethods: ["Opay", "PalmPay", "Kuda", "Paystack", "Bank Transfer"],
+    paymentMethods: ["Opay", "PalmPay", "Kuda Bank", "Paystack", "Bank Transfer"],
+    globalPaymentMethods: ["Visa/Mastercard", "PayPal", "Stripe"],
     marketContext: "168.7M bettors, highest volume globally",
   },
 
@@ -135,7 +137,8 @@ export const countryPricing: Record<string, CountryPricing> = {
       { name: "Derby Day Special", price: "R45", description: "Local derby matches" },
       { name: "Rugby World Cup", price: "R500", description: "Complete tournament package" },
     ],
-    paymentMethods: ["SnapScan", "Zapper", "Bank EFT", "Credit Cards"],
+    paymentMethods: ["SnapScan", "Zapper", "Bank EFT", "Capitec Pay", "FNB Pay"],
+    globalPaymentMethods: ["Visa/Mastercard", "PayPal", "Apple Pay", "Google Pay"],
     marketContext: "58.3M bettors, highest income, 90% participation",
   },
 
@@ -187,7 +190,8 @@ export const countryPricing: Record<string, CountryPricing> = {
       { name: "Derby Special", price: "KES 300", description: "Local derby coverage" },
       { name: "AFCON Package", price: "KES 2,500", description: "Tournament coverage" },
     ],
-    paymentMethods: ["M-Pesa", "Airtel Money", "Equity Bank", "KCB Bank"],
+    paymentMethods: ["M-Pesa", "Airtel Money", "Equity Bank", "KCB Bank", "Co-op Bank"],
+    globalPaymentMethods: ["Visa/Mastercard", "PayPal", "Skrill", "Neteller"],
     marketContext: "25M+ active bettors, M-Pesa dominant",
   },
 
@@ -239,7 +243,8 @@ export const countryPricing: Record<string, CountryPricing> = {
       { name: "Derby Package", price: "UGX 4,000", description: "Local derby matches" },
       { name: "AFCON Package", price: "UGX 25,000", description: "Tournament coverage" },
     ],
-    paymentMethods: ["MTN Mobile Money", "Airtel Money", "Bank Transfer"],
+    paymentMethods: ["MTN Mobile Money", "Airtel Money", "Bank Transfer", "Centenary Bank"],
+    globalPaymentMethods: ["Visa/Mastercard", "PayPal", "Western Union"],
     marketContext: "44.7M bettors, 87% participation rate",
   },
 
@@ -291,7 +296,8 @@ export const countryPricing: Record<string, CountryPricing> = {
       { name: "NBC Premier League", price: "TSH 15,000", description: "Full season coverage" },
       { name: "Weekend Bundle", price: "TSH 3,000", description: "Weekend matches" },
     ],
-    paymentMethods: ["Vodacom M-Pesa", "Tigo Pesa", "Airtel Money"],
+    paymentMethods: ["Vodacom M-Pesa", "Tigo Pesa", "Airtel Money", "CRDB Bank"],
+    globalPaymentMethods: ["Visa/Mastercard", "PayPal", "MoneyGram"],
     marketContext: "19.6M bettors, growing urban market",
   },
 
@@ -343,7 +349,8 @@ export const countryPricing: Record<string, CountryPricing> = {
       { name: "Weekend Package", price: "GHS 30", description: "Weekend matches bundle" },
       { name: "AFCON Ghana Pack", price: "GHS 150", description: "Ghana national team coverage" },
     ],
-    paymentMethods: ["MTN Mobile Money", "AirtelTigo Money", "Vodafone Cash"],
+    paymentMethods: ["MTN Mobile Money", "AirtelTigo Money", "Vodafone Cash", "GCB Bank"],
+    globalPaymentMethods: ["Visa/Mastercard", "PayPal", "Remitly"],
     marketContext: "20M bettors, young demographic",
   },
 }

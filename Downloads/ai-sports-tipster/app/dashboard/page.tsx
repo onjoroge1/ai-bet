@@ -1,65 +1,67 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { StatsOverview } from "@/components/dashboard/stats-overview"
 import { RecentPredictions } from "@/components/dashboard/recent-predictions"
 import { TipsHistory } from "@/components/dashboard/tips-history"
 import { ReferralTracker } from "@/components/dashboard/referral-tracker"
 import { QuickActions } from "@/components/dashboard/quick-actions"
-import { MobileDashboard } from "@/components/mobile/mobile-dashboard"
-import { EmailVerificationBanner } from '@/components/email-verification-banner'
-import { useRouter } from 'next/navigation'
-import { Button } from '@/components/ui/button'
+import { UpgradeOffers } from "@/components/upgrade-offers"
+import { PersonalizedOffers } from "@/components/personalized-offers"
+import { WalletWidget } from "@/components/wallet-widget"
+import { NotificationsWidget } from "@/components/notifications-widget"
+import { AchievementsWidget } from "@/components/achievements-widget"
+import { LiveMatchesWidget } from "@/components/live-matches-widget"
 
 export default function DashboardPage() {
-  const [isMobile, setIsMobile] = useState(false)
-  const router = useRouter()
-
-  useEffect(() => {
-    const checkScreenSize = () => {
-      setIsMobile(window.innerWidth < 768)
-    }
-
-    checkScreenSize()
-    window.addEventListener("resize", checkScreenSize)
-
-    return () => window.removeEventListener("resize", checkScreenSize)
-  }, [])
-
-  const handleSignOut = async () => {
-    await fetch('/api/auth/signout', { method: 'POST' })
-    router.push('/signin')
-  }
-
-  // Show mobile version only on mobile screens
-  if (isMobile) {
-    return <MobileDashboard />
-  }
-
-  // Desktop/Tablet version
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-900">
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <EmailVerificationBanner email="user@example.com" />
-        <DashboardHeader />
+    <div className="max-w-7xl mx-auto px-4 py-8">
+      <DashboardHeader />
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          <div className="lg:col-span-2">
-            <StatsOverview />
-          </div>
-          <div>
-            <QuickActions />
-          </div>
+      {/* Top Row: Stats, Quick Actions, Wallet */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
+        <div className="lg:col-span-2">
+          <StatsOverview />
         </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <RecentPredictions />
-          <ReferralTracker />
+        <div>
+          <QuickActions />
         </div>
-
-        <TipsHistory />
+        <div>
+          <WalletWidget />
+        </div>
       </div>
+
+      {/* Quick Purchase Section - Full Width */}
+      <div className="mb-8">
+        <UpgradeOffers />
+      </div>
+
+      {/* Personalized Offers - Full Width */}
+      <div className="mb-8">
+        <PersonalizedOffers />
+      </div>
+
+      {/* Middle Row: Notifications, Live Matches, Achievements */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        <div>
+          <NotificationsWidget />
+        </div>
+        <div>
+          <LiveMatchesWidget />
+        </div>
+        <div>
+          <AchievementsWidget />
+        </div>
+      </div>
+
+      {/* Bottom Row: Recent Predictions, Referral Tracker */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <RecentPredictions />
+        <ReferralTracker />
+      </div>
+
+      {/* Tips History - Full Width */}
+      <TipsHistory />
     </div>
   )
 }
