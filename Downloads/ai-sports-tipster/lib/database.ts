@@ -4,9 +4,9 @@ import { neon } from "@neondatabase/serverless"
 export const sql = neon(process.env.DATABASE_URL!)
 
 // Helper function to safely execute SQL queries with error handling
-export async function executeQuery(query: string, params: any[] = []) {
+export async function executeQuery(query: TemplateStringsArray, ...params: any[]) {
   try {
-    return await sql(query, params)
+    return await sql(query, ...params)
   } catch (error) {
     console.error("Database query error:", error)
     throw new Error("Database operation failed")

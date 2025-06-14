@@ -249,4 +249,19 @@ model Notification {
   isActive        Boolean  @default(true)
   expiresAt       DateTime?
   createdAt       DateTime @default(now())
+}
+
+model SystemHealth {
+  id                String   @id @default(cuid())
+  serverStatus      String   // 'healthy', 'warning', 'critical'
+  apiResponseTime   Int      // in milliseconds
+  databaseStatus    String   // 'healthy', 'warning', 'critical'
+  errorRate         Float    // percentage of errors
+  activeConnections Int      // number of active connections
+  cpuUsage          Float    // percentage
+  memoryUsage       Float    // percentage
+  diskUsage         Float    // percentage
+  lastCheckedAt     DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 } 
