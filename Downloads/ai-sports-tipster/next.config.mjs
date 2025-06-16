@@ -10,7 +10,10 @@ const nextConfig = {
     unoptimized: true,
   },
   experimental: {
-    serverComponentsExternalPackages: ['worker_threads'],
+    serverActions: {
+      allowedOrigins: ['localhost:3000'],
+      bodySizeLimit: '2mb'
+    }
   },
   webpack: (config, { isServer }) => {
     if (isServer) {

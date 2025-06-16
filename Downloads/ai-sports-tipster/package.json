@@ -79,7 +79,8 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "@types/node": "^22",
+    "@types/next-auth": "^3.13.0",
+    "@types/node": "^22.15.31",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "css-loader": "^7.1.2",

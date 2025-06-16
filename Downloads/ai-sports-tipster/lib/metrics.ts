@@ -3,7 +3,6 @@ import { exec } from 'child_process'
 import { promisify } from 'util'
 import { SystemHealth, HEALTH_THRESHOLDS } from '../types/system-health'
 import { PrismaClient } from '@prisma/client'
-import { Server as SocketIOServer } from 'socket.io'
 
 // Runtime guard for Node.js built-ins
 const os = (_os && typeof _os.cpus === 'function') ? _os : null
@@ -14,7 +13,6 @@ if (!os) {
 // Declare global types
 declare global {
   var prisma: PrismaClient | undefined
-  var io: SocketIOServer | null
 }
 
 const execAsync = promisify(exec)
@@ -70,18 +68,15 @@ export async function getSystemMetrics(): Promise<SystemHealth> {
       console.error('Error getting disk usage:', error)
     }
 
-    // Get active connections from Socket.IO if available
-    // Note: This should be moved to the main thread or passed via message
-    const activeConnections = globalThis.io?.engine?.clientsCount ?? 0
+    // Simplified active connections tracking
+    const activeConnections = 0 // TODO: Implement proper connection tracking
 
     // Calculate API response time (simplified for now)
-    // TODO: Replace with real API monitoring in production
     const apiResponseTime = process.env.NODE_ENV === 'production' 
       ? 0 
       : round(Math.random() * 100)
 
     // Calculate error rate (simplified for now)
-    // TODO: Replace with real error tracking in production
     const errorRate = process.env.NODE_ENV === 'production'
       ? 0
       : round(Math.random() * 5)

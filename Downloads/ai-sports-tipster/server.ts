@@ -1,7 +1,6 @@
 import { createServer } from 'http'
 import { parse } from 'url'
 import next from 'next'
-import { initSocket } from './server/socket-server'
 
 const dev = process.env.NODE_ENV !== 'production'
 const app = next({ dev })
@@ -12,9 +11,6 @@ app.prepare().then(() => {
     const parsedUrl = parse(req.url!, true)
     handle(req, res, parsedUrl)
   })
-
-  // Initialize Socket.IO server
-  initSocket(server)
 
   server.listen(3000, () => {
     console.log('> Ready on http://localhost:3000')

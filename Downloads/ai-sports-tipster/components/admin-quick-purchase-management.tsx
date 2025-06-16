@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -11,144 +11,228 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { PlusCircle, Edit, Trash2, Search, ShoppingBag } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Search, ShoppingBag, Loader2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import * as LucideIcons from "lucide-react" // For dynamic icons
+import * as LucideIcons from "lucide-react"
+import { toast } from "sonner"
+import { useCountry } from "@/contexts/country-context"
+import type { LucideIcon } from "lucide-react"
 
-// Matches the structure in components/dashboard/upgrade-offers.tsx
+// Add debug logging function
+const debugLog = (message: string, data?: any) => {
+  console.log(`[Icon Debug] ${message}`, data || '')
+}
+
+type QuickPurchaseType = "tip" | "weekend_pass" | "weekly_pass" | "special_game" | "monthly_sub"
+
 type QuickPurchaseItemAdmin = {
-  id: string
+  id?: string
   name: string
-  price: string // Store as string, assuming base currency (e.g., KES)
+  price: string
   originalPrice?: string
   description: string
   features: string[]
-  type: "tip" | "package" | "vip"
-  iconName: keyof typeof LucideIcons // Store icon name
-  colorGradientFrom: string // e.g., "from-emerald-500"
-  colorGradientTo: string // e.g., "to-cyan-500"
+  type: QuickPurchaseType
+  iconName: keyof typeof LucideIcons
+  colorGradientFrom: string
+  colorGradientTo: string
   isUrgent?: boolean
-  timeLeft?: string // e.g., "2h 15m" or ISO expiry
+  timeLeft?: string
   isPopular?: boolean
-  discountPercentage?: number // e.g., 30 for 30%
+  discountPercentage?: number
   isActive: boolean
   displayOrder: number
-  targetLink?: string // e.g., "/dashboard/daily-tips"
-  createdAt: string
-  updatedAt: string
+  countryId: string
+  createdAt?: string
+  updatedAt?: string
+  country?: {
+    currencyCode: string
+    currencySymbol: string
+  }
 }
 
-const initialQuickPurchaseItems: QuickPurchaseItemAdmin[] = [
-  {
-    id: "qp-daily-tip",
-    name: "Today's Premium Tip",
-    price: "150",
-    description: "Arsenal vs Chelsea - Over 2.5 Goals",
-    features: ["90% Confidence", "Detailed Analysis", "Live Updates", "Money Back if Wrong"],
-    type: "tip",
-    iconName: "Zap",
-    colorGradientFrom: "from-emerald-500",
-    colorGradientTo: "to-cyan-500",
-    isUrgent: true,
-    timeLeft: "2h 15m",
-    isActive: true,
-    displayOrder: 1,
-    targetLink: "/dashboard/daily-tips",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: "qp-weekend-package",
-    name: "Weekend Special",
-    price: "350",
-    originalPrice: "500",
-    description: "3 Premium Weekend Picks",
-    features: ["Premier League Accumulator", "Expert Analysis", "Live Chat Support", "Profit Guarantee"],
-    type: "package",
-    iconName: "Gift",
-    colorGradientFrom: "from-purple-500",
-    colorGradientTo: "to-pink-500",
-    isPopular: true,
-    discountPercentage: 30,
-    isActive: true,
-    displayOrder: 2,
-    targetLink: "/dashboard/weekend-special",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: "qp-vip-monthly",
-    name: "VIP Monthly",
-    price: "2500",
-    originalPrice: "3500",
-    description: "Unlimited Premium Access",
-    features: ["Unlimited Tips", "VIP Predictions", "Personal Advisor", "Video Analysis"],
-    type: "vip",
-    iconName: "Crown",
-    colorGradientFrom: "from-yellow-500",
-    colorGradientTo: "to-orange-500",
-    discountPercentage: 29, // approx for savings
-    isActive: true,
-    displayOrder: 3,
-    targetLink: "/dashboard/vip",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-]
+// Helper function to get icon based on type
+const getIconForType = (type: QuickPurchaseType): keyof typeof LucideIcons => {
+  switch (type) {
+    case "tip":
+      return "Zap"
+    case "weekend_pass":
+      return "Gift"
+    case "weekly_pass":
+      return "Clock"
+    case "special_game":
+      return "Star"
+    case "monthly_sub":
+      return "Crown"
+    default:
+      return "Star"
+  }
+}
 
-const IconRenderer = ({ name, className }: { name: keyof typeof LucideIcons; className?: string }) => {
-  const IconComponent = LucideIcons[name] as React.ElementType
-  if (!IconComponent) return <LucideIcons.HelpCircle className={className} /> // Fallback icon
-  return <IconComponent className={className} />
+// Helper function to get color gradients based on type
+const getColorsForType = (type: QuickPurchaseType): { from: string; to: string } => {
+  switch (type) {
+    case "tip":
+      return { from: "from-blue-500", to: "to-cyan-500" }
+    case "weekend_pass":
+      return { from: "from-pink-500", to: "to-purple-500" }
+    case "weekly_pass":
+      return { from: "from-green-500", to: "to-emerald-500" }
+    case "special_game":
+      return { from: "from-yellow-500", to: "to-orange-500" }
+    case "monthly_sub":
+      return { from: "from-orange-500", to: "to-yellow-500" }
+    default:
+      return { from: "from-slate-500", to: "to-slate-400" }
+  }
+}
+
+// Helper function to safely render icons
+const renderIcon = (iconName: keyof typeof LucideIcons, className?: string) => {
+  debugLog('Attempting to render icon', { iconName, className })
+  try {
+    const IconComponent = LucideIcons[iconName]
+    if (!IconComponent || typeof IconComponent !== 'function') {
+      debugLog('Icon not found or invalid', { iconName })
+      return null
+    }
+    debugLog('Icon found, rendering', { iconName })
+    const Icon = IconComponent as React.ComponentType<{ className?: string }>
+    return <Icon className={className} />
+  } catch (error) {
+    debugLog('Error rendering icon', { iconName, error })
+    return null
+  }
+}
+
+const initialFormData: QuickPurchaseItemAdmin = {
+  id: "",
+  name: "",
+  price: "",
+  description: "",
+  features: [],
+  type: "tip",
+  iconName: "Zap",
+  colorGradientFrom: "from-blue-500",
+  colorGradientTo: "to-cyan-500",
+  isUrgent: false,
+  timeLeft: "",
+  isPopular: false,
+  discountPercentage: 0,
+  isActive: true,
+  displayOrder: 0,
+  countryId: "cmbranpd60005vbpoyqs7tsxr",
+  createdAt: "",
+  updatedAt: "",
 }
 
 export function AdminQuickPurchaseManagement() {
-  const [items, setItems] = useState<QuickPurchaseItemAdmin[]>(initialQuickPurchaseItems)
+  debugLog('Rendering AdminQuickPurchaseManagement')
+  const { countries } = useCountry()
+  const [items, setItems] = useState<QuickPurchaseItemAdmin[]>([])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<QuickPurchaseItemAdmin | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
+  const [isLoading, setIsLoading] = useState(true)
+  const [formData, setFormData] = useState<QuickPurchaseItemAdmin>(initialFormData)
+
+  // Remove the USD country ID logic since we're using a specific ID
+  useEffect(() => {
+    console.log('Component mounted')
+    console.log('Available countries:', countries)
+  }, [countries])
+
+  // Fetch quick purchases
+  useEffect(() => {
+    fetchQuickPurchases()
+  }, [])
+
+  const fetchQuickPurchases = async () => {
+    try {
+      setIsLoading(true)
+      const response = await fetch("/api/admin/quick-purchases")
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null)
+        console.error('Error response:', errorData)
+        throw new Error(errorData?.message || "Failed to fetch quick purchases")
+      }
+      const data = await response.json()
+      console.log('Fetched quick purchases:', data)
+      setItems(data)
+    } catch (error) {
+      console.error("Error fetching quick purchases:", error)
+      toast.error("Failed to fetch quick purchases")
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const handleAddNew = () => {
     setEditingItem(null)
+    setFormData(initialFormData)
     setIsModalOpen(true)
   }
 
   const handleEdit = (item: QuickPurchaseItemAdmin) => {
     setEditingItem(item)
+    setFormData(item)
     setIsModalOpen(true)
   }
 
-  const handleDelete = (itemId: string) => {
-    setItems(items.filter((i) => i.id !== itemId))
-  }
+  const handleDelete = async (itemId: string) => {
+    if (!confirm("Are you sure you want to delete this item?")) return
 
-  const handleSaveItem = (formData: QuickPurchaseItemAdmin) => {
-    if (editingItem) {
-      setItems(
-        items.map((i) =>
-          i.id === editingItem.id ? { ...formData, id: i.id, updatedAt: new Date().toISOString() } : i,
-        ),
-      )
-    } else {
-      setItems([
-        ...items,
-        {
-          ...formData,
-          id: `qp-${Date.now()}`,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      ])
+    try {
+      const response = await fetch(`/api/admin/quick-purchases/${itemId}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to delete item")
+      }
+
+      setItems(items.filter(item => item.id !== itemId))
+      toast.success("Item deleted successfully")
+    } catch (error) {
+      console.error("Error deleting item:", error)
+      toast.error("Failed to delete item")
     }
-    setIsModalOpen(false)
-    setEditingItem(null)
   }
 
-  const filteredItems = useMemo(() => {
-    return items
-      .filter((i) => i.name.toLowerCase().includes(searchTerm.toLowerCase()))
-      .sort((a, b) => a.displayOrder - b.displayOrder)
-  }, [items, searchTerm])
+  const handleSaveItem = async (formData: QuickPurchaseItemAdmin) => {
+    try {
+      const response = await fetch("/api/admin/quick-purchases", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to save item")
+      }
+
+      const savedItem = await response.json()
+      console.log('Saved item:', savedItem)
+
+      // Refresh the items list
+      const itemsResponse = await fetch("/api/admin/quick-purchases")
+      if (!itemsResponse.ok) {
+        throw new Error("Failed to refresh items list")
+      }
+      const updatedItems = await itemsResponse.json()
+      setItems(updatedItems)
+
+      toast.success("Item saved successfully")
+      setIsModalOpen(false)
+      setFormData(initialFormData)
+    } catch (error) {
+      console.error("Error saving item:", error)
+      toast.error(error instanceof Error ? error.message : "Failed to save item")
+    }
+  }
 
   const QuickPurchaseForm = ({
     isOpen,
@@ -161,44 +245,115 @@ export function AdminQuickPurchaseManagement() {
     onSave: (data: QuickPurchaseItemAdmin) => void
     initialData: QuickPurchaseItemAdmin | null
   }) => {
-    const [formData, setFormData] = useState<Partial<QuickPurchaseItemAdmin>>(
-      initialData || {
-        type: "tip",
-        isActive: true,
-        displayOrder: (items.length + 1) * 10,
-        iconName: "Zap",
-        colorGradientFrom: "from-emerald-500",
-        colorGradientTo: "to-cyan-500",
-        features: [],
-      },
-    )
+    const [formData, setFormData] = useState<QuickPurchaseItemAdmin>(initialData || initialFormData)
+
+    useEffect(() => {
+      if (initialData) {
+        setFormData(initialData)
+      } else {
+        setFormData(initialFormData)
+      }
+    }, [initialData])
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      const { name, value, type } = e.target
-      if (type === "checkbox") {
-        setFormData({ ...formData, [name]: (e.target as HTMLInputElement).checked })
-      } else if (type === "number") {
-        setFormData({ ...formData, [name]: Number.parseFloat(value) })
+      const { name, value } = e.target
+      setFormData({ ...formData, [name]: value })
+    }
+
+    const handleSelectChange = (name: string, value: string) => {
+      if (name === "type") {
+        const colors = getColorsForType(value as QuickPurchaseType)
+        setFormData({
+          ...formData,
+          type: value as QuickPurchaseType,
+          iconName: getIconForType(value as QuickPurchaseType),
+          colorGradientFrom: colors.from,
+          colorGradientTo: colors.to
+        })
       } else {
         setFormData({ ...formData, [name]: value })
       }
     }
 
-    const handleSelectChange = (name: string, value: string) => {
-      setFormData({ ...formData, [name]: value })
-    }
-
     const handleFeaturesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      setFormData({ ...formData, features: e.target.value.split("\n") })
+      const features = e.target.value.split("\n").filter(f => f.trim())
+      console.log('Features changed:', features)
+      setFormData({ ...formData, features })
     }
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault()
-      if (!formData.name || !formData.price || !formData.iconName) {
-        alert("Name, Price, and Icon Name are required.")
+      
+      // Validate required fields
+      if (!formData.name || !formData.price || !formData.description || !formData.type || !formData.iconName || !formData.countryId) {
+        toast.error("Please fill in all required fields")
         return
       }
-      onSave(formData as QuickPurchaseItemAdmin)
+
+      // Trim whitespace from text fields
+      const trimmedData = {
+        ...formData,
+        name: formData.name.trim(),
+        description: formData.description.trim(),
+      }
+
+      // Get colors based on type
+      const { from, to } = getColorsForType(trimmedData.type)
+
+      // Prepare data for submission
+      const dataToSave = {
+        name: trimmedData.name,
+        description: trimmedData.description,
+        price: trimmedData.price.toString(),
+        originalPrice: trimmedData.originalPrice ? trimmedData.originalPrice.toString() : null,
+        features: trimmedData.features || [],
+        type: trimmedData.type,
+        iconName: trimmedData.iconName,
+        colorGradientFrom: from,
+        colorGradientTo: to,
+        isUrgent: trimmedData.isUrgent || false,
+        timeLeft: trimmedData.timeLeft || null,
+        isPopular: trimmedData.isPopular || false,
+        discountPercentage: trimmedData.discountPercentage ? parseInt(trimmedData.discountPercentage.toString()) : null,
+        isActive: true,
+        displayOrder: parseInt(trimmedData.displayOrder.toString()) || 0,
+        countryId: trimmedData.countryId
+      }
+
+      console.log('Submitting data:', dataToSave)
+
+      try {
+        const response = await fetch("/api/admin/quick-purchases", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(dataToSave),
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || "Failed to save item")
+        }
+
+        const savedItem = await response.json()
+        console.log('Saved item:', savedItem)
+
+        // Refresh the items list
+        const itemsResponse = await fetch("/api/admin/quick-purchases")
+        if (!itemsResponse.ok) {
+          throw new Error("Failed to refresh items list")
+        }
+        const updatedItems = await itemsResponse.json()
+        setItems(updatedItems)
+
+        toast.success("Item saved successfully")
+        setIsModalOpen(false)
+        setFormData(initialFormData)
+      } catch (error) {
+        console.error("Error saving item:", error)
+        toast.error(error instanceof Error ? error.message : "Failed to save item")
+      }
     }
 
     return (
@@ -216,13 +371,13 @@ export function AdminQuickPurchaseManagement() {
                 <Input id="name" name="name" value={formData.name || ""} onChange={handleChange} required />
               </div>
               <div>
-                <Label htmlFor="price">Price (Base Currency)</Label>
+                <Label htmlFor="price">Price (USD)</Label>
                 <Input id="price" name="price" value={formData.price || ""} onChange={handleChange} required />
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="originalPrice">Original Price (Optional)</Label>
+                <Label htmlFor="originalPrice">Original Price (USD)</Label>
                 <Input
                   id="originalPrice"
                   name="originalPrice"
@@ -230,20 +385,16 @@ export function AdminQuickPurchaseManagement() {
                   onChange={handleChange}
                 />
               </div>
-              <div>
-                <Label htmlFor="discountPercentage">Discount % (Optional)</Label>
-                <Input
-                  id="discountPercentage"
-                  name="discountPercentage"
-                  type="number"
-                  value={formData.discountPercentage || ""}
-                  onChange={handleChange}
-                />
-              </div>
             </div>
             <div>
               <Label htmlFor="description">Description</Label>
-              <Input id="description" name="description" value={formData.description || ""} onChange={handleChange} />
+              <Textarea 
+                id="description" 
+                name="description" 
+                value={formData.description || ""} 
+                onChange={handleChange}
+                required 
+              />
             </div>
             <div>
               <Label htmlFor="features">Features (One per line)</Label>
@@ -260,69 +411,37 @@ export function AdminQuickPurchaseManagement() {
                 <Label htmlFor="type">Type</Label>
                 <Select name="type" value={formData.type} onValueChange={(v) => handleSelectChange("type", v)}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue>
+                      <div className="flex items-center">
+                        {formData.type && renderIcon(getIconForType(formData.type), "w-4 h-4 mr-2")}
+                        <span className="capitalize">{formData.type.replace('_', ' ')}</span>
+                      </div>
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="tip">Tip</SelectItem>
-                    <SelectItem value="package">Package</SelectItem>
-                    <SelectItem value="vip">VIP</SelectItem>
+                    <SelectItem value="tip">
+                      <div className="flex items-center">{renderIcon("Zap", "w-4 h-4 mr-2")}<span>Single Tip</span></div>
+                    </SelectItem>
+                    <SelectItem value="weekend_pass">
+                      <div className="flex items-center">{renderIcon("Gift", "w-4 h-4 mr-2")}<span>Weekend Pass</span></div>
+                    </SelectItem>
+                    <SelectItem value="weekly_pass">
+                      <div className="flex items-center">{renderIcon("Clock", "w-4 h-4 mr-2")}<span>Weekly Pass</span></div>
+                    </SelectItem>
+                    <SelectItem value="special_game">
+                      <div className="flex items-center">{renderIcon("Star", "w-4 h-4 mr-2")}<span>Special Game</span></div>
+                    </SelectItem>
+                    <SelectItem value="monthly_sub">
+                      <div className="flex items-center">{renderIcon("Crown", "w-4 h-4 mr-2")}<span>Monthly Subscription</span></div>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-              <div>
-                <Label htmlFor="iconName">Icon Name (Lucide)</Label>
-                <Select
-                  name="iconName"
-                  value={formData.iconName}
-                  onValueChange={(v) => handleSelectChange("iconName", v as keyof typeof LucideIcons)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select Icon" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60">
-                    {Object.keys(LucideIcons)
-                      .filter((key) => !key.includes(""))
-                      .sort()
-                      .map((iconKey) => (
-                        <SelectItem key={iconKey} value={iconKey}>
-                          <div className="flex items-center">
-                            <IconRenderer name={iconKey as keyof typeof LucideIcons} className="w-4 h-4 mr-2" />
-                            {iconKey}
-                          </div>
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="colorGradientFrom">Color From (e.g., from-emerald-500)</Label>
-                <Input
-                  id="colorGradientFrom"
-                  name="colorGradientFrom"
-                  value={formData.colorGradientFrom || ""}
-                  onChange={handleChange}
-                />
-              </div>
-              <div>
-                <Label htmlFor="colorGradientTo">Color To (e.g., to-cyan-500)</Label>
-                <Input
-                  id="colorGradientTo"
-                  name="colorGradientTo"
-                  value={formData.colorGradientTo || ""}
-                  onChange={handleChange}
-                />
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <Label htmlFor="timeLeft">Time Left (e.g., 2h 15m or ISO Date)</Label>
                 <Input id="timeLeft" name="timeLeft" value={formData.timeLeft || ""} onChange={handleChange} />
-              </div>
-              <div>
-                <Label htmlFor="targetLink">Target Link (e.g., /dashboard/daily-tips)</Label>
-                <Input id="targetLink" name="targetLink" value={formData.targetLink || ""} onChange={handleChange} />
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -336,41 +455,49 @@ export function AdminQuickPurchaseManagement() {
                   onChange={handleChange}
                 />
               </div>
+              <div>
+                <Label htmlFor="discountPercentage">Discount %</Label>
+                <Input
+                  id="discountPercentage"
+                  name="discountPercentage"
+                  type="number"
+                  value={formData.discountPercentage || ""}
+                  onChange={handleChange}
+                />
+              </div>
             </div>
-            <div className="space-y-2 pt-2">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="isUrgent"
                   name="isUrgent"
                   checked={!!formData.isUrgent}
-                  onCheckedChange={(c) => setFormData({ ...formData, isUrgent: !!c })}
+                  onCheckedChange={(checked) => setFormData({ ...formData, isUrgent: !!checked })}
                 />
-                <Label htmlFor="isUrgent">Is Urgent?</Label>
+                <Label htmlFor="isUrgent">Urgent</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="isPopular"
                   name="isPopular"
                   checked={!!formData.isPopular}
-                  onCheckedChange={(c) => setFormData({ ...formData, isPopular: !!c })}
+                  onCheckedChange={(checked) => setFormData({ ...formData, isPopular: !!checked })}
                 />
-                <Label htmlFor="isPopular">Is Popular?</Label>
+                <Label htmlFor="isPopular">Popular</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="isActive"
                   name="isActive"
                   checked={!!formData.isActive}
-                  onCheckedChange={(c) => setFormData({ ...formData, isActive: !!c })}
+                  onCheckedChange={(checked) => setFormData({ ...formData, isActive: !!checked })}
                 />
-                <Label htmlFor="isActive">Is Active (Visible)?</Label>
+                <Label htmlFor="isActive">Active</Label>
               </div>
             </div>
-            <DialogFooter className="pt-4">
-              <Button type="button" variant="outline" onClick={onClose}>
-                Cancel
-              </Button>
+            <DialogFooter>
               <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700">
+                {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
                 Save Item
               </Button>
             </DialogFooter>
@@ -381,99 +508,129 @@ export function AdminQuickPurchaseManagement() {
   }
 
   return (
-    <Card className="bg-slate-800/50 border-slate-700 text-white">
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-xl font-bold text-emerald-400 flex items-center">
-          <ShoppingBag className="w-5 h-5 mr-2 text-emerald-500" />
-          Quick Purchase Management
-        </CardTitle>
-        <Button onClick={handleAddNew} className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs">
-          <PlusCircle className="w-4 h-4 mr-1" /> Add New
-        </Button>
-      </CardHeader>
-      <CardContent>
-        <div className="relative w-full max-w-xs mb-4">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input
-            type="text"
-            placeholder="Search items..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-8 text-sm"
-          />
-        </div>
-        <div className="overflow-x-auto rounded-md border border-slate-700">
-          <Table className="text-xs">
-            <TableHeader className="bg-slate-900/50">
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Price</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Active</TableHead>
-                <TableHead>Order</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredItems.map((item) => (
-                <TableRow key={item.id} className="hover:bg-slate-700/30">
-                  <TableCell className="font-medium">
-                    {item.name} <IconRenderer name={item.iconName} className="w-3 h-3 inline ml-1" />
-                  </TableCell>
-                  <TableCell>
-                    {item.price}
-                    {item.originalPrice && (
-                      <span className="line-through text-slate-500 ml-1 text-xs">{item.originalPrice}</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className="capitalize text-xs">
-                      {item.type}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {item.isActive ? (
-                      <Badge className="bg-green-500/20 text-green-400 text-xs">Active</Badge>
-                    ) : (
-                      <Badge className="bg-red-500/20 text-red-400 text-xs">Inactive</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>{item.displayOrder}</TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEdit(item)}
-                      className="text-emerald-400 hover:text-emerald-300 mr-1 p-1 h-auto"
-                    >
-                      <Edit className="w-3 h-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(item.id)}
-                      className="text-red-400 hover:text-red-300 p-1 h-auto"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-        {isModalOpen && (
-          <QuickPurchaseForm
-            isOpen={isModalOpen}
-            onClose={() => {
-              setIsModalOpen(false)
-              setEditingItem(null)
-            }}
-            onSave={handleSaveItem}
-            initialData={editingItem}
-          />
-        )}
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      <Card className="bg-slate-800 border-slate-700">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-white">Quick Purchase Management</CardTitle>
+            <Button onClick={handleAddNew} className="bg-emerald-600 hover:bg-emerald-700">
+              <PlusCircle className="w-4 h-4 mr-2" />
+              Add New
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center space-x-2 mb-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
+              <Input
+                placeholder="Search items..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-8 bg-slate-700/50 border-slate-600 text-white"
+              />
+            </div>
+          </div>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-8 h-8 animate-spin text-emerald-400" />
+            </div>
+          ) : (
+            <div className="rounded-md border border-slate-700">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-slate-800/50 hover:bg-slate-800/50">
+                    <TableHead className="text-slate-300">Name</TableHead>
+                    <TableHead className="text-slate-300">Type</TableHead>
+                    <TableHead className="text-slate-300">Price</TableHead>
+                    <TableHead className="text-slate-300">Status</TableHead>
+                    <TableHead className="text-slate-300">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items
+                    .filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                    .map(item => (
+                      <TableRow key={item.id} className="border-slate-700">
+                        <TableCell className="font-medium text-white">
+                          <div className="flex items-center space-x-2">
+                            {renderIcon(item.iconName, "w-4 h-4 text-slate-400")}
+                            <span>{item.name}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            className={`${
+                              item.type === "tip"
+                                ? "bg-blue-500/20 text-blue-400"
+                                : item.type === "weekend_pass"
+                                ? "bg-pink-500/20 text-pink-400"
+                                : item.type === "weekly_pass"
+                                ? "bg-green-500/20 text-green-400"
+                                : item.type === "special_game"
+                                ? "bg-yellow-500/20 text-yellow-400"
+                                : "bg-orange-500/20 text-orange-400"
+                            }`}
+                          >
+                            {item.type.replace('_', ' ')}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-white">
+                          {item.country?.currencySymbol || "$"}
+                          {item.price}
+                          {item.originalPrice && (
+                            <span className="text-slate-400 line-through ml-2">
+                              {item.country?.currencySymbol || "$"}
+                              {item.originalPrice}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            className={`${
+                              item.isActive
+                                ? "bg-emerald-500/20 text-emerald-400"
+                                : "bg-slate-500/20 text-slate-400"
+                            }`}
+                          >
+                            {item.isActive ? "Active" : "Inactive"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEdit(item)}
+                              className="text-slate-400 hover:text-white"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDelete(item.id || "")}
+                              className="text-red-400 hover:text-red-300"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <QuickPurchaseForm
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSave={handleSaveItem}
+        initialData={editingItem}
+      />
+    </div>
   )
 }

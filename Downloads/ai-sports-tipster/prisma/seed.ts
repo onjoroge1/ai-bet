@@ -99,6 +99,56 @@ async function main() {
     }
   })
 
+  // Seed PackageCountryPrice table
+  const packagePrices = [
+    // Kenya
+    { countryCode: 'ke', packageType: 'tip', price: 62.4 },
+    { countryCode: 'ke', packageType: 'weekend_pass', price: 156 },
+    { countryCode: 'ke', packageType: 'weekly_pass', price: 390 },
+    { countryCode: 'ke', packageType: 'special_game', price: 93.6 },
+    { countryCode: 'ke', packageType: 'monthly_sub', price: 936 },
+    // Nigeria
+    { countryCode: 'ng', packageType: 'tip', price: 750 },
+    { countryCode: 'ng', packageType: 'weekend_pass', price: 2250 },
+    { countryCode: 'ng', packageType: 'weekly_pass', price: 4500 },
+    { countryCode: 'ng', packageType: 'special_game', price: 1125 },
+    { countryCode: 'ng', packageType: 'monthly_sub', price: 12000 },
+    // Uganda
+    { countryCode: 'ug', packageType: 'tip', price: 1155 },
+    { countryCode: 'ug', packageType: 'weekend_pass', price: 2887.5 },
+    { countryCode: 'ug', packageType: 'weekly_pass', price: 7700 },
+    { countryCode: 'ug', packageType: 'special_game', price: 1925 },
+    { countryCode: 'ug', packageType: 'monthly_sub', price: 19250 },
+    // South Africa
+    { countryCode: 'za', packageType: 'tip', price: 13.5 },
+    { countryCode: 'za', packageType: 'weekend_pass', price: 36 },
+    { countryCode: 'za', packageType: 'weekly_pass', price: 72 },
+    { countryCode: 'za', packageType: 'special_game', price: 18 },
+    { countryCode: 'za', packageType: 'monthly_sub', price: 180 },
+    // India
+    { countryCode: 'in', packageType: 'tip', price: 33.2 },
+    { countryCode: 'in', packageType: 'weekend_pass', price: 83 },
+    { countryCode: 'in', packageType: 'weekly_pass', price: 207.5 },
+    { countryCode: 'in', packageType: 'special_game', price: 49.8 },
+    { countryCode: 'in', packageType: 'monthly_sub', price: 498 },
+    // USA
+    { countryCode: 'us', packageType: 'tip', price: 1.99 },
+    { countryCode: 'us', packageType: 'weekend_pass', price: 4.99 },
+    { countryCode: 'us', packageType: 'weekly_pass', price: 9.99 },
+    { countryCode: 'us', packageType: 'special_game', price: 2.5 },
+    { countryCode: 'us', packageType: 'monthly_sub', price: 20 },
+  ]
+
+  for (const pkg of packagePrices) {
+    const country = await prisma.country.findUnique({ where: { code: pkg.countryCode } })
+    if (!country) continue
+    await prisma.packageCountryPrice.upsert({
+      where: { countryId_packageType: { countryId: country.id, packageType: pkg.packageType } },
+      update: { price: pkg.price },
+      create: { countryId: country.id, packageType: pkg.packageType, price: pkg.price },
+    })
+  }
+
   console.log('Database has been seeded. 🌱')
 }
 

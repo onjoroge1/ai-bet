@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { Server as SocketIOServer } from 'socket.io'
-import { initSocket, getIO } from '@/server/socket-server'
+import { initSocketServer, getIO } from '@/server/socket-server'
 import { EVENT_SYSTEM_METRICS } from '@/types/system-health'
 
 // Force the route to use the Node.js runtime
@@ -8,25 +8,12 @@ export const runtime = 'nodejs'
 
 let io: SocketIOServer | null = null
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    // Get the raw request socket
-    const { socket } = req as any
-    if (!socket?.server) {
-      throw new Error('No HTTP server found')
-    }
-
-    if (!io) {
-      io = initSocket(socket.server)
-    }
-
-    return NextResponse.json({ status: 'ok' })
+    const io = getIO()
+    return NextResponse.json({ status: 'ok', message: 'Socket server is running' })
   } catch (error) {
-    console.error('Socket API error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return NextResponse.json({ status: 'error', message: 'Socket server not initialized' }, { status: 500 })
   }
 }
 
@@ -42,7 +29,7 @@ export async function POST(req: Request) {
       }
 
       if (!io) {
-        io = initSocket(socket.server)
+        io = initSocketServer(socket.server)
       }
       return NextResponse.json({ status: 'ok' })
     }
