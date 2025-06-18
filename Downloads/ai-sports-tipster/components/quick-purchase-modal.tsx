@@ -9,6 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CreditCard, Smartphone, Globe, CheckCircle, Clock, Shield, Zap, Star, Crown, Gift } from "lucide-react"
 import { CountrySelector } from "@/components/country-selector"
 import { useCountry } from "@/contexts/country-context"
+import { toast } from "react-hot-toast"
+import { TipReceipt } from "@/components/tip-receipt"
 
 interface QuickPurchaseModalProps {
   isOpen: boolean
@@ -21,6 +23,10 @@ interface QuickPurchaseModalProps {
     description: string
     features: string[]
     type: "tip" | "package" | "vip"
+    country?: {
+      currencyCode: string
+      currencySymbol: string
+    }
   }
 }
 
@@ -28,9 +34,22 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
   const { selectedCountry, countryData, setSelectedCountry, convertPrice } = useCountry()
   const [selectedPayment, setSelectedPayment] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [showReceipt, setShowReceipt] = useState(false)
+  const [purchasedTip, setPurchasedTip] = useState<any>(null)
 
   // Payment methods with local and global options
   const paymentMethods = [
+    // Test payment method (will be shown in both tabs)
+    {
+      id: "test-payment",
+      name: "Test Payment (Demo)",
+      type: "test" as const,
+      icon: CreditCard,
+      description: "Simulate a successful payment (for testing)",
+      processingTime: "Instant",
+      popular: true,
+      isTest: true,
+    },
     // Local payment methods
     ...countryData.paymentMethods.map((method) => ({
       id: method.toLowerCase().replace(/\s+/g, "-"),
@@ -40,6 +59,7 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
       description: `Pay with ${method}`,
       processingTime: "Instant",
       popular: method.includes("M-Pesa") || method.includes("Opay") || method.includes("SnapScan"),
+      isTest: false,
     })),
     // Global payment methods
     ...(countryData.globalPaymentMethods || []).map((method) => ({
@@ -50,6 +70,7 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
       description: `Pay with ${method}`,
       processingTime: "Instant",
       popular: false,
+      isTest: false,
     })),
   ]
 
@@ -58,22 +79,135 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
 
     setIsProcessing(true)
 
-    // Simulate payment processing
-    await new Promise((resolve) => setTimeout(resolve, 2000))
+    try {
+      // For test payments, simulate a successful response
+      if (selectedPayment === "test-payment") {
+        const mockTip = {
+          match: {
+            homeTeam: { name: "Fortaleza" },
+            awayTeam: { name: "Ceará" },
+            league: { name: "Brasileirão Serie A" },
+            dateTime: new Date().toISOString(),
+          },
+          prediction: "Draw",
+          odds: "3.20",
+          confidence: 85,
+          analysis: "AI's quick take: Both teams are tactically balanced and injury-free. Historical venue data tilts slightly to Fortaleza, but the ML model rates the matchup dead-even—so a draw offers the best value.",
+          valueRating: "High",
+          detailedReasoning: [
+            "ML weight 40% → 34% draw probability",
+            "No key injuries reported",
+            "Rivalry factor + balanced tactics = low-risk of a runaway result",
+            "Venue gives Fortaleza a mild home boost, cancelling ML lean to Ceará"
+          ],
+          extraMarkets: [
+            {
+              market: "Over/Under 2.5",
+              prediction: "Under",
+              probability: 65,
+              reasoning: "Tight derby matches historically average 2.1 goals"
+            },
+            {
+              market: "BTTS",
+              prediction: "Yes",
+              probability: 70,
+              reasoning: "Both teams scoring in 75% of recent meetings"
+            }
+          ],
+          thingsToAvoid: [
+            "Betting on either team to win by 2+ goals",
+            "Over 3.5 goals market"
+          ],
+          riskLevel: "Medium-Low",
+          confidenceStars: 4,
+          probabilitySnapshot: {
+            homeWin: 33,
+            draw: 34,
+            awayWin: 33
+          }
+        }
 
-    // Here you would integrate with actual payment processors
-    console.log("Processing payment:", {
-      item: item.id,
-      country: selectedCountry,
-      paymentMethod: selectedPayment,
-      price: convertPrice(item.price),
-    })
+        // Clean the price value by removing currency symbols and converting to number
+        const cleanPrice = typeof item.price === 'string' 
+          ? parseFloat(item.price.replace(/[^0-9.]/g, ''))
+          : item.price
 
-    setIsProcessing(false)
-    onClose()
+        // Create a database entry for test payment
+        const response = await fetch("/api/purchase-tip", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            itemId: item.id,
+            paymentMethod: "test-payment",
+            country: selectedCountry,
+            price: cleanPrice,
+            currencyCode: item.country?.currencyCode || 'USD',
+            isTest: true,
+            isQuickPurchase: true,
+            mockTip
+          }),
+        })
 
-    // Show success message or redirect
-    alert(`Payment successful! You now have access to ${item.name}`)
+        if (!response.ok) {
+          throw new Error("Failed to record test payment")
+        }
+
+        const data = await response.json()
+        setPurchasedTip(data.purchase)
+        setShowReceipt(true)
+        toast.success("Test payment successful!")
+        return
+      }
+
+      // Clean the price value by removing currency symbols and converting to number
+      const cleanPrice = typeof item.price === 'string' 
+        ? parseFloat(item.price.replace(/[^0-9.]/g, ''))
+        : item.price
+
+      // Here you would integrate with actual payment processors
+      const response = await fetch("/api/purchase-tip", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          itemId: item.id,
+          paymentMethod: selectedPayment,
+          country: selectedCountry,
+          price: cleanPrice,
+          currencyCode: item.country?.currencyCode || 'USD',
+          isQuickPurchase: true
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Payment failed")
+      }
+
+      const data = await response.json()
+      setPurchasedTip(data.purchase)
+      setShowReceipt(true)
+
+      // Send email with tip details
+      await fetch("/api/send-tip-email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          tip: data.purchase,
+          userEmail: data.userEmail,
+        }),
+      })
+
+    } catch (error) {
+      console.error("Payment error:", error)
+      toast.error("Payment failed. Please try again.")
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   const getItemIcon = () => {
@@ -87,6 +221,16 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
       default:
         return <Star className="w-6 h-6 text-emerald-400" />
     }
+  }
+
+  if (showReceipt && purchasedTip) {
+    return (
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-slate-900 border-slate-700">
+          <TipReceipt tip={purchasedTip} onClose={onClose} />
+        </DialogContent>
+      </Dialog>
+    )
   }
 
   return (
@@ -146,22 +290,24 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
 
             <TabsContent value="local" className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Show test payment first in local tab */}
                 {paymentMethods
-                  .filter((method) => method.type === "local")
+                  .filter((method) => method.isTest || method.type === "local")
                   .map((method) => (
                     <Card
                       key={method.id}
                       className={`bg-slate-800/50 border-slate-700 p-4 cursor-pointer transition-all hover:border-emerald-500 ${
                         selectedPayment === method.id ? "ring-2 ring-emerald-500 border-emerald-500" : ""
-                      }`}
+                      } ${method.isTest ? "border-2 border-emerald-500" : ""}`}
                       onClick={() => setSelectedPayment(method.id)}
                     >
                       <div className="flex items-center space-x-3">
-                        <method.icon className="w-8 h-8 text-emerald-400" />
+                        <method.icon className={`w-8 h-8 ${method.isTest ? "text-emerald-400" : "text-blue-400"}`} />
                         <div className="flex-1">
                           <div className="flex items-center space-x-2">
                             <h4 className="text-white font-medium">{method.name}</h4>
                             {method.popular && <Badge className="bg-emerald-500 text-white text-xs">POPULAR</Badge>}
+                            {method.isTest && <Badge className="bg-emerald-500 text-white text-xs">DEMO</Badge>}
                           </div>
                           <p className="text-slate-400 text-sm">{method.description}</p>
                           <div className="flex items-center space-x-1 mt-1">
@@ -178,20 +324,25 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
 
             <TabsContent value="global" className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Show test payment first in global tab */}
                 {paymentMethods
-                  .filter((method) => method.type === "global")
+                  .filter((method) => method.isTest || method.type === "global")
                   .map((method) => (
                     <Card
                       key={method.id}
                       className={`bg-slate-800/50 border-slate-700 p-4 cursor-pointer transition-all hover:border-emerald-500 ${
                         selectedPayment === method.id ? "ring-2 ring-emerald-500 border-emerald-500" : ""
-                      }`}
+                      } ${method.isTest ? "border-2 border-emerald-500" : ""}`}
                       onClick={() => setSelectedPayment(method.id)}
                     >
                       <div className="flex items-center space-x-3">
-                        <method.icon className="w-8 h-8 text-blue-400" />
+                        <method.icon className={`w-8 h-8 ${method.isTest ? "text-emerald-400" : "text-blue-400"}`} />
                         <div className="flex-1">
-                          <h4 className="text-white font-medium">{method.name}</h4>
+                          <div className="flex items-center space-x-2">
+                            <h4 className="text-white font-medium">{method.name}</h4>
+                            {method.popular && <Badge className="bg-emerald-500 text-white text-xs">POPULAR</Badge>}
+                            {method.isTest && <Badge className="bg-emerald-500 text-white text-xs">DEMO</Badge>}
+                          </div>
                           <p className="text-slate-400 text-sm">{method.description}</p>
                           <div className="flex items-center space-x-1 mt-1">
                             <Clock className="w-3 h-3 text-slate-500" />

@@ -2,7 +2,7 @@ import { AdminHeader } from "@/components/admin/admin-header"
 import { AdminStats } from "@/components/admin/admin-stats"
 import { UserManagement } from "@/components/admin/user-management"
 import { PredictionAnalytics } from "@/components/admin/prediction-analytics"
-import { SystemMonitoring } from "@/components/admin/system-monitoring"
+import { AdminSystemMonitoring } from "@/components/admin/system-monitoring"
 import { RecentActivity } from "@/components/admin/recent-activity"
 import { AdminPredictionManagement } from "@/components/admin-prediction-management"
 import { AdminQuickPurchaseManagement } from "@/components/admin-quick-purchase-management" // Import new
@@ -19,7 +19,7 @@ export default function AdminPage() {
             <AdminStats />
           </div>
           <div>
-            <SystemMonitoring />
+            <AdminSystemMonitoring />
           </div>
         </div>
 

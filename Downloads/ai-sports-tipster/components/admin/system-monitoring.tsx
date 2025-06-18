@@ -7,51 +7,67 @@ import { Server, Database, Wifi, HardDrive, Cpu, Activity, AlertTriangle, CheckC
 import { useSystemMonitoring } from "@/hooks/use-system-monitoring"
 import { useEffect, useState } from "react"
 import { Loader2 } from "lucide-react"
+import { Progress } from "@/components/ui/progress"
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
+import { HardDriveIcon } from "lucide-react"
+import { toast } from "sonner"
 
-export function SystemMonitoring() {
-  const { metrics: currentMetrics, connected: isConnected, lastError } = useSystemMonitoring()
-  const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
+type SystemHealth = {
+  id: string
+  serverStatus: string
+  apiResponseTime: number
+  databaseStatus: string
+  errorRate: number
+  activeConnections: number
+  cpuUsage: number
+  memoryUsage: number
+  diskUsage: number
+  lastCheckedAt: string
+  createdAt: string
+  updatedAt: string
+}
+
+export function AdminSystemMonitoring() {
+  const { metrics: currentMetrics, isLoading, lastError, fetchHistoricalData } = useSystemMonitoring()
+  const [historicalData, setHistoricalData] = useState<SystemHealth[]>([])
+  const [isLoadingHistorical, setIsLoadingHistorical] = useState(true)
 
   useEffect(() => {
-    if (currentMetrics) {
-      setLastUpdated(new Date())
+    const loadHistoricalData = async () => {
+      const data = await fetchHistoricalData()
+      setHistoricalData(data)
+      setIsLoadingHistorical(false)
     }
-  }, [currentMetrics])
+
+    loadHistoricalData()
+  }, [fetchHistoricalData])
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'healthy':
         return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-      case 'degraded':
+      case 'warning':
         return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-      case 'down':
+      case 'critical':
         return 'bg-red-500/20 text-red-400 border-red-500/30'
       default:
         return 'bg-slate-500/20 text-slate-400 border-slate-500/30'
     }
   }
 
-  if (lastError) {
+  if (isLoading || isLoadingHistorical) {
     return (
-      <Card className="bg-slate-800/50 border-slate-700 p-6">
-        <div className="flex items-center justify-center p-8">
-          <div className="text-red-400">
-            <AlertTriangle className="w-8 h-8 mb-2" />
-            <p>Error loading system metrics: {lastError.message}</p>
-          </div>
-        </div>
-      </Card>
+      <div className="flex items-center justify-center p-8">
+        <Loader2 className="w-8 h-8 animate-spin text-emerald-400" />
+      </div>
     )
   }
 
   if (!currentMetrics) {
     return (
-      <Card className="bg-slate-800/50 border-slate-700 p-6">
-        <div className="flex items-center justify-center p-8">
-          <Loader2 className="w-8 h-8 animate-spin text-emerald-400" />
-          <span className="ml-2 text-slate-400">Loading system metrics...</span>
-        </div>
-      </Card>
+      <div className="flex items-center justify-center p-8">
+        <div className="text-red-400">No metrics available</div>
+      </div>
     )
   }
 
@@ -123,94 +139,244 @@ export function SystemMonitoring() {
   ]
 
   return (
-    <Card className="bg-slate-800/50 border-slate-700 p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-2">
-          <h2 className="text-xl font-semibold text-white">System Status</h2>
-          <Activity className="w-5 h-5 text-emerald-400" />
-          {!isConnected && (
+    <Card className="bg-slate-800/50 border-slate-700 text-white">
+      <CardHeader>
+        <CardTitle className="text-2xl font-bold text-emerald-400 flex items-center">
+          <Server className="w-6 h-6 mr-3 text-emerald-500" />
+          System Monitoring
+          {lastError && (
             <Badge variant="outline" className="ml-2 bg-red-500/20 text-red-400 border-red-500/30">
-              Disconnected
+              Error
             </Badge>
           )}
-        </div>
-        <div className="text-slate-400 text-sm">
-          Last updated: {lastUpdated.toLocaleTimeString()}
-        </div>
-      </div>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+          {/* Server Status */}
+          <Card className="bg-slate-900/50 border-slate-700">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center">
+                  <Server className="w-5 h-5 mr-2 text-emerald-400" />
+                  <span className="text-slate-300">Server Status</span>
+                </div>
+                <Badge className={getStatusColor(currentMetrics.serverStatus)}>
+                  {currentMetrics.serverStatus}
+                </Badge>
+              </div>
+              <Progress
+                value={currentMetrics.cpuUsage}
+                className="h-2 bg-slate-700"
+              />
+              <div className="mt-2 text-sm text-slate-400">
+                CPU Usage: {currentMetrics.cpuUsage.toFixed(1)}%
+              </div>
+            </CardContent>
+          </Card>
 
-      {/* System Metrics */}
-      <div className="space-y-3 mb-6">
-        {systemMetrics.map((metric, index) => (
-          <div key={index} className="bg-slate-900/50 rounded-lg p-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div
-                  className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                    metric.color === "emerald"
-                      ? "bg-emerald-500/20"
-                      : metric.color === "yellow"
-                        ? "bg-yellow-500/20"
-                        : "bg-red-500/20"
-                  }`}
-                >
-                  <metric.icon
-                    className={`w-4 h-4 ${
-                      metric.color === "emerald"
-                        ? "text-emerald-400"
-                        : metric.color === "yellow"
-                          ? "text-yellow-400"
-                          : "text-red-400"
-                    }`}
+          {/* Database Status */}
+          <Card className="bg-slate-900/50 border-slate-700">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center">
+                  <Database className="w-5 h-5 mr-2 text-emerald-400" />
+                  <span className="text-slate-300">Database Status</span>
+                </div>
+                <Badge className={getStatusColor(currentMetrics.databaseStatus)}>
+                  {currentMetrics.databaseStatus}
+                </Badge>
+              </div>
+              <Progress
+                value={currentMetrics.errorRate}
+                className="h-2 bg-slate-700"
+              />
+              <div className="mt-2 text-sm text-slate-400">
+                Error Rate: {currentMetrics.errorRate.toFixed(1)}%
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* System Resources */}
+          <Card className="bg-slate-900/50 border-slate-700">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center">
+                  <Activity className="w-5 h-5 mr-2 text-emerald-400" />
+                  <span className="text-slate-300">System Resources</span>
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center">
+                      <Cpu className="w-4 h-4 mr-2 text-slate-400" />
+                      <span className="text-sm text-slate-400">CPU</span>
+                    </div>
+                    <span className="text-sm text-slate-400">{currentMetrics.cpuUsage.toFixed(1)}%</span>
+                  </div>
+                  <Progress
+                    value={currentMetrics.cpuUsage}
+                    className="h-1 bg-slate-700"
                   />
                 </div>
                 <div>
-                  <div className="text-white font-medium text-sm">{metric.name}</div>
-                  <div className="text-slate-400 text-xs">{metric.uptime}</div>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center">
+                      <HardDriveIcon className="w-4 h-4 mr-2 text-slate-400" />
+                      <span className="text-sm text-slate-400">Memory</span>
+                    </div>
+                    <span className="text-sm text-slate-400">{currentMetrics.memoryUsage.toFixed(1)}%</span>
+                  </div>
+                  <Progress
+                    value={currentMetrics.memoryUsage}
+                    className="h-1 bg-slate-700"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center">
+                      <HardDrive className="w-4 h-4 mr-2 text-slate-400" />
+                      <span className="text-sm text-slate-400">Disk</span>
+                    </div>
+                    <span className="text-sm text-slate-400">{currentMetrics.diskUsage.toFixed(1)}%</span>
+                  </div>
+                  <Progress
+                    value={currentMetrics.diskUsage}
+                    className="h-1 bg-slate-700"
+                  />
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </div>
 
-              <Badge
-                className={getStatusColor(metric.status)}
-              >
-                {metric.status}
-              </Badge>
+        {/* Historical Data Chart */}
+        <Card className="bg-slate-900/50 border-slate-700">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-slate-300">
+              System Performance (Last 24 Hours)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={historicalData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                  <XAxis
+                    dataKey="createdAt"
+                    stroke="#94a3b8"
+                    tickFormatter={(value) => new Date(value).toLocaleTimeString()}
+                  />
+                  <YAxis stroke="#94a3b8" />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#1e293b',
+                      border: '1px solid #334155',
+                      borderRadius: '0.375rem',
+                    }}
+                    labelStyle={{ color: '#e2e8f0' }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="cpuUsage"
+                    stroke="#10b981"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="memoryUsage"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="diskUsage"
+                    stroke="#f59e0b"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
             </div>
-          </div>
-        ))}
-      </div>
+          </CardContent>
+        </Card>
 
-      {/* Recent Alerts */}
-      {alerts.length > 0 && (
-        <div>
-          <h3 className="text-white font-medium mb-3">Recent Alerts</h3>
-          <div className="space-y-2">
-            {alerts.map((alert, index) => (
-              <div key={index} className="bg-slate-900/50 rounded-lg p-3">
-                <div className="flex items-start space-x-2">
-                  {alert.type === "warning" && <AlertTriangle className="w-4 h-4 text-yellow-400 mt-0.5" />}
-                  {alert.type === "success" && <CheckCircle className="w-4 h-4 text-emerald-400 mt-0.5" />}
-                  {alert.type === "info" && <Activity className="w-4 h-4 text-blue-400 mt-0.5" />}
-                  <div className="flex-1">
-                    <div className="text-white text-sm">{alert.message}</div>
-                    <div className="text-slate-400 text-xs">{alert.time}</div>
+        {/* System Metrics */}
+        <div className="space-y-3 mb-6">
+          {systemMetrics.map((metric, index) => (
+            <div key={index} className="bg-slate-900/50 rounded-lg p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                      metric.color === "emerald"
+                        ? "bg-emerald-500/20"
+                        : metric.color === "yellow"
+                          ? "bg-yellow-500/20"
+                          : "bg-red-500/20"
+                    }`}
+                  >
+                    <metric.icon
+                      className={`w-4 h-4 ${
+                        metric.color === "emerald"
+                          ? "text-emerald-400"
+                          : metric.color === "yellow"
+                            ? "text-yellow-400"
+                            : "text-red-400"
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <div className="text-white font-medium text-sm">{metric.name}</div>
+                    <div className="text-slate-400 text-xs">{metric.uptime}</div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
-      {/* Quick Actions */}
-      <div className="mt-6 space-y-2">
-        <Button variant="outline" size="sm" className="w-full border-slate-600 text-slate-300 hover:bg-slate-800">
-          View All Metrics
-        </Button>
-        <Button variant="outline" size="sm" className="w-full border-slate-600 text-slate-300 hover:bg-slate-800">
-          System Health Report
-        </Button>
-      </div>
+                <Badge
+                  className={getStatusColor(metric.status)}
+                >
+                  {metric.status}
+                </Badge>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Recent Alerts */}
+        {alerts.length > 0 && (
+          <div>
+            <h3 className="text-white font-medium mb-3">Recent Alerts</h3>
+            <div className="space-y-2">
+              {alerts.map((alert, index) => (
+                <div key={index} className="bg-slate-900/50 rounded-lg p-3">
+                  <div className="flex items-start space-x-2">
+                    {alert.type === "warning" && <AlertTriangle className="w-4 h-4 text-yellow-400 mt-0.5" />}
+                    {alert.type === "success" && <CheckCircle className="w-4 h-4 text-emerald-400 mt-0.5" />}
+                    {alert.type === "info" && <Activity className="w-4 h-4 text-blue-400 mt-0.5" />}
+                    <div className="flex-1">
+                      <div className="text-white text-sm">{alert.message}</div>
+                      <div className="text-slate-400 text-xs">{alert.time}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Quick Actions */}
+        <div className="mt-6 space-y-2">
+          <Button variant="outline" size="sm" className="w-full border-slate-600 text-slate-300 hover:bg-slate-800">
+            View All Metrics
+          </Button>
+          <Button variant="outline" size="sm" className="w-full border-slate-600 text-slate-300 hover:bg-slate-800">
+            System Health Report
+          </Button>
+        </div>
+      </CardContent>
     </Card>
   )
 }

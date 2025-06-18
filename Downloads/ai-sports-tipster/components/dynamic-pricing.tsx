@@ -9,7 +9,23 @@ import Link from "next/link"
 import { CountrySelector } from "@/components/country-selector"
 import { getCountryFromDomain, getCountryPricing, type CountryPricing } from "@/lib/country-pricing"
 
-export function DynamicPricing() {
+type Plan = {
+  name: string
+  price: string
+  period: string
+  description: string
+  features: string[]
+  cta: string
+  popular: boolean
+  icon: React.ComponentType<{ className?: string }>
+  href: string
+}
+
+type DynamicPricingProps = {
+  plans: Plan[]
+}
+
+export function DynamicPricing({ plans }: DynamicPricingProps) {
   const [selectedCountry, setSelectedCountry] = useState("kenya")
   const [countryData, setCountryData] = useState<CountryPricing | null>(null)
   const [activeTab, setActiveTab] = useState("flexible") // Default to flexible options
@@ -27,36 +43,6 @@ export function DynamicPricing() {
   }, [selectedCountry])
 
   if (!countryData) return null
-
-  const plans = [
-    {
-      ...countryData.plans.free,
-      period: "forever",
-      description: "Get started with basic predictions",
-      cta: "Get Started",
-      popular: false,
-      icon: Zap,
-      href: "/signup",
-    },
-    {
-      ...countryData.plans.vip,
-      period: "month",
-      description: "Unlock premium predictions and insights",
-      cta: "Go VIP",
-      popular: countryData.plans.vip.popular,
-      icon: Crown,
-      href: "/signup",
-    },
-    {
-      ...countryData.plans.pro,
-      period: "month",
-      description: "For serious bettors across all markets",
-      cta: "Go Pro",
-      popular: false,
-      icon: Globe,
-      href: "/signup",
-    },
-  ]
 
   // Benefits specific to flexible options
   const flexibleBenefits = [

@@ -16,6 +16,7 @@ export function DashboardNavHeader() {
     { href: "/dashboard/daily-tips", label: "Daily Tips", icon: Zap },
     { href: "/dashboard/weekend-special", label: "Weekend Special", icon: Gift },
     { href: "/dashboard/vip", label: "VIP Zone", icon: Crown },
+    { href: "/dashboard/my-tips", label: "My Tips", icon: Target },
     { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
     { href: "/dashboard/predictions", label: "Predictions", icon: Target },
     { href: "/dashboard/settings", label: "Settings", icon: Settings },

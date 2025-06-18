@@ -25,15 +25,15 @@ type SystemHealth = {
 }
 
 export function AdminSystemMonitoring() {
-  const { currentMetrics, isConnected, fetchHistoricalData } = useSystemMonitoring()
+  const { metrics: currentMetrics, isLoading, lastError, fetchHistoricalData } = useSystemMonitoring()
   const [historicalData, setHistoricalData] = useState<SystemHealth[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingHistorical, setIsLoadingHistorical] = useState(true)
 
   useEffect(() => {
     const loadHistoricalData = async () => {
       const data = await fetchHistoricalData()
       setHistoricalData(data)
-      setIsLoading(false)
+      setIsLoadingHistorical(false)
     }
 
     loadHistoricalData()
@@ -52,7 +52,7 @@ export function AdminSystemMonitoring() {
     }
   }
 
-  if (isLoading) {
+  if (isLoading || isLoadingHistorical) {
     return (
       <div className="flex items-center justify-center p-8">
         <Loader2 className="w-8 h-8 animate-spin text-emerald-400" />
@@ -66,9 +66,9 @@ export function AdminSystemMonitoring() {
         <CardTitle className="text-2xl font-bold text-emerald-400 flex items-center">
           <Server className="w-6 h-6 mr-3 text-emerald-500" />
           System Monitoring
-          {!isConnected && (
+          {lastError && (
             <Badge variant="outline" className="ml-2 bg-red-500/20 text-red-400 border-red-500/30">
-              Disconnected
+              Error
             </Badge>
           )}
         </CardTitle>
