@@ -300,8 +300,8 @@ export async function POST(
           // Create or update QuickPurchase for this match
           const quickPurchaseData = {
             name: `${match.home_team} vs ${match.away_team}`,
-            price: 9.99, // Default price
-            originalPrice: 12.99,
+            price: parseFloat(process.env.DEFAULT_PREDICTION_PRICE || '2.99'), // Configurable price from env
+            originalPrice: parseFloat(process.env.DEFAULT_PREDICTION_ORIGINAL_PRICE || '4.99'),
             description: `AI prediction for ${match.home_team} vs ${match.away_team}`,
             features: ['AI Analysis', 'Match Statistics', 'Risk Assessment'],
             type: 'prediction',
