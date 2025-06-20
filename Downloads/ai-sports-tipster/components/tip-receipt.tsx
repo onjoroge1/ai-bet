@@ -7,21 +7,15 @@ import Link from "next/link"
 
 interface TipReceiptProps {
   tip: {
-    id: string
-    amount: number
-    status: string
-    createdAt: string
-    quickPurchase: {
-      id: string
-      name: string
-      price: number
-      description: string
-      type: string
-      country: {
-        currencyCode: string
-        currencySymbol: string
-      }
-    }
+    name: string
+    type: string
+    price: number
+    description: string
+    features: string[]
+    isUrgent: boolean
+    timeLeft: string
+    currencySymbol: string
+    currencyCode: string
   }
   onClose: () => void
 }
@@ -47,11 +41,11 @@ export function TipReceipt({ tip, onClose }: TipReceiptProps) {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-white font-medium">{tip.quickPurchase.name}</h3>
-              <p className="text-slate-400 text-sm">{tip.quickPurchase.type}</p>
+              <h3 className="text-white font-medium">{tip.name}</h3>
+              <p className="text-slate-400 text-sm">{tip.type}</p>
             </div>
             <Badge className="bg-emerald-500 text-white">
-              {tip.status}
+              {tip.isUrgent ? "Urgent" : "Regular"}
             </Badge>
           </div>
 
@@ -59,13 +53,13 @@ export function TipReceipt({ tip, onClose }: TipReceiptProps) {
             <div className="flex justify-between items-center">
               <span className="text-slate-400">Amount Paid</span>
               <span className="text-white font-medium">
-                {tip.quickPurchase.country.currencySymbol}{tip.amount}
+                {tip.currencySymbol}{tip.price}
               </span>
             </div>
             <div className="flex justify-between items-center mt-2">
-              <span className="text-slate-400">Date</span>
+              <span className="text-slate-400">Time Left</span>
               <span className="text-white">
-                {new Date(tip.createdAt).toLocaleString()}
+                {tip.timeLeft}
               </span>
             </div>
           </div>
@@ -80,7 +74,7 @@ export function TipReceipt({ tip, onClose }: TipReceiptProps) {
               </AccordionTrigger>
               <AccordionContent className="text-slate-400">
                 <div className="space-y-2">
-                  <p>{tip.quickPurchase.description}</p>
+                  <p>{tip.description}</p>
                   <div className="flex items-center space-x-2 mt-4">
                     <Shield className="w-4 h-4 text-emerald-400" />
                     <span className="text-sm">Secure Payment</span>

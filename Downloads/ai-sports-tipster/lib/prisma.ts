@@ -20,7 +20,7 @@ type PrismaErrorEvent = {
 
 const prismaClientSingleton = () => {
   return new PrismaClient({
-    log: ['query', 'error', 'warn'],
+    log: ['error', 'warn'],
     datasources: {
       db: {
         url: process.env.DATABASE_URL
@@ -37,13 +37,6 @@ if (process.env.NODE_ENV !== 'production') {
 
 // Handle connection errors
 if (process.env.NODE_ENV !== 'production') {
-  // @ts-ignore - Prisma types are not properly exposed for event handling
-  prisma.$on('query', (e: PrismaQueryEvent) => {
-    console.log('Query:', e.query)
-    console.log('Params:', e.params)
-    console.log('Duration:', `${e.duration}ms`)
-  })
-
   // @ts-ignore - Prisma types are not properly exposed for event handling
   prisma.$on('error', (e: PrismaErrorEvent) => {
     console.error('Prisma Error:', e.message)

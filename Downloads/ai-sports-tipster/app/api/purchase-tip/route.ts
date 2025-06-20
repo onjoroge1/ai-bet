@@ -85,7 +85,8 @@ export async function POST(req: Request) {
 
     console.log("Successfully created purchase record")
 
-    return NextResponse.json({ 
+    // Prepare response data
+    const responseData = {
       success: true, 
       purchase: {
         id: purchase.id,
@@ -104,8 +105,65 @@ export async function POST(req: Request) {
           }
         }
       },
-      userEmail: session.user.email 
-    })
+      userEmail: session.user.email
+    }
+
+    // If this QuickPurchase contains prediction data, include it in the response
+    if (quickPurchase.predictionData && quickPurchase.isPredictionActive) {
+      const predictionData = quickPurchase.predictionData as any
+      const matchData = quickPurchase.matchData as any
+      
+      // Format the prediction data for delivery
+      const formattedPrediction = {
+        match: {
+          homeTeam: { name: matchData?.home_team || 'Unknown' },
+          awayTeam: { name: matchData?.away_team || 'Unknown' },
+          league: { name: matchData?.league || 'Unknown' },
+          dateTime: matchData?.date || new Date().toISOString(),
+          venue: matchData?.venue || 'Unknown',
+          importance: matchData?.match_importance || 'Regular'
+        },
+        prediction: quickPurchase.predictionType || 'unknown',
+        odds: quickPurchase.odds?.toString() || '2.0',
+        confidence: quickPurchase.confidenceScore || 0,
+        analysis: quickPurchase.analysisSummary || 'No analysis available',
+        valueRating: quickPurchase.valueRating || 'Medium',
+        detailedReasoning: predictionData?.comprehensive_analysis?.detailed_reasoning ? [
+          predictionData.comprehensive_analysis.detailed_reasoning.ml_model_weight,
+          predictionData.comprehensive_analysis.detailed_reasoning.injury_impact,
+          predictionData.comprehensive_analysis.detailed_reasoning.form_analysis,
+          predictionData.comprehensive_analysis.detailed_reasoning.tactical_factors,
+          predictionData.comprehensive_analysis.detailed_reasoning.historical_context
+        ].filter(Boolean) : [],
+        extraMarkets: predictionData?.additional_markets ? [
+          {
+            market: "Over/Under 2.5",
+            prediction: predictionData.additional_markets.total_goals.over_2_5 > 50 ? "Over" : "Under",
+            probability: Math.max(predictionData.additional_markets.total_goals.over_2_5, predictionData.additional_markets.total_goals.under_2_5),
+            reasoning: "Based on team scoring patterns and historical data"
+          },
+          {
+            market: "BTTS",
+            prediction: predictionData.additional_markets.both_teams_score.yes > 50 ? "Yes" : "No",
+            probability: Math.max(predictionData.additional_markets.both_teams_score.yes, predictionData.additional_markets.both_teams_score.no),
+            reasoning: "Based on team defensive and offensive statistics"
+          }
+        ] : [],
+        thingsToAvoid: predictionData?.comprehensive_analysis?.betting_intelligence?.avoid_bets || [],
+        riskLevel: predictionData?.comprehensive_analysis?.risk_analysis?.overall_risk || 'Medium',
+        confidenceStars: Math.ceil((quickPurchase.confidenceScore || 0) / 20), // Convert confidence to 1-5 stars
+        probabilitySnapshot: predictionData?.comprehensive_analysis?.ml_prediction ? {
+          homeWin: predictionData.comprehensive_analysis.ml_prediction.home_win,
+          draw: predictionData.comprehensive_analysis.ml_prediction.draw,
+          awayWin: predictionData.comprehensive_analysis.ml_prediction.away_win
+        } : { homeWin: 33, draw: 34, awayWin: 33 }
+      }
+
+      // Add the prediction data to the response
+      responseData.prediction = formattedPrediction
+    }
+
+    return NextResponse.json(responseData)
 
   } catch (error) {
     console.error("Purchase error:", error)

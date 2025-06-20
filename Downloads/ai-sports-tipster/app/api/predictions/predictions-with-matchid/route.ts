@@ -83,46 +83,13 @@ const redis = new Redis({
 // Cache TTL in seconds (1 hour)
 const CACHE_TTL = 3600;
 
-// Date restriction: Only allow predictions for matches within a week in advance
-const MAX_DAYS_IN_ADVANCE = 7;
-
 /**
  * Validates if a match date is within the allowed prediction window
  * @param matchDate - The match date string
  * @returns Object with validation result and details
  */
 function validateMatchDate(matchDate: string): { isValid: boolean; error?: string } {
-  try {
-    const matchDateTime = new Date(matchDate);
-    const now = new Date();
-    
-    // Check if match date is in the past
-    if (matchDateTime <= now) {
-      return {
-        isValid: false,
-        error: 'Cannot request predictions for matches that have already started or finished'
-      };
-    }
-    
-    // Calculate days difference
-    const timeDiff = matchDateTime.getTime() - now.getTime();
-    const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
-    
-    // Check if match is too far in the future
-    if (daysDiff > MAX_DAYS_IN_ADVANCE) {
-      return {
-        isValid: false,
-        error: `Predictions can only be requested for matches within ${MAX_DAYS_IN_ADVANCE} days in advance. This match is ${daysDiff} days away.`
-      };
-    }
-    
-    return { isValid: true };
-  } catch (error) {
-    return {
-      isValid: false,
-      error: 'Invalid match date format'
-    };
-  }
+  return { isValid: true };
 }
 
 export async function GET(request: Request) {
@@ -143,17 +110,6 @@ export async function GET(request: Request) {
     const cachedPrediction = await redis.get<PredictionResponse>(cacheKey);
     
     if (cachedPrediction) {
-      // Validate cached prediction date before returning
-      const dateValidation = validateMatchDate(cachedPrediction.match_info.date);
-      if (!dateValidation.isValid) {
-        // Remove invalid cached prediction
-        await redis.del(cacheKey);
-        return NextResponse.json(
-          { error: dateValidation.error },
-          { status: 400 }
-        );
-      }
-      
       return NextResponse.json({
         match_id: matchId,
         prediction: cachedPrediction,
@@ -186,19 +142,6 @@ export async function GET(request: Request) {
     }
 
     const prediction = await response.json() as PredictionResponse;
-
-    // Validate the prediction date before caching
-    if (prediction.match_info && prediction.match_info.date) {
-      const dateValidation = validateMatchDate(prediction.match_info.date);
-      if (!dateValidation.isValid) {
-        return NextResponse.json(
-          { error: dateValidation.error },
-          { status: 400 }
-        );
-      }
-    } else {
-      console.warn('No match date found in prediction response, skipping date validation');
-    }
 
     // Cache the prediction
     await redis.set(cacheKey, prediction, { ex: CACHE_TTL });

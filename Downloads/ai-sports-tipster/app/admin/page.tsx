@@ -7,6 +7,8 @@ import { RecentActivity } from "@/components/admin/recent-activity"
 import { AdminPredictionManagement } from "@/components/admin-prediction-management"
 import { AdminQuickPurchaseManagement } from "@/components/admin-quick-purchase-management" // Import new
 import { AdminPersonalizedOffersManagement } from "@/components/admin-personalized-offers-management" // Import new
+import { AdminLeagueManagement } from "@/components/admin/league-management" // Import new
+import { PredictionQuickPurchaseManager } from "@/components/admin/prediction-quickpurchase-manager" // Import new
 
 export default function AdminPage() {
   return (
@@ -22,6 +24,12 @@ export default function AdminPage() {
             <AdminSystemMonitoring />
           </div>
         </div>
+
+        {/* League Management Section */}
+        <AdminLeagueManagement />
+
+        {/* Prediction QuickPurchase Manager Section */}
+        <PredictionQuickPurchaseManager />
 
         {/* Prediction Management Section */}
         <AdminPredictionManagement />

@@ -10,41 +10,63 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Debug: Log the Prisma client
-    console.log("Prisma client:", prisma)
-    console.log("Available models:", Object.keys(prisma))
-
-    // Try a raw query first to verify database connection
-    const rawPurchases = await prisma.$queryRaw`
-      SELECT p.*, qp.*, c."currencySymbol", c."currencyCode"
-      FROM "Purchase" p
-      JOIN "QuickPurchase" qp ON p."quickPurchaseId" = qp.id
-      JOIN "Country" c ON qp."countryId" = c.id
-      WHERE p."userId" = ${session.user.id}
-      AND p.status = 'completed'
-      ORDER BY p."createdAt" DESC
-    `
-
-    console.log("Raw query result:", rawPurchases)
-
-    // Transform the data to match a more concise format
-    const tips = Array.isArray(rawPurchases) ? rawPurchases.map((purchase: any) => ({
-      id: purchase.id,
-      purchaseDate: purchase.createdAt,
-      amount: purchase.amount,
-      paymentMethod: purchase.paymentMethod,
-      tip: {
-        name: purchase.name,
-        type: purchase.type,
-        price: purchase.price,
-        description: purchase.description,
-        features: purchase.features,
-        isUrgent: purchase.isUrgent,
-        timeLeft: purchase.timeLeft,
-        currencySymbol: purchase.currencySymbol,
-        currencyCode: purchase.currencyCode
+    // Get purchases with prediction data and match information
+    const purchases = await prisma.purchase.findMany({
+      where: {
+        userId: session.user.id,
+        status: 'completed'
+      },
+      include: {
+        quickPurchase: {
+          include: {
+            country: true
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
       }
-    })) : []
+    })
+
+    // Transform the data to include prediction details
+    const tips = purchases.map((purchase) => {
+      const qp = purchase.quickPurchase
+      
+      // The actual prediction payload is nested inside the 'prediction' property
+      const predictionPayload = (qp.predictionData as any)?.prediction || null
+      
+      return {
+        id: purchase.id,
+        purchaseDate: purchase.createdAt,
+        amount: purchase.amount,
+        paymentMethod: purchase.paymentMethod,
+        // Match information from the prediction data if available
+        homeTeam: predictionPayload?.match_info?.home_team || 'TBD',
+        awayTeam: predictionPayload?.match_info?.away_team || 'TBD',
+        matchDate: predictionPayload?.match_info?.date || null,
+        venue: predictionPayload?.match_info?.venue || null,
+        league: predictionPayload?.match_info?.league || null,
+        matchStatus: predictionPayload?.match_info?.status || null,
+        // Enriched prediction data
+        predictionType: qp.predictionType || null,
+        confidenceScore: qp.confidenceScore || null,
+        odds: qp.odds || null,
+        valueRating: qp.valueRating || null,
+        analysisSummary: qp.analysisSummary || null,
+        // QuickPurchase details
+        name: qp.name,
+        type: qp.type,
+        price: qp.price,
+        description: qp.description,
+        features: qp.features || [],
+        isUrgent: qp.isUrgent || false,
+        timeLeft: qp.timeLeft || null,
+        currencySymbol: qp.country?.currencySymbol || '$',
+        currencyCode: qp.country?.currencyCode || 'USD',
+        // Pass the deeply nested prediction data to the frontend
+        predictionData: predictionPayload,
+      }
+    })
 
     return NextResponse.json(tips)
   } catch (error) {

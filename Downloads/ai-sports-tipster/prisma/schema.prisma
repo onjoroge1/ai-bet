@@ -89,19 +89,43 @@ model QuickPurchase {
   countryId          String
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
+  
+  // New fields for prediction data
+  matchId            String?    @unique // External match ID from API - unique constraint for upsert
+  matchData          Json?      // Full match information
+  predictionData     Json?      // Full prediction analysis data
+  predictionType     String?    // Type of prediction (e.g., "home_win", "draw", "away_win")
+  confidenceScore    Int?       // Confidence score (0-100)
+  odds               Decimal?   // Betting odds
+  valueRating        String?    // Value rating (Low, Medium, High, Very High)
+  analysisSummary    String?    // Brief analysis summary
+  isPredictionActive Boolean    @default(true)  // Whether this prediction is still valid
+  
   country            Country    @relation(fields: [countryId], references: [id])
   purchases          Purchase[]
 }
 
 model League {
-  id          String  @id @default(cuid())
-  name        String  @unique
-  countryCode String?
-  sport       String  @default("football")
-  isActive    Boolean @default(true)
-  logoUrl     String?
-  matches     Match[]
-  teams       Team[]
+  id                    String  @id @default(cuid())
+  name                  String  @unique
+  countryCode           String?
+  sport                 String  @default("football")
+  isActive              Boolean @default(true)
+  logoUrl               String?
+  externalLeagueId      String?  // External API league ID (e.g., "71")
+  isDataCollectionEnabled Boolean @default(true)
+  dataCollectionPriority Int     @default(0)  // Higher = more priority
+  lastDataSync          DateTime?
+  syncFrequency         String   @default("daily")  // "hourly", "daily", "weekly"
+  matchLimit            Int      @default(10)  // Max matches to fetch per sync
+  isPredictionEnabled   Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  matches               Match[]
+  teams                 Team[]
+
+  @@index([isDataCollectionEnabled, dataCollectionPriority])
+  @@index([externalLeagueId])
 }
 
 model Team {
