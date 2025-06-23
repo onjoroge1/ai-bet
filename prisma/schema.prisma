@@ -1,0 +1,321 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Country {
+  id                   String                @id @default(cuid())
+  code                 String                @unique
+  name                 String
+  flagEmoji            String?
+  currencyCode         String?
+  currencySymbol       String?
+  brandName            String?
+  tagline              String?
+  marketContext        String?
+  createdAt            DateTime              @default(now())
+  isActive             Boolean               @default(true)
+  updatedAt            DateTime              @default(now())
+  flexibleOptions      FlexibleOption[]
+  packageCountryPrices PackageCountryPrice[]
+  paymentMethods       PaymentMethod[]
+  platformStats        PlatformStat[]
+  pricingPlans         PricingPlan[]
+  quickPurchases       QuickPurchase[]
+  testimonials         Testimonial[]
+  users                User[]
+}
+
+model PaymentMethod {
+  id        String  @id @default(cuid())
+  countryId String
+  name      String
+  type      String?
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+  country   Country @relation(fields: [countryId], references: [id])
+}
+
+model PricingPlan {
+  id            String   @id @default(cuid())
+  countryId     String
+  planType      String
+  name          String
+  priceAmount   Decimal
+  originalPrice Decimal?
+  billingPeriod String
+  description   String?
+  isPopular     Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  features      Json?
+  createdAt     DateTime @default(now())
+  country       Country  @relation(fields: [countryId], references: [id])
+}
+
+model FlexibleOption {
+  id          String  @id @default(cuid())
+  countryId   String
+  name        String
+  priceAmount Decimal
+  description String?
+  category    String
+  isActive    Boolean @default(true)
+  sortOrder   Int     @default(0)
+  country     Country @relation(fields: [countryId], references: [id])
+}
+
+model QuickPurchase {
+  id                 String     @id @default(cuid())
+  name               String
+  price              Decimal
+  originalPrice      Decimal?
+  description        String
+  features           String[]
+  type               String
+  iconName           String
+  colorGradientFrom  String
+  colorGradientTo    String
+  isUrgent           Boolean    @default(false)
+  timeLeft           String?
+  isPopular          Boolean    @default(false)
+  discountPercentage Int?
+  isActive           Boolean    @default(true)
+  displayOrder       Int        @default(0)
+  targetLink         String?
+  countryId          String
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  
+  // New fields for prediction data
+  matchId            String?    @unique // External match ID from API - unique constraint for upsert
+  matchData          Json?      // Full match information
+  predictionData     Json?      // Full prediction analysis data
+  predictionType     String?    // Type of prediction (e.g., "home_win", "draw", "away_win")
+  confidenceScore    Int?       // Confidence score (0-100)
+  odds               Decimal?   // Betting odds
+  valueRating        String?    // Value rating (Low, Medium, High, Very High)
+  analysisSummary    String?    // Brief analysis summary
+  isPredictionActive Boolean    @default(true)  // Whether this prediction is still valid
+  
+  country            Country    @relation(fields: [countryId], references: [id])
+  purchases          Purchase[]
+}
+
+model League {
+  id                    String  @id @default(cuid())
+  name                  String  @unique
+  countryCode           String?
+  sport                 String  @default("football")
+  isActive              Boolean @default(true)
+  logoUrl               String?
+  externalLeagueId      String?  // External API league ID (e.g., "71")
+  isDataCollectionEnabled Boolean @default(true)
+  dataCollectionPriority Int     @default(0)  // Higher = more priority
+  lastDataSync          DateTime?
+  syncFrequency         String   @default("daily")  // "hourly", "daily", "weekly"
+  matchLimit            Int      @default(10)  // Max matches to fetch per sync
+  isPredictionEnabled   Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  matches               Match[]
+  teams                 Team[]
+
+  @@index([isDataCollectionEnabled, dataCollectionPriority])
+  @@index([externalLeagueId])
+}
+
+model Team {
+  id          String  @id @default(cuid())
+  name        String
+  leagueId    String
+  logoUrl     String?
+  isActive    Boolean @default(true)
+  awayMatches Match[] @relation("AwayTeam")
+  homeMatches Match[] @relation("HomeTeam")
+  league      League  @relation(fields: [leagueId], references: [id])
+
+  @@unique([name, leagueId])
+}
+
+model Match {
+  id           String       @id @default(cuid())
+  homeTeamId   String
+  awayTeamId   String
+  leagueId     String
+  matchDate    DateTime
+  status       String       @default("scheduled")
+  homeScore    Int?
+  awayScore    Int?
+  minutePlayed Int?
+  createdAt    DateTime     @default(now())
+  awayTeam     Team         @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  homeTeam     Team         @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  league       League       @relation(fields: [leagueId], references: [id])
+  predictions  Prediction[]
+}
+
+model Prediction {
+  id                   String           @id @default(cuid())
+  matchId              String
+  predictionType       String
+  confidenceScore      Int              @db.SmallInt
+  odds                 Decimal
+  valueRating          String
+  explanation          String?
+  isFree               Boolean          @default(true)
+  isFeatured           Boolean          @default(false)
+  status               String           @default("pending")
+  createdAt            DateTime         @default(now())
+  resultUpdatedAt      DateTime?
+  matchesInAccumulator Json?
+  potentialReturn      Decimal?
+  showInDailyTips      Boolean          @default(true)
+  showInWeeklySpecials Boolean          @default(false)
+  stake                Decimal?
+  totalOdds            Decimal?
+  type                 String           @default("single")
+  match                Match            @relation(fields: [matchId], references: [id])
+  userPredictions      UserPrediction[]
+}
+
+model User {
+  id                    String           @id @default(cuid())
+  email                 String           @unique
+  createdAt             DateTime         @default(now())
+  password              String
+  role                  String           @default("user")
+  countryId             String?
+  fullName              String?
+  isActive              Boolean          @default(true)
+  lastLoginAt           DateTime?
+  phone                 String?
+  subscriptionExpiresAt DateTime?
+  subscriptionPlan      String?
+  totalWinnings         Decimal          @default(0)
+  winStreak             Int              @default(0)
+  chatMessages          ChatMessage[]
+  purchases             Purchase[]
+  referralsReceived     Referral[]       @relation("Referred")
+  referralsGiven        Referral[]       @relation("Referrer")
+  country               Country?         @relation(fields: [countryId], references: [id])
+  userPredictions       UserPrediction[]
+}
+
+model UserPrediction {
+  id              String     @id @default(cuid())
+  userId          String
+  predictionId    String
+  stakeAmount     Decimal
+  potentialReturn Decimal
+  actualReturn    Decimal?
+  status          String
+  placedAt        DateTime   @default(now())
+  prediction      Prediction @relation(fields: [predictionId], references: [id])
+  user            User       @relation(fields: [userId], references: [id])
+}
+
+model Referral {
+  id               String   @id @default(cuid())
+  referrerId       String
+  referredId       String
+  referralCode     String
+  commissionAmount Decimal
+  status           String   @default("pending")
+  createdAt        DateTime @default(now())
+  referred         User     @relation("Referred", fields: [referredId], references: [id])
+  referrer         User     @relation("Referrer", fields: [referrerId], references: [id])
+}
+
+model PlatformStat {
+  id                    String   @id @default(cuid())
+  statDate              DateTime
+  countryId             String
+  totalUsers            Int      @default(0)
+  activeUsers           Int      @default(0)
+  vipUsers              Int      @default(0)
+  totalPredictions      Int      @default(0)
+  successfulPredictions Int      @default(0)
+  revenueAmount         Decimal  @default(0)
+  createdAt             DateTime @default(now())
+  country               Country  @relation(fields: [countryId], references: [id])
+}
+
+model Testimonial {
+  id              String   @id @default(cuid())
+  userName        String
+  countryId       String
+  rating          Int      @db.SmallInt
+  testimonialText String
+  profitAmount    String
+  timeframe       String
+  isFeatured      Boolean  @default(false)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  country         Country  @relation(fields: [countryId], references: [id])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  message   String
+  isVipUser Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model Notification {
+  id              String    @id @default(cuid())
+  title           String
+  message         String
+  type            String?
+  targetCountries Json?
+  targetUserTypes Json?
+  isActive        Boolean   @default(true)
+  expiresAt       DateTime?
+  createdAt       DateTime  @default(now())
+}
+
+model SystemHealth {
+  id                String   @id @default(cuid())
+  serverStatus      String
+  apiResponseTime   Int
+  databaseStatus    String
+  errorRate         Float
+  activeConnections Int
+  cpuUsage          Float
+  memoryUsage       Float
+  diskUsage         Float
+  lastCheckedAt     DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model PackageCountryPrice {
+  id          String  @id @default(cuid())
+  countryId   String
+  packageType String
+  price       Decimal
+  country     Country @relation(fields: [countryId], references: [id])
+
+  @@unique([countryId, packageType])
+}
+
+model Purchase {
+  id              String         @id @default(dbgenerated("gen_random_uuid()"))
+  userId          String
+  quickPurchaseId String
+  amount          Decimal
+  paymentMethod   String
+  status          String
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  quickPurchase   QuickPurchase  @relation(fields: [quickPurchaseId], references: [id])
+  user            User           @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([quickPurchaseId])
+}

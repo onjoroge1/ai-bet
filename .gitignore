@@ -1,0 +1,76 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# miscellaneous
+.DS_Store
+*.pem
+
+# env files
+.env.local
+.env.development.local
+.env.production.local
+.env.test.local
+
+# dumps
+*.dmp
+*.exr
+*.log
+*.max
+*.ma
+*.mb
+*.dmp
+*.mar
+*.oom
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# log files
+log
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# other
+/test-db.js
+/reset-prediction-data.js
+/reset-prediction-data.sql
+/monitor-logs.ps1
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+/lib/generated/prisma
+
+# Ignore files in parent directories
+/../
