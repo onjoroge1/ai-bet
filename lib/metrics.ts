@@ -86,39 +86,36 @@ export async function getSystemMetrics(): Promise<SystemHealth> {
     const databaseStatus = getStatus(errorRate, HEALTH_THRESHOLDS.ERROR_RATE)
 
     try {
-      // Use Prisma's create instead of raw SQL
-      const result = await prisma.$queryRaw<SystemHealth[]>`
-        INSERT INTO "SystemHealth" (
-          "id",
-          "serverStatus",
-          "apiResponseTime",
-          "databaseStatus",
-          "errorRate",
-          "activeConnections",
-          "cpuUsage",
-          "memoryUsage",
-          "diskUsage",
-          "lastCheckedAt",
-          "createdAt",
-          "updatedAt"
-        )
-        VALUES (
-          gen_random_uuid(),
-          ${serverStatus},
-          ${apiResponseTime},
-          ${databaseStatus},
-          ${errorRate},
-          ${activeConnections},
-          ${cpuUsage},
-          ${memoryUsage},
-          ${diskUsage},
-          ${new Date()},
-          ${new Date()},
-          ${new Date()}
-        )
-        RETURNING *
-      `
-      return result[0]
+      // Use Prisma's create method instead of raw SQL
+      const result = await prisma.systemHealth.create({
+        data: {
+          serverStatus: serverStatus as "healthy" | "degraded" | "down",
+          apiResponseTime,
+          databaseStatus: databaseStatus as "healthy" | "degraded" | "down",
+          errorRate,
+          activeConnections,
+          cpuUsage,
+          memoryUsage,
+          diskUsage,
+          lastCheckedAt: new Date(),
+        }
+      })
+      
+      // Convert Prisma result to SystemHealth type
+      return {
+        id: result.id,
+        serverStatus: result.serverStatus as "healthy" | "degraded" | "down",
+        apiResponseTime: result.apiResponseTime,
+        databaseStatus: result.databaseStatus as "healthy" | "degraded" | "down",
+        errorRate: result.errorRate,
+        activeConnections: result.activeConnections,
+        cpuUsage: result.cpuUsage,
+        memoryUsage: result.memoryUsage,
+        diskUsage: result.diskUsage,
+        lastCheckedAt: result.lastCheckedAt,
+        createdAt: result.createdAt,
+        updatedAt: result.updatedAt
+      }
     } catch (error) {
       console.error('Error saving system metrics:', error)
       // Return metrics without saving to database

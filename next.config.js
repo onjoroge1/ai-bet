@@ -15,7 +15,7 @@ const nextConfig = {
       bodySizeLimit: '2mb'
     }
   },
-  webpack: (config, { isServer }) => {
+  webpack: (config, { isServer, dev }) => {
     if (isServer) {
       config.resolve.alias = {
         ...config.resolve.alias,
@@ -41,8 +41,15 @@ const nextConfig = {
       // Mark Node.js built-ins as externals
       config.externals = [...(config.externals || []), 'os', 'child_process', 'util']
     }
+
+    // Add mini-css-extract-plugin for CSS extraction
+    if (!isServer && !dev) {
+      const MiniCssExtractPlugin = require('mini-css-extract-plugin');
+      config.plugins.push(new MiniCssExtractPlugin());
+    }
+
     return config
   },
 }
 
-export default nextConfig
+module.exports = nextConfig
