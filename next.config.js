@@ -15,6 +15,7 @@ const nextConfig = {
       bodySizeLimit: '2mb'
     }
   },
+  output: 'standalone',
   webpack: (config, { isServer, dev }) => {
     if (isServer) {
       config.resolve.alias = {
@@ -47,6 +48,12 @@ const nextConfig = {
       const MiniCssExtractPlugin = require('mini-css-extract-plugin');
       config.plugins.push(new MiniCssExtractPlugin());
     }
+
+    // Add font file handling
+    config.module.rules.push({
+      test: /\.(woff|woff2|eot|ttf|otf)$/i,
+      type: 'asset/resource',
+    })
 
     return config
   },

@@ -9,6 +9,7 @@ import { Providers } from "./providers"
 const inter = Inter({
   subsets: ["latin"],
   display: "swap",
+  variable: "--font-inter",
 })
 
 export const viewport: Viewport = {
@@ -35,14 +36,14 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
+    <html lang="en" className={`dark ${inter.variable}`} suppressHydrationWarning>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes" />
         <meta name="theme-color" content="#10b981" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
-      <body className="overflow-x-hidden" suppressHydrationWarning>
+      <body className={`overflow-x-hidden ${inter.className}`} suppressHydrationWarning>
         <Providers>
           <Navigation />
           <main className="pb-16 md:pb-0">{children}</main>

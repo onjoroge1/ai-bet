@@ -406,6 +406,59 @@ export const countryPricing: Record<string, CountryPricing> = {
     globalPaymentMethods: ["Visa/Mastercard", "PayPal", "Apple Pay", "Google Pay"],
     marketContext: "330M+ potential users, growing market",
   },
+
+  italy: {
+    code: "IT",
+    name: "Italy",
+    flag: "🇮🇹",
+    currency: "EUR",
+    currencySymbol: "€",
+    brandName: "AI Sports Tipster Italia",
+    tagline: "La Piattaforma di Previsioni Sportive AI d'Italia",
+    plans: {
+      free: {
+        name: "Gratuito",
+        price: "€0",
+        features: ["3 previsioni gratuite giornaliere", "Analisi AI di base", "Accesso alla community", "Accesso all'app mobile"],
+      },
+      vip: {
+        name: "VIP",
+        price: "€9.99",
+        popular: true,
+        features: [
+          "Previsioni illimitate",
+          "Analisi AI avanzata",
+          "Punteggi di confidenza",
+          "Avvisi email",
+          "Supporto prioritario",
+          "Dati storici",
+          "Copertura Serie A & Champions League",
+        ],
+      },
+      pro: {
+        name: "Pro",
+        price: "€19.99",
+        features: [
+          "Tutto quello che c'è in VIP",
+          "Copertura multi-lega",
+          "Previsioni live",
+          "Strategie personalizzate",
+          "Accesso API",
+          "Speciali Coppa del Mondo",
+          "Tornei internazionali",
+        ],
+      },
+    },
+    flexibleOptions: [
+      { name: "Singola Previsione", price: "€2.99", description: "Una previsione premium" },
+      { name: "Pacchetto Weekend", price: "€7.99", description: "Bundle partite del weekend" },
+      { name: "Special Derby", price: "€5.99", description: "Copertura derby locali" },
+      { name: "Pacchetto Torneo", price: "€29.99", description: "Copertura torneo" },
+    ],
+    paymentMethods: ["Carta di Credito", "PayPal", "Apple Pay", "Google Pay", "Bonifico Bancario"],
+    globalPaymentMethods: ["Visa/Mastercard", "PayPal", "Apple Pay", "Google Pay"],
+    marketContext: "Mercato italiano in crescita, Serie A leader",
+  },
 }
 
 // Enhanced country detection for global usage
@@ -470,7 +523,7 @@ const countryCodeToNameMap: Record<string, string> = {
   gb: "us", // UK - use US pricing for now
   de: "us", // Germany - use US pricing for now
   fr: "us", // France - use US pricing for now
-  it: "us", // Italy - use US pricing for now
+  it: "italy", // Italy - now has its own pricing
   es: "us", // Spain - use US pricing for now
   
   // Asia

@@ -14,18 +14,16 @@ import Link from "next/link"
 import { checkPasswordStrength, PASSWORD_REQUIREMENTS } from "@/lib/auth/password"
 import { Progress } from "@/components/ui/progress"
 
-const COUNTRIES = [
-  { code: 'us', name: 'United States', flagEmoji: '🇺🇸' },
-  { code: 'gb', name: 'United Kingdom', flagEmoji: '🇬🇧' },
-  { code: 'ng', name: 'Nigeria', flagEmoji: '🇳🇬' },
-  { code: 'ke', name: 'Kenya', flagEmoji: '🇰🇪' },
-  { code: 'za', name: 'South Africa', flagEmoji: '🇿🇦' },
-  { code: 'gh', name: 'Ghana', flagEmoji: '🇬🇭' },
-  { code: 'ug', name: 'Uganda', flagEmoji: '🇺🇬' },
-  { code: 'tz', name: 'Tanzania', flagEmoji: '🇹🇿' },
-  { code: 'in', name: 'India', flagEmoji: '🇮🇳' },
-  { code: 'ph', name: 'Philippines', flagEmoji: '🇵🇭' }
-]
+interface Country {
+  id: string
+  code: string
+  name: string
+  flagEmoji: string
+  currencyCode: string
+  currencySymbol: string
+  isActive: boolean
+  isSupported: boolean
+}
 
 export function SignUpForm() {
   const router = useRouter()
@@ -34,15 +32,55 @@ export function SignUpForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [passwordStrength, setPasswordStrength] = useState<{ score: number; feedback: string[] }>({ score: 0, feedback: [] })
+  const [countries, setCountries] = useState<Country[]>([])
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
     confirmPassword: "",
-    country: "",
+    countryCode: "",
     terms: false,
     marketing: false
   })
+
+  // Load countries on component mount
+  useEffect(() => {
+    const loadCountries = async () => {
+      try {
+        const response = await fetch('/api/countries')
+        if (response.ok) {
+          const countriesData = await response.json()
+          setCountries(countriesData)
+          // Set default country to first available
+          if (countriesData.length > 0) {
+            setFormData(prev => ({ ...prev, countryCode: countriesData[0].code }))
+          }
+        } else {
+          // Fallback to static countries if API fails
+          const staticCountries: Country[] = [
+            { id: "country_us", name: "United States", code: "US", flagEmoji: "🇺🇸", currencySymbol: "$", currencyCode: "USD", isActive: true, isSupported: true },
+            { id: "country_ke", name: "Kenya", code: "KE", flagEmoji: "🇰🇪", currencySymbol: "KES", currencyCode: "KES", isActive: true, isSupported: true },
+            { id: "country_ng", name: "Nigeria", code: "NG", flagEmoji: "🇳🇬", currencySymbol: "₦", currencyCode: "NGN", isActive: true, isSupported: true },
+            { id: "country_za", name: "South Africa", code: "ZA", flagEmoji: "🇿🇦", currencySymbol: "R", currencyCode: "ZAR", isActive: true, isSupported: true },
+            { id: "country_gh", name: "Ghana", code: "GH", flagEmoji: "🇬🇭", currencySymbol: "₵", currencyCode: "GHS", isActive: true, isSupported: true },
+            { id: "country_ug", name: "Uganda", code: "UG", flagEmoji: "🇺🇬", currencySymbol: "USh", currencyCode: "UGX", isActive: true, isSupported: true },
+            { id: "country_tz", name: "Tanzania", code: "TZ", flagEmoji: "🇹🇿", currencySymbol: "TSh", currencyCode: "TZS", isActive: true, isSupported: true },
+            { id: "country_in", name: "India", code: "IN", flagEmoji: "🇮🇳", currencySymbol: "₹", currencyCode: "INR", isActive: true, isSupported: true },
+            { id: "country_ph", name: "Philippines", code: "PH", flagEmoji: "🇵🇭", currencySymbol: "₱", currencyCode: "PHP", isActive: true, isSupported: true },
+            { id: "country_gb", name: "United Kingdom", code: "GB", flagEmoji: "🇬🇧", currencySymbol: "£", currencyCode: "GBP", isActive: true, isSupported: true },
+          ]
+          setCountries(staticCountries)
+          setFormData(prev => ({ ...prev, countryCode: staticCountries[0].code }))
+        }
+      } catch (error) {
+        console.error("Failed to load countries:", error)
+        // Set a default country if everything fails
+        setFormData(prev => ({ ...prev, countryCode: "US" }))
+      }
+    }
+
+    loadCountries()
+  }, [])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target
@@ -68,7 +106,7 @@ export function SignUpForm() {
   const handleCountryChange = (value: string) => {
     setFormData(prev => ({
       ...prev,
-      country: value
+      countryCode: value
     }))
   }
 
@@ -78,7 +116,7 @@ export function SignUpForm() {
     setIsLoading(true)
 
     // Validate required fields
-    if (!formData.name || !formData.email || !formData.password || !formData.country) {
+    if (!formData.name || !formData.email || !formData.password || !formData.countryCode) {
       setError("Please fill in all required fields")
       setIsLoading(false)
       return
@@ -116,7 +154,8 @@ export function SignUpForm() {
           name: formData.name,
           email: formData.email,
           password: formData.password,
-          country: formData.country,
+          countryCode: formData.countryCode,
+          marketingConsent: formData.marketing,
         }),
       })
 
@@ -202,7 +241,7 @@ export function SignUpForm() {
               Country <span className="text-red-400">*</span>
             </Label>
             <Select
-              value={formData.country}
+              value={formData.countryCode}
               onValueChange={handleCountryChange}
               required
             >
@@ -210,9 +249,9 @@ export function SignUpForm() {
                 <SelectValue placeholder="Select your country" />
               </SelectTrigger>
               <SelectContent className="bg-slate-900 border-slate-600">
-                {COUNTRIES.map((country) => (
+                {countries.map((country) => (
                   <SelectItem 
-                    key={country.code} 
+                    key={country.id} 
                     value={country.code}
                     className="text-white hover:bg-slate-800 focus:bg-slate-800"
                   >

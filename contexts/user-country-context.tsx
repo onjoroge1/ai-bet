@@ -28,8 +28,20 @@ export function UserCountryProvider({ children }: { children: ReactNode }) {
         if (isAuthenticated && user?.country?.code) {
           const countryCode = user.country.code.toLowerCase()
           setUserCountry(countryCode)
-          const data = getCountryPricing(countryCode)
-          setCountryData(data)
+          
+          // Get the pricing data (may fallback to US pricing)
+          const pricingData = getCountryPricing(countryCode)
+          
+          // But preserve the user's actual country information
+          const actualCountryData = {
+            ...pricingData,
+            name: user.country.name || pricingData.name,
+            flag: user.country.flagEmoji || pricingData.flag,
+            currencyCode: user.country.currencyCode || pricingData.currency,
+            currencySymbol: user.country.currencySymbol || pricingData.currencySymbol
+          }
+          
+          setCountryData(actualCountryData)
           setDetectedFrom("user_profile")
           setIsLoading(false)
           return

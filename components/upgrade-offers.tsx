@@ -9,6 +9,7 @@ import { QuickPurchaseModal } from "@/components/quick-purchase-modal"
 import { useUserCountry } from "@/contexts/user-country-context"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
+import { decodeQuickPurchasesData } from "@/lib/optimized-data-decoder"
 
 type QuickPurchaseItem = {
   id: string
@@ -58,11 +59,14 @@ export function UpgradeOffers() {
       if (!response.ok) throw new Error("Failed to fetch quick purchases")
       const data = await response.json()
       
+      // Decode optimized data structure
+      const decodedData = decodeQuickPurchasesData(data)
+      
       // Filter for prediction/tip type items that have match data and are upcoming
-      const predictionMatches = data.filter((item: any) => 
+      const predictionMatches = decodedData.filter((item: any) => 
         (item.type === 'prediction' || item.type === 'tip') && 
         item.matchId && 
-        item.isPredictionActive &&
+        item.isActive &&
         item.matchData?.date &&
         new Date(item.matchData.date) > new Date()
       )
@@ -72,7 +76,29 @@ export function UpgradeOffers() {
         .sort((a: any, b: any) => (b.confidenceScore || 0) - (a.confidenceScore || 0))
         .slice(0, 3)
       
-      setItems(topMatches)
+      // Map decoded data to QuickPurchaseItem type
+      const mappedItems: QuickPurchaseItem[] = topMatches.map((item: any) => ({
+        id: item.id,
+        name: item.name,
+        price: item.price?.toString() || '0',
+        originalPrice: item.originalPrice?.toString(),
+        description: item.description || `AI prediction for ${item.name}`,
+        features: item.features || ['AI Analysis', 'Match Statistics', 'Risk Assessment'],
+        type: item.type as "tip" | "package" | "vip",
+        iconName: item.iconName || 'Star',
+        colorGradientFrom: item.colorGradientFrom || '#3B82F6',
+        colorGradientTo: item.colorGradientTo || '#1D4ED8',
+        isUrgent: item.isUrgent || false,
+        timeLeft: item.timeLeft,
+        isPopular: item.isPopular || false,
+        discountPercentage: item.discountPercentage,
+        targetLink: item.targetLink,
+        confidenceScore: item.confidenceScore,
+        matchData: item.matchData,
+        country: item.country
+      }))
+      
+      setItems(mappedItems)
     } catch (error) {
       console.error("Error fetching quick purchases:", error)
       toast.error("Failed to load quick purchase options")

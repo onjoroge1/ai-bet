@@ -99,6 +99,164 @@ function getCountrySpecificPricing(countryCode: string, countryName?: string) {
   }
 }
 
+// OPTIMIZATION: Remove null/undefined values
+function removeNulls(obj: any): any {
+  if (Array.isArray(obj)) {
+    return obj.map(removeNulls).filter(v => v !== null && v !== undefined)
+  }
+  if (obj && typeof obj === 'object') {
+    return Object.fromEntries(
+      Object.entries(obj)
+        .filter(([_, v]) => v !== null && v !== undefined)
+        .map(([k, v]) => [k, removeNulls(v)])
+    )
+  }
+  return obj
+}
+
+// OPTIMIZATION: Abbreviate common field names
+function abbreviateKeys(obj: any): any {
+  const keyMap: Record<string, string> = {
+    'predictionType': 'pt',
+    'confidenceScore': 'cs',
+    'analysisSummary': 'as',
+    'isPredictionActive': 'ipa',
+    'createdAt': 'ca',
+    'updatedAt': 'ua',
+    'originalPrice': 'op',
+    'valueRating': 'vr',
+    'currencyCode': 'cc',
+    'currencySymbol': 'cs',
+    'displayOrder': 'do',
+    'discountPercentage': 'dp',
+    'isUrgent': 'iu',
+    'isPopular': 'ip',
+    'timeLeft': 'tl',
+    'targetLink': 'tlk',
+    'iconName': 'in',
+    'colorGradientFrom': 'cgf',
+    'colorGradientTo': 'cgt',
+    'matchData': 'md',
+    'predictionData': 'pd',
+    'home_team': 'ht',
+    'away_team': 'at',
+    'is_finished': 'if',
+    'is_upcoming': 'iu',
+    'status_short': 'ss',
+    'prediction_ready': 'pr'
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(abbreviateKeys)
+  }
+  if (obj && typeof obj === 'object') {
+    return Object.fromEntries(
+      Object.entries(obj).map(([k, v]) => [
+        keyMap[k] || k,
+        abbreviateKeys(v)
+      ])
+    )
+  }
+  return obj
+}
+
+// OPTIMIZATION: Remove duplicates by match and country
+function deduplicateData(items: any[]): any[] {
+  const matchGroups: Record<string, any[]> = {}
+  
+  items.forEach(item => {
+    const matchKey = `${item.matchData?.home_team || 'unknown'}_vs_${item.matchData?.away_team || 'unknown'}`
+    if (!matchGroups[matchKey]) {
+      matchGroups[matchKey] = []
+    }
+    matchGroups[matchKey].push(item)
+  })
+
+  const uniqueItems: any[] = []
+  Object.values(matchGroups).forEach(group => {
+    const seenCountries = new Set()
+    group.forEach(item => {
+      const countryCode = item.country?.currencyCode
+      if (!seenCountries.has(countryCode)) {
+        seenCountries.add(countryCode)
+        uniqueItems.push(item)
+      }
+    })
+  })
+
+  return uniqueItems
+}
+
+// OPTIMIZATION: Normalize structure with lookup tables
+function normalizeStructure(items: any[], userCountry: any) {
+  const matches: Record<string, any> = {}
+  const predictions: Record<string, any> = {}
+  const countries: Record<string, any> = {}
+  const normalizedItems: any[] = []
+
+  items.forEach(item => {
+    // Extract match data
+    if (item.matchData && item.matchId) {
+      matches[item.matchId] = {
+        d: item.matchData.date?.replace(/\.\d{3}Z$/, 'Z'), // Shortened date
+        v: item.matchData.venue,
+        l: item.matchData.league,
+        ht: item.matchData.home_team,
+        at: item.matchData.away_team,
+        s: item.matchData.status_short || item.matchData.status
+      }
+    }
+
+    // Extract prediction data
+    if (item.predictionData && item.matchId) {
+      const pred = item.predictionData.prediction
+      if (pred?.comprehensive_analysis?.ai_verdict) {
+        const verdict = pred.comprehensive_analysis.ai_verdict
+        predictions[item.matchId] = {
+          cl: verdict.confidence_level,
+          ro: verdict.recommended_outcome,
+          p: verdict.probability_assessment,
+          ml: pred.comprehensive_analysis.ml_prediction,
+          pb: pred.comprehensive_analysis.betting_intelligence?.primary_bet
+        }
+      }
+    }
+
+    // Extract country data
+    if (item.country) {
+      countries[item.country.currencyCode] = {
+        c: item.country.currencyCode,
+        s: item.country.currencySymbol
+      }
+    }
+
+    // Create simplified item with user's country pricing
+    const countryPricing = getCountrySpecificPricing(userCountry.currencyCode || 'USD', userCountry.name)
+    
+    normalizedItems.push({
+      id: item.id,
+      n: item.name,
+      p: countryPricing.price,
+      op: countryPricing.originalPrice,
+      t: item.type,
+      mi: item.matchId,
+      cc: userCountry.currencyCode,
+      cs: item.confidenceScore,
+      o: item.odds,
+      vr: item.valueRating,
+      ia: item.isActive,
+      ca: item.createdAt ? new Date(item.createdAt).toISOString().replace(/\.\d{3}Z$/, 'Z') : undefined // Convert Date to string first
+    })
+  })
+
+  return {
+    m: matches, // matches
+    pr: predictions, // predictions  
+    c: countries, // countries
+    i: normalizedItems // items
+  }
+}
+
 // GET /api/quick-purchases
 export async function GET(request: Request) {
   try {
@@ -137,10 +295,9 @@ export async function GET(request: Request) {
     // Debug: Log user country details
     console.log('User country:', userCountry)
 
-    // Fetch active quick purchases for user's country
+    // Fetch active quick purchases from ALL countries (not just user's country)
     const quickPurchases = await prisma.quickPurchase.findMany({
       where: {
-        countryId: user.countryId,
         isActive: true
       },
       orderBy: { displayOrder: "asc" },
@@ -155,66 +312,34 @@ export async function GET(request: Request) {
     })
 
     if (!quickPurchases.length) {
-      console.log('No quick purchases found for country:', user.countryId)
+      console.log('No quick purchases found')
       return NextResponse.json([], { status: 200 })
     }
 
-    // Debug: Log quickPurchases
-    console.log('QuickPurchases:', quickPurchases)
+    // Debug: Log original size
+    const originalSize = JSON.stringify(quickPurchases).length
+    console.log('Original data size:', originalSize, 'bytes')
 
-    // Fetch all package prices for this country
-    const packagePrices = await prisma.packageCountryPrice.findMany({
-      where: { countryId: user.countryId },
-    })
+    // OPTIMIZATION PIPELINE
+    // Step 1: Remove duplicates
+    const deduplicated = deduplicateData(quickPurchases)
+    console.log('After deduplication:', deduplicated.length, 'items (was', quickPurchases.length, ')')
 
-    if (!packagePrices.length) {
-      console.log('No package prices found for country:', user.countryId)
-      return NextResponse.json(quickPurchases, { status: 200 })
-    }
+    // Step 2: Normalize structure
+    const normalized = normalizeStructure(deduplicated, userCountry)
 
-    // Debug: Log packagePrices
-    console.log('PackageCountryPrices:', packagePrices)
+    // Step 3: Remove nulls
+    const cleaned = removeNulls(normalized)
 
-    const priceMap = Object.fromEntries(
-      packagePrices.map((p) => [p.packageType, Number(p.price)])
-    )
+    // Step 4: Abbreviate keys
+    const compressed = abbreviateKeys(cleaned)
 
-    // Get country-specific pricing from environment variables
-    const countryPricing = getCountrySpecificPricing(userCountry.currencyCode || 'USD', userCountry.name)
-    
-    console.log('Country pricing applied:', {
-      country: userCountry.name,
-      currencyCode: userCountry.currencyCode,
-      price: countryPricing.price,
-      originalPrice: countryPricing.originalPrice,
-      source: countryPricing.source
-    })
+    // Debug: Log optimized size
+    const optimizedSize = JSON.stringify(compressed).length
+    const reduction = ((originalSize - optimizedSize) / originalSize * 100).toFixed(1)
+    console.log('Optimized data size:', optimizedSize, 'bytes (', reduction, '% reduction)')
 
-    // Attach correct price to each quick purchase item
-    const itemsWithCorrectPrice = quickPurchases.map((item) => {
-      let finalPrice = Number(item.price)
-      let finalOriginalPrice = item.originalPrice ? Number(item.originalPrice) : undefined
-
-      // For prediction type items, use country-specific environment variable prices
-      if (item.type === 'prediction' || item.type === 'tip') {
-        finalPrice = countryPricing.price
-        finalOriginalPrice = countryPricing.originalPrice
-      } else {
-        // For other types, use package prices if available, otherwise keep existing price
-        finalPrice = priceMap[item.type] !== undefined ? priceMap[item.type] : Number(item.price)
-      }
-
-      return {
-        ...item,
-        price: finalPrice,
-        originalPrice: finalOriginalPrice
-      }
-    })
-
-    // Debug: Log itemsWithCorrectPrice
-    console.log('ItemsWithCorrectPrice:', itemsWithCorrectPrice)
-
-    return NextResponse.json(itemsWithCorrectPrice)
+    return NextResponse.json(compressed)
   } catch (error) {
     console.error("Error fetching quick purchases:", error)
     if (error instanceof Error) {

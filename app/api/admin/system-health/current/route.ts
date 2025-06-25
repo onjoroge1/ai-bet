@@ -72,19 +72,35 @@ export async function GET() {
       updatedAt: new Date()
     }
 
-    // Save metrics to database
+    // Save metrics to database with error handling
     try {
       await prisma.systemHealth.create({
         data: metrics
       })
     } catch (error) {
       console.error('Error saving system metrics:', error)
-      // Continue even if saving fails
+      // Continue even if saving fails - don't let database issues break the health check
     }
 
     return NextResponse.json(metrics)
   } catch (error) {
     console.error('Error in system health endpoint:', error)
-    return new NextResponse('Internal Server Error', { status: 500 })
+    
+    // Return a basic health response even if there's an error
+    return NextResponse.json({
+      id: 'error-' + Date.now(),
+      serverStatus: 'degraded',
+      apiResponseTime: 0,
+      databaseStatus: 'down',
+      errorRate: 100,
+      activeConnections: 0,
+      cpuUsage: 0,
+      memoryUsage: 0,
+      diskUsage: 0,
+      lastCheckedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      error: 'Health check failed'
+    }, { status: 200 }) // Return 200 instead of 500 to avoid cascading failures
   }
 } 
