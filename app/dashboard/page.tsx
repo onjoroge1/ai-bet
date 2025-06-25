@@ -34,6 +34,10 @@ const UpgradeOffers = dynamic(() => import('@/components/upgrade-offers').then(m
   loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
 })
 
+const MyTipsOverview = dynamic(() => import('@/components/my-tips-overview').then(mod => mod.MyTipsOverview), {
+  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
+})
+
 const PersonalizedOffers = dynamic(() => import('@/components/personalized-offers').then(mod => mod.PersonalizedOffers), {
   loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
 })
@@ -78,6 +82,13 @@ export default function DashboardPage() {
       <div className="mb-8">
         <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
           <UpgradeOffers />
+        </Suspense>
+      </div>
+
+      {/* My Tips Overview Section - Full Width */}
+      <div className="mb-8">
+        <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
+          <MyTipsOverview />
         </Suspense>
       </div>
 
