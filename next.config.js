@@ -42,8 +42,8 @@ const nextConfig = {
       config.externals = [...(config.externals || []), 'os', 'child_process', 'util']
     }
 
-    // Add mini-css-extract-plugin for CSS extraction
-    if (!isServer && !dev) {
+    // Add mini-css-extract-plugin ONLY for production builds (not development)
+    if (!isServer && !dev && process.env.NODE_ENV === 'production') {
       const MiniCssExtractPlugin = require('mini-css-extract-plugin');
       config.plugins.push(new MiniCssExtractPlugin());
     }
