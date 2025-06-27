@@ -6,35 +6,71 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { CreditCard, Smartphone, Globe, CheckCircle, Clock, Shield, Zap, Star, Crown, Gift, Brain, TrendingUp, Target } from "lucide-react"
+import { CreditCard, Smartphone, Globe, CheckCircle, Clock, Shield, Zap, Star, Crown, Gift, Brain, TrendingUp, Target, AlertCircle, Loader2 } from "lucide-react"
 import { CountrySelector } from "@/components/country-selector"
 import { useUserCountry } from "@/contexts/user-country-context"
 import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
 import { toast } from "react-hot-toast"
 import { TipReceipt } from "@/components/tip-receipt"
+import { Separator } from "@/components/ui/separator"
+import { Elements } from "@stripe/react-stripe-js"
+import { stripePromise } from "@/lib/stripe"
+import { PaymentForm } from "@/components/payment-form"
+
+interface QuickPurchaseItem {
+  id: string
+  name: string
+  price: number
+  originalPrice?: number
+  description: string
+  features: string[]
+  type: "prediction" | "tip" | "package" | "vip"
+  iconName: string
+  colorGradientFrom: string
+  colorGradientTo: string
+  isUrgent?: boolean
+  timeLeft?: string
+  isPopular?: boolean
+  discountPercentage?: number
+  targetLink?: string
+  confidenceScore?: number
+  matchData?: {
+    home_team: string
+    away_team: string
+    league: string
+    date: string
+  }
+  country?: {
+    currencyCode: string
+    currencySymbol: string
+  }
+  tipCount?: number
+  predictionType?: string
+  odds?: number
+  valueRating?: string
+  analysisSummary?: string
+}
+
+interface PackageStatus {
+  userPackages: Array<{
+    id: string
+    tipsRemaining: number
+    totalTips: number
+    status: string
+    packageOffer: {
+      name: string
+      tipCount: number
+    }
+  }>
+  totalTipsRemaining: string | number
+  hasUnlimited: boolean
+}
 
 interface QuickPurchaseModalProps {
   isOpen: boolean
   onClose: () => void
-  item: {
-    id: string
-    name: string
-    price: string
-    originalPrice?: string
-    description: string
-    features: string[]
-    type: "tip" | "package" | "vip"
-    country?: {
-      currencyCode: string
-      currencySymbol: string
-    }
-    predictionData?: any
-    predictionType?: string
-    confidenceScore?: number
-    odds?: string
-    valueRating?: string
-  }
+  item: QuickPurchaseItem | null
 }
 
 export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModalProps) {
@@ -45,41 +81,78 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
   const [isProcessing, setIsProcessing] = useState(false)
   const [showReceipt, setShowReceipt] = useState(false)
   const [purchasedTip, setPurchasedTip] = useState<any>(null)
+  const [paymentMethod, setPaymentMethod] = useState<"money" | "credits">("money")
+  const [packageStatus, setPackageStatus] = useState<PackageStatus | null>(null)
+  const [paymentStep, setPaymentStep] = useState<'details' | 'payment'>('details')
+  const [clientSecret, setClientSecret] = useState<string>('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [userCountryCode, setUserCountryCode] = useState('US')
 
   // Reset payment method when modal opens
   useEffect(() => {
     if (isOpen) {
       setSelectedPaymentMethod("")
+      fetchPackageStatus()
+      setPaymentStep('details')
+      setClientSecret('')
     }
   }, [isOpen])
 
-  const handlePurchase = async () => {
-    if (!isAuthenticated) {
-      router.push("/signin")
-      return
-    }
-
-    if (!selectedPaymentMethod) {
-      toast.error("Please select a payment method")
-      return
-    }
-
-    setIsProcessing(true)
+  const fetchPackageStatus = async () => {
     try {
-      // Simulate purchase process
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      toast.success("Purchase successful! You can now view your prediction.")
-      onClose()
+      const response = await fetch("/api/user-packages/claim-tip")
+      if (response.ok) {
+        const data = await response.json()
+        setPackageStatus(data)
+      }
     } catch (error) {
-      toast.error("Purchase failed. Please try again.")
-    } finally {
-      setIsProcessing(false)
+      console.error("Error fetching package status:", error)
     }
   }
 
+  const handleProceedToPayment = async () => {
+    setIsLoading(true)
+    try {
+      const response = await fetch('/api/payments/create-payment-intent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          itemId: item?.id,
+          itemType: item?.type === 'package' ? 'package' : 'tip',
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to create payment intent')
+      }
+
+      const data = await response.json()
+      setClientSecret(data.clientSecret)
+      setPaymentStep('payment')
+    } catch (error) {
+      console.error('Error creating payment intent:', error)
+      toast.error('Failed to initialize payment. Please try again.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handlePaymentSuccess = () => {
+    toast.success('Purchase successful!')
+    onClose()
+    // Optionally refresh the page or update the UI
+    window.location.reload()
+  }
+
+  const handlePaymentCancel = () => {
+    setPaymentStep('details')
+    setClientSecret('')
+  }
+
   const getItemIcon = () => {
-    switch (item.type) {
+    switch (item?.type) {
       case "tip":
         return <Zap className="w-6 h-6 text-yellow-400" />
       case "package":
@@ -106,6 +179,17 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
     }
   }
 
+  const canUseCredits = packageStatus && (
+    packageStatus.hasUnlimited || 
+    (typeof packageStatus.totalTipsRemaining === 'number' && packageStatus.totalTipsRemaining > 0)
+  )
+
+  const getCreditsText = () => {
+    if (!packageStatus) return "Loading..."
+    if (packageStatus.hasUnlimited) return "∞ Credits Available"
+    return `${packageStatus.totalTipsRemaining} Credits Available`
+  }
+
   if (showReceipt && purchasedTip) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
@@ -116,167 +200,170 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
     )
   }
 
+  if (!item) return null
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-slate-900 border-slate-700">
+      <DialogContent className="sm:max-w-[600px] bg-slate-800 border-slate-700 text-white">
         <DialogHeader>
-          <DialogTitle className="text-2xl text-white flex items-center space-x-3">
+          <DialogTitle className="text-xl font-semibold flex items-center space-x-2">
             {getItemIcon()}
             <span>Quick Purchase</span>
-            <Badge className="bg-emerald-500 text-white">Secure</Badge>
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6">
-          {/* Item Summary */}
-          <Card className="bg-slate-800/50 border-slate-700 p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                {getItemIcon()}
-                <div>
-                  <h3 className="text-white font-semibold text-lg">{item.name}</h3>
-                  <p className="text-slate-400">{item.description}</p>
+        {paymentStep === 'details' ? (
+          <div className="space-y-6">
+            {/* Item Details */}
+            <Card className="bg-slate-700/50 border-slate-600">
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-2">{item.name}</h3>
+                    <p className="text-slate-300 text-sm">{item.description}</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-emerald-400">
+                      {convertPrice(item.price.toString())}
+                    </div>
+                    {item.originalPrice && item.originalPrice !== item.price && (
+                      <div className="text-sm text-slate-500 line-through">
+                        {convertPrice(item.originalPrice.toString())}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <div className="text-right">
-                <div className="text-2xl font-bold text-emerald-400">{convertPrice(item.price)}</div>
-                {item.originalPrice && Number(item.originalPrice) !== Number(item.price) && (
-                  <div className="text-slate-500 line-through">{convertPrice(item.originalPrice)}</div>
+
+                {/* Match Details */}
+                {item.matchData && (
+                  <div className="bg-slate-600/50 rounded-lg p-3 mb-4">
+                    <div className="text-sm font-medium text-white mb-1">
+                      {item.matchData.home_team} vs {item.matchData.away_team}
+                    </div>
+                    <div className="text-xs text-slate-300">
+                      {item.matchData.league} • {item.matchData.date && new Date(item.matchData.date).toLocaleDateString()}
+                    </div>
+                    {item.confidenceScore && (
+                      <div className="mt-2">
+                        <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+                          {item.confidenceScore}% Confidence
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
                 )}
+
+                {/* Features */}
+                <div className="space-y-2">
+                  <h4 className="text-white font-medium text-sm">What's included:</h4>
+                  <div className="grid grid-cols-1 gap-2">
+                    {[
+                      item.tipCount === -1 ? 'Unlimited Tips' : `${item.tipCount} Premium Tips`,
+                      ...item.features.filter(f => !/\d+ Premium Tips|Unlimited Tips/.test(f))
+                    ].map((feature, index) => (
+                      <div key={index} className="flex items-center space-x-2 text-slate-300 text-sm">
+                        <CheckCircle className="w-4 h-4 text-emerald-400" />
+                        <span>{feature}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Badges */}
+                <div className="flex flex-wrap gap-2 mt-4">
+                  {item.isPopular && (
+                    <Badge className="bg-red-500 text-white animate-pulse">HOT</Badge>
+                  )}
+                  {item.isUrgent && (
+                    <Badge className="bg-orange-500 text-white">URGENT</Badge>
+                  )}
+                  {item.discountPercentage && (
+                    <Badge className="bg-green-500 text-white">-{item.discountPercentage}%</Badge>
+                  )}
+                  {item.timeLeft && (
+                    <Badge className="bg-blue-500 text-white">
+                      <Clock className="w-3 h-3 mr-1" />
+                      {item.timeLeft}
+                    </Badge>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Payment Options */}
+            <div className="space-y-4">
+              <h4 className="text-white font-medium">Payment Options</h4>
+              <div className="grid grid-cols-2 gap-3">
+                <Card className="bg-slate-700/50 border-slate-600 hover:bg-slate-700 cursor-pointer">
+                  <CardContent className="p-4 text-center">
+                    <CreditCard className="w-8 h-8 mx-auto mb-2 text-emerald-400" />
+                    <div className="text-sm font-medium text-white">Credit Card</div>
+                    <div className="text-xs text-slate-400">Visa, Mastercard, Amex</div>
+                  </CardContent>
+                </Card>
+                <Card className="bg-slate-700/50 border-slate-600 hover:bg-slate-700 cursor-pointer">
+                  <CardContent className="p-4 text-center">
+                    <div className="w-8 h-8 mx-auto mb-2 text-blue-400">📱</div>
+                    <div className="text-sm font-medium text-white">Digital Wallets</div>
+                    <div className="text-xs text-slate-400">Apple Pay, Google Pay</div>
+                  </CardContent>
+                </Card>
               </div>
             </div>
 
-            {/* Features */}
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2">
-              {item.features.map((feature, index) => (
-                <div key={index} className="flex items-center space-x-2 text-slate-300 text-sm">
-                  {getFeatureIcon(feature)}
-                  <span>{feature}</span>
-                </div>
-              ))}
+            {/* Action Buttons */}
+            <div className="flex space-x-3">
+              <Button
+                variant="outline"
+                onClick={onClose}
+                className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleProceedToPayment}
+                disabled={isLoading}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                style={{
+                  background: `linear-gradient(135deg, ${item.colorGradientFrom}, ${item.colorGradientTo})`
+                }}
+              >
+                {isLoading ? (
+                  <div className="flex items-center space-x-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Loading...</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center space-x-2">
+                    <CreditCard className="w-4 h-4" />
+                    <span>Proceed to Payment</span>
+                  </div>
+                )}
+              </Button>
             </div>
-
-            {/* Prediction Details */}
-            {item.predictionData && (
-              <div className="bg-slate-700/50 rounded-lg p-3 mt-4">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-slate-400">Prediction:</span>
-                    <div className="text-emerald-400 font-medium">{item.predictionType}</div>
-                  </div>
-                  <div>
-                    <span className="text-slate-400">Confidence:</span>
-                    <div className="text-emerald-400 font-medium">{item.confidenceScore}%</div>
-                  </div>
-                  <div>
-                    <span className="text-slate-400">Odds:</span>
-                    <div className="text-emerald-400 font-medium">{item.odds}</div>
-                  </div>
-                  <div>
-                    <span className="text-slate-400">Value Rating:</span>
-                    <div className="text-emerald-400 font-medium">{item.valueRating}</div>
-                  </div>
-                </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {clientSecret ? (
+              <Elements stripe={stripePromise} options={{ clientSecret }}>
+                <PaymentForm
+                  clientSecret={clientSecret}
+                  amount={item.price}
+                  currency={item.country?.currencyCode || 'USD'}
+                  currencySymbol={item.country?.currencySymbol || '$'}
+                  itemName={item.name}
+                  userCountryCode={userCountryCode}
+                  onSuccess={handlePaymentSuccess}
+                  onCancel={handlePaymentCancel}
+                />
+              </Elements>
+            ) : (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
               </div>
             )}
-          </Card>
-
-          {/* Payment Methods */}
-          <Tabs defaultValue="local" className="space-y-4">
-            <TabsList className="bg-slate-800 border-slate-700">
-              <TabsTrigger value="local" className="data-[state=active]:bg-emerald-600">
-                Local Payments ({countryData.name})
-              </TabsTrigger>
-              <TabsTrigger value="global" className="data-[state=active]:bg-emerald-600">
-                Global Payments
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="local" className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {countryData.paymentMethods.map((method: string) => (
-                  <Card
-                    key={method}
-                    className={`bg-slate-800/50 border-slate-700 p-4 cursor-pointer transition-all hover:border-emerald-500 ${
-                      selectedPaymentMethod === method ? "ring-2 ring-emerald-500 border-emerald-500" : ""
-                    }`}
-                    onClick={() => setSelectedPaymentMethod(method)}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-slate-700 rounded flex items-center justify-center">
-                        <CreditCard className="w-4 h-4" />
-                      </div>
-                      <span className="font-medium">{method}</span>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="global" className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Global payment methods */}
-                {(countryData.globalPaymentMethods || []).map((method: string) => (
-                  <Card
-                    key={method}
-                    className={`bg-slate-800/50 border-slate-700 p-4 cursor-pointer transition-all hover:border-emerald-500 ${
-                      selectedPaymentMethod === method ? "ring-2 ring-emerald-500 border-emerald-500" : ""
-                    }`}
-                    onClick={() => setSelectedPaymentMethod(method)}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-slate-700 rounded flex items-center justify-center">
-                        {method.includes("Card") ? <CreditCard className="w-4 h-4" /> : <Globe className="w-4 h-4" />}
-                      </div>
-                      <span className="font-medium">{method}</span>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </TabsContent>
-          </Tabs>
-
-          {/* Security Notice */}
-          <Card className="bg-emerald-900/20 border-emerald-500/30 p-4">
-            <div className="flex items-center space-x-3">
-              <Shield className="w-6 h-6 text-emerald-400" />
-              <div>
-                <h4 className="text-emerald-400 font-medium">Secure Payment</h4>
-                <p className="text-emerald-300 text-sm">
-                  Your payment is protected by 256-bit SSL encryption. We never store your payment details.
-                </p>
-              </div>
-            </div>
-          </Card>
-
-          {/* Purchase Button */}
-          <div className="flex space-x-4">
-            <Button
-              variant="outline"
-              onClick={onClose}
-              className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-800"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handlePurchase}
-              disabled={isProcessing || !selectedPaymentMethod}
-              className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-            >
-              {isProcessing ? (
-                <div className="flex items-center space-x-2">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Processing...</span>
-                </div>
-              ) : (
-                <>
-                  <CreditCard className="w-4 h-4 mr-2" />
-                  Purchase for {convertPrice(item.price)}
-                </>
-              )}
-            </Button>
           </div>
-        </div>
+        )}
       </DialogContent>
     </Dialog>
   )

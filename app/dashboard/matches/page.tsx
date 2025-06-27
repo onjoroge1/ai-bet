@@ -16,16 +16,19 @@ import {
   Eye,
   Loader2,
   Trophy,
-  MapPin
+  MapPin,
+  X,
+  CreditCard,
+  CheckCircle
 } from "lucide-react"
 import { useAuth } from "@/components/auth-provider"
+import { decodeQuickPurchasesData } from "@/lib/optimized-data-decoder"
 
 interface Match {
   id: string
   name: string
   price: number
   originalPrice?: number
-  description: string
   type: string
   matchId?: string
   matchData?: any
@@ -35,9 +38,9 @@ interface Match {
   odds?: number
   valueRating?: string
   analysisSummary?: string
-  isPredictionActive: boolean
+  isActive: boolean
   createdAt: string
-  country: {
+  country?: {
     currencyCode: string
     currencySymbol: string
   }
@@ -57,6 +60,9 @@ export default function MatchesPage() {
   const [filteredMatches, setFilteredMatches] = useState<Match[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [selectedMatch, setSelectedMatch] = useState<Match | null>(null)
+  const [showPurchaseModal, setShowPurchaseModal] = useState(false)
+  const [purchaseLoading, setPurchaseLoading] = useState(false)
   const [filters, setFilters] = useState<MatchFilters>({
     search: "",
     status: "all",
@@ -79,6 +85,19 @@ export default function MatchesPage() {
     applyFilters()
   }, [matches, filters])
 
+  // Handle escape key to close modal
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showPurchaseModal) {
+        setShowPurchaseModal(false)
+        setSelectedMatch(null)
+      }
+    }
+
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [showPurchaseModal])
+
   const fetchMatches = async () => {
     try {
       setLoading(true)
@@ -96,17 +115,21 @@ export default function MatchesPage() {
       console.log('Raw API response:', data)
       console.log('Total items received:', data.length)
       
+      // Decode the optimized data structure
+      const decodedData = decodeQuickPurchasesData(data)
+      console.log('Decoded data:', decodedData.length, 'items')
+      
       // Filter to only show prediction/tip type items that have match data
-      const predictionMatches = data.filter((item: Match) => 
+      const predictionMatches = decodedData.filter((item: any) => 
         (item.type === 'prediction' || item.type === 'tip') && 
         item.matchId && 
-        item.isPredictionActive
+        item.isActive
       )
       
       console.log('Filtered prediction matches:', predictionMatches.length)
       console.log('Sample match data:', predictionMatches[0])
       
-      setMatches(predictionMatches)
+      setMatches(predictionMatches as Match[])
     } catch (error) {
       console.error('Error fetching matches:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
@@ -215,13 +238,18 @@ export default function MatchesPage() {
   }
 
   const getConfidenceBadge = (confidence: number) => {
+    let colorClass = 'bg-red-500/20 text-red-400 border-red-500/30'
     if (confidence >= 80) {
-      return <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">High</Badge>
+      colorClass = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
     } else if (confidence >= 60) {
-      return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">Medium</Badge>
-    } else {
-      return <Badge className="bg-red-500/20 text-red-400 border-red-500/30">Low</Badge>
+      colorClass = 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
     }
+    
+    return (
+      <Badge className={colorClass}>
+        {confidence}%
+      </Badge>
+    )
   }
 
   const getValueRatingBadge = (rating: string) => {
@@ -248,6 +276,33 @@ export default function MatchesPage() {
       hour: '2-digit',
       minute: '2-digit'
     })
+  }
+
+  const handlePurchaseClick = (match: Match) => {
+    setSelectedMatch(match)
+    setShowPurchaseModal(true)
+  }
+
+  const handlePurchaseConfirm = async () => {
+    if (!selectedMatch) return
+    
+    setPurchaseLoading(true)
+    try {
+      // Here you would implement the actual purchase logic
+      // For now, we'll simulate a purchase
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      
+      // Close modal and show success
+      setShowPurchaseModal(false)
+      setSelectedMatch(null)
+      // You could add a toast notification here
+      alert('Purchase successful!')
+    } catch (error) {
+      console.error('Purchase failed:', error)
+      alert('Purchase failed. Please try again.')
+    } finally {
+      setPurchaseLoading(false)
+    }
   }
 
   // Check authentication first
@@ -349,9 +404,9 @@ export default function MatchesPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Confidence</SelectItem>
-              <SelectItem value="high">High (80%+)</SelectItem>
-              <SelectItem value="medium">Medium (60-79%)</SelectItem>
-              <SelectItem value="low">Low (&lt;60%)</SelectItem>
+              <SelectItem value="high">80%+ Confidence</SelectItem>
+              <SelectItem value="medium">60-79% Confidence</SelectItem>
+              <SelectItem value="low">&lt;60% Confidence</SelectItem>
             </SelectContent>
           </Select>
 
@@ -409,7 +464,7 @@ export default function MatchesPage() {
             <div className="text-2xl font-bold text-emerald-400">
               {filteredMatches.filter(m => (m.confidenceScore || 0) >= 80).length}
             </div>
-            <div className="text-slate-400 text-sm">High Confidence</div>
+            <div className="text-slate-400 text-sm">80%+ Confidence</div>
           </div>
         </Card>
         <Card className="bg-slate-800/50 border-slate-700 p-4">
@@ -503,30 +558,115 @@ export default function MatchesPage() {
                 <div className="flex items-center justify-between pt-4 border-t border-slate-700">
                   <div className="flex items-center space-x-2">
                     <span className="text-white font-bold">
-                      {match.country.currencySymbol}{match.price}
+                      {match.country?.currencySymbol}{match.price}
                     </span>
                     {match.originalPrice && match.originalPrice > match.price && (
                       <span className="text-slate-400 line-through text-sm">
-                        {match.country.currencySymbol}{match.originalPrice}
+                        {match.country?.currencySymbol}{match.originalPrice}
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <Button size="sm" variant="outline">
-                      <Eye className="h-4 w-4 mr-1" />
-                      View
-                    </Button>
-                    <Button size="sm">
-                      <Target className="h-4 w-4 mr-1" />
-                      Purchase
-                    </Button>
-                  </div>
+                  <Button 
+                    size="sm" 
+                    onClick={() => handlePurchaseClick(match)}
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    <Target className="h-4 w-4 mr-1" />
+                    Purchase
+                  </Button>
                 </div>
               </CardContent>
             </Card>
           )
         })}
       </div>
+
+      {/* Purchase Modal */}
+      {showPurchaseModal && selectedMatch && (
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setShowPurchaseModal(false)}
+        >
+          <div 
+            className="bg-slate-800 border border-slate-700 rounded-lg p-6 max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-white">Purchase Prediction</h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowPurchaseModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            
+            <div className="space-y-4">
+              {/* Match Details */}
+              <div className="bg-slate-700/30 rounded-lg p-4">
+                <h4 className="text-white font-medium mb-2">
+                  {selectedMatch.matchData?.home_team || "Home Team"} vs {selectedMatch.matchData?.away_team || "Away Team"}
+                </h4>
+                <div className="text-slate-400 text-sm">
+                  {selectedMatch.matchData?.league || "Unknown League"}
+                </div>
+                {selectedMatch.matchData?.date && (
+                  <div className="text-slate-400 text-sm mt-1">
+                    {formatMatchDate(selectedMatch.matchData.date)}
+                  </div>
+                )}
+              </div>
+
+              {/* Prediction Details */}
+              <div className="bg-slate-700/30 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-emerald-400 font-medium">Prediction</span>
+                  {selectedMatch.odds && (
+                    <span className="text-slate-300 text-sm">@{selectedMatch.odds}</span>
+                  )}
+                </div>
+                <div className="text-white font-semibold mb-2">
+                  {selectedMatch.predictionType?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                </div>
+                {selectedMatch.confidenceScore && (
+                  <div className="text-slate-400 text-sm">
+                    {selectedMatch.confidenceScore}% confidence
+                  </div>
+                )}
+              </div>
+
+              {/* Price */}
+              <div className="flex items-center justify-between p-4 bg-slate-700/30 rounded-lg">
+                <span className="text-slate-300">Total Price:</span>
+                <span className="text-white font-bold text-lg">
+                  {selectedMatch.country?.currencySymbol}{selectedMatch.price}
+                </span>
+              </div>
+
+              {/* Purchase Button */}
+              <Button
+                onClick={handlePurchaseConfirm}
+                disabled={purchaseLoading}
+                className="w-full bg-emerald-600 hover:bg-emerald-700"
+              >
+                {purchaseLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Confirm Purchase
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Empty State */}
       {filteredMatches.length === 0 && !loading && (

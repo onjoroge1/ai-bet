@@ -5,7 +5,6 @@ import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { Prisma } from '@prisma/client'
 import { Redis } from '@upstash/redis'
-import { BullMQ } from 'bullmq'
 
 // Initialize Redis client
 const redis = new Redis({

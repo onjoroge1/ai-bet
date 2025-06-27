@@ -22,6 +22,7 @@ model Country {
   updatedAt            DateTime              @default(now())
   flexibleOptions      FlexibleOption[]
   packageCountryPrices PackageCountryPrice[]
+  packageOfferPrices   PackageOfferCountryPrice[]
   paymentMethods       PaymentMethod[]
   platformStats        PlatformStat[]
   pricingPlans         PricingPlan[]
@@ -180,6 +181,7 @@ model Prediction {
   type                 String           @default("single")
   match                Match            @relation(fields: [matchId], references: [id])
   userPredictions      UserPrediction[]
+  userPackageTips      UserPackageTip[]
 }
 
 model User {
@@ -199,6 +201,7 @@ model User {
   winStreak             Int              @default(0)
   chatMessages          ChatMessage[]
   purchases             Purchase[]
+  userPackages          UserPackage[]
   referralsReceived     Referral[]       @relation("Referred")
   referralsGiven        Referral[]       @relation("Referrer")
   country               Country?         @relation(fields: [countryId], references: [id])
@@ -318,4 +321,81 @@ model Purchase {
 
   @@index([userId])
   @@index([quickPurchaseId])
+}
+
+model PackageOffer {
+  id                String   @id @default(cuid())
+  name              String   // "Daily Package", "Weekend Package", etc.
+  packageType       String   // "daily", "weekend", "weekly", "monthly"
+  description       String
+  tipCount          Int      // Number of tips included (3-5, 5-10, 10-15, unlimited)
+  validityDays      Int      // How long the package is valid
+  isActive          Boolean  @default(true)
+  displayOrder      Int      @default(0)
+  features          String[] // Array of features
+  iconName          String   @default("Gift")
+  colorGradientFrom String   @default("#8B5CF6")
+  colorGradientTo   String   @default("#EC4899")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  countryPrices     PackageOfferCountryPrice[]
+  userPackages      UserPackage[]
+}
+
+model PackageOfferCountryPrice {
+  id             String       @id @default(cuid())
+  packageOfferId String
+  countryId      String
+  price          Decimal
+  originalPrice  Decimal?
+  currencyCode   String
+  currencySymbol String
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  
+  // Relations
+  packageOffer   PackageOffer @relation(fields: [packageOfferId], references: [id])
+  country        Country      @relation(fields: [countryId], references: [id])
+  
+  @@unique([packageOfferId, countryId])
+}
+
+model UserPackage {
+  id             String       @id @default(cuid())
+  userId         String
+  packageOfferId String
+  purchasedAt    DateTime     @default(now())
+  expiresAt      DateTime
+  tipsRemaining  Int          // Number of tips left to claim
+  totalTips      Int          // Total tips in the package
+  status         String       @default("active") // "active", "expired", "completed"
+  pricePaid      Decimal
+  currencyCode   String
+  currencySymbol String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  
+  // Relations
+  user           User         @relation(fields: [userId], references: [id])
+  packageOffer   PackageOffer @relation(fields: [packageOfferId], references: [id])
+  claimedTips    UserPackageTip[]
+  
+  @@index([userId, status])
+  @@index([expiresAt])
+}
+
+model UserPackageTip {
+  id            String      @id @default(cuid())
+  userPackageId String
+  predictionId  String
+  claimedAt     DateTime    @default(now())
+  
+  // Relations
+  userPackage   UserPackage @relation(fields: [userPackageId], references: [id])
+  prediction    Prediction  @relation(fields: [predictionId], references: [id])
+  
+  @@unique([userPackageId, predictionId])
 }

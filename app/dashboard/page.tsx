@@ -14,7 +14,7 @@ const AIToolsResources = dynamic(() => import('@/components/dashboard/ai-tools-r
   loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
 })
 
-const PredictionCredits = dynamic(() => import('@/components/dashboard/prediction-credits').then(mod => mod.PredictionCredits), {
+const PackageCredits = dynamic(() => import('@/components/dashboard/package-credits').then(mod => mod.PackageCredits), {
   loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
 })
 
@@ -59,7 +59,7 @@ export default function DashboardPage() {
     <div className="max-w-7xl mx-auto px-4 py-8">
       <DashboardHeader />
 
-      {/* Top Row: Stats, AI Tools, Prediction Credits */}
+      {/* Top Row: Stats, AI Tools, Package Credits */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
         <div className="lg:col-span-2">
           <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
@@ -73,7 +73,7 @@ export default function DashboardPage() {
         </div>
         <div>
           <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
-            <PredictionCredits />
+            <PackageCredits />
           </Suspense>
         </div>
       </div>
@@ -93,7 +93,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Personalized Offers - Full Width */}
-      <div className="mb-8">
+      <div className="mb-8" data-section="personalized-offers">
         <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
           <PersonalizedOffers />
         </Suspense>

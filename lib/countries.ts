@@ -654,7 +654,9 @@ export async function detectUserCountry(
     try {
       const response = await fetch(`https://ipapi.co/${ipAddress}/json/`)
       const data = await response.json()
-      if (data.country_code) {
+      
+      // Type guard to ensure data has the expected structure
+      if (data && typeof data === 'object' && 'country_code' in data && typeof data.country_code === 'string') {
         const country = getCountryByCode(data.country_code)
         if (country && country.isSupported) {
           return country

@@ -38,6 +38,7 @@ type QuickPurchaseItem = {
     currencyCode: string
     currencySymbol: string
   }
+  tipCount?: number
 }
 
 export function UpgradeOffers() {
@@ -95,7 +96,8 @@ export function UpgradeOffers() {
         targetLink: item.targetLink,
         confidenceScore: item.confidenceScore,
         matchData: item.matchData,
-        country: item.country
+        country: item.country,
+        tipCount: item.tipCount
       }))
       
       setItems(mappedItems)
@@ -228,7 +230,10 @@ export function UpgradeOffers() {
                   <p className="text-sm opacity-90">{item.description}</p>
                 </div>
                 <div className="space-y-1 mb-4">
-                  {item.features.map((feature, index) => (
+                  {[
+                    item.tipCount === -1 ? 'Unlimited Tips' : `${item.tipCount} Premium Tips`,
+                    ...item.features.filter(f => !/\d+ Premium Tips|Unlimited Tips/.test(f))
+                  ].map((feature, index) => (
                     <div key={index} className="text-sm opacity-90">• {feature}</div>
                   ))}
                   {item.features.length > 2 && (
