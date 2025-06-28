@@ -11,7 +11,7 @@ import {
   NavigationMenuList,
   NavigationMenuTrigger,
 } from "@/components/ui/navigation-menu"
-import { Menu, X, TrendingUp, Users, Crown, HelpCircle, CreditCard, Globe, Moon, Sun, User, LogOut, MapPin } from "lucide-react"
+import { Menu, X, TrendingUp, Users, Crown, HelpCircle, CreditCard, Globe, Moon, Sun, User, LogOut, MapPin, History } from "lucide-react"
 import { useUserCountry } from "@/contexts/user-country-context"
 import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
@@ -34,6 +34,13 @@ export function Navigation() {
     { href: "/weekly-specials", text: "Weekly Specials" },
     { href: "/live-predictions", text: "Live Predictions" },
     { href: "/support", text: "Support" },
+  ]
+
+  const authenticatedNavLinks = [
+    { href: "/dashboard", text: "Dashboard" },
+    { href: "/tips-history", text: "Tips History" },
+    { href: "/daily-tips", text: "Daily Tips" },
+    { href: "/weekly-specials", text: "Weekly Specials" },
   ]
 
   if (isLoading) {
@@ -63,7 +70,11 @@ export function Navigation() {
                   <NavigationMenuTrigger className="text-slate-300 hover:text-white">Predictions</NavigationMenuTrigger>
                   <NavigationMenuContent>
                     <div className="w-64 p-4 space-y-2">
-                      {navLinks.map((link) => (
+                      {isAuthenticated ? authenticatedNavLinks.map((link) => (
+                        <NavigationMenuLink key={link.href} href={link.href} className="block p-2 hover:bg-slate-800 rounded">
+                          {link.text}
+                        </NavigationMenuLink>
+                      )) : navLinks.map((link) => (
                         <NavigationMenuLink key={link.href} href={link.href} className="block p-2 hover:bg-slate-800 rounded">
                           {link.text}
                         </NavigationMenuLink>

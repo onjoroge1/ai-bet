@@ -22,7 +22,11 @@ const RecentPredictions = dynamic(() => import('@/components/dashboard/recent-pr
   loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
 })
 
-const TipsHistory = dynamic(() => import('@/components/dashboard/tips-history').then(mod => mod.TipsHistory), {
+const TipsHistoryWidget = dynamic(() => import('@/components/dashboard/tips-history-widget').then(mod => mod.TipsHistoryWidget), {
+  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
+})
+
+const MyTipsWidget = dynamic(() => import('@/components/dashboard/my-tips-widget').then(mod => mod.MyTipsWidget), {
   loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
 })
 
@@ -118,19 +122,19 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Bottom Row: Recent Predictions, Referral Tracker */}
+      {/* Bottom Row: Recent Predictions, My Tips Widget */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
           <RecentPredictions />
         </Suspense>
         <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
-          <ReferralTracker />
+          <MyTipsWidget />
         </Suspense>
       </div>
 
-      {/* Tips History - Full Width */}
+      {/* Referral Tracker - Full Width */}
       <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
-        <TipsHistory />
+        <ReferralTracker />
       </Suspense>
     </div>
   )

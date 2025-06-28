@@ -4,8 +4,9 @@ import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Crown, Zap, Calendar, TrendingUp, Clock, CheckCircle, AlertCircle } from "lucide-react"
+import { Crown, Zap, Calendar, TrendingUp, Clock, CheckCircle, AlertCircle, History, ArrowRight } from "lucide-react"
 import { useUserCountry } from "@/contexts/user-country-context"
+import Link from "next/link"
 
 interface UserPackage {
   id: string
@@ -28,10 +29,26 @@ interface UserPackage {
   }
 }
 
+interface RecentTip {
+  id: string
+  claimedAt: string
+  status: string
+  prediction: {
+    predictionType: string
+    match: {
+      homeTeam: { name: string }
+      awayTeam: { name: string }
+      league: { name: string }
+    }
+  }
+}
+
 interface PackageStatus {
   userPackages: UserPackage[]
   totalTipsRemaining: string | number
   hasUnlimited: boolean
+  recentTips?: RecentTip[]
+  totalTipsClaimed?: number
 }
 
 export function UserPackageStatus() {
@@ -84,12 +101,29 @@ export function UserPackageStatus() {
     }
   }
 
+  const getTipStatusColor = (status: string) => {
+    switch (status) {
+      case "claimed": return "bg-blue-100 text-blue-800"
+      case "used": return "bg-green-100 text-green-800"
+      case "expired": return "bg-red-100 text-red-800"
+      case "cancelled": return "bg-orange-100 text-orange-800"
+      default: return "bg-gray-100 text-gray-800"
+    }
+  }
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
+    })
+  }
+
+  const formatTipDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric'
     })
   }
 
@@ -126,9 +160,17 @@ export function UserPackageStatus() {
     <Card className="bg-slate-800/50 border-slate-700 p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-white font-semibold text-sm">Your Packages</h3>
-        <Badge className="bg-emerald-500 text-white text-xs">
-          {packageStatus.hasUnlimited ? "Unlimited" : `${packageStatus.totalTipsRemaining} Tips Left`}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge className="bg-emerald-500 text-white text-xs">
+            {packageStatus.hasUnlimited ? "Unlimited" : `${packageStatus.totalTipsRemaining} Tips Left`}
+          </Badge>
+          <Link href="/tips-history">
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-slate-300 hover:text-white">
+              <History className="w-3 h-3 mr-1" />
+              History
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -180,6 +222,43 @@ export function UserPackageStatus() {
         ))}
       </div>
 
+      {/* Recent Tips Section */}
+      {packageStatus.recentTips && packageStatus.recentTips.length > 0 && (
+        <div className="mt-4 pt-3 border-t border-slate-600">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-white font-medium text-xs">Recent Tips</h4>
+            <Link href="/tips-history">
+              <Button variant="ghost" size="sm" className="h-5 px-2 text-xs text-slate-300 hover:text-white">
+                View All
+                <ArrowRight className="w-3 h-3 ml-1" />
+              </Button>
+            </Link>
+          </div>
+          <div className="space-y-1">
+            {packageStatus.recentTips.slice(0, 3).map((tip) => (
+              <div key={tip.id} className="flex items-center justify-between p-2 rounded bg-slate-700/30 border border-slate-600/50">
+                <div className="flex-1 min-w-0">
+                  <div className="text-white text-xs truncate">
+                    {tip.prediction.match.homeTeam.name} vs {tip.prediction.match.awayTeam.name}
+                  </div>
+                  <div className="text-slate-400 text-xs">
+                    {tip.prediction.match.league.name} • {tip.prediction.predictionType}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 ml-2">
+                  <Badge className={`${getTipStatusColor(tip.status)} text-xs`}>
+                    {tip.status}
+                  </Badge>
+                  <span className="text-slate-400 text-xs">
+                    {formatTipDate(tip.claimedAt)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="mt-3 pt-3 border-t border-slate-600">
         <div className="flex items-center justify-between text-xs">
           <span className="text-slate-400">Total Value:</span>
@@ -187,6 +266,14 @@ export function UserPackageStatus() {
             {convertPrice(packageStatus.userPackages.reduce((sum, pkg) => sum + pkg.pricePaid, 0))}
           </span>
         </div>
+        {packageStatus.totalTipsClaimed !== undefined && (
+          <div className="flex items-center justify-between text-xs mt-1">
+            <span className="text-slate-400">Tips Claimed:</span>
+            <span className="text-blue-400 font-medium">
+              {packageStatus.totalTipsClaimed}
+            </span>
+          </div>
+        )}
       </div>
     </Card>
   )

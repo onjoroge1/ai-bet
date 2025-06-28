@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Menu, X, Home, Zap, Gift, Crown, Settings, BarChart3, Target, HeadphonesIcon } from "lucide-react"
+import { Menu, X, Home, Zap, Gift, Crown, Settings, BarChart3, Target, HeadphonesIcon, History } from "lucide-react"
 
 export function DashboardNavHeader() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -18,6 +18,7 @@ export function DashboardNavHeader() {
     { href: "/dashboard/weekend-special", label: "Weekend Special", icon: Gift },
     { href: "/dashboard/vip", label: "VIP Zone", icon: Crown },
     { href: "/dashboard/my-tips", label: "My Tips", icon: Target },
+    { href: "/tips-history", label: "Tips History", icon: History },
     { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
     { href: "/dashboard/predictions", label: "Predictions", icon: Target },
     { href: "/dashboard/settings", label: "Settings", icon: Settings },

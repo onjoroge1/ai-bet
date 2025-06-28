@@ -51,10 +51,7 @@ export async function POST(request: Request) {
     if (purchaseType === "quick_purchase") {
       // For Quick Purchase items, we need to create a prediction record
       const quickPurchase = await prisma.quickPurchase.findUnique({
-        where: { id: predictionId },
-        include: {
-          match: true
-        }
+        where: { id: predictionId }
       })
 
       if (!quickPurchase) {
@@ -68,7 +65,7 @@ export async function POST(request: Request) {
             userId: session.user.id
           },
           prediction: {
-            matchId: quickPurchase.matchId
+            matchId: quickPurchase.matchId || ""
           }
         }
       })
@@ -82,7 +79,7 @@ export async function POST(request: Request) {
       // Create a prediction record for this Quick Purchase
       prediction = await prisma.prediction.create({
         data: {
-          matchId: quickPurchase.matchId,
+          matchId: quickPurchase.matchId || "",
           predictionType: quickPurchase.predictionType || "home_win",
           confidenceScore: quickPurchase.confidenceScore || 50,
           odds: quickPurchase.odds || 2.0,
@@ -242,10 +239,62 @@ export async function GET() {
       }
     }
 
+    // Get recent tips (last 5 claimed tips)
+    const recentTips = await prisma.userPackageTip.findMany({
+      where: {
+        userPackage: {
+          userId: session.user.id
+        }
+      },
+      include: {
+        prediction: {
+          include: {
+            match: {
+              include: {
+                homeTeam: true,
+                awayTeam: true,
+                league: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: {
+        claimedAt: 'desc'
+      },
+      take: 5
+    })
+
+    // Get total tips claimed
+    const totalTipsClaimed = await prisma.userPackageTip.count({
+      where: {
+        userPackage: {
+          userId: session.user.id
+        }
+      }
+    })
+
+    // Transform recent tips for frontend
+    const transformedRecentTips = recentTips.map(tip => ({
+      id: tip.id,
+      claimedAt: tip.claimedAt.toISOString(),
+      status: tip.status,
+      prediction: {
+        predictionType: tip.prediction.predictionType,
+        match: {
+          homeTeam: { name: tip.prediction.match.homeTeam.name },
+          awayTeam: { name: tip.prediction.match.awayTeam.name },
+          league: { name: tip.prediction.match.league.name }
+        }
+      }
+    }))
+
     return NextResponse.json({
       userPackages,
       totalTipsRemaining: hasUnlimited ? "Unlimited" : totalTipsRemaining,
-      hasUnlimited
+      hasUnlimited,
+      recentTips: transformedRecentTips,
+      totalTipsClaimed
     })
   } catch (error) {
     console.error("Error fetching user packages:", error)

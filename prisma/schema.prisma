@@ -206,6 +206,7 @@ model User {
   referralsGiven        Referral[]       @relation("Referrer")
   country               Country?         @relation(fields: [countryId], references: [id])
   userPredictions       UserPrediction[]
+  tipUsages             TipUsage[]
 }
 
 model UserPrediction {
@@ -393,9 +394,35 @@ model UserPackageTip {
   predictionId  String
   claimedAt     DateTime    @default(now())
   
+  // NEW FIELDS for enhanced tracking
+  status        String      @default("claimed") // "claimed", "used", "expired", "cancelled"
+  usedAt        DateTime?   // When user actually used the tip
+  expiresAt     DateTime?   // When tip expires (based on package validity)
+  notes         String?     // User notes about the tip
+  
   // Relations
   userPackage   UserPackage @relation(fields: [userPackageId], references: [id])
   prediction    Prediction  @relation(fields: [predictionId], references: [id])
+  tipUsage      TipUsage?   // One-to-one relationship with usage tracking
   
   @@unique([userPackageId, predictionId])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model TipUsage {
+  id                String         @id @default(cuid())
+  userPackageTipId  String         @unique // One-to-one with UserPackageTip
+  userId            String
+  usedAt            DateTime       @default(now())
+  stakeAmount       Decimal?
+  actualReturn      Decimal?
+  notes             String?
+  
+  // Relations
+  userPackageTip    UserPackageTip @relation(fields: [userPackageTipId], references: [id])
+  user              User           @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+  @@index([usedAt])
 }

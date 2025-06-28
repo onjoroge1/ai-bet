@@ -3,18 +3,21 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { Home, Target, Crown, Radio, User, Menu, Bell, Search, TrendingUp, Settings } from "lucide-react"
+import { Home, Target, Crown, Radio, User, Menu, Bell, Search, TrendingUp, Settings, History } from "lucide-react"
 import Link from "next/link"
+import { useAuth } from "@/components/auth-provider"
 
 export function MobileNavigation() {
   const [activeTab, setActiveTab] = useState("home")
   const [notifications] = useState(3)
+  const { isAuthenticated } = useAuth()
 
   const mainTabs = [
     { id: "home", label: "Home", icon: Home, href: "/" },
     { id: "tips", label: "Tips", icon: Target, href: "/daily-tips" },
     { id: "live", label: "Live", icon: Radio, href: "/live-predictions" },
     { id: "vip", label: "VIP", icon: Crown, href: "/weekly-specials" },
+    ...(isAuthenticated ? [{ id: "history", label: "History", icon: History, href: "/tips-history" }] : []),
     { id: "profile", label: "Profile", icon: User, href: "/dashboard" },
   ]
 
