@@ -125,7 +125,7 @@ export default function AnalyticsPage() {
               <Activity className="w-5 h-5 text-emerald-400" />
             </div>
             <div className="space-y-4">
-              {monthlyStats.map((month, index) => (
+              {monthlyStats.map((month) => (
                 <div key={month.month} className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     <div className="w-8 h-8 bg-emerald-500/20 rounded-full flex items-center justify-center text-xs font-medium text-emerald-400">
@@ -153,7 +153,7 @@ export default function AnalyticsPage() {
               <PieChart className="w-5 h-5 text-emerald-400" />
             </div>
             <div className="space-y-4">
-              {categoryPerformance.map((category, index) => (
+              {categoryPerformance.map((category) => (
                 <div key={category.category} className="space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-white text-sm font-medium">{category.category}</span>
@@ -205,7 +205,7 @@ export default function AnalyticsPage() {
               </div>
               <h3 className="text-lg font-semibold text-white">Achievement</h3>
             </div>
-            <p className="text-slate-300 mb-3">You're in the top 15% of our users this month!</p>
+            <p className="text-slate-300 mb-3">You&apos;re in the top 15% of our users this month!</p>
             <Button variant="outline" size="sm" className="border-purple-500 text-purple-400 hover:bg-purple-500/10">
               View Ranking
             </Button>

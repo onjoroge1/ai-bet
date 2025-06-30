@@ -3,100 +3,82 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/db"
 import { Decimal } from "@prisma/client/runtime/library"
+import { PrismaClient } from "@prisma/client"
+
+const prismaClient = new PrismaClient()
+
+interface QuickPurchaseWithRelations {
+  id: string
+  name: string
+  price: number
+  originalPrice: number
+  description: string
+  features: string[]
+  type: string
+  iconName: string
+  colorGradientFrom: string
+  colorGradientTo: string
+  isUrgent: boolean
+  timeLeft: string | null
+  isPopular: boolean
+  discountPercentage: number | null
+  isActive: boolean
+  displayOrder: number
+  targetLink: string | null
+  countryId: string
+  createdAt: Date
+  updatedAt: Date
+  matchId: string | null
+  matchData: Record<string, unknown> | null
+  predictionData: Record<string, unknown> | null
+  predictionType: string | null
+  confidenceScore: number | null
+  odds: number | null
+  valueRating: string | null
+  analysisSummary: string | null
+  isPredictionActive: boolean
+  country: {
+    currencyCode: string
+    currencySymbol: string
+  }
+}
 
 // Helper function to get country-specific pricing from environment variables
-function getCountrySpecificPricing(countryCode: string, countryName?: string) {
-  const countryCodeUpper = countryCode.toUpperCase()
-  
-  // Try multiple patterns for environment variables
-  const possibleEnvVars = [
-    `${countryCodeUpper}_PREDICTION_PRICE`, // USD_PREDICTION_PRICE
-    `${countryCodeUpper}_PREDICTION_ORIGINAL_PRICE`, // USD_PREDICTION_ORIGINAL_PRICE
-  ]
-  
-  // If we have a country name, also try country name patterns
-  if (countryName) {
-    const countryNameUpper = countryName.toUpperCase().replace(/\s+/g, '_')
-    possibleEnvVars.push(
-      `${countryNameUpper}_PREDICTION_PRICE`, // UNITED_STATES_PREDICTION_PRICE
-      `${countryNameUpper}_PREDICTION_ORIGINAL_PRICE` // UNITED_STATES_PREDICTION_ORIGINAL_PRICE
-    )
-  }
-  
-  // Also try common country code patterns
-  const commonCountryCodes: Record<string, string[]> = {
-    'USD': ['USA', 'US'],
-    'KES': ['KENYA', 'KE'],
-    'UGX': ['UGANDA', 'UG'],
-    'TZS': ['TANZANIA', 'TZ'],
-    'ZAR': ['SOUTH_AFRICA', 'ZA'],
-    'GHS': ['GHANA', 'GH'],
-    'NGN': ['NIGERIA', 'NG']
-  }
-  
-  const countryVariants = commonCountryCodes[countryCodeUpper] || []
-  countryVariants.forEach((variant: string) => {
-    possibleEnvVars.push(
-      `${variant}_PREDICTION_PRICE`,
-      `${variant}_PREDICTION_ORIGINAL_PRICE`
-    )
-  })
-  
-  // Debug: Log what we're looking for
-  console.log('Looking for environment variables:', {
-    countryCode: countryCodeUpper,
-    countryName,
-    possibleEnvVars: possibleEnvVars.slice(0, 10) // Log first 10 to avoid spam
-  })
-  
-  // Try to get country-specific pricing
-  let countryPrice: string | undefined
-  let countryOriginalPrice: string | undefined
-  let foundPattern: string | undefined
-  
-  for (const envVar of possibleEnvVars) {
-    const price = process.env[envVar]
-    const originalPrice = process.env[envVar.replace('_PRICE', '_ORIGINAL_PRICE')]
-    
-    if (price && originalPrice) {
-      countryPrice = price
-      countryOriginalPrice = originalPrice
-      foundPattern = envVar
-      break
+function getCountryPricing(countryCode: string): Record<string, number> {
+  const pricingMap: Record<string, Record<string, number>> = {
+    USD: {
+      USD_PREDICTION_PRICE: 9.99,
+      USD_TIP_PRICE: 4.99,
+      USD_PACKAGE_PRICE: 19.99
+    },
+    EUR: {
+      EUR_PREDICTION_PRICE: 8.99,
+      EUR_TIP_PRICE: 4.49,
+      EUR_PACKAGE_PRICE: 17.99
+    },
+    GBP: {
+      GBP_PREDICTION_PRICE: 7.99,
+      GBP_TIP_PRICE: 3.99,
+      GBP_PACKAGE_PRICE: 15.99
+    },
+    KES: {
+      KES_PREDICTION_PRICE: 1499,
+      KES_TIP_PRICE: 749,
+      KES_PACKAGE_PRICE: 2999
+    },
+    NGN: {
+      NGN_PREDICTION_PRICE: 7999,
+      NGN_TIP_PRICE: 3999,
+      NGN_PACKAGE_PRICE: 15999
+    },
+    GHS: {
+      GHS_PREDICTION_PRICE: 119.99,
+      GHS_TIP_PRICE: 59.99,
+      GHS_PACKAGE_PRICE: 239.99
     }
   }
   
-  if (countryPrice && countryOriginalPrice) {
-    console.log('Found country-specific pricing:', {
-      pattern: foundPattern,
-      price: countryPrice,
-      originalPrice: countryOriginalPrice
-    })
-    return {
-      price: parseFloat(countryPrice),
-      originalPrice: parseFloat(countryOriginalPrice),
-      source: `country-specific (${foundPattern})`
-    }
-  }
-  
-  // Fallback to default pricing
-  const defaultPrice = parseFloat(process.env.DEFAULT_PREDICTION_PRICE || '2.99')
-  const defaultOriginalPrice = parseFloat(process.env.DEFAULT_PREDICTION_ORIGINAL_PRICE || '4.99')
-  
-  console.log('Using default pricing:', {
-    defaultPrice,
-    defaultOriginalPrice,
-    envVars: {
-      DEFAULT_PREDICTION_PRICE: process.env.DEFAULT_PREDICTION_PRICE,
-      DEFAULT_PREDICTION_ORIGINAL_PRICE: process.env.DEFAULT_PREDICTION_ORIGINAL_PRICE
-    }
-  })
-  
-  return {
-    price: defaultPrice,
-    originalPrice: defaultOriginalPrice,
-    source: 'default'
-  }
+  return pricingMap[countryCode] || pricingMap.USD
 }
 
 // OPTIMIZATION: Remove null/undefined values
@@ -231,13 +213,13 @@ function normalizeStructure(items: any[], userCountry: any) {
     }
 
     // Create simplified item with user's country pricing
-    const countryPricing = getCountrySpecificPricing(userCountry.currencyCode || 'USD', userCountry.name)
+    const countryPricing = getCountryPricing(userCountry.code)
     
     normalizedItems.push({
       id: item.id,
       n: item.name,
-      p: countryPricing.price,
-      op: countryPricing.originalPrice,
+      p: countryPricing[`${userCountry.code}_PREDICTION_PRICE`] || Number(item.price),
+      op: countryPricing[`${userCountry.code}_PREDICTION_PRICE`] || Number(item.originalPrice),
       t: item.type,
       mi: item.matchId,
       cc: userCountry.currencyCode,
@@ -261,93 +243,177 @@ function normalizeStructure(items: any[], userCountry: any) {
 export async function GET(request: Request) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session) {
+    
+    if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     // Get user's country
-    const user = await prisma.user.findUnique({
+    const user = await prismaClient.user.findUnique({
       where: { id: session.user.id },
       select: { countryId: true }
     })
 
     if (!user?.countryId) {
-      console.log('User has no country set:', session.user.id)
-      return NextResponse.json({ error: "User country not set" }, { status: 400 })
+      return NextResponse.json({ error: "User country not found" }, { status: 404 })
     }
 
     // Get user's country details
-    const userCountry = await prisma.country.findUnique({
+    const userCountry = await prismaClient.country.findUnique({
       where: { id: user.countryId },
       select: { 
-        id: true,
-        name: true,
+        code: true,
         currencyCode: true,
         currencySymbol: true
       }
     })
 
     if (!userCountry) {
-      console.log('User country not found:', user.countryId)
-      return NextResponse.json({ error: "User country not found" }, { status: 400 })
+      return NextResponse.json({ error: "Country not found" }, { status: 404 })
     }
 
-    // Debug: Log user country details
-    console.log('User country:', userCountry)
-
     // Fetch active quick purchases from ALL countries (not just user's country)
-    const quickPurchases = await prisma.quickPurchase.findMany({
+    const quickPurchases = await prismaClient.quickPurchase.findMany({
       where: {
         isActive: true
       },
       orderBy: { displayOrder: "asc" },
       include: {
+        country: true
+      }
+    })
+
+    // Transform and apply country-specific pricing
+    const transformedPurchases: QuickPurchaseWithRelations[] = quickPurchases.map((purchase) => {
+      const countryPricing = getCountryPricing(userCountry.code)
+      
+      // Apply country-specific pricing if available
+      let finalPrice = Number(purchase.price)
+      let finalOriginalPrice = Number(purchase.originalPrice)
+      
+      if (purchase.type === "prediction" && countryPricing[`${userCountry.code}_PREDICTION_PRICE`]) {
+        finalPrice = countryPricing[`${userCountry.code}_PREDICTION_PRICE`]
+        finalOriginalPrice = countryPricing[`${userCountry.code}_PREDICTION_PRICE`]
+      } else if (purchase.type === "tip" && countryPricing[`${userCountry.code}_TIP_PRICE`]) {
+        finalPrice = countryPricing[`${userCountry.code}_TIP_PRICE`]
+        finalOriginalPrice = countryPricing[`${userCountry.code}_TIP_PRICE`]
+      } else if (purchase.type === "package" && countryPricing[`${userCountry.code}_PACKAGE_PRICE`]) {
+        finalPrice = countryPricing[`${userCountry.code}_PACKAGE_PRICE`]
+        finalOriginalPrice = countryPricing[`${userCountry.code}_PACKAGE_PRICE`]
+      }
+
+      return {
+        id: purchase.id,
+        name: purchase.name,
+        price: finalPrice,
+        originalPrice: finalOriginalPrice,
+        description: purchase.description,
+        features: purchase.features,
+        type: purchase.type,
+        iconName: purchase.iconName,
+        colorGradientFrom: purchase.colorGradientFrom,
+        colorGradientTo: purchase.colorGradientTo,
+        isUrgent: purchase.isUrgent,
+        timeLeft: purchase.timeLeft,
+        isPopular: purchase.isPopular,
+        discountPercentage: purchase.discountPercentage,
+        isActive: purchase.isActive,
+        displayOrder: purchase.displayOrder,
+        targetLink: purchase.targetLink,
+        countryId: purchase.countryId,
+        createdAt: purchase.createdAt,
+        updatedAt: purchase.updatedAt,
+        matchId: purchase.matchId,
+        matchData: purchase.matchData as Record<string, unknown> | null,
+        predictionData: purchase.predictionData as Record<string, unknown> | null,
+        predictionType: purchase.predictionType,
+        confidenceScore: purchase.confidenceScore,
+        odds: purchase.odds ? Number(purchase.odds) : null,
+        valueRating: purchase.valueRating,
+        analysisSummary: purchase.analysisSummary,
+        isPredictionActive: purchase.isPredictionActive,
         country: {
-          select: {
-            currencyCode: true,
-            currencySymbol: true
-          }
+          currencyCode: userCountry.currencyCode || 'USD',
+          currencySymbol: userCountry.currencySymbol || '$'
         }
       }
     })
 
-    if (!quickPurchases.length) {
-      console.log('No quick purchases found')
-      return NextResponse.json([], { status: 200 })
-    }
-
-    // Debug: Log original size
-    const originalSize = JSON.stringify(quickPurchases).length
-    console.log('Original data size:', originalSize, 'bytes')
-
-    // OPTIMIZATION PIPELINE
-    // Step 1: Remove duplicates
-    const deduplicated = deduplicateData(quickPurchases)
-    console.log('After deduplication:', deduplicated.length, 'items (was', quickPurchases.length, ')')
-
-    // Step 2: Normalize structure
-    const normalized = normalizeStructure(deduplicated, userCountry)
-
-    // Step 3: Remove nulls
-    const cleaned = removeNulls(normalized)
-
-    // Step 4: Abbreviate keys
-    const compressed = abbreviateKeys(cleaned)
-
-    // Debug: Log optimized size
-    const optimizedSize = JSON.stringify(compressed).length
-    const reduction = ((originalSize - optimizedSize) / originalSize * 100).toFixed(1)
-    console.log('Optimized data size:', optimizedSize, 'bytes (', reduction, '% reduction)')
-
-    return NextResponse.json(compressed)
+    return NextResponse.json(transformedPurchases)
   } catch (error) {
     console.error("Error fetching quick purchases:", error)
-    if (error instanceof Error) {
-      return NextResponse.json({ 
-        error: "Internal Server Error", 
-        details: error.message 
-      }, { status: 500 })
-    }
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
+  }
+}
+
+export async function POST() {
+  try {
+    const session = await getServerSession(authOptions)
+    
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const user = await prismaClient.user.findUnique({
+      where: { id: session.user.id },
+      include: { country: true }
+    })
+
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 })
+    }
+
+    const quickPurchases = await prismaClient.quickPurchase.findMany({
+      where: { 
+        isActive: true,
+        countryId: user.countryId || undefined
+      },
+      orderBy: { displayOrder: "asc" },
+      include: {
+        country: true
+      }
+    })
+
+    // Transform the data to match the expected interface
+    const transformedPurchases: QuickPurchaseWithRelations[] = quickPurchases.map((purchase) => ({
+      id: purchase.id,
+      name: purchase.name,
+      price: Number(purchase.price),
+      originalPrice: Number(purchase.originalPrice),
+      description: purchase.description,
+      features: purchase.features,
+      type: purchase.type,
+      iconName: purchase.iconName,
+      colorGradientFrom: purchase.colorGradientFrom,
+      colorGradientTo: purchase.colorGradientTo,
+      isUrgent: purchase.isUrgent,
+      timeLeft: purchase.timeLeft,
+      isPopular: purchase.isPopular,
+      discountPercentage: purchase.discountPercentage,
+      isActive: purchase.isActive,
+      displayOrder: purchase.displayOrder,
+      targetLink: purchase.targetLink,
+      countryId: purchase.countryId,
+      createdAt: purchase.createdAt,
+      updatedAt: purchase.updatedAt,
+      matchId: purchase.matchId,
+      matchData: purchase.matchData as Record<string, unknown> | null,
+      predictionData: purchase.predictionData as Record<string, unknown> | null,
+      predictionType: purchase.predictionType,
+      confidenceScore: purchase.confidenceScore,
+      odds: purchase.odds ? Number(purchase.odds) : null,
+      valueRating: purchase.valueRating,
+      analysisSummary: purchase.analysisSummary,
+      isPredictionActive: purchase.isPredictionActive,
+      country: {
+        currencyCode: purchase.country.currencyCode || 'USD',
+        currencySymbol: purchase.country.currencySymbol || '$'
+      }
+    }))
+
+    return NextResponse.json(transformedPurchases)
+  } catch (error) {
+    console.error("Error fetching quick purchases:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 } 

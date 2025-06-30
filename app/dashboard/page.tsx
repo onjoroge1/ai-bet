@@ -18,6 +18,14 @@ const PackageCredits = dynamic(() => import('@/components/dashboard/package-cred
   loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
 })
 
+const QuizCreditClaim = dynamic(() => import('@/components/quiz/QuizCreditClaim'), {
+  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
+})
+
+const QuizCredits = dynamic(() => import('@/components/dashboard/quiz-credits').then(mod => mod.QuizCredits), {
+  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
+})
+
 const RecentPredictions = dynamic(() => import('@/components/dashboard/recent-predictions').then(mod => mod.RecentPredictions), {
   loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
 })
@@ -27,10 +35,6 @@ const TipsHistoryWidget = dynamic(() => import('@/components/dashboard/tips-hist
 })
 
 const MyTipsWidget = dynamic(() => import('@/components/dashboard/my-tips-widget').then(mod => mod.MyTipsWidget), {
-  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
-})
-
-const ReferralTracker = dynamic(() => import('@/components/dashboard/referral-tracker').then(mod => mod.ReferralTracker), {
   loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
 })
 
@@ -132,10 +136,19 @@ export default function DashboardPage() {
         </Suspense>
       </div>
 
-      {/* Referral Tracker - Full Width */}
-      <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
-        <ReferralTracker />
-      </Suspense>
+      {/* Quiz Credits - Full Width */}
+      <div className="mb-8 pt-4">
+        <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
+          <QuizCredits />
+        </Suspense>
+      </div>
+
+      {/* Quiz Credit Claim - Full Width */}
+      <div className="mt-8">
+        <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
+          <QuizCreditClaim />
+        </Suspense>
+      </div>
     </div>
   )
 }

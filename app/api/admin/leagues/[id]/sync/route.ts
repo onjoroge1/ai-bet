@@ -237,7 +237,7 @@ export async function POST(
 
       let processedMatches = 0
       let createdQuickPurchases = 0
-      let updatedQuickPurchases = 0
+      const updatedQuickPurchases = 0
 
       // Process each match
       for (const match of matches) {

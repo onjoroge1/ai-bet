@@ -11,6 +11,7 @@ interface User {
   email: string
   name?: string
   role?: string
+  referralCode?: string | null
   country?: {
     id: string
     code: string
@@ -83,7 +84,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: session.user.id,
         email: session.user.email || '',
         name: session.user.name || undefined,
-        role: session.user.role || undefined
+        role: session.user.role || undefined,
+        referralCode: session.user.referralCode || undefined
       })
       setIsLoading(false)
       

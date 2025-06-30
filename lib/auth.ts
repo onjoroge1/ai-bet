@@ -85,6 +85,7 @@ declare module "next-auth" {
     email: string
     fullName?: string | null
     role: string
+    referralCode?: string | null
   }
   
   interface Session {
@@ -93,6 +94,7 @@ declare module "next-auth" {
       email: string
       name?: string | null
       role: string
+      referralCode?: string | null
     }
   }
 }
@@ -135,6 +137,7 @@ export const authOptions = {
             password: true,
             fullName: true,
             role: true,
+            referralCode: true,
           },
         })
 
@@ -153,6 +156,7 @@ export const authOptions = {
             email: user.email,
             name: user.fullName,
             role: user.role,
+            referralCode: user.referralCode,
           }
         } catch (error) {
           console.error('Error comparing passwords:', error)
@@ -169,6 +173,7 @@ export const authOptions = {
         token.email = user.email
         token.name = user.name
         token.role = user.role
+        token.referralCode = user.referralCode
       }
       return token
     },
@@ -178,6 +183,7 @@ export const authOptions = {
         session.user.email = token.email
         session.user.name = token.name
         session.user.role = token.role
+        session.user.referralCode = token.referralCode
       }
       return session
     },

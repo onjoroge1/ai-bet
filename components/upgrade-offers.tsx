@@ -14,8 +14,8 @@ import { decodeQuickPurchasesData } from "@/lib/optimized-data-decoder"
 type QuickPurchaseItem = {
   id: string
   name: string
-  price: string
-  originalPrice?: string
+  price: number
+  originalPrice?: number
   description: string
   features: string[]
   type: "tip" | "package" | "vip"
@@ -81,8 +81,8 @@ export function UpgradeOffers() {
       const mappedItems: QuickPurchaseItem[] = topMatches.map((item: any) => ({
         id: item.id,
         name: item.name,
-        price: item.price?.toString() || '0',
-        originalPrice: item.originalPrice?.toString(),
+        price: typeof item.price === 'number' ? item.price : parseFloat(item.price?.toString() || '0'),
+        originalPrice: item.originalPrice ? (typeof item.originalPrice === 'number' ? item.originalPrice : parseFloat(item.originalPrice.toString())) : undefined,
         description: item.description || `AI prediction for ${item.name}`,
         features: item.features || ['AI Analysis', 'Match Statistics', 'Risk Assessment'],
         type: item.type as "tip" | "package" | "vip",
@@ -223,7 +223,7 @@ export function UpgradeOffers() {
                 <div className="mb-3">
                   <div className="flex items-center space-x-2">
                     <span className="text-2xl font-bold">{convertPrice(item.price)}</span>
-                    {item.originalPrice && Number(item.originalPrice) !== Number(item.price) && (
+                    {item.originalPrice && item.originalPrice !== item.price && (
                       <span className="text-sm line-through opacity-70">{convertPrice(item.originalPrice)}</span>
                     )}
                   </div>

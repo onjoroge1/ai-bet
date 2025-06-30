@@ -114,7 +114,7 @@ export default function MyTipsPage() {
       
       {tips.length === 0 ? (
         <Card className="bg-slate-800 border-slate-700 p-6 text-center">
-          <p className="text-slate-400">You haven't purchased any predictions yet.</p>
+          <p className="text-slate-400">You haven&apos;t purchased any predictions yet.</p>
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

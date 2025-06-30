@@ -1,20 +1,20 @@
-import { NextResponse } from 'next/server'
-import { getSupportedCountries, getCountryByCode } from '@/lib/countries'
-import { NextRequest } from 'next/server'
+import { NextResponse, NextRequest } from 'next/server'
+import { getCountryByCode } from '@/lib/countries'
+import { PrismaClient } from "@prisma/client"
+
+const prisma = new PrismaClient()
 
 // GET /api/countries - Public endpoint for signup form
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    // Get supported countries from our comprehensive system
-    const countries = getSupportedCountries()
-    
-    // If you want to sync with database, you can do that here
-    // For now, we'll use the static system which is more reliable
+    const countries = await prisma.country.findMany({
+      orderBy: { name: "asc" }
+    })
     
     return NextResponse.json(countries)
   } catch (error) {
-    console.error('Error fetching countries:', error)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    console.error("Error fetching countries:", error)
+    return NextResponse.json({ error: "Failed to fetch countries" }, { status: 500 })
   }
 }
 

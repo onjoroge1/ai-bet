@@ -35,6 +35,12 @@ interface PackageStatus {
   hasUnlimited: boolean
 }
 
+interface QuizCredits {
+  points: number
+  totalEarned: number
+  totalSpent: number
+}
+
 interface TipClaimActivity {
   id: string
   predictionId: string
@@ -50,6 +56,7 @@ interface TipClaimActivity {
 
 export function PackageCredits() {
   const [packageStatus, setPackageStatus] = useState<PackageStatus | null>(null)
+  const [quizCredits, setQuizCredits] = useState<QuizCredits | null>(null)
   const [recentActivity, setRecentActivity] = useState<TipClaimActivity[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const { convertPrice } = useUserCountry()
@@ -66,6 +73,13 @@ export function PackageCredits() {
       if (statusResponse.ok) {
         const statusData = await statusResponse.json()
         setPackageStatus(statusData)
+      }
+
+      // Fetch quiz credits
+      const quizResponse = await fetch("/api/user/points")
+      if (quizResponse.ok) {
+        const quizData = await quizResponse.json()
+        setQuizCredits(quizData)
       }
 
       // Fetch recent tip claiming activity
@@ -157,6 +171,10 @@ export function PackageCredits() {
 
   // Don't show anything if user has no packages
   if (!packageStatus || packageStatus.userPackages.length === 0) {
+    // Calculate total credits from quiz points
+    const quizCreditsCount = quizCredits ? Math.floor(quizCredits.points / 50) : 0
+    const totalAvailableCredits = quizCreditsCount
+
     return (
       <Card className="bg-slate-800/50 border-slate-700 p-6 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
@@ -182,13 +200,35 @@ export function PackageCredits() {
           </div>
 
           <div className="text-center py-8">
-            <div className="text-3xl font-bold text-white mb-2">0</div>
+            <div className="text-3xl font-bold text-white mb-2">{totalAvailableCredits}</div>
             <div className="text-slate-400 text-sm mb-4">Available Tips</div>
-            <p className="text-slate-400 text-sm mb-6">You don't have any active packages. Purchase a package to start getting AI predictions!</p>
-            <Button onClick={handleGetMoreTips} className="bg-emerald-600 hover:bg-emerald-700">
-              <Zap className="w-4 h-4 mr-1" />
-              Get Your First Package
-            </Button>
+            
+            {quizCreditsCount > 0 ? (
+              <div className="mb-6">
+                <p className="text-slate-400 text-sm mb-2">You have credits from quiz completion!</p>
+                <div className="bg-emerald-800/30 rounded-lg p-3 border border-emerald-700/50">
+                  <div className="text-emerald-200 text-sm">
+                    <span className="font-medium">Quiz Credits:</span> {quizCreditsCount} tips
+                  </div>
+                  <div className="text-emerald-100 text-xs mt-1">
+                    From {quizCredits?.points} quiz points (50:1 conversion)
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-slate-400 text-sm mb-6">Complete the SnapBet Quiz or purchase a package to start getting AI predictions!</p>
+            )}
+            
+            <div className="flex gap-2 justify-center">
+              <Button onClick={() => router.push('/snapbet-quiz')} className="bg-emerald-600 hover:bg-emerald-700">
+                <Zap className="w-4 h-4 mr-1" />
+                Take Quiz
+              </Button>
+              <Button onClick={handleGetMoreTips} className="bg-blue-600 hover:bg-blue-700">
+                <Gift className="w-4 h-4 mr-1" />
+                Get Package
+              </Button>
+            </div>
           </div>
         </div>
       </Card>
@@ -229,15 +269,38 @@ export function PackageCredits() {
 
         {/* Credits Display */}
         <div className="mb-6">
-          <div className="text-3xl font-bold text-white mb-1">
-            {packageStatus.hasUnlimited ? "∞" : packageStatus.totalTipsRemaining}
-          </div>
-          <div className="text-slate-400 text-sm">
-            {packageStatus.hasUnlimited ? "Unlimited Tips" : "Available Tips"}
-          </div>
-          <div className="text-xs text-slate-500 mt-1">
-            {activePackages.length} active package{activePackages.length !== 1 ? 's' : ''}
-          </div>
+          {(() => {
+            const quizCreditsCount = quizCredits ? Math.floor(quizCredits.points / 50) : 0
+            const packageCreditsCount = packageStatus.hasUnlimited ? "∞" : Number(packageStatus.totalTipsRemaining)
+            const totalCredits = packageStatus.hasUnlimited ? "∞" : (Number(packageStatus.totalTipsRemaining) + quizCreditsCount)
+            
+            return (
+              <>
+                <div className="text-3xl font-bold text-white mb-1">
+                  {totalCredits}
+                </div>
+                <div className="text-slate-400 text-sm">
+                  {packageStatus.hasUnlimited ? "Unlimited Tips" : "Available Tips"}
+                </div>
+                <div className="text-xs text-slate-500 mt-1">
+                  {activePackages.length} active package{activePackages.length !== 1 ? 's' : ''}
+                  {quizCreditsCount > 0 && ` + ${quizCreditsCount} quiz credits`}
+                </div>
+                
+                {/* Quiz Credits Info */}
+                {quizCreditsCount > 0 && (
+                  <div className="mt-3 p-2 bg-emerald-800/30 rounded border border-emerald-700/50">
+                    <div className="text-emerald-200 text-xs">
+                      <span className="font-medium">Quiz Credits:</span> {quizCreditsCount} tips
+                      <span className="text-emerald-100 ml-1">
+                        (from {quizCredits?.points} points)
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </>
+            )
+          })()}
         </div>
 
         {/* Expiring Soon Warning */}

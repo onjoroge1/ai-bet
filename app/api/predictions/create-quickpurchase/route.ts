@@ -155,7 +155,7 @@ export async function POST(request: Request) {
     const probabilities = analysis.ml_prediction
     let predictionType = 'unknown'
     let odds = 2.0 // Default odds
-    let confidenceScore = Math.round(analysis.ml_prediction.confidence)
+    const confidenceScore = Math.round(analysis.ml_prediction.confidence)
 
     if (probabilities.home_win > probabilities.draw && probabilities.home_win > probabilities.away_win) {
       predictionType = 'home_win'

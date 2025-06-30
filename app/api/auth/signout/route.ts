@@ -1,11 +1,11 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { logger } from "@/lib/logger"
 
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
     logger.info("Sign out request", { tags: ["auth", "signout"] })
 
-    const response = NextResponse.json({ success: true })
+    const response = NextResponse.json({ message: "Logged out successfully" })
 
     // Clear all auth-related cookies
     const cookiesToClear = [

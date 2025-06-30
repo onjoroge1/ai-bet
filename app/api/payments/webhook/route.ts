@@ -3,6 +3,7 @@ import { headers } from "next/headers"
 import prisma from "@/lib/db"
 import { stripe } from "@/lib/stripe-server"
 import Stripe from "stripe"
+import { Prisma } from "@prisma/client"
 
 // POST /api/payments/webhook - Handle Stripe webhooks
 export async function POST(request: Request) {
@@ -97,7 +98,7 @@ async function createUserPackage(userId: string, packageOfferId: string, payment
       return
     }
 
-    const countryPrice = await prisma.packageCountryPrice.findFirst({
+    const countryPrice = await prisma.packageOfferCountryPrice.findFirst({
       where: {
         packageOfferId,
         countryId: user.countryId,
@@ -149,18 +150,22 @@ async function processTipPurchase(userId: string, itemId: string, paymentIntent:
 
     // Create a user prediction record for the tip
     if (quickPurchase.matchId) {
-      await prisma.userPrediction.create({
-        data: {
-          userId,
-          predictionType: quickPurchase.predictionType || 'unknown',
-          confidenceScore: quickPurchase.confidenceScore || 0,
-          odds: quickPurchase.odds || 0,
-          valueRating: quickPurchase.valueRating || 'Medium',
-          analysisSummary: quickPurchase.analysisSummary || '',
-          status: 'pending',
-          placedAt: new Date()
-        }
+      // First, get or create a prediction record
+      const prediction = await prisma.prediction.findFirst({
+        where: { matchId: quickPurchase.matchId }
       })
+
+      if (prediction) {
+        await prisma.userPrediction.create({
+          data: {
+            userId,
+            predictionId: prediction.id,
+            stakeAmount: new Prisma.Decimal(0), // Default stake amount
+            potentialReturn: new Prisma.Decimal(0), // Default potential return
+            status: 'pending'
+          }
+        })
+      }
     }
 
     console.log(`Processed tip purchase: ${itemId} for user: ${userId}`)

@@ -1,12 +1,10 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { logger } from "@/lib/logger"
-import prisma from "@/lib/db"
-import { generateToken } from "@/lib/auth"
+import { NextRequest, NextResponse } from "next/server"
+import { PrismaClient } from "@prisma/client"
 import { compare } from "bcryptjs"
-import { z } from 'zod'
+import { logger } from "@/lib/logger"
+import { generateToken } from "@/lib/auth"
 
-// Use the same secret key as middleware
-const JWT_SECRET = 'your-super-secret-key-that-should-be-changed-in-production'
+const prisma = new PrismaClient()
 
 export async function POST(request: NextRequest) {
   try {

@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     let amount: number
     let currency: string
     let description: string
-    let metadata: any = {
+    const metadata: any = {
       userId: session.user.id,
       itemType,
       itemId,

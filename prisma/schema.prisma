@@ -8,8 +8,8 @@ datasource db {
 }
 
 model Country {
-  id                   String                @id @default(cuid())
-  code                 String                @unique
+  id                   String                     @id @default(cuid())
+  code                 String                     @unique
   name                 String
   flagEmoji            String?
   currencyCode         String?
@@ -17,9 +17,9 @@ model Country {
   brandName            String?
   tagline              String?
   marketContext        String?
-  createdAt            DateTime              @default(now())
-  isActive             Boolean               @default(true)
-  updatedAt            DateTime              @default(now())
+  createdAt            DateTime                   @default(now())
+  isActive             Boolean                    @default(true)
+  updatedAt            DateTime                   @default(now())
   flexibleOptions      FlexibleOption[]
   packageCountryPrices PackageCountryPrice[]
   packageOfferPrices   PackageOfferCountryPrice[]
@@ -90,40 +90,37 @@ model QuickPurchase {
   countryId          String
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
-  
-  // New fields for prediction data
-  matchId            String?    @unique // External match ID from API - unique constraint for upsert
-  matchData          Json?      // Full match information
-  predictionData     Json?      // Full prediction analysis data
-  predictionType     String?    // Type of prediction (e.g., "home_win", "draw", "away_win")
-  confidenceScore    Int?       // Confidence score (0-100)
-  odds               Decimal?   // Betting odds
-  valueRating        String?    // Value rating (Low, Medium, High, Very High)
-  analysisSummary    String?    // Brief analysis summary
-  isPredictionActive Boolean    @default(true)  // Whether this prediction is still valid
-  
-  country            Country    @relation(fields: [countryId], references: [id])
+  analysisSummary    String?
+  confidenceScore    Int?
+  isPredictionActive Boolean    @default(true)
+  matchData          Json?
+  matchId            String?    @unique
+  odds               Decimal?
+  predictionData     Json?
+  predictionType     String?
+  valueRating        String?
   purchases          Purchase[]
+  country            Country    @relation(fields: [countryId], references: [id])
 }
 
 model League {
-  id                    String  @id @default(cuid())
-  name                  String  @unique
-  countryCode           String?
-  sport                 String  @default("football")
-  isActive              Boolean @default(true)
-  logoUrl               String?
-  externalLeagueId      String?  // External API league ID (e.g., "71")
-  isDataCollectionEnabled Boolean @default(true)
-  dataCollectionPriority Int     @default(0)  // Higher = more priority
-  lastDataSync          DateTime?
-  syncFrequency         String   @default("daily")  // "hourly", "daily", "weekly"
-  matchLimit            Int      @default(10)  // Max matches to fetch per sync
-  isPredictionEnabled   Boolean  @default(true)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-  matches               Match[]
-  teams                 Team[]
+  id                      String    @id @default(cuid())
+  name                    String    @unique
+  countryCode             String?
+  sport                   String    @default("football")
+  isActive                Boolean   @default(true)
+  logoUrl                 String?
+  createdAt               DateTime  @default(now())
+  dataCollectionPriority  Int       @default(0)
+  externalLeagueId        String?
+  isDataCollectionEnabled Boolean   @default(true)
+  isPredictionEnabled     Boolean   @default(true)
+  lastDataSync            DateTime?
+  matchLimit              Int       @default(10)
+  syncFrequency           String    @default("daily")
+  updatedAt               DateTime  @updatedAt
+  matches                 Match[]
+  teams                   Team[]
 
   @@index([isDataCollectionEnabled, dataCollectionPriority])
   @@index([externalLeagueId])
@@ -180,33 +177,40 @@ model Prediction {
   totalOdds            Decimal?
   type                 String           @default("single")
   match                Match            @relation(fields: [matchId], references: [id])
-  userPredictions      UserPrediction[]
   userPackageTips      UserPackageTip[]
+  userPredictions      UserPrediction[]
 }
 
 model User {
-  id                    String           @id @default(cuid())
-  email                 String           @unique
-  createdAt             DateTime         @default(now())
+  id                    String              @id @default(cuid())
+  email                 String              @unique
+  createdAt             DateTime            @default(now())
   password              String
-  role                  String           @default("user")
+  role                  String              @default("user")
   countryId             String?
   fullName              String?
-  isActive              Boolean          @default(true)
+  isActive              Boolean             @default(true)
   lastLoginAt           DateTime?
   phone                 String?
   subscriptionExpiresAt DateTime?
   subscriptionPlan      String?
-  totalWinnings         Decimal          @default(0)
-  winStreak             Int              @default(0)
+  totalWinnings         Decimal             @default(0)
+  winStreak             Int                 @default(0)
+  referralCode          String?             @unique
+  totalReferralEarnings Decimal             @default(0)
+  totalReferrals        Int                 @default(0)
   chatMessages          ChatMessage[]
+  leaderboardEntries    LeaderboardEntry[]
+  PointTransaction      PointTransaction[]
   purchases             Purchase[]
-  userPackages          UserPackage[]
-  referralsReceived     Referral[]       @relation("Referred")
-  referralsGiven        Referral[]       @relation("Referrer")
-  country               Country?         @relation(fields: [countryId], references: [id])
-  userPredictions       UserPrediction[]
+  quizParticipations    QuizParticipation[]
+  referralsReceived     Referral[]          @relation("Referred")
+  referralsGiven        Referral[]          @relation("Referrer")
   tipUsages             TipUsage[]
+  country               Country?            @relation(fields: [countryId], references: [id])
+  userPackages          UserPackage[]
+  userPoints            UserPoints?
+  userPredictions       UserPrediction[]
 }
 
 model UserPrediction {
@@ -223,15 +227,170 @@ model UserPrediction {
 }
 
 model Referral {
-  id               String   @id @default(cuid())
-  referrerId       String
-  referredId       String
-  referralCode     String
-  commissionAmount Decimal
-  status           String   @default("pending")
-  createdAt        DateTime @default(now())
-  referred         User     @relation("Referred", fields: [referredId], references: [id])
-  referrer         User     @relation("Referrer", fields: [referrerId], references: [id])
+  id                  String             @id @default(cuid())
+  referrerId          String
+  referredId          String
+  referralCode        String
+  commissionAmount    Decimal
+  status              String             @default("pending")
+  createdAt           DateTime           @default(now())
+  packageRewardId     String?
+  pointsEarned        Int                @default(0)
+  quizParticipationId String?
+  referralType        String             @default("quiz")
+  packageReward       PackageOffer?      @relation(fields: [packageRewardId], references: [id])
+  quizParticipation   QuizParticipation? @relation(fields: [quizParticipationId], references: [id])
+  referred            User               @relation("Referred", fields: [referredId], references: [id])
+  referrer            User               @relation("Referrer", fields: [referrerId], references: [id])
+
+  @@index([referrerId, status])
+  @@index([referralType])
+  @@index([createdAt])
+}
+
+model QuizParticipation {
+  id                String       @id @default(cuid())
+  userId            String?
+  email             String
+  phone             String?
+  fullName          String
+  bettingExperience String
+  totalScore        Int          @default(0)
+  questionsAnswered Int          @default(0)
+  correctAnswers    Int          @default(0)
+  referralCode      String?
+  participatedAt    DateTime     @default(now())
+  isCompleted       Boolean      @default(false)
+  countryCode       String?
+  ipAddress         String?
+  userAgent         String?
+  bonusPoints       Int          @default(0)
+  creditsClaimed    Boolean      @default(false)
+  quizReferralCode  String?
+  referralBonus     Int          @default(0)
+  quizAnswers       QuizAnswer[]
+  user              User?        @relation(fields: [userId], references: [id])
+  referrals         Referral[]
+
+  @@index([email])
+  @@index([referralCode])
+  @@index([quizReferralCode])
+  @@index([participatedAt])
+  @@index([bettingExperience])
+  @@index([creditsClaimed])
+}
+
+model QuizQuestion {
+  id            String       @id @default(cuid())
+  question      String
+  correctAnswer String
+  options       String[]
+  category      String
+  difficulty    String       @default("medium")
+  points        Int          @default(10)
+  isActive      Boolean      @default(true)
+  weekNumber    Int?
+  createdAt     DateTime     @default(now())
+  quizAnswers   QuizAnswer[]
+
+  @@index([category])
+  @@index([weekNumber])
+  @@index([isActive])
+}
+
+model QuizAnswer {
+  id                  String            @id @default(cuid())
+  quizParticipationId String
+  quizQuestionId      String
+  selectedAnswer      String
+  isCorrect           Boolean
+  pointsEarned        Int               @default(0)
+  answeredAt          DateTime          @default(now())
+  quizParticipation   QuizParticipation @relation(fields: [quizParticipationId], references: [id])
+  quizQuestion        QuizQuestion      @relation(fields: [quizQuestionId], references: [id])
+
+  @@unique([quizParticipationId, quizQuestionId])
+  @@index([isCorrect])
+}
+
+model UserPoints {
+  id                String             @id @default(cuid())
+  userId            String             @unique
+  points            Int                @default(0)
+  totalEarned       Int                @default(0)
+  totalSpent        Int                @default(0)
+  lastUpdated       DateTime           @default(now())
+  pointTransactions PointTransaction[]
+  user              User               @relation(fields: [userId], references: [id])
+
+  @@index([points])
+}
+
+model PointTransaction {
+  id           String     @id @default(cuid())
+  userPointsId String
+  amount       Int
+  type         String
+  description  String
+  createdAt    DateTime   @default(now())
+  metadata     Json?
+  reference    String?
+  userId       String
+  User         User       @relation(fields: [userId], references: [id])
+  userPoints   UserPoints @relation(fields: [userPointsId], references: [id])
+
+  @@index([type])
+  @@index([createdAt])
+  @@index([userId])
+}
+
+model ReferralReward {
+  id             String        @id @default(cuid())
+  name           String
+  description    String
+  type           String
+  value          Int
+  packageOfferId String?
+  minReferrals   Int           @default(1)
+  maxReferrals   Int?
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  packageOffer   PackageOffer? @relation(fields: [packageOfferId], references: [id])
+
+  @@index([type])
+  @@index([isActive])
+}
+
+model WeeklyLeaderboard {
+  id                 String             @id @default(cuid())
+  weekNumber         Int
+  year               Int
+  startDate          DateTime
+  endDate            DateTime
+  isActive           Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  leaderboardEntries LeaderboardEntry[]
+
+  @@unique([weekNumber, year])
+  @@index([isActive])
+}
+
+model LeaderboardEntry {
+  id                  String            @id @default(cuid())
+  weeklyLeaderboardId String
+  userId              String
+  totalPoints         Int               @default(0)
+  quizScore           Int               @default(0)
+  referralPoints      Int               @default(0)
+  rank                Int?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  user                User              @relation(fields: [userId], references: [id])
+  weeklyLeaderboard   WeeklyLeaderboard @relation(fields: [weeklyLeaderboardId], references: [id])
+
+  @@unique([weeklyLeaderboardId, userId])
+  @@index([totalPoints])
+  @@index([rank])
 }
 
 model PlatformStat {
@@ -309,39 +468,39 @@ model PackageCountryPrice {
 }
 
 model Purchase {
-  id              String         @id @default(dbgenerated("gen_random_uuid()"))
+  id              String        @id @default(dbgenerated("gen_random_uuid()"))
   userId          String
-  quickPurchaseId String
   amount          Decimal
   paymentMethod   String
   status          String
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  quickPurchase   QuickPurchase  @relation(fields: [quickPurchaseId], references: [id])
-  user            User           @relation(fields: [userId], references: [id])
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  quickPurchaseId String
+  quickPurchase   QuickPurchase @relation(fields: [quickPurchaseId], references: [id])
+  user            User          @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([quickPurchaseId])
 }
 
 model PackageOffer {
-  id                String   @id @default(cuid())
-  name              String   // "Daily Package", "Weekend Package", etc.
-  packageType       String   // "daily", "weekend", "weekly", "monthly"
+  id                String                     @id @default(cuid())
+  name              String
+  packageType       String
   description       String
-  tipCount          Int      // Number of tips included (3-5, 5-10, 10-15, unlimited)
-  validityDays      Int      // How long the package is valid
-  isActive          Boolean  @default(true)
-  displayOrder      Int      @default(0)
-  features          String[] // Array of features
-  iconName          String   @default("Gift")
-  colorGradientFrom String   @default("#8B5CF6")
-  colorGradientTo   String   @default("#EC4899")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  // Relations
+  tipCount          Int
+  validityDays      Int
+  isActive          Boolean                    @default(true)
+  displayOrder      Int                        @default(0)
+  features          String[]
+  iconName          String                     @default("Gift")
+  colorGradientFrom String                     @default("#8B5CF6")
+  colorGradientTo   String                     @default("#EC4899")
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
   countryPrices     PackageOfferCountryPrice[]
+  referrals         Referral[]
+  referralRewards   ReferralReward[]
   userPackages      UserPackage[]
 }
 
@@ -356,34 +515,30 @@ model PackageOfferCountryPrice {
   isActive       Boolean      @default(true)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
-  
-  // Relations
-  packageOffer   PackageOffer @relation(fields: [packageOfferId], references: [id])
   country        Country      @relation(fields: [countryId], references: [id])
-  
+  packageOffer   PackageOffer @relation(fields: [packageOfferId], references: [id])
+
   @@unique([packageOfferId, countryId])
 }
 
 model UserPackage {
-  id             String       @id @default(cuid())
+  id             String           @id @default(cuid())
   userId         String
   packageOfferId String
-  purchasedAt    DateTime     @default(now())
+  purchasedAt    DateTime         @default(now())
   expiresAt      DateTime
-  tipsRemaining  Int          // Number of tips left to claim
-  totalTips      Int          // Total tips in the package
-  status         String       @default("active") // "active", "expired", "completed"
+  tipsRemaining  Int
+  totalTips      Int
+  status         String           @default("active")
   pricePaid      Decimal
   currencyCode   String
   currencySymbol String
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  
-  // Relations
-  user           User         @relation(fields: [userId], references: [id])
-  packageOffer   PackageOffer @relation(fields: [packageOfferId], references: [id])
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  packageOffer   PackageOffer     @relation(fields: [packageOfferId], references: [id])
+  user           User             @relation(fields: [userId], references: [id])
   claimedTips    UserPackageTip[]
-  
+
   @@index([userId, status])
   @@index([expiresAt])
 }
@@ -393,36 +548,30 @@ model UserPackageTip {
   userPackageId String
   predictionId  String
   claimedAt     DateTime    @default(now())
-  
-  // NEW FIELDS for enhanced tracking
-  status        String      @default("claimed") // "claimed", "used", "expired", "cancelled"
-  usedAt        DateTime?   // When user actually used the tip
-  expiresAt     DateTime?   // When tip expires (based on package validity)
-  notes         String?     // User notes about the tip
-  
-  // Relations
-  userPackage   UserPackage @relation(fields: [userPackageId], references: [id])
+  expiresAt     DateTime?
+  notes         String?
+  status        String      @default("claimed")
+  usedAt        DateTime?
+  tipUsage      TipUsage?
   prediction    Prediction  @relation(fields: [predictionId], references: [id])
-  tipUsage      TipUsage?   // One-to-one relationship with usage tracking
-  
+  userPackage   UserPackage @relation(fields: [userPackageId], references: [id])
+
   @@unique([userPackageId, predictionId])
   @@index([status])
   @@index([expiresAt])
 }
 
 model TipUsage {
-  id                String         @id @default(cuid())
-  userPackageTipId  String         @unique // One-to-one with UserPackageTip
-  userId            String
-  usedAt            DateTime       @default(now())
-  stakeAmount       Decimal?
-  actualReturn      Decimal?
-  notes             String?
-  
-  // Relations
-  userPackageTip    UserPackageTip @relation(fields: [userPackageTipId], references: [id])
-  user              User           @relation(fields: [userId], references: [id])
-  
+  id               String         @id @default(cuid())
+  userPackageTipId String         @unique
+  userId           String
+  usedAt           DateTime       @default(now())
+  stakeAmount      Decimal?
+  actualReturn     Decimal?
+  notes            String?
+  user             User           @relation(fields: [userId], references: [id])
+  userPackageTip   UserPackageTip @relation(fields: [userPackageTipId], references: [id])
+
   @@index([userId])
   @@index([usedAt])
 }

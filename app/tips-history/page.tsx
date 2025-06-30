@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -12,15 +13,17 @@ import {
   Search, 
   Filter, 
   Download, 
-  TrendingUp, 
   CheckCircle, 
   XCircle, 
-  Clock, 
   AlertCircle,
-  Calendar,
-  Package,
-  Target,
-  BarChart3
+  Calendar, 
+  Trophy, 
+  Target, 
+  TrendingUp, 
+  BarChart3, 
+  Eye, 
+  EyeOff,
+  Package
 } from "lucide-react"
 import { useAuth } from "@/components/auth-provider"
 import { TipsHistoryComponent } from "@/components/tips-history-component"

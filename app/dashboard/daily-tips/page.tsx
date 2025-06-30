@@ -89,13 +89,13 @@ export default function DailyTipsPage() {
             <h1 className="text-3xl font-bold text-white">Daily Tips</h1>
             <Badge className="bg-green-500 text-white animate-pulse">LIVE</Badge>
           </div>
-          <p className="text-slate-300 text-lg">Get today's premium predictions from our AI-powered analysis</p>
+          <p className="text-slate-300 text-lg">Get today&apos;s premium predictions from our AI-powered analysis</p>
         </div>
 
         <Tabs defaultValue="today" className="space-y-6">
           <TabsList className="bg-slate-800 border-slate-700">
             <TabsTrigger value="today" className="data-[state=active]:bg-emerald-600">
-              Today's Tips
+              Today&apos;s Tips
             </TabsTrigger>
             <TabsTrigger value="packages" className="data-[state=active]:bg-emerald-600">
               Packages
@@ -113,7 +113,7 @@ export default function DailyTipsPage() {
                   <div className="flex items-center space-x-2">
                     <Trophy className="w-5 h-5 text-yellow-400" />
                     <div>
-                      <p className="text-sm text-slate-400">Today's Win Rate</p>
+                      <p className="text-sm text-slate-400">Today&apos;s Win Rate</p>
                       <p className="text-xl font-bold text-white">87%</p>
                     </div>
                   </div>

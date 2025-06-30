@@ -6,23 +6,12 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { 
-  Search, 
-  Filter, 
-  Calendar, 
-  Clock, 
-  Target, 
-  TrendingUp, 
-  Eye,
-  Loader2,
-  Trophy,
-  MapPin,
-  X,
-  CreditCard,
-  CheckCircle
-} from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Calendar, MapPin, Trophy, Target, TrendingUp, Eye, CheckCircle, Loader2, Search, Filter, X, CreditCard } from "lucide-react"
 import { useAuth } from "@/components/auth-provider"
 import { decodeQuickPurchasesData } from "@/lib/optimized-data-decoder"
+import { QuickPurchaseModal } from "@/components/quick-purchase-modal"
+import { toast } from "sonner"
 
 interface Match {
   id: string
@@ -44,6 +33,15 @@ interface Match {
     currencyCode: string
     currencySymbol: string
   }
+  features?: string[]
+  iconName?: string
+  colorGradientFrom?: string
+  colorGradientTo?: string
+  isUrgent?: boolean
+  timeLeft?: string
+  isPopular?: boolean
+  discountPercentage?: number
+  tipCount?: number
 }
 
 interface MatchFilters {
@@ -62,7 +60,6 @@ export default function MatchesPage() {
   const [error, setError] = useState<string | null>(null)
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null)
   const [showPurchaseModal, setShowPurchaseModal] = useState(false)
-  const [purchaseLoading, setPurchaseLoading] = useState(false)
   const [filters, setFilters] = useState<MatchFilters>({
     search: "",
     status: "all",
@@ -279,30 +276,34 @@ export default function MatchesPage() {
   }
 
   const handlePurchaseClick = (match: Match) => {
-    setSelectedMatch(match)
-    setShowPurchaseModal(true)
-  }
-
-  const handlePurchaseConfirm = async () => {
-    if (!selectedMatch) return
-    
-    setPurchaseLoading(true)
-    try {
-      // Here you would implement the actual purchase logic
-      // For now, we'll simulate a purchase
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      // Close modal and show success
-      setShowPurchaseModal(false)
-      setSelectedMatch(null)
-      // You could add a toast notification here
-      alert('Purchase successful!')
-    } catch (error) {
-      console.error('Purchase failed:', error)
-      alert('Purchase failed. Please try again.')
-    } finally {
-      setPurchaseLoading(false)
+    // Convert Match to QuickPurchaseItem format
+    const quickPurchaseItem = {
+      id: match.id,
+      name: match.name,
+      price: match.price,
+      originalPrice: match.originalPrice,
+      description: match.analysisSummary || `AI prediction for ${match.name}`,
+      features: match.features || ['AI Analysis', 'Match Statistics', 'Risk Assessment'],
+      type: match.type as "prediction" | "tip" | "package" | "vip",
+      iconName: match.iconName || 'Star',
+      colorGradientFrom: match.colorGradientFrom || '#3B82F6',
+      colorGradientTo: match.colorGradientTo || '#1D4ED8',
+      isUrgent: match.isUrgent || false,
+      timeLeft: match.timeLeft,
+      isPopular: match.isPopular || false,
+      discountPercentage: match.discountPercentage,
+      confidenceScore: match.confidenceScore,
+      matchData: match.matchData,
+      country: match.country,
+      tipCount: match.tipCount,
+      predictionType: match.predictionType,
+      odds: match.odds,
+      valueRating: match.valueRating,
+      analysisSummary: match.analysisSummary
     }
+    
+    setSelectedMatch(quickPurchaseItem as any)
+    setShowPurchaseModal(true)
   }
 
   // Check authentication first
@@ -583,89 +584,14 @@ export default function MatchesPage() {
 
       {/* Purchase Modal */}
       {showPurchaseModal && selectedMatch && (
-        <div 
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-          onClick={() => setShowPurchaseModal(false)}
-        >
-          <div 
-            className="bg-slate-800 border border-slate-700 rounded-lg p-6 max-w-md w-full mx-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-white">Purchase Prediction</h3>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowPurchaseModal(false)}
-                className="text-slate-400 hover:text-white"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            
-            <div className="space-y-4">
-              {/* Match Details */}
-              <div className="bg-slate-700/30 rounded-lg p-4">
-                <h4 className="text-white font-medium mb-2">
-                  {selectedMatch.matchData?.home_team || "Home Team"} vs {selectedMatch.matchData?.away_team || "Away Team"}
-                </h4>
-                <div className="text-slate-400 text-sm">
-                  {selectedMatch.matchData?.league || "Unknown League"}
-                </div>
-                {selectedMatch.matchData?.date && (
-                  <div className="text-slate-400 text-sm mt-1">
-                    {formatMatchDate(selectedMatch.matchData.date)}
-                  </div>
-                )}
-              </div>
-
-              {/* Prediction Details */}
-              <div className="bg-slate-700/30 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-emerald-400 font-medium">Prediction</span>
-                  {selectedMatch.odds && (
-                    <span className="text-slate-300 text-sm">@{selectedMatch.odds}</span>
-                  )}
-                </div>
-                <div className="text-white font-semibold mb-2">
-                  {selectedMatch.predictionType?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                </div>
-                {selectedMatch.confidenceScore && (
-                  <div className="text-slate-400 text-sm">
-                    {selectedMatch.confidenceScore}% confidence
-                  </div>
-                )}
-              </div>
-
-              {/* Price */}
-              <div className="flex items-center justify-between p-4 bg-slate-700/30 rounded-lg">
-                <span className="text-slate-300">Total Price:</span>
-                <span className="text-white font-bold text-lg">
-                  {selectedMatch.country?.currencySymbol}{selectedMatch.price}
-                </span>
-              </div>
-
-              {/* Purchase Button */}
-              <Button
-                onClick={handlePurchaseConfirm}
-                disabled={purchaseLoading}
-                className="w-full bg-emerald-600 hover:bg-emerald-700"
-              >
-                {purchaseLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <CreditCard className="h-4 w-4 mr-2" />
-                    Confirm Purchase
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
+        <QuickPurchaseModal
+          isOpen={showPurchaseModal}
+          onClose={() => {
+            setShowPurchaseModal(false)
+            setSelectedMatch(null)
+          }}
+          item={selectedMatch}
+        />
       )}
 
       {/* Empty State */}
