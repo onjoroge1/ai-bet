@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Copy, Send, UserPlus, Link2, Gift, Users } from "lucide-react"
+import { Copy, Send, UserPlus, Link2, Gift, Users, MessageCircle, Share2 } from "lucide-react"
 
 interface RegistrationData {
   name: string
@@ -29,6 +29,7 @@ export default function QuizReferral({ score, onNext, onBack }: QuizReferralProp
   const [phoneTextarea, setPhoneTextarea] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [copyMessage, setCopyMessage] = useState("")
 
   const referralLink = `https://snapbet.bet/snapbet-quiz?ref=${referralCode}`
 
@@ -40,18 +41,71 @@ export default function QuizReferral({ score, onNext, onBack }: QuizReferralProp
     { label: "Bonus Points", value: 0 },
   ]
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(referralLink)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1200)
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(referralLink)
+      setCopied(true)
+      setCopyMessage("Link copied successfully!")
+      setTimeout(() => {
+        setCopied(false)
+        setCopyMessage("")
+      }, 2000)
+    } catch (error) {
+      console.error('Failed to copy:', error)
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea')
+      textArea.value = referralLink
+      document.body.appendChild(textArea)
+      textArea.select()
+      try {
+        document.execCommand('copy')
+        setCopied(true)
+        setCopyMessage("Link copied successfully!")
+        setTimeout(() => {
+          setCopied(false)
+          setCopyMessage("")
+        }, 2000)
+      } catch (fallbackError) {
+        console.error('Fallback copy failed:', fallbackError)
+        alert('Failed to copy link. Please copy manually: ' + referralLink)
+      }
+      document.body.removeChild(textArea)
+    }
   }
 
   const handleShare = (platform: string) => {
-    const message = `Take the SnapBet Football Quiz and win! ${referralLink}`
-    if (platform === "whatsapp") {
-      window.open(`https://wa.me/?text=${encodeURIComponent(message)}`)
-    } else if (platform === "telegram") {
-      window.open(`https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent(message)}`)
+    const message = `Take the SnapBet Football Quiz and win prediction credits! 🏆⚽\n\n${referralLink}`
+    
+    try {
+      if (platform === "whatsapp") {
+        // WhatsApp sharing
+        const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`
+        window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
+      } else if (platform === "telegram") {
+        // Telegram sharing
+        const telegramUrl = `https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent('Take the SnapBet Football Quiz and win prediction credits! 🏆⚽')}`
+        window.open(telegramUrl, '_blank', 'noopener,noreferrer')
+      } else if (platform === "native") {
+        // Native sharing API (for mobile devices)
+        if (navigator.share) {
+          navigator.share({
+            title: 'SnapBet Football Quiz',
+            text: 'Take the SnapBet Football Quiz and win prediction credits! 🏆⚽',
+            url: referralLink
+          }).catch((error) => {
+            console.log('Error sharing:', error)
+            // Fallback to copy
+            handleCopy()
+          })
+        } else {
+          // Fallback to copy for desktop
+          handleCopy()
+        }
+      }
+    } catch (error) {
+      console.error('Error sharing:', error)
+      // Fallback to copy
+      handleCopy()
     }
   }
 
@@ -113,25 +167,37 @@ export default function QuizReferral({ score, onNext, onBack }: QuizReferralProp
               <button
                 type="button"
                 onClick={handleCopy}
-                className={`flex items-center gap-1 px-3 py-2 rounded bg-slate-700 text-slate-200 hover:bg-slate-600 text-sm font-medium ${copied ? 'ring-2 ring-emerald-400' : ''}`}
+                className={`flex items-center gap-1 px-3 py-2 rounded bg-slate-700 text-slate-200 hover:bg-slate-600 text-sm font-medium transition-all duration-200 ${copied ? 'ring-2 ring-emerald-400 bg-emerald-600' : ''}`}
               >
                 <Copy className="w-4 h-4" /> {copied ? "Copied!" : "Copy"}
               </button>
             </div>
+            {copyMessage && (
+              <div className="mt-2 text-emerald-400 text-sm font-medium text-center">
+                {copyMessage}
+              </div>
+            )}
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => handleShare("whatsapp")}
                 className="flex-1 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded text-sm font-semibold"
               >
-                <UserPlus className="w-4 h-4" /> Share on WhatsApp
+                <MessageCircle className="w-4 h-4" /> WhatsApp
               </button>
               <button
                 type="button"
                 onClick={() => handleShare("telegram")}
                 className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded text-sm font-semibold"
               >
-                <Send className="w-4 h-4" /> Share on Telegram
+                <Send className="w-4 h-4" /> Telegram
+              </button>
+              <button
+                type="button"
+                onClick={() => handleShare("native")}
+                className="flex-1 flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white py-2 rounded text-sm font-semibold"
+              >
+                <Share2 className="w-4 h-4" /> Share
               </button>
             </div>
           </div>
