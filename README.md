@@ -7,6 +7,8 @@ A comprehensive sports betting prediction platform with AI-powered insights and 
 [![Prisma](https://img.shields.io/badge/Prisma-6.9.0-2D3748)](https://www.prisma.io/)
 [![Stripe](https://img.shields.io/badge/Stripe-Payment%20Gateway-6772E5)](https://stripe.com/)
 
+<!-- Latest deployment fix: Updated pnpm-lock.yaml for Vercel compatibility -->
+
 ## 🌟 Features
 
 ### 🎯 AI-Powered Predictions
