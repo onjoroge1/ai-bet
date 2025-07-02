@@ -13,6 +13,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { useRouter } from 'next/navigation'
 import { formatDistanceToNow } from 'date-fns'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 interface Notification {
   id: string
@@ -25,87 +26,122 @@ interface Notification {
   createdAt: string
 }
 
+interface NotificationResponse {
+  notifications: Notification[]
+  unreadCount: number
+}
+
+interface UnreadCountResponse {
+  unreadCount: number
+}
+
 interface NotificationBellProps {
   className?: string
 }
 
 export function NotificationBell({ className }: NotificationBellProps) {
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [unreadCount, setUnreadCount] = useState(0)
   const [isOpen, setIsOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
+  const queryClient = useQueryClient()
 
-  const fetchNotifications = async () => {
-    try {
-      setIsLoading(true)
+  // Lazy load notifications only when dropdown is opened
+  const {
+    data: notificationData,
+    isLoading,
+    refetch
+  } = useQuery<NotificationResponse>({
+    queryKey: ['notifications'],
+    queryFn: async () => {
       const response = await fetch('/api/notifications?limit=10&unreadOnly=false')
-      if (response.ok) {
-        const data = await response.json()
-        setNotifications(data.notifications)
-        setUnreadCount(data.unreadCount)
-      }
-    } catch (error) {
-      console.error('Failed to fetch notifications:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
+      if (!response.ok) throw new Error('Failed to fetch notifications')
+      return response.json()
+    },
+    enabled: false, // Don't fetch automatically
+    staleTime: 30000, // Consider data fresh for 30 seconds
+    gcTime: 5 * 60 * 1000, // Cache for 5 minutes
+  })
 
+  // Fetch unread count separately and immediately
+  const {
+    data: unreadData,
+    refetch: refetchUnread
+  } = useQuery<UnreadCountResponse>({
+    queryKey: ['notifications-unread'],
+    queryFn: async () => {
+      const response = await fetch('/api/notifications?limit=1&unreadOnly=true')
+      if (!response.ok) throw new Error('Failed to fetch unread count')
+      const data = await response.json()
+      return { unreadCount: data.unreadCount }
+    },
+    staleTime: 10000, // Consider data fresh for 10 seconds
+    gcTime: 2 * 60 * 1000, // Cache for 2 minutes
+  })
+
+  const notifications = notificationData?.notifications || []
+  const unreadCount = unreadData?.unreadCount || 0
+
+  // Fetch notifications when dropdown opens
   useEffect(() => {
-    fetchNotifications()
-    
-    // Set up polling for new notifications
-    const interval = setInterval(fetchNotifications, 30000) // Poll every 30 seconds
-    
-    return () => clearInterval(interval)
-  }, [])
+    if (isOpen) {
+      refetch()
+    }
+  }, [isOpen, refetch])
 
-  const markAsRead = async (notificationId: string) => {
-    try {
+  // Mark as read mutation
+  const markAsReadMutation = useMutation({
+    mutationFn: async (notificationId: string) => {
       const response = await fetch(`/api/notifications/${notificationId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isRead: true }),
       })
+      if (!response.ok) throw new Error('Failed to mark as read')
+      return response.json()
+    },
+    onSuccess: () => {
+      // Invalidate and refetch both queries
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      queryClient.invalidateQueries({ queryKey: ['notifications-unread'] })
+    },
+  })
 
-      if (response.ok) {
-        setNotifications(prev =>
-          prev.map(notif =>
-            notif.id === notificationId
-              ? { ...notif, isRead: true }
-              : notif
-          )
-        )
-        setUnreadCount(prev => Math.max(0, prev - 1))
-      }
-    } catch (error) {
-      console.error('Failed to mark notification as read:', error)
-    }
-  }
-
-  const deleteNotification = async (notificationId: string) => {
-    try {
+  // Delete notification mutation
+  const deleteNotificationMutation = useMutation({
+    mutationFn: async (notificationId: string) => {
       const response = await fetch(`/api/notifications/${notificationId}`, {
         method: 'DELETE',
       })
+      if (!response.ok) throw new Error('Failed to delete notification')
+      return response.json()
+    },
+    onSuccess: () => {
+      // Invalidate and refetch both queries
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      queryClient.invalidateQueries({ queryKey: ['notifications-unread'] })
+    },
+  })
 
-      if (response.ok) {
-        setNotifications(prev => prev.filter(notif => notif.id !== notificationId))
-        // Update unread count if the deleted notification was unread
-        const deletedNotification = notifications.find(n => n.id === notificationId)
-        if (deletedNotification && !deletedNotification.isRead) {
-          setUnreadCount(prev => Math.max(0, prev - 1))
-        }
-      }
-    } catch (error) {
-      console.error('Failed to delete notification:', error)
-    }
-  }
+  // Mark all as read mutation
+  const markAllAsReadMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch('/api/notifications/bulk', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'markAsRead', markAllAsRead: true }),
+      })
+      if (!response.ok) throw new Error('Failed to mark all as read')
+      return response.json()
+    },
+    onSuccess: () => {
+      // Invalidate and refetch both queries
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      queryClient.invalidateQueries({ queryKey: ['notifications-unread'] })
+    },
+  })
 
   const handleNotificationClick = (notification: Notification) => {
     if (!notification.isRead) {
-      markAsRead(notification.id)
+      markAsReadMutation.mutate(notification.id)
     }
     
     if (notification.actionUrl) {
@@ -182,25 +218,10 @@ export function NotificationBell({ className }: NotificationBellProps) {
               variant="ghost"
               size="sm"
               className="h-6 px-2 text-xs"
-              onClick={async () => {
-                try {
-                  const response = await fetch('/api/notifications/bulk', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'markAsRead', markAllAsRead: true }),
-                  })
-                  if (response.ok) {
-                    setNotifications(prev =>
-                      prev.map(notif => ({ ...notif, isRead: true }))
-                    )
-                    setUnreadCount(0)
-                  }
-                } catch (error) {
-                  console.error('Failed to mark all as read:', error)
-                }
-              }}
+              onClick={() => markAllAsReadMutation.mutate()}
+              disabled={markAllAsReadMutation.isPending}
             >
-              Mark all read
+              {markAllAsReadMutation.isPending ? 'Marking...' : 'Mark all read'}
             </Button>
           )}
         </div>
@@ -216,7 +237,7 @@ export function NotificationBell({ className }: NotificationBellProps) {
             </div>
           ) : (
             <div className="space-y-1">
-              {notifications.map((notification) => (
+              {notifications.map((notification: Notification) => (
                 <div
                   key={notification.id}
                   className={`p-3 hover:bg-gray-50 cursor-pointer transition-colors ${
@@ -250,8 +271,9 @@ export function NotificationBell({ className }: NotificationBellProps) {
                           className="h-6 w-6 p-0"
                           onClick={(e) => {
                             e.stopPropagation()
-                            markAsRead(notification.id)
+                            markAsReadMutation.mutate(notification.id)
                           }}
+                          disabled={markAsReadMutation.isPending}
                         >
                           <Check className="h-3 w-3" />
                         </Button>
@@ -262,8 +284,9 @@ export function NotificationBell({ className }: NotificationBellProps) {
                         className="h-6 w-6 p-0 text-gray-400 hover:text-red-500"
                         onClick={(e) => {
                           e.stopPropagation()
-                          deleteNotification(notification.id)
+                          deleteNotificationMutation.mutate(notification.id)
                         }}
+                        disabled={deleteNotificationMutation.isPending}
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>

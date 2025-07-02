@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { useRouter } from "next/navigation"
 import { useSession, signOut } from "next-auth/react"
+import { useQuery } from '@tanstack/react-query'
 import { logger } from "@/lib/logger"
 
 // Define the User type with country information
@@ -50,22 +51,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
 
-  // Fetch user profile with country data
-  const fetchUserProfile = async (userId: string) => {
-    try {
+  // Fetch user profile with React Query for better caching
+  const {
+    data: userProfile,
+    isLoading: profileLoading,
+    error: profileError
+  } = useQuery({
+    queryKey: ['user-profile', session?.user?.id],
+    queryFn: async (): Promise<User> => {
       const response = await fetch('/api/user/profile')
       if (response.ok) {
         const userData = await response.json()
-        return userData
+        return {
+          id: userData.id,
+          email: userData.email || '',
+          name: userData.fullName || undefined,
+          role: userData.role || undefined,
+          country: userData.country || undefined
+        }
+      } else if (response.status === 404) {
+        // Profile not found - this might happen during signout or session invalidation
+        logger.warn('User profile not found (404)', {
+          tags: ['auth', 'provider'],
+          data: { userId: session?.user?.id, status: response.status }
+        })
+        throw new Error('Profile not found')
+      } else {
+        // Other error status
+        logger.error('User profile fetch failed', {
+          tags: ['auth', 'provider'],
+          data: { userId: session?.user?.id, status: response.status }
+        })
+        throw new Error('Failed to fetch profile')
       }
-    } catch (error) {
-      logger.error('Error fetching user profile', {
-        tags: ['auth', 'provider'],
-        data: { userId, error }
-      })
-    }
-    return null
-  }
+    },
+    enabled: status === 'authenticated' && !!session?.user?.id,
+    staleTime: 60000, // Consider data fresh for 1 minute
+    gcTime: 10 * 60 * 1000, // Cache for 10 minutes
+    retry: 1,
+    retryDelay: 1000,
+  })
 
   // Sync with NextAuth session
   useEffect(() => {
@@ -78,44 +103,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (status === 'authenticated' && session?.user) {
-      console.log('AuthProvider - status is authenticated, fetching user profile')
+      console.log('AuthProvider - status is authenticated')
       // Set basic user data immediately to ensure isAuthenticated is true
-      setUser({
+      const basicUser = {
         id: session.user.id,
         email: session.user.email || '',
         name: session.user.name || undefined,
         role: session.user.role || undefined,
         referralCode: session.user.referralCode || undefined
-      })
+      }
+      
+      // If we have profile data, use it; otherwise use basic session data
+      if (userProfile) {
+        console.log('AuthProvider - using profile data:', userProfile.id)
+        setUser(userProfile)
+      } else {
+        console.log('AuthProvider - using basic session data')
+        setUser(basicUser)
+      }
+      
       setIsLoading(false)
       
-      // Then fetch complete user profile including country data
-      fetchUserProfile(session.user.id).then((userData) => {
-        if (userData) {
-          console.log('AuthProvider - user profile fetched successfully:', userData.id)
-          setUser({
-            id: userData.id,
-            email: userData.email || '',
-            name: userData.fullName || undefined,
-            role: userData.role || undefined,
-            country: userData.country || undefined
-          })
-        } else {
-          console.log('AuthProvider - user profile fetch failed, keeping basic session data')
-          // Keep the basic session data we already set
+      logger.debug('Auth state updated', {
+        tags: ['auth', 'provider'],
+        data: { 
+          status,
+          hasUser: true,
+          role: session.user.role,
+          hasProfile: !!userProfile,
+          profileLoading
         }
-        logger.debug('Auth state updated', {
-          tags: ['auth', 'provider'],
-          data: { 
-            status,
-            hasUser: true,
-            role: session.user.role,
-            hasCountry: !!userData?.country
-          }
-        })
-      }).catch((error) => {
-        console.log('AuthProvider - user profile fetch error:', error)
-        // Keep the basic session data even if profile fetch fails
       })
     } else {
       console.log('AuthProvider - status is not authenticated, setting user to null')
@@ -129,7 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       })
     }
-  }, [status, session])
+  }, [status, session, userProfile, profileLoading])
 
   const login = (userData: User) => {
     setUser(userData)
@@ -144,6 +161,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
+      // Clear local state immediately to prevent further API calls
+      setUser(null)
+      setIsLoading(false)
+      
       // First, clear the custom token
       const response = await fetch('/api/auth/signout', {
         method: 'POST',
@@ -153,14 +174,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to clear custom token')
+        logger.warn('Failed to clear custom token', {
+          tags: ['auth', 'provider'],
+          data: { status: response.status }
+        })
       }
 
       // Then, sign out from NextAuth
       await signOut({ redirect: false })
-      
-      // Clear local state
-      setUser(null)
       
       logger.debug('User logged out', {
         tags: ['auth', 'provider']

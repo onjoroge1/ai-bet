@@ -4,7 +4,6 @@ import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import dynamic from 'next/dynamic'
 import { Suspense } from 'react'
 import { Loader2 } from 'lucide-react'
-import { TestNotificationButton } from '@/components/test-notification-button'
 
 // Dynamically import heavy components
 const StatsOverview = dynamic(() => import('@/components/dashboard/stats-overview').then(mod => mod.StatsOverview), {
@@ -59,11 +58,6 @@ export default function DashboardPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       <DashboardHeader />
-
-      {/* Test Notification Button - Remove this after testing */}
-      <div className="mb-6">
-        <TestNotificationButton />
-      </div>
 
       {/* Top Row: Stats and Package Credits */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">

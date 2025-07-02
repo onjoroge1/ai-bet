@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/components/auth-provider'
 import { DashboardResponse } from '@/types/dashboard'
 
@@ -11,20 +11,15 @@ interface UseDashboardDataReturn {
 
 export function useDashboardData(): UseDashboardDataReturn {
   const { user, isAuthenticated } = useAuth()
-  const [data, setData] = useState<DashboardResponse | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
 
-  const fetchDashboardData = async () => {
-    if (!isAuthenticated || !user) {
-      setIsLoading(false)
-      return
-    }
-
-    try {
-      setIsLoading(true)
-      setError(null)
-
+  const {
+    data,
+    isLoading,
+    error,
+    refetch
+  } = useQuery({
+    queryKey: ['dashboard-data', user?.id],
+    queryFn: async (): Promise<DashboardResponse> => {
       const response = await fetch('/api/user/dashboard-data', {
         method: 'GET',
         headers: {
@@ -36,29 +31,21 @@ export function useDashboardData(): UseDashboardDataReturn {
         throw new Error(`Failed to fetch dashboard data: ${response.status}`)
       }
 
-      const dashboardData: DashboardResponse = await response.json()
-      setData(dashboardData)
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch dashboard data'
-      setError(errorMessage)
-      console.error('Error fetching dashboard data:', err)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchDashboardData()
-  }, [isAuthenticated, user?.id])
-
-  const refetch = async () => {
-    await fetchDashboardData()
-  }
+      return response.json()
+    },
+    enabled: isAuthenticated && !!user?.id,
+    staleTime: 30000, // Consider data fresh for 30 seconds
+    gcTime: 5 * 60 * 1000, // Cache for 5 minutes
+    retry: 2,
+    retryDelay: 1000,
+  })
 
   return {
-    data,
+    data: data || null,
     isLoading,
-    error,
-    refetch
+    error: error ? (error as Error).message : null,
+    refetch: async () => {
+      await refetch()
+    }
   }
 } 

@@ -72,7 +72,7 @@ export function setTokenCookie(response: NextResponse, token: string): NextRespo
     value: token,
     httpOnly: true,
     path: '/',
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: 24 * 60 * 60, // 24 hours
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production'
   })
@@ -103,10 +103,10 @@ export const authOptions = {
   secret: JWT_SECRET,
   session: {
     strategy: "jwt" as const,
-    maxAge: 7 * 24 * 60 * 60, // 7 days
+    maxAge: 24 * 60 * 60, // 24 hours
   },
   jwt: {
-    maxAge: 7 * 24 * 60 * 60, // 7 days
+    maxAge: 24 * 60 * 60, // 24 hours
   },
   pages: {
     signIn: "/signin",
