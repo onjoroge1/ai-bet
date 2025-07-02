@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Trophy, Gift, Target, CheckCircle, AlertCircle, Loader2 } from "lucide-react"
 import { useAuth } from "@/components/auth-provider"
+import { toast } from "sonner"
 
 interface QuizParticipation {
   id: string
@@ -109,11 +110,19 @@ export default function QuizCreditClaim() {
         prev.filter(p => p.id !== participationId)
       )
       
-      // Show success message
-      alert(`Successfully claimed ${result.creditsAdded} credits!`)
+      // Show success message with toast instead of alert
+      toast.success(`Successfully claimed ${result.creditsAdded} credits!`, {
+        description: "Your prediction credits have been added to your account.",
+        duration: 5000,
+      })
       
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to claim credits")
+      const errorMessage = err instanceof Error ? err.message : "Failed to claim credits"
+      setError(errorMessage)
+      toast.error("Failed to claim credits", {
+        description: errorMessage,
+        duration: 5000,
+      })
     } finally {
       setClaiming(null)
     }

@@ -27,7 +27,7 @@ export function CountryProvider({ children }: { children: ReactNode }) {
     currency: "USD",
     currencySymbol: "$",
     brandName: "US Sports Predictions",
-    tagline: "America's Premier AI Sports Tipster",
+    tagline: "America's Premier SnapBet",
     plans: {
       free: {
         name: "Free",

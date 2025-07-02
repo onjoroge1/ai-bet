@@ -39,7 +39,7 @@ export function TrustBadges() {
     <section className="py-16 px-4">
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-12">
-          <h2 className="text-2xl md:text-3xl font-bold text-white mb-4">Why Choose Our AI Tipster Platform?</h2>
+          <h2 className="text-2xl md:text-3xl font-bold text-white mb-4">Why Choose Our SnapBet Platform?</h2>
           <p className="text-slate-300">Built for global bettors with cutting-edge technology and local expertise</p>
         </div>
 

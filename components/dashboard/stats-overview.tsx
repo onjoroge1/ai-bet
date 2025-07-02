@@ -97,40 +97,7 @@ export function StatsOverview() {
 
   const stats = [
     {
-      title: "Model Prediction History",
-      value: `${animatedValues.predictionAccuracy}%`,
-      change: trends.accuracyTrend === 'up' ? "Excellent" : trends.accuracyTrend === 'down' ? "Improving" : "Stable",
-      trend: trends.accuracyTrend,
-      icon: Target,
-      color: "emerald",
-      emoji: "🎯",
-      description: "Historical AI model accuracy",
-      progress: animatedValues.predictionAccuracy,
-    },
-    {
-      title: "Monthly Success",
-      value: `${animatedValues.monthlySuccess}%`,
-      change: trends.monthlyTrend === 'up' ? "Strong" : trends.monthlyTrend === 'down' ? "Growing" : "Consistent",
-      trend: trends.monthlyTrend,
-      icon: TrendingUp,
-      color: "blue",
-      emoji: "📈",
-      description: "Success rate this month",
-      progress: animatedValues.monthlySuccess,
-    },
-    {
-      title: "Predictions Followed",
-      value: animatedValues.totalPredictions.toString(),
-      change: trends.predictionsTrend === 'up' ? "Active" : "Getting Started",
-      trend: trends.predictionsTrend,
-      icon: Brain,
-      color: "purple",
-      emoji: "🧠",
-      description: "AI predictions purchased",
-      progress: Math.min(100, (animatedValues.totalPredictions / 50) * 100), // Scale to 50 max
-    },
-    {
-      title: "Current Streak",
+      title: "Win Streak",
       value: `${animatedValues.currentStreak} wins`,
       change: trends.streakTrend === 'up' ? "On fire!" : trends.streakTrend === 'down' ? "Building up" : "Getting started",
       trend: trends.streakTrend,
@@ -140,6 +107,17 @@ export function StatsOverview() {
       description: "Consecutive successful predictions",
       progress: Math.min(100, (animatedValues.currentStreak / 10) * 100), // Scale to 10 max
     },
+    {
+      title: "Total Predictions",
+      value: animatedValues.totalPredictions.toString(),
+      change: trends.predictionsTrend === 'up' ? "Active user" : "Getting started",
+      trend: trends.predictionsTrend,
+      icon: TrendingUp,
+      color: "purple",
+      emoji: "📈",
+      description: "Predictions you've followed",
+      progress: Math.min(100, (animatedValues.totalPredictions / 50) * 100), // Scale to 50 max
+    },
   ]
 
   // Loading state
@@ -147,11 +125,11 @@ export function StatsOverview() {
     return (
       <Card className="bg-slate-800/50 border-slate-700 p-6 relative overflow-hidden">
         <div className="flex items-center space-x-2 mb-6">
-          <h2 className="text-xl font-semibold text-white">Performance Overview</h2>
+          <h2 className="text-xl font-semibold text-white">Your Performance Overview</h2>
           <Zap className="w-5 h-5 text-yellow-400 animate-pulse" />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[...Array(4)].map((_, index) => (
+          {[...Array(2)].map((_, index) => (
             <div key={index} className="bg-slate-900/50 rounded-lg p-4 animate-pulse">
               <div className="h-8 bg-slate-700 rounded mb-2"></div>
               <div className="h-6 bg-slate-700 rounded mb-1"></div>
@@ -168,7 +146,7 @@ export function StatsOverview() {
     return (
       <Card className="bg-slate-800/50 border-slate-700 p-6 relative overflow-hidden">
         <div className="flex items-center space-x-2 mb-6">
-          <h2 className="text-xl font-semibold text-white">Performance Overview</h2>
+          <h2 className="text-xl font-semibold text-white">Your Performance Overview</h2>
           <Zap className="w-5 h-5 text-yellow-400" />
         </div>
         <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
@@ -187,7 +165,7 @@ export function StatsOverview() {
       <div className="relative">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-2">
-            <h2 className="text-xl font-semibold text-white">AI Performance Overview</h2>
+            <h2 className="text-xl font-semibold text-white">Your Performance Overview</h2>
             <Zap className="w-5 h-5 text-yellow-400 animate-pulse" />
           </div>
           {data?.dashboard.level && (
@@ -282,14 +260,16 @@ export function StatsOverview() {
           <div className="mt-6 p-4 bg-gradient-to-r from-emerald-500/10 to-cyan-500/10 rounded-lg border border-emerald-500/20">
             <div className="flex items-center space-x-2 mb-2">
               <Brain className="w-4 h-4 text-emerald-400" />
-              <span className="text-sm font-medium text-emerald-400">AI Insights</span>
+              <span className="text-sm font-medium text-emerald-400">Your Performance Insights</span>
             </div>
             <p className="text-slate-300 text-sm">
-              {finalValues.predictionAccuracy > 70 
-                ? "Excellent model performance! Our AI has consistently delivered high-accuracy predictions."
-                : finalValues.predictionAccuracy > 60
-                  ? "Strong model performance. Our AI continues to provide reliable predictions."
-                  : "Model is building prediction history. AI accuracy is improving with more data."
+              {finalValues.currentStreak > 5 
+                ? "Incredible win streak! You're on fire with consecutive successful predictions. Keep up this amazing momentum!"
+                : finalValues.currentStreak > 2
+                  ? "Great win streak! You're building momentum with consecutive wins. Consider following more AI predictions to extend your streak."
+                  : finalValues.totalPredictions > 10
+                    ? "You're an active user! Follow more AI predictions to build your win streak and improve your overall performance."
+                    : "Getting started! Follow more AI predictions to build your experience and start building win streaks."
               }
             </p>
           </div>

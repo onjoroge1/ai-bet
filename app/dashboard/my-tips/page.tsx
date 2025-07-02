@@ -570,10 +570,10 @@ export default function MyTipsPage() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-400">Billed by:</span>
-                    <span className="text-slate-300">AI Sports Tipster</span>
+                    <span className="text-slate-300">SnapBet</span>
                   </div>
                   <div className="text-center text-slate-400 pt-2 border-t border-slate-700">
-                    Need help? support@aisportstipster.com | T&Cs
+                    Need help? support@snapbet.com | T&Cs
                   </div>
                 </div>
               </Card>

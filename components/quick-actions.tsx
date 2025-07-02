@@ -63,7 +63,7 @@ export function QuickActions() {
       textColor: "text-white",
       emoji: "📱",
       hoverEffect: "hover:bg-blue-500",
-      href: "https://t.me/aisportstipster",
+      href: "https://t.me/snapbet",
       external: true,
     },
   ]

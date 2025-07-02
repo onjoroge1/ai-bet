@@ -2,7 +2,7 @@
 
 ## Environment Variables
 
-The AI Sports Tipster system now supports configurable pricing through environment variables, including **country-specific pricing** for localized strategies.
+The SnapBet system now supports configurable pricing through environment variables, including **country-specific pricing** for localized strategies.
 
 ### Default Pricing (Fallback)
 

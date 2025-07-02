@@ -194,9 +194,9 @@ export function SignUpForm() {
           <div className="w-10 h-10 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-lg flex items-center justify-center">
             <TrendingUp className="w-6 h-6 text-slate-900" />
           </div>
-          <span className="text-2xl font-bold text-white">AI Tipster</span>
+          <span className="text-2xl font-bold text-white">SnapBet</span>
         </div>
-        <h1 className="text-3xl font-bold text-white mb-2">Join AI Tipster</h1>
+        <h1 className="text-3xl font-bold text-white mb-2">Join SnapBet</h1>
         <p className="text-slate-300">Start winning with AI-powered predictions</p>
       </div>
 

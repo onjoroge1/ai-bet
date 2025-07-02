@@ -22,7 +22,7 @@ interface Country {
   currencyCode: string
   currencySymbol: string
   isActive: boolean
-  isSupported: boolean
+  isSupported?: boolean
 }
 
 export function SignUpForm() {
@@ -48,26 +48,34 @@ export function SignUpForm() {
     const loadCountries = async () => {
       try {
         const response = await fetch('/api/countries')
+        
         if (response.ok) {
           const countriesData = await response.json()
-          setCountries(countriesData)
+          
+          // Add isSupported field to each country (default to true for active countries)
+          const countriesWithSupport = countriesData.map((country: any) => ({
+            ...country,
+            isSupported: country.isActive !== false
+          }))
+          
+          setCountries(countriesWithSupport)
           // Set default country to first available
-          if (countriesData.length > 0) {
-            setFormData(prev => ({ ...prev, countryCode: countriesData[0].code }))
+          if (countriesWithSupport.length > 0) {
+            setFormData(prev => ({ ...prev, countryCode: countriesWithSupport[0].code }))
           }
         } else {
           // Fallback to static countries if API fails
           const staticCountries: Country[] = [
-            { id: "country_us", name: "United States", code: "US", flagEmoji: "🇺🇸", currencySymbol: "$", currencyCode: "USD", isActive: true, isSupported: true },
-            { id: "country_ke", name: "Kenya", code: "KE", flagEmoji: "🇰🇪", currencySymbol: "KES", currencyCode: "KES", isActive: true, isSupported: true },
-            { id: "country_ng", name: "Nigeria", code: "NG", flagEmoji: "🇳🇬", currencySymbol: "₦", currencyCode: "NGN", isActive: true, isSupported: true },
-            { id: "country_za", name: "South Africa", code: "ZA", flagEmoji: "🇿🇦", currencySymbol: "R", currencyCode: "ZAR", isActive: true, isSupported: true },
-            { id: "country_gh", name: "Ghana", code: "GH", flagEmoji: "🇬🇭", currencySymbol: "₵", currencyCode: "GHS", isActive: true, isSupported: true },
-            { id: "country_ug", name: "Uganda", code: "UG", flagEmoji: "🇺🇬", currencySymbol: "USh", currencyCode: "UGX", isActive: true, isSupported: true },
-            { id: "country_tz", name: "Tanzania", code: "TZ", flagEmoji: "🇹🇿", currencySymbol: "TSh", currencyCode: "TZS", isActive: true, isSupported: true },
-            { id: "country_in", name: "India", code: "IN", flagEmoji: "🇮🇳", currencySymbol: "₹", currencyCode: "INR", isActive: true, isSupported: true },
-            { id: "country_ph", name: "Philippines", code: "PH", flagEmoji: "🇵🇭", currencySymbol: "₱", currencyCode: "PHP", isActive: true, isSupported: true },
-            { id: "country_gb", name: "United Kingdom", code: "GB", flagEmoji: "🇬🇧", currencySymbol: "£", currencyCode: "GBP", isActive: true, isSupported: true },
+            { id: "country_us", name: "United States", code: "us", flagEmoji: "🇺🇸", currencySymbol: "$", currencyCode: "USD", isActive: true, isSupported: true },
+            { id: "country_ke", name: "Kenya", code: "ke", flagEmoji: "🇰🇪", currencySymbol: "KES", currencyCode: "KES", isActive: true, isSupported: true },
+            { id: "country_ng", name: "Nigeria", code: "ng", flagEmoji: "🇳🇬", currencySymbol: "₦", currencyCode: "NGN", isActive: true, isSupported: true },
+            { id: "country_za", name: "South Africa", code: "za", flagEmoji: "🇿🇦", currencySymbol: "R", currencyCode: "ZAR", isActive: true, isSupported: true },
+            { id: "country_gh", name: "Ghana", code: "gh", flagEmoji: "🇬🇭", currencySymbol: "₵", currencyCode: "GHS", isActive: true, isSupported: true },
+            { id: "country_ug", name: "Uganda", code: "ug", flagEmoji: "🇺🇬", currencySymbol: "USh", currencyCode: "UGX", isActive: true, isSupported: true },
+            { id: "country_tz", name: "Tanzania", code: "tz", flagEmoji: "🇹🇿", currencySymbol: "TSh", currencyCode: "TZS", isActive: true, isSupported: true },
+            { id: "country_in", name: "India", code: "in", flagEmoji: "🇮🇳", currencySymbol: "₹", currencyCode: "INR", isActive: true, isSupported: true },
+            { id: "country_ph", name: "Philippines", code: "ph", flagEmoji: "🇵🇭", currencySymbol: "₱", currencyCode: "PHP", isActive: true, isSupported: true },
+            { id: "country_gb", name: "United Kingdom", code: "gb", flagEmoji: "🇬🇧", currencySymbol: "£", currencyCode: "GBP", isActive: true, isSupported: true },
           ]
           setCountries(staticCountries)
           setFormData(prev => ({ ...prev, countryCode: staticCountries[0].code }))
@@ -75,7 +83,7 @@ export function SignUpForm() {
       } catch (error) {
         console.error("Failed to load countries:", error)
         // Set a default country if everything fails
-        setFormData(prev => ({ ...prev, countryCode: "US" }))
+        setFormData(prev => ({ ...prev, countryCode: "us" }))
       }
     }
 
@@ -181,9 +189,9 @@ export function SignUpForm() {
           <div className="w-10 h-10 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-lg flex items-center justify-center">
             <TrendingUp className="w-6 h-6 text-slate-900" />
           </div>
-          <span className="text-2xl font-bold text-white">AI Tipster</span>
+          <span className="text-2xl font-bold text-white">SnapBet</span>
         </div>
-        <h1 className="text-3xl font-bold text-white mb-2">Join AI Tipster</h1>
+        <h1 className="text-3xl font-bold text-white mb-2">Join SnapBet</h1>
         <p className="text-slate-300">Start winning with AI-powered predictions</p>
       </div>
 

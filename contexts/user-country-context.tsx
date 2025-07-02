@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import { useAuth } from "@/components/auth-provider"
 import { getCountryPricing, type CountryPricing } from "@/lib/country-pricing"
+import { getCountryPricing as getEnvPricing, formatPrice } from "@/lib/pricing-service"
 
 interface UserCountryContextType {
   userCountry: string
@@ -15,7 +16,7 @@ interface UserCountryContextType {
 const UserCountryContext = createContext<UserCountryContextType | undefined>(undefined)
 
 export function UserCountryProvider({ children }: { children: ReactNode }) {
-  const { user, isAuthenticated } = useAuth()
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth()
   const [userCountry, setUserCountry] = useState("us") // Default fallback
   const [countryData, setCountryData] = useState<CountryPricing>(getCountryPricing("us"))
   const [isLoading, setIsLoading] = useState(true)
@@ -24,6 +25,11 @@ export function UserCountryProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const detectCountry = async () => {
       try {
+        // Wait for auth to finish loading
+        if (authLoading) {
+          return
+        }
+
         // If user is authenticated and has a country preference, use that
         if (isAuthenticated && user?.country?.code) {
           const countryCode = user.country.code.toLowerCase()
@@ -47,36 +53,47 @@ export function UserCountryProvider({ children }: { children: ReactNode }) {
           return
         }
 
-        // Check if we're in a browser environment (not during build)
-        if (typeof window === 'undefined') {
-          // During build time, use default values
-          setUserCountry("us")
-          setCountryData(getCountryPricing("us"))
-          setDetectedFrom("build_time")
-          setIsLoading(false)
+        // If user is authenticated but doesn't have country data yet, 
+        // the user profile might still be loading. Don't fall back to API detection yet.
+        if (isAuthenticated && !user?.country?.code) {
+          // Keep waiting for the user profile to be fully loaded
+          // The effect will re-run when user.country.code becomes available
           return
         }
 
-        // Otherwise, try to detect country from API
-        const response = await fetch('/api/user/country')
-        if (response.ok) {
-          const result = await response.json()
-          if (result.success) {
-            const countryCode = result.country.code.toLowerCase()
-            setUserCountry(countryCode)
-            setCountryData(result.pricing)
-            setDetectedFrom(result.country.detectedFrom)
+        // Only do API detection if user is not authenticated
+        if (!isAuthenticated) {
+          // Check if we're in a browser environment (not during build)
+          if (typeof window === 'undefined') {
+            // During build time, use default values
+            setUserCountry("us")
+            setCountryData(getCountryPricing("us"))
+            setDetectedFrom("build_time")
+            setIsLoading(false)
+            return
+          }
+
+          // Try to detect country from API
+          const response = await fetch('/api/user/country')
+          if (response.ok) {
+            const result = await response.json()
+            if (result.success) {
+              const countryCode = result.country.code.toLowerCase()
+              setUserCountry(countryCode)
+              setCountryData(result.pricing)
+              setDetectedFrom(result.country.detectedFrom)
+            } else {
+              // Fallback to US
+              setUserCountry("us")
+              setCountryData(getCountryPricing("us"))
+              setDetectedFrom("fallback")
+            }
           } else {
             // Fallback to US
             setUserCountry("us")
             setCountryData(getCountryPricing("us"))
             setDetectedFrom("fallback")
           }
-        } else {
-          // Fallback to US
-          setUserCountry("us")
-          setCountryData(getCountryPricing("us"))
-          setDetectedFrom("fallback")
         }
       } catch (error) {
         console.warn('Failed to detect country:', error)
@@ -90,13 +107,14 @@ export function UserCountryProvider({ children }: { children: ReactNode }) {
     }
 
     detectCountry()
-  }, [isAuthenticated, user?.country?.code])
+  }, [isAuthenticated, user?.country?.code, authLoading])
 
   const convertPrice = (basePrice: string | number): string => {
     const price = typeof basePrice === "string" ? parseFloat(basePrice) : basePrice
-    const rate = conversionRates[userCountry] || 1
-    const convertedPrice = price * rate
-    return `${countryData.currencySymbol}${convertedPrice.toFixed(2)}`
+    
+    // Always use the API price and format it with the user's country currency
+    // This ensures the UI displays the correct price from the database
+    return formatPrice(price, countryData.currencySymbol, countryData.currency)
   }
 
   return (
@@ -112,15 +130,4 @@ export function useUserCountry() {
     throw new Error("useUserCountry must be used within a UserCountryProvider")
   }
   return context
-}
-
-// Conversion rates relative to USD
-const conversionRates: Record<string, number> = {
-  us: 1,
-  ke: 130,
-  ng: 1500,
-  za: 18,
-  gh: 12,
-  ug: 3800,
-  tz: 2600
 } 

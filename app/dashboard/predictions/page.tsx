@@ -1,255 +1,505 @@
 "use client"
 
 import { useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { TrendingUp, Clock, Target, Star, Download, Share2, Eye, Lock } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { 
+  CheckCircle, 
+  XCircle, 
+  Clock, 
+  Target, 
+  Eye,
+  Calendar,
+  Trophy,
+  DollarSign,
+  Star,
+  Filter,
+  Search,
+  ArrowLeft,
+  ExternalLink
+} from "lucide-react"
+import Link from "next/link"
+
+// Types
+type TimelineItem = {
+  id: string
+  match: {
+    id: string
+    homeTeam: { id: string; name: string }
+    awayTeam: { id: string; name: string }
+    league: { id: string; name: string }
+    matchDate: string
+    status: string
+    homeScore?: number
+    awayScore?: number
+  }
+  prediction: {
+    type: string
+    odds: number
+    confidence: number
+    valueRating: string
+    explanation?: string
+    isFree: boolean
+    status: string
+    resultUpdatedAt?: string
+  }
+  userPrediction?: {
+    id: string
+    status: string
+    amount: number
+    potentialReturn: number
+    profit?: number
+    placedAt: string
+  } | null
+  timelineStatus: 'won' | 'lost' | 'pending' | 'upcoming'
+  createdAt: string
+}
+
+// Fetch timeline data with filters
+const fetchTimelineData = async (filters: any): Promise<TimelineItem[]> => {
+  const params = new URLSearchParams()
+  if (filters.limit) params.append('limit', filters.limit.toString())
+  if (filters.status && filters.status !== 'all') params.append('status', filters.status)
+  if (filters.dateFrom) params.append('dateFrom', filters.dateFrom)
+  if (filters.dateTo) params.append('dateTo', filters.dateTo)
+  
+  const response = await fetch(`/api/predictions/timeline?${params.toString()}`)
+  if (!response.ok) {
+    throw new Error('Failed to fetch timeline data')
+  }
+  return response.json()
+}
+
+// Status configuration
+const statusConfig = {
+  won: {
+    icon: CheckCircle,
+    color: "text-emerald-400",
+    bgColor: "bg-emerald-500/20",
+    borderColor: "border-emerald-500/30",
+    label: "Won",
+    emoji: "🏆"
+  },
+  lost: {
+    icon: XCircle,
+    color: "text-red-400",
+    bgColor: "bg-red-500/20",
+    borderColor: "border-red-500/30",
+    label: "Lost",
+    emoji: "❌"
+  },
+  pending: {
+    icon: Clock,
+    color: "text-yellow-400",
+    bgColor: "bg-yellow-500/20",
+    borderColor: "border-yellow-500/30",
+    label: "Pending",
+    emoji: "⏳"
+  },
+  upcoming: {
+    icon: Target,
+    color: "text-blue-400",
+    bgColor: "bg-blue-500/20",
+    borderColor: "border-blue-500/30",
+    label: "Upcoming",
+    emoji: "🎯"
+  }
+}
 
 export default function PredictionsPage() {
-  const [filter, setFilter] = useState("all")
-
-  const predictions = [
-    {
-      id: 1,
-      match: "Manchester United vs Arsenal",
-      league: "Premier League",
-      prediction: "Over 2.5 Goals",
-      confidence: 92,
-      odds: 1.85,
-      status: "won",
-      profit: 850,
-      time: "15:30",
-      date: "Today",
-      analysis: "Both teams have scored in their last 5 meetings. United's attack vs Arsenal's leaky defense.",
-      isPremium: false,
-    },
-    {
-      id: 2,
-      match: "Barcelona vs Real Madrid",
-      league: "La Liga",
-      prediction: "BTTS & Over 2.5",
-      confidence: 88,
-      odds: 2.1,
-      status: "pending",
-      profit: 0,
-      time: "20:00",
-      date: "Today",
-      analysis: "El Clasico always delivers goals. Both teams in excellent attacking form.",
-      isPremium: true,
-    },
-    {
-      id: 3,
-      match: "Liverpool vs Chelsea",
-      league: "Premier League",
-      prediction: "Liverpool Win",
-      confidence: 85,
-      odds: 1.75,
-      status: "lost",
-      profit: -1000,
-      time: "17:30",
-      date: "Yesterday",
-      analysis: "Liverpool's home form has been exceptional this season.",
-      isPremium: false,
-    },
-    {
-      id: 4,
-      match: "Bayern Munich vs Dortmund",
-      league: "Bundesliga",
-      prediction: "Over 3.5 Goals",
-      confidence: 90,
-      odds: 2.25,
-      status: "won",
-      profit: 1250,
-      time: "18:30",
-      date: "Yesterday",
-      analysis: "Der Klassiker promises goals with both teams' attacking prowess.",
-      isPremium: true,
-    },
-  ]
-
-  const filteredPredictions = predictions.filter((pred) => {
-    if (filter === "all") return true
-    if (filter === "won") return pred.status === "won"
-    if (filter === "pending") return pred.status === "pending"
-    if (filter === "premium") return pred.isPremium
-    return true
+  const [filters, setFilters] = useState({
+    limit: 50,
+    status: 'all',
+    dateFrom: '',
+    dateTo: '',
+    search: ''
+  })
+  
+  const [hoveredItem, setHoveredItem] = useState<string | null>(null)
+  
+  const { data: timelineData = [], isLoading, error, refetch } = useQuery({
+    queryKey: ['timeline', filters],
+    queryFn: () => fetchTimelineData(filters),
+    refetchInterval: 30000, // Refresh every 30 seconds
   })
 
+  // Filter data based on search
+  const filteredData = timelineData.filter(item => {
+    if (!filters.search) return true
+    
+    const searchTerm = filters.search.toLowerCase()
+    return (
+      item.match.homeTeam.name.toLowerCase().includes(searchTerm) ||
+      item.match.awayTeam.name.toLowerCase().includes(searchTerm) ||
+      item.match.league.name.toLowerCase().includes(searchTerm) ||
+      item.prediction.type.toLowerCase().includes(searchTerm)
+    )
+  })
+
+  // Filter data based on status
+  const statusFilteredData = filteredData.filter(item => {
+    if (filters.status === 'all') return true
+    return item.timelineStatus === filters.status
+  })
+
+  // Calculate statistics
   const stats = {
-    totalPredictions: 156,
-    winRate: 78,
-    totalProfit: 45600,
-    avgOdds: 1.92,
+    total: statusFilteredData.length,
+    won: statusFilteredData.filter(item => item.timelineStatus === 'won').length,
+    lost: statusFilteredData.filter(item => item.timelineStatus === 'lost').length,
+    pending: statusFilteredData.filter(item => item.timelineStatus === 'pending').length,
+    upcoming: statusFilteredData.filter(item => item.timelineStatus === 'upcoming').length,
+    totalProfit: statusFilteredData.reduce((sum, item) => {
+      return sum + (item.userPrediction?.profit || 0)
+    }, 0)
+  }
+
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffTime = Math.abs(now.getTime() - date.getTime())
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    
+    if (diffDays === 1) return 'Today'
+    if (diffDays === 2) return 'Yesterday'
+    if (diffDays <= 7) return `${diffDays - 1} days ago`
+    return date.toLocaleDateString()
+  }
+
+  // Format match time
+  const formatMatchTime = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  }
+
+  // Get status configuration
+  const getStatusConfig = (status: string) => {
+    return statusConfig[status as keyof typeof statusConfig] || statusConfig.upcoming
+  }
+
+  if (isLoading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="flex items-center space-x-4 mb-8">
+          <Link href="/dashboard">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Dashboard
+            </Button>
+          </Link>
+          <h1 className="text-2xl font-bold text-white">All Predictions</h1>
+        </div>
+        <div className="text-center text-slate-400 py-8">Loading predictions...</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="flex items-center space-x-4 mb-8">
+          <Link href="/dashboard">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Dashboard
+            </Button>
+          </Link>
+          <h1 className="text-2xl font-bold text-white">All Predictions</h1>
+        </div>
+        <div className="text-center text-red-400">
+          Failed to load predictions.
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => refetch()}
+            className="ml-2"
+          >
+            Retry
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-900">
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-white mb-2">My Predictions</h1>
-              <p className="text-slate-300">Track your betting performance and analyze your predictions</p>
-            </div>
-            <div className="flex items-center space-x-3 mt-4 md:mt-0">
-              <Button variant="outline" className="border-emerald-500 text-emerald-400 hover:bg-emerald-500/10">
-                <Download className="w-4 h-4 mr-2" />
-                Export
-              </Button>
-              <Button variant="outline" className="border-emerald-500 text-emerald-400 hover:bg-emerald-500/10">
-                <Share2 className="w-4 h-4 mr-2" />
-                Share
-              </Button>
-            </div>
-          </div>
-
-          {/* Stats Overview */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <Card className="bg-slate-800/50 border-slate-700 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-slate-400 text-sm">Total Predictions</p>
-                  <p className="text-2xl font-bold text-white">{stats.totalPredictions}</p>
-                </div>
-                <Target className="w-8 h-8 text-emerald-400" />
-              </div>
-            </Card>
-            <Card className="bg-slate-800/50 border-slate-700 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-slate-400 text-sm">Win Rate</p>
-                  <p className="text-2xl font-bold text-emerald-400">{stats.winRate}%</p>
-                </div>
-                <TrendingUp className="w-8 h-8 text-emerald-400" />
-              </div>
-            </Card>
-            <Card className="bg-slate-800/50 border-slate-700 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-slate-400 text-sm">Total Profit</p>
-                  <p className="text-2xl font-bold text-emerald-400">KES {stats.totalProfit.toLocaleString()}</p>
-                </div>
-                <Star className="w-8 h-8 text-yellow-400" />
-              </div>
-            </Card>
-            <Card className="bg-slate-800/50 border-slate-700 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-slate-400 text-sm">Avg Odds</p>
-                  <p className="text-2xl font-bold text-white">{stats.avgOdds}</p>
-                </div>
-                <Clock className="w-8 h-8 text-blue-400" />
-              </div>
-            </Card>
-          </div>
+    <div className="max-w-7xl mx-auto px-4 py-8">
+      {/* Header */}
+      <div className="flex items-center space-x-4 mb-8">
+        <Link href="/dashboard">
+          <Button variant="ghost" size="sm">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Dashboard
+          </Button>
+        </Link>
+        <div className="flex-1">
+          <h1 className="text-2xl font-bold text-white">All Predictions</h1>
+          <p className="text-slate-400">Track all your prediction history and performance</p>
         </div>
+      </div>
 
-        {/* Filters */}
-        <Tabs value={filter} onValueChange={setFilter} className="mb-6">
-          <TabsList className="bg-slate-800 border-slate-700">
-            <TabsTrigger value="all" className="data-[state=active]:bg-emerald-600">
-              All Predictions
-            </TabsTrigger>
-            <TabsTrigger value="won" className="data-[state=active]:bg-emerald-600">
-              Won
-            </TabsTrigger>
-            <TabsTrigger value="pending" className="data-[state=active]:bg-emerald-600">
-              Pending
-            </TabsTrigger>
-            <TabsTrigger value="premium" className="data-[state=active]:bg-emerald-600">
-              Premium
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-
-        {/* Predictions List */}
-        <div className="space-y-4">
-          {filteredPredictions.map((prediction) => (
-            <Card
-              key={prediction.id}
-              className="bg-slate-800/50 border-slate-700 p-6 hover:bg-slate-800/70 transition-all duration-300"
-            >
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-2">
-                    <h3 className="text-lg font-semibold text-white">{prediction.match}</h3>
-                    {prediction.isPremium && (
-                      <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
-                        <Star className="w-3 h-3 mr-1" />
-                        Premium
-                      </Badge>
-                    )}
-                    <Badge
-                      className={`${
-                        prediction.status === "won"
-                          ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                          : prediction.status === "pending"
-                            ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
-                            : "bg-red-500/20 text-red-400 border-red-500/30"
-                      }`}
-                    >
-                      {prediction.status.toUpperCase()}
-                    </Badge>
-                  </div>
-                  <p className="text-slate-400 text-sm mb-1">
-                    {prediction.league} • {prediction.date} at {prediction.time}
-                  </p>
-                  <p className="text-emerald-400 font-medium mb-2">{prediction.prediction}</p>
-                  <p className="text-slate-300 text-sm">{prediction.analysis}</p>
-                </div>
-
-                <div className="flex flex-col md:flex-row items-start md:items-center space-y-3 md:space-y-0 md:space-x-6 mt-4 md:mt-0">
-                  <div className="text-center">
-                    <p className="text-slate-400 text-xs">Confidence</p>
-                    <p className="text-lg font-bold text-emerald-400">{prediction.confidence}%</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-slate-400 text-xs">Odds</p>
-                    <p className="text-lg font-bold text-white">{prediction.odds}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-slate-400 text-xs">Profit/Loss</p>
-                    <p
-                      className={`text-lg font-bold ${prediction.profit > 0 ? "text-emerald-400" : prediction.profit < 0 ? "text-red-400" : "text-slate-400"}`}
-                    >
-                      {prediction.profit > 0 ? "+" : ""}KES {prediction.profit.toLocaleString()}
-                    </p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="border-emerald-500 text-emerald-400 hover:bg-emerald-500/10"
-                  >
-                    <Eye className="w-4 h-4 mr-2" />
-                    Details
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-
-        {/* Upgrade Prompt for Premium Features */}
-        <Card className="bg-gradient-to-r from-emerald-600/20 to-cyan-600/20 border-emerald-500/30 p-6 mt-8">
-          <div className="flex flex-col md:flex-row items-center justify-between">
-            <div className="flex items-center space-x-4 mb-4 md:mb-0">
-              <div className="w-12 h-12 bg-emerald-500/20 rounded-full flex items-center justify-center">
-                <Lock className="w-6 h-6 text-emerald-400" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-white">Unlock Premium Predictions</h3>
-                <p className="text-slate-300">
-                  Get access to our highest confidence predictions with detailed analysis
-                </p>
-              </div>
+      {/* Statistics Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
+        <Card className="bg-slate-800/50 border-slate-700 p-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-white">{stats.total}</div>
+            <div className="text-sm text-slate-400">Total</div>
+          </div>
+        </Card>
+        <Card className="bg-emerald-500/20 border-emerald-500/30 p-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-emerald-400">{stats.won}</div>
+            <div className="text-sm text-emerald-300">Won</div>
+          </div>
+        </Card>
+        <Card className="bg-red-500/20 border-red-500/30 p-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-red-400">{stats.lost}</div>
+            <div className="text-sm text-red-300">Lost</div>
+          </div>
+        </Card>
+        <Card className="bg-yellow-500/20 border-yellow-500/30 p-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-yellow-400">{stats.pending}</div>
+            <div className="text-sm text-yellow-300">Pending</div>
+          </div>
+        </Card>
+        <Card className="bg-blue-500/20 border-blue-500/30 p-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-blue-400">{stats.upcoming}</div>
+            <div className="text-sm text-blue-300">Upcoming</div>
+          </div>
+        </Card>
+        <Card className="bg-purple-500/20 border-purple-500/30 p-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-purple-400">
+              ${stats.totalProfit > 0 ? '+' : ''}{stats.totalProfit.toFixed(2)}
             </div>
-            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">Upgrade to Premium</Button>
+            <div className="text-sm text-purple-300">Total Profit</div>
           </div>
         </Card>
       </div>
+
+      {/* Filters */}
+      <Card className="bg-slate-800/50 border-slate-700 p-6 mb-8">
+        <div className="flex items-center space-x-2 mb-4">
+          <Filter className="w-5 h-5 text-slate-400" />
+          <h2 className="text-lg font-semibold text-white">Filters</h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+            <Input
+              placeholder="Search teams, leagues..."
+              value={filters.search}
+              onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+              className="pl-10 bg-slate-700/50 border-slate-600 text-white"
+            />
+          </div>
+          <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
+            <SelectTrigger className="bg-slate-700/50 border-slate-600 text-white">
+              <SelectValue placeholder="All Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="won">Won</SelectItem>
+              <SelectItem value="lost">Lost</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="upcoming">Upcoming</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
+            type="date"
+            placeholder="From Date"
+            value={filters.dateFrom}
+            onChange={(e) => setFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
+            className="bg-slate-700/50 border-slate-600 text-white"
+          />
+          <Input
+            type="date"
+            placeholder="To Date"
+            value={filters.dateTo}
+            onChange={(e) => setFilters(prev => ({ ...prev, dateTo: e.target.value }))}
+            className="bg-slate-700/50 border-slate-600 text-white"
+          />
+          <Select value={filters.limit.toString()} onValueChange={(value) => setFilters(prev => ({ ...prev, limit: parseInt(value) }))}>
+            <SelectTrigger className="bg-slate-700/50 border-slate-600 text-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="20">20 items</SelectItem>
+              <SelectItem value="50">50 items</SelectItem>
+              <SelectItem value="100">100 items</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </Card>
+
+      {/* Timeline */}
+      <Card className="bg-slate-800/50 border-slate-700 p-6">
+        <div className="relative">
+          {/* Timeline line */}
+          <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-slate-600"></div>
+          
+          <div className="space-y-6">
+            {statusFilteredData.length === 0 && (
+              <div className="text-center text-slate-400 py-8">
+                No predictions found for the selected filters.
+              </div>
+            )}
+            
+            {statusFilteredData.map((item, index) => {
+              const status = getStatusConfig(item.timelineStatus)
+              const StatusIcon = status.icon
+              
+              return (
+                <div
+                  key={item.id}
+                  className="relative flex items-start space-x-4 group"
+                  onMouseEnter={() => setHoveredItem(item.id)}
+                  onMouseLeave={() => setHoveredItem(null)}
+                >
+                  {/* Timeline dot */}
+                  <div className={`relative z-10 w-3 h-3 rounded-full border-2 border-slate-600 bg-slate-800 ${
+                    hoveredItem === item.id ? 'scale-125' : ''
+                  } transition-transform duration-200`}>
+                    <div className={`absolute inset-0 rounded-full ${status.bgColor} ${
+                      hoveredItem === item.id ? 'animate-pulse' : ''
+                    }`}></div>
+                  </div>
+
+                  {/* Content card */}
+                  <div className={`flex-1 bg-slate-900/50 rounded-lg p-4 border transition-all duration-300 ${
+                    hoveredItem === item.id 
+                      ? 'bg-slate-900/70 border-slate-600 scale-[1.02]' 
+                      : 'border-slate-700'
+                  }`}>
+                    {/* Header */}
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <h3 className="text-white font-medium">
+                            {item.match.homeTeam.name} vs {item.match.awayTeam.name}
+                          </h3>
+                          {item.match.homeScore !== undefined && item.match.awayScore !== undefined && (
+                            <Badge variant="outline" className="text-xs">
+                              {item.match.homeScore} - {item.match.awayScore}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center space-x-4 text-slate-400 text-sm">
+                          <span>{item.match.league.name}</span>
+                          <span>•</span>
+                          <span>{formatDate(item.match.matchDate)}</span>
+                          <span>•</span>
+                          <span>{formatMatchTime(item.match.matchDate)}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <StatusIcon className={`w-5 h-5 ${status.color}`} />
+                        <Badge className={`${status.bgColor} ${status.color} ${status.borderColor}`}>
+                          {status.emoji} {status.label}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {/* Prediction details */}
+                    <div className="bg-slate-800/30 rounded-lg p-3 mb-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-emerald-400 font-medium text-sm">Prediction</span>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-slate-300 text-sm">@{item.prediction.odds}</span>
+                          <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+                            {item.prediction.confidence}%
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="text-white font-semibold">
+                        {item.prediction.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                      </div>
+                      {item.prediction.valueRating && (
+                        <div className="text-slate-400 text-sm mt-1">
+                          Value Rating: {item.prediction.valueRating}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* User prediction details */}
+                    {item.userPrediction && (
+                      <div className="bg-blue-500/10 rounded-lg p-3 mb-3 border border-blue-500/20">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <DollarSign className="w-4 h-4 text-blue-400" />
+                            <span className="text-blue-400 font-medium text-sm">Your Bet</span>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-white font-medium">
+                              ${item.userPrediction.amount}
+                            </div>
+                            {item.userPrediction.profit !== undefined && (
+                              <div className={`text-sm font-medium ${
+                                item.userPrediction.profit > 0 
+                                  ? 'text-emerald-400' 
+                                  : item.userPrediction.profit < 0 
+                                    ? 'text-red-400' 
+                                    : 'text-slate-400'
+                              }`}>
+                                {item.userPrediction.profit > 0 ? '+' : ''}${item.userPrediction.profit}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        {item.prediction.isFree && (
+                          <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
+                            Free
+                          </Badge>
+                        )}
+                        {item.prediction.explanation && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-slate-400 hover:text-white p-1"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                        )}
+                        <Link href={`/dashboard/matches?matchId=${item.match.id}`}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-slate-400 hover:text-white p-1"
+                            title="View match details"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </Button>
+                        </Link>
+                      </div>
+                      
+                      {item.timelineStatus === 'won' && (
+                        <div className="flex items-center space-x-1 text-emerald-400">
+                          <Trophy className="w-4 h-4" />
+                          <span className="text-sm font-medium">Winner!</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </Card>
     </div>
   )
 }

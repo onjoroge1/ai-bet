@@ -1,70 +1,119 @@
-import { Redis } from '@upstash/redis'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from "next/server"
 
-let redis: Redis | null = null
-
-try {
-  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
-    redis = new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
-    })
-  }
-} catch (error) {
-  console.error('Failed to initialize Redis client:', error)
+interface RateLimitConfig {
+  windowMs: number // Time window in milliseconds
+  maxRequests: number // Maximum requests per window
+  keyGenerator?: (req: NextRequest) => string // Custom key generator
 }
 
-const RATE_LIMIT_WINDOW = 60 * 60 // 1 hour in seconds
-const MAX_ATTEMPTS = 5 // Maximum number of attempts within the window
-
-export async function rateLimit(identifier: string): Promise<{ success: boolean; remaining: number }> {
-  if (!redis) {
-    // If Redis is not configured, allow all requests
-    return { success: true, remaining: MAX_ATTEMPTS }
+interface RateLimitStore {
+  [key: string]: {
+    count: number
+    resetTime: number
   }
+}
 
-  try {
-    const key = `rate-limit:${identifier}`
-    const attempts = await redis.incr(key)
+// In-memory store (consider Redis for production)
+const store: RateLimitStore = {}
+
+// Helper function to get IP address from request
+function getClientIP(req: NextRequest): string {
+  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+         req.headers.get('x-real-ip') ||
+         req.headers.get('cf-connecting-ip') ||
+         'unknown'
+}
+
+export function createRateLimiter(config: RateLimitConfig) {
+  return async function rateLimit(req: NextRequest) {
+    const key = config.keyGenerator 
+      ? config.keyGenerator(req) 
+      : getClientIP(req)
     
-    if (attempts === 1) {
-      await redis.expire(key, RATE_LIMIT_WINDOW)
+    const now = Date.now()
+    const windowStart = now - config.windowMs
+    
+    // Clean up expired entries
+    Object.keys(store).forEach(k => {
+      if (store[k].resetTime < now) {
+        delete store[k]
+      }
+    })
+    
+    // Get or create rate limit entry
+    if (!store[key]) {
+      store[key] = {
+        count: 0,
+        resetTime: now + config.windowMs
+      }
     }
     
-    const remaining = Math.max(0, MAX_ATTEMPTS - attempts)
-    const success = attempts <= MAX_ATTEMPTS
+    // Check if window has reset
+    if (store[key].resetTime < now) {
+      store[key] = {
+        count: 0,
+        resetTime: now + config.windowMs
+      }
+    }
     
-    return { success, remaining }
-  } catch (error) {
-    console.error('Rate limit error:', error)
-    // If Redis operations fail, allow the request
-    return { success: true, remaining: MAX_ATTEMPTS }
+    // Increment count
+    store[key].count++
+    
+    // Check if limit exceeded
+    if (store[key].count > config.maxRequests) {
+      const retryAfter = Math.ceil((store[key].resetTime - now) / 1000)
+      
+      return NextResponse.json(
+        { 
+          error: "Rate limit exceeded",
+          retryAfter,
+          limit: config.maxRequests,
+          windowMs: config.windowMs
+        },
+        { 
+          status: 429,
+          headers: {
+            'Retry-After': retryAfter.toString(),
+            'X-RateLimit-Limit': config.maxRequests.toString(),
+            'X-RateLimit-Remaining': '0',
+            'X-RateLimit-Reset': store[key].resetTime.toString()
+          }
+        }
+      )
+    }
+    
+    // Add rate limit headers
+    const response = NextResponse.next()
+    response.headers.set('X-RateLimit-Limit', config.maxRequests.toString())
+    response.headers.set('X-RateLimit-Remaining', (config.maxRequests - store[key].count).toString())
+    response.headers.set('X-RateLimit-Reset', store[key].resetTime.toString())
+    
+    return response
   }
 }
 
-export async function resetRateLimit(identifier: string): Promise<void> {
-  if (!redis) return
-
-  try {
-    const key = `rate-limit:${identifier}`
-    await redis.del(key)
-  } catch (error) {
-    console.error('Reset rate limit error:', error)
-  }
-}
-
-export async function withRateLimit(
-  identifier: string,
-  handler: () => Promise<NextResponse>
-): Promise<NextResponse> {
-  const { success, remaining } = await rateLimit(identifier)
+// Predefined rate limiters
+export const rateLimiters = {
+  // Quiz API - 10 requests per minute
+  quiz: createRateLimiter({
+    windowMs: 60 * 1000, // 1 minute
+    maxRequests: 10,
+    keyGenerator: (req) => {
+      // Use user ID if available, otherwise IP
+      const userId = req.headers.get('x-user-id')
+      return userId || getClientIP(req)
+    }
+  }),
   
-  if (!success) {
-    return NextResponse.json(
-      { error: 'Too many attempts. Please try again later.' },
-      { status: 429, headers: { 'X-RateLimit-Remaining': remaining.toString() } }
-    )
-  }
+  // General API - 100 requests per minute
+  general: createRateLimiter({
+    windowMs: 60 * 1000, // 1 minute
+    maxRequests: 100
+  }),
   
-  return handler()
+  // Auth endpoints - 5 requests per minute
+  auth: createRateLimiter({
+    windowMs: 60 * 1000, // 1 minute
+    maxRequests: 5
+  })
 } 

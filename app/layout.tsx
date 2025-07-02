@@ -21,12 +21,54 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: "AI Sports Tipster",
-  description: "AI-powered sports predictions and betting tips",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "black-translucent",
-    title: "AI Tipster",
+  title: "SnapBet",
+  description: "AI-powered sports betting predictions and tips",
+  keywords: ["sports betting", "predictions", "AI", "tips", "football", "basketball", "tennis"],
+  authors: [{ name: "SnapBet Team" }],
+  creator: "SnapBet",
+  publisher: "SnapBet",
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
+  metadataBase: new URL(process.env.NEXTAUTH_URL || "http://localhost:3000"),
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: "SnapBet - AI-Powered Sports Predictions",
+    description: "Get accurate sports betting predictions powered by artificial intelligence. Join thousands of users winning with our AI tips.",
+    url: "/",
+    siteName: "SnapBet",
+    images: [
+      {
+        url: "/og-image.jpg",
+        width: 1200,
+        height: 630,
+        alt: "SnapBet - AI-Powered Sports Predictions",
+      },
+    ],
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "SnapBet - AI-Powered Sports Predictions",
+    description: "Get accurate sports betting predictions powered by artificial intelligence. Join thousands of users winning with our AI tips.",
+    images: ["/og-image.jpg"],
+    creator: "@snapbet",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
   },
 }
 

@@ -32,6 +32,8 @@ import {
   StarIcon,
   BarChartBig,
   Loader2,
+  Database,
+  TrendingUp,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
@@ -202,6 +204,28 @@ const deletePrediction = async (id: string) => {
   return response.json()
 }
 
+// Enrichment function
+const enrichFromQuickPurchases = async (limit: number = 50) => {
+  const response = await fetch('/api/admin/predictions/enrich-from-quickpurchases', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ limit }),
+  })
+  if (!response.ok) {
+    throw new Error('Failed to enrich predictions from QuickPurchase data')
+  }
+  return response.json()
+}
+
+// Get enrichment statistics
+const getEnrichmentStats = async () => {
+  const response = await fetch('/api/admin/predictions/enrich-from-quickpurchases')
+  if (!response.ok) {
+    throw new Error('Failed to get enrichment statistics')
+  }
+  return response.json()
+}
+
 // Add a helper function for datetime handling
 const formatDateTimeForInput = (date: Date | string): string => {
   const d = new Date(date)
@@ -222,6 +246,13 @@ export function AdminPredictionManagement() {
   const { data: predictions = [], isLoading, error } = useQuery({
     queryKey: ['predictions'],
     queryFn: fetchPredictions,
+  })
+
+  // Fetch enrichment statistics
+  const { data: enrichmentStats, isLoading: statsLoading } = useQuery({
+    queryKey: ['enrichment-stats'],
+    queryFn: getEnrichmentStats,
+    staleTime: 5 * 60 * 1000, // 5 minutes
   })
 
   // Mutations
@@ -254,6 +285,18 @@ export function AdminPredictionManagement() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['predictions'] })
       toast.success('Prediction deleted successfully')
+    },
+    onError: (error) => {
+      toast.error(error.message)
+    },
+  })
+
+  const enrichMutation = useMutation({
+    mutationFn: enrichFromQuickPurchases,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['predictions'] })
+      queryClient.invalidateQueries({ queryKey: ['enrichment-stats'] })
+      toast.success(`Enrichment completed! ${data.enriched} predictions created, ${data.skipped} skipped.`)
     },
     onError: (error) => {
       toast.error(error.message)
@@ -922,10 +965,42 @@ export function AdminPredictionManagement() {
           <BarChartBig className="w-6 h-6 mr-3 text-emerald-500" />
           Prediction Management
         </CardTitle>
-        <Button onClick={handleAddNew} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-          <PlusCircle className="w-4 h-4 mr-2" />
-          Add New Prediction
-        </Button>
+        <div className="flex items-center space-x-3">
+          {/* Enrichment Statistics */}
+          {enrichmentStats && (
+            <div className="hidden md:flex items-center space-x-4 text-sm text-slate-300">
+              <div className="flex items-center space-x-1">
+                <Database className="w-4 h-4 text-blue-400" />
+                <span>{enrichmentStats.stats?.quickPurchasesWithConfidence60Plus || 0} ≥60%</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <TrendingUp className="w-4 h-4 text-emerald-400" />
+                <span>{enrichmentStats.stats?.totalPredictions || 0} Predictions</span>
+              </div>
+            </div>
+          )}
+          
+          {/* Enrich Button */}
+          <Button 
+            onClick={() => enrichMutation.mutate(50)}
+            disabled={enrichMutation.isPending}
+            variant="outline"
+            className="border-blue-600 text-blue-400 hover:bg-blue-600/20"
+          >
+            {enrichMutation.isPending ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Database className="w-4 h-4 mr-2" />
+            )}
+            Enrich from QuickPurchase
+          </Button>
+          
+          {/* Add New Button */}
+          <Button onClick={handleAddNew} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+            <PlusCircle className="w-4 h-4 mr-2" />
+            Add New Prediction
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <Tabs value={currentTab} onValueChange={(value) => setCurrentTab(value as any)} className="mb-4">

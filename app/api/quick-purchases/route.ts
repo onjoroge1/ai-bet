@@ -4,6 +4,8 @@ import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/db"
 import { Decimal } from "@prisma/client/runtime/library"
 import { PrismaClient } from "@prisma/client"
+import { logger } from '@/lib/logger'
+import { getCountryPricing, getQuickPurchasePricing, getDbCountryPricing } from '@/lib/pricing-service'
 
 const prismaClient = new PrismaClient()
 
@@ -43,42 +45,9 @@ interface QuickPurchaseWithRelations {
   }
 }
 
-// Helper function to get country-specific pricing from environment variables
-function getCountryPricing(countryCode: string): Record<string, number> {
-  const pricingMap: Record<string, Record<string, number>> = {
-    USD: {
-      USD_PREDICTION_PRICE: 9.99,
-      USD_TIP_PRICE: 4.99,
-      USD_PACKAGE_PRICE: 19.99
-    },
-    EUR: {
-      EUR_PREDICTION_PRICE: 8.99,
-      EUR_TIP_PRICE: 4.49,
-      EUR_PACKAGE_PRICE: 17.99
-    },
-    GBP: {
-      GBP_PREDICTION_PRICE: 7.99,
-      GBP_TIP_PRICE: 3.99,
-      GBP_PACKAGE_PRICE: 15.99
-    },
-    KES: {
-      KES_PREDICTION_PRICE: 1499,
-      KES_TIP_PRICE: 749,
-      KES_PACKAGE_PRICE: 2999
-    },
-    NGN: {
-      NGN_PREDICTION_PRICE: 7999,
-      NGN_TIP_PRICE: 3999,
-      NGN_PACKAGE_PRICE: 15999
-    },
-    GHS: {
-      GHS_PREDICTION_PRICE: 119.99,
-      GHS_TIP_PRICE: 59.99,
-      GHS_PACKAGE_PRICE: 239.99
-    }
-  }
-  
-  return pricingMap[countryCode] || pricingMap.USD
+// Helper function to get country-specific pricing from the database
+async function getCountryPricingFromDb(countryCode: string) {
+  return await getDbCountryPricing(countryCode, 'prediction')
 }
 
 // OPTIMIZATION: Remove null/undefined values
@@ -213,7 +182,7 @@ function normalizeStructure(items: any[], userCountry: any) {
     }
 
     // Create simplified item with user's country pricing
-    const countryPricing = getCountryPricing(userCountry.code)
+    const countryPricing = getCountryPricingFromEnv(userCountry.code)
     
     normalizedItems.push({
       id: item.id,
@@ -283,61 +252,55 @@ export async function GET(request: Request) {
       }
     })
 
-    // Transform and apply country-specific pricing
-    const transformedPurchases: QuickPurchaseWithRelations[] = quickPurchases.map((purchase) => {
-      const countryPricing = getCountryPricing(userCountry.code)
-      
-      // Apply country-specific pricing if available
-      let finalPrice = Number(purchase.price)
-      let finalOriginalPrice = Number(purchase.originalPrice)
-      
-      if (purchase.type === "prediction" && countryPricing[`${userCountry.code}_PREDICTION_PRICE`]) {
-        finalPrice = countryPricing[`${userCountry.code}_PREDICTION_PRICE`]
-        finalOriginalPrice = countryPricing[`${userCountry.code}_PREDICTION_PRICE`]
-      } else if (purchase.type === "tip" && countryPricing[`${userCountry.code}_TIP_PRICE`]) {
-        finalPrice = countryPricing[`${userCountry.code}_TIP_PRICE`]
-        finalOriginalPrice = countryPricing[`${userCountry.code}_TIP_PRICE`]
-      } else if (purchase.type === "package" && countryPricing[`${userCountry.code}_PACKAGE_PRICE`]) {
-        finalPrice = countryPricing[`${userCountry.code}_PACKAGE_PRICE`]
-        finalOriginalPrice = countryPricing[`${userCountry.code}_PACKAGE_PRICE`]
-      }
-
-      return {
-        id: purchase.id,
-        name: purchase.name,
-        price: finalPrice,
-        originalPrice: finalOriginalPrice,
-        description: purchase.description,
-        features: purchase.features,
-        type: purchase.type,
-        iconName: purchase.iconName,
-        colorGradientFrom: purchase.colorGradientFrom,
-        colorGradientTo: purchase.colorGradientTo,
-        isUrgent: purchase.isUrgent,
-        timeLeft: purchase.timeLeft,
-        isPopular: purchase.isPopular,
-        discountPercentage: purchase.discountPercentage,
-        isActive: purchase.isActive,
-        displayOrder: purchase.displayOrder,
-        targetLink: purchase.targetLink,
-        countryId: purchase.countryId,
-        createdAt: purchase.createdAt,
-        updatedAt: purchase.updatedAt,
-        matchId: purchase.matchId,
-        matchData: purchase.matchData as Record<string, unknown> | null,
-        predictionData: purchase.predictionData as Record<string, unknown> | null,
-        predictionType: purchase.predictionType,
-        confidenceScore: purchase.confidenceScore,
-        odds: purchase.odds ? Number(purchase.odds) : null,
-        valueRating: purchase.valueRating,
-        analysisSummary: purchase.analysisSummary,
-        isPredictionActive: purchase.isPredictionActive,
-        country: {
-          currencyCode: userCountry.currencyCode || 'USD',
-          currencySymbol: userCountry.currencySymbol || '$'
+    // Transform and apply country-specific pricing (async)
+    const transformedPurchases: QuickPurchaseWithRelations[] = await Promise.all(
+      quickPurchases.map(async (purchase) => {
+        const countryPricing = await getCountryPricingFromDb(userCountry.code)
+        // Apply country-specific pricing if available
+        let finalPrice = Number(purchase.price)
+        let finalOriginalPrice = Number(purchase.originalPrice)
+        if (purchase.type === "prediction" && countryPricing.price) {
+          finalPrice = countryPricing.price
+          finalOriginalPrice = countryPricing.originalPrice
         }
-      }
-    })
+        // For other types (tip, package), fallback to purchase.price
+        return {
+          id: purchase.id,
+          name: purchase.name,
+          price: finalPrice,
+          originalPrice: finalOriginalPrice,
+          description: purchase.description,
+          features: purchase.features,
+          type: purchase.type,
+          iconName: purchase.iconName,
+          colorGradientFrom: purchase.colorGradientFrom,
+          colorGradientTo: purchase.colorGradientTo,
+          isUrgent: purchase.isUrgent,
+          timeLeft: purchase.timeLeft,
+          isPopular: purchase.isPopular,
+          discountPercentage: purchase.discountPercentage,
+          isActive: purchase.isActive,
+          displayOrder: purchase.displayOrder,
+          targetLink: purchase.targetLink,
+          countryId: purchase.countryId,
+          createdAt: purchase.createdAt,
+          updatedAt: purchase.updatedAt,
+          matchId: purchase.matchId,
+          matchData: purchase.matchData as Record<string, unknown> | null,
+          predictionData: purchase.predictionData as Record<string, unknown> | null,
+          predictionType: purchase.predictionType,
+          confidenceScore: purchase.confidenceScore,
+          odds: purchase.odds ? Number(purchase.odds) : null,
+          valueRating: purchase.valueRating,
+          analysisSummary: purchase.analysisSummary,
+          isPredictionActive: purchase.isPredictionActive,
+          country: {
+            currencyCode: userCountry.currencyCode || 'USD',
+            currencySymbol: userCountry.currencySymbol || '$'
+          }
+        }
+      })
+    )
 
     return NextResponse.json(transformedPurchases)
   } catch (error) {

@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Clock, Lock, Eye, Target, Brain, ChevronRight, Filter, Loader2 } from "lucide-react"
+import { Clock, Lock, Eye, Target, Brain, ChevronRight, Filter, Loader2, TrendingUp } from "lucide-react"
 import Link from "next/link"
 
 // Type for the prediction data
@@ -44,9 +44,9 @@ type Prediction = {
   updatedAt: string
 }
 
-// Function to fetch predictions
+// Function to fetch predictions - now public endpoint for homepage
 const fetchPredictions = async (): Promise<Prediction[]> => {
-  const response = await fetch('/api/predictions')
+  const response = await fetch('/api/homepage/predictions')
   if (!response.ok) {
     throw new Error('Failed to fetch predictions')
   }
@@ -101,20 +101,19 @@ const fetchPredictions = async (): Promise<Prediction[]> => {
 
 export function ResponsivePredictions() {
   const [selectedFilter, setSelectedFilter] = useState("all")
-  const [viewMode, setViewMode] = useState<"grid" | "list">("list")
 
   const { data: predictions = [], isLoading, error } = useQuery({
-    queryKey: ['predictions'],
+    queryKey: ['homepage-predictions'],
     queryFn: fetchPredictions,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: false,
   })
 
-  // Filter predictions based on selected filter
+  // Only apply the user-selected filter (all, free, high value)
   const filteredPredictions = predictions.filter(p => {
     switch (selectedFilter) {
       case "free":
         return p.isFree
-      case "live":
-        return p.status === "live"
       case "high":
         return p.valueRating === "High" || p.valueRating === "Very High"
       default:
@@ -122,18 +121,16 @@ export function ResponsivePredictions() {
     }
   })
 
-  // Calculate filter counts
+  // Calculate filter counts for the filtered predictions
   const filterCounts = {
     all: predictions.length,
     free: predictions.filter(p => p.isFree).length,
-    live: predictions.filter(p => p.status === "live").length,
     high: predictions.filter(p => p.valueRating === "High" || p.valueRating === "Very High").length,
   }
 
   const filters = [
     { id: "all", label: "All", count: filterCounts.all },
     { id: "free", label: "Free", count: filterCounts.free },
-    { id: "live", label: "Live", count: filterCounts.live },
     { id: "high", label: "High Value", count: filterCounts.high },
   ]
 
@@ -180,18 +177,15 @@ export function ResponsivePredictions() {
               Today's AI Predictions
             </h2>
             <p className="text-slate-300 text-sm md:text-lg">
-              Data-driven insights from our advanced machine learning algorithms
+              High-probability upcoming matches with AI-powered analysis
             </p>
           </div>
 
           {/* Desktop View Toggle */}
           <div className="hidden md:flex items-center space-x-2">
             <Button variant="ghost" size="sm" className="text-slate-400">
-              <Filter className="w-4 h-4 mr-2" />
-              Filter
-            </Button>
-            <Button variant="ghost" size="sm" className="text-slate-400">
-              <Eye className="w-4 h-4" />
+              <TrendingUp className="w-4 h-4 mr-2" />
+              Top 5 Picks
             </Button>
           </div>
         </div>
@@ -326,42 +320,27 @@ export function ResponsivePredictions() {
                   </div>
                 </div>
 
-                {/* Result Badge for Finished Matches */}
-                {prediction.status === 'finished' && prediction.result && (
-                  <div className="flex justify-end">
-                    <Badge
-                      className={`text-xs ${
-                        prediction.result === 'won'
-                          ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                          : prediction.result === 'lost'
-                          ? 'bg-red-500/20 text-red-400 border-red-500/30'
-                          : 'bg-slate-500/20 text-slate-400 border-slate-500/30'
-                      }`}
-                    >
-                      {prediction.result.toUpperCase()}
-                    </Badge>
-                  </div>
-                )}
-
-                {/* Action Button */}
-                <Button
-                  className={`w-full ${
-                    prediction.isFree ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-600 hover:bg-amber-700"
-                  } text-white`}
-                >
-                  {prediction.isFree ? (
-                    <>
-                      <Eye className="w-4 h-4 mr-2" />
-                      View Analysis
-                    </>
-                  ) : (
-                    <>
-                      <Lock className="w-4 h-4 mr-2" />
-                      Unlock VIP Analysis
-                    </>
-                  )}
-                  <ChevronRight className="w-4 h-4 ml-auto md:hidden" />
-                </Button>
+                {/* Action Button - Now leads to dashboard/matches */}
+                <Link href="/dashboard/matches">
+                  <Button
+                    className={`w-full ${
+                      prediction.isFree ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-600 hover:bg-amber-700"
+                    } text-white`}
+                  >
+                    {prediction.isFree ? (
+                      <>
+                        <Eye className="w-4 h-4 mr-2" />
+                        View Analysis
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="w-4 h-4 mr-2" />
+                        Unlock VIP Analysis
+                      </>
+                    )}
+                    <ChevronRight className="w-4 h-4 ml-auto md:hidden" />
+                  </Button>
+                </Link>
               </div>
             </Card>
           ))}
@@ -369,7 +348,7 @@ export function ResponsivePredictions() {
 
         {/* Load More - Responsive */}
         <div className="text-center mt-8 md:mt-12">
-          <Link href="/daily-tips">
+          <Link href="/dashboard/matches">
             <Button
               size="lg"
               variant="outline"

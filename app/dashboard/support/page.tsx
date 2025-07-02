@@ -130,7 +130,7 @@ export default function SupportPage() {
                 <p className="text-slate-300 text-sm">Send us a message</p>
               </div>
             </div>
-            <p className="text-slate-300 text-sm mb-4">support@aitipster.com</p>
+            <p className="text-slate-300 text-sm mb-4">support@snapbet.com</p>
             <Button variant="outline" className="w-full border-purple-500 text-purple-400 hover:bg-purple-500/10">
               Send Email
             </Button>

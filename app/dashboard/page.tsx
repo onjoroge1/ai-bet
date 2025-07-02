@@ -4,13 +4,10 @@ import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import dynamic from 'next/dynamic'
 import { Suspense } from 'react'
 import { Loader2 } from 'lucide-react'
+import { TestNotificationButton } from '@/components/test-notification-button'
 
 // Dynamically import heavy components
 const StatsOverview = dynamic(() => import('@/components/dashboard/stats-overview').then(mod => mod.StatsOverview), {
-  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
-})
-
-const AIToolsResources = dynamic(() => import('@/components/dashboard/ai-tools-resources').then(mod => mod.AIToolsResources), {
   loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
 })
 
@@ -26,7 +23,7 @@ const QuizCredits = dynamic(() => import('@/components/dashboard/quiz-credits').
   loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
 })
 
-const RecentPredictions = dynamic(() => import('@/components/dashboard/recent-predictions').then(mod => mod.RecentPredictions), {
+const TimelineFeed = dynamic(() => import('@/components/dashboard/timeline-feed').then(mod => mod.TimelineFeed), {
   loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
 })
 
@@ -39,10 +36,6 @@ const MyTipsWidget = dynamic(() => import('@/components/dashboard/my-tips-widget
 })
 
 const UpgradeOffers = dynamic(() => import('@/components/upgrade-offers').then(mod => mod.UpgradeOffers), {
-  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
-})
-
-const MyTipsOverview = dynamic(() => import('@/components/my-tips-overview').then(mod => mod.MyTipsOverview), {
   loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
 })
 
@@ -67,16 +60,16 @@ export default function DashboardPage() {
     <div className="max-w-7xl mx-auto px-4 py-8">
       <DashboardHeader />
 
-      {/* Top Row: Stats, AI Tools, Package Credits */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
+      {/* Test Notification Button - Remove this after testing */}
+      <div className="mb-6">
+        <TestNotificationButton />
+      </div>
+
+      {/* Top Row: Stats and Package Credits */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         <div className="lg:col-span-2">
           <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
             <StatsOverview />
-          </Suspense>
-        </div>
-        <div>
-          <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
-            <AIToolsResources />
           </Suspense>
         </div>
         <div>
@@ -90,13 +83,6 @@ export default function DashboardPage() {
       <div className="mb-8">
         <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
           <UpgradeOffers />
-        </Suspense>
-      </div>
-
-      {/* My Tips Overview Section - Full Width */}
-      <div className="mb-8">
-        <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
-          <MyTipsOverview />
         </Suspense>
       </div>
 
@@ -126,10 +112,10 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Bottom Row: Recent Predictions, My Tips Widget */}
+      {/* Bottom Row: Timeline Feed, My Tips Widget */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
-          <RecentPredictions />
+          <TimelineFeed />
         </Suspense>
         <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
           <MyTipsWidget />

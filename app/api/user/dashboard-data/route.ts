@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/db"
+import { calculateCurrentWinStreak } from "@/lib/streak-calculator"
 
 // GET /api/user/dashboard-data
 export async function GET() {
@@ -24,7 +25,6 @@ export async function GET() {
         subscriptionExpiresAt: true,
         subscriptionPlan: true,
         totalWinnings: true,
-        winStreak: true,
         country: {
           select: {
             id: true,
@@ -54,6 +54,9 @@ export async function GET() {
     // Calculate monthly prediction success (last 30 days)
     const monthlySuccess = await calculateMonthlyPredictionSuccess(user.id)
     
+    // Calculate current win streak dynamically
+    const currentWinStreak = await calculateCurrentWinStreak(user.id)
+    
     // Format member since date
     const memberSince = formatMemberSince(user.createdAt)
     
@@ -73,7 +76,7 @@ export async function GET() {
         fullName: user.fullName,
         role: user.role,
         memberSince,
-        winStreak: user.winStreak,
+        winStreak: currentWinStreak,
         country: user.country
       },
       dashboard: {

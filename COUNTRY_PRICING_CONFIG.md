@@ -2,7 +2,7 @@
 
 ## Overview
 
-The AI Sports Tipster system now supports country-specific pricing through environment variables. This allows for localized pricing strategies that reflect the economic conditions and purchasing power of different regions.
+The SnapBet system now supports country-specific pricing through environment variables. This allows for localized pricing strategies that reflect the economic conditions and purchasing power of different regions.
 
 ## Environment Variable Structure
 

@@ -17,6 +17,20 @@ declare global {
 
 const prisma = globalThis.prismaGlobal ?? prismaClientSingleton()
 
+export async function checkDatabaseConnection() {
+  try {
+    await prisma.$queryRaw`SELECT 1`
+    return true
+  } catch (error) {
+    console.error('Database connection check failed:', error)
+    return false
+  }
+}
+
+process.on('beforeExit', async () => {
+  await prisma.$disconnect()
+})
+
 export default prisma
 
 if (process.env.NODE_ENV !== 'production') {

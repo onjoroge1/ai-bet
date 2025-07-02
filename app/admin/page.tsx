@@ -9,6 +9,7 @@ import { AdminQuickPurchaseManagement } from "@/components/admin-quick-purchase-
 import { AdminPersonalizedOffersManagement } from "@/components/admin-personalized-offers-management" // Import new
 import { AdminLeagueManagement } from "@/components/admin/league-management" // Import new
 import { PredictionQuickPurchaseManager } from "@/components/admin/prediction-quickpurchase-manager" // Import new
+import { PricingManagement } from "@/components/admin/pricing-management" // Import new
 
 export default function AdminPage() {
   return (
@@ -16,14 +17,14 @@ export default function AdminPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         <AdminHeader />
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <div className="lg:col-span-3">
-            <AdminStats />
-          </div>
-          <div>
-            <AdminSystemMonitoring />
-          </div>
-        </div>
+        {/* Platform Overview - Full Width */}
+        <AdminStats />
+
+        {/* System Monitoring - Full Width */}
+        <AdminSystemMonitoring />
+
+        {/* Pricing Management Section */}
+        <PricingManagement />
 
         {/* League Management Section */}
         <AdminLeagueManagement />

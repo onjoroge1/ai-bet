@@ -149,7 +149,7 @@ export const countryPricing: Record<string, CountryPricing> = {
     currency: "KES",
     currencySymbol: "KES",
     brandName: "Harambee Predictions",
-    tagline: "Kenya's Leading AI Sports Tipster",
+    tagline: "Kenya's Leading SnapBet",
     plans: {
       free: {
         name: "Free",
@@ -360,7 +360,7 @@ export const countryPricing: Record<string, CountryPricing> = {
     flag: "🇺🇸",
     currency: "USD",
     currencySymbol: "$",
-    brandName: "AI Sports Tipster",
+    brandName: "SnapBet",
     tagline: "America's Premier AI Betting Platform",
     plans: {
       free: {
@@ -413,7 +413,7 @@ export const countryPricing: Record<string, CountryPricing> = {
     flag: "🇮🇹",
     currency: "EUR",
     currencySymbol: "€",
-    brandName: "AI Sports Tipster Italia",
+    brandName: "SnapBet Italia",
     tagline: "La Piattaforma di Previsioni Sportive AI d'Italia",
     plans: {
       free: {

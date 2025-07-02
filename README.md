@@ -1,4 +1,4 @@
-# AI Sports Tipster 🏆
+# SnapBet 🏆
 
 A comprehensive sports betting prediction platform with AI-powered insights and a sophisticated payment system.
 
@@ -67,7 +67,7 @@ A comprehensive sports betting prediction platform with AI-powered insights and 
    Update `.env.local` with your configuration:
    ```env
    # Database
-   DATABASE_URL="postgresql://username:password@localhost:5432/ai_sports_tipster"
+   DATABASE_URL="postgresql://username:password@localhost:5432/snapbet"
    
    # NextAuth
    NEXTAUTH_URL="http://localhost:3000"
@@ -245,7 +245,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🆘 Support
 
-For support, email support@ai-sports-tipster.com or create an issue in this repository.
+For support, email support@snapbet.com or create an issue in this repository.
 
 ## 🔮 Roadmap
 

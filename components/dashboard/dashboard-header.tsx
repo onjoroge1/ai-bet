@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from "@/components/auth-provider"
 import { useDashboardData } from "@/hooks/use-dashboard-data"
 import { DashboardHeaderProps } from "@/types/dashboard"
+import { NotificationBell } from "@/components/notifications/NotificationBell"
 
 export function DashboardHeader() {
   const [showCelebration, setShowCelebration] = useState(false)
@@ -125,11 +126,7 @@ export function DashboardHeader() {
             <Target className="w-4 h-4 mr-2" />
             View All Matches
           </Button>
-          <Button variant="ghost" size="sm" className="text-slate-300 hover:text-white relative">
-            <Bell className="w-4 h-4" />
-            <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping" />
-            <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full" />
-          </Button>
+          <NotificationBell className="text-slate-300 hover:text-white" />
           <Button variant="ghost" size="sm" className="text-slate-300 hover:text-white">
             <Settings className="w-4 h-4" />
           </Button>

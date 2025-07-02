@@ -9,14 +9,14 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Brand */}
           <div className="space-y-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-lg flex items-center justify-center">
-                <TrendingUp className="w-5 h-5 text-slate-900" />
+            <div className="flex items-center space-x-2 mb-4">
+              <div className="w-10 h-10 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-lg flex items-center justify-center">
+                <TrendingUp className="w-6 h-6 text-slate-900" />
               </div>
-              <span className="text-xl font-bold text-white">AI Tipster</span>
+              <span className="text-xl font-bold text-white">SnapBet</span>
             </div>
-            <p className="text-slate-400 text-sm">
-              Global AI-powered sports betting predictions trusted by 50,000+ bettors worldwide.
+            <p className="text-slate-400 mb-6 max-w-md">
+              Your trusted partner for AI-powered sports predictions. Join thousands of users who are already winning with our advanced analytics and machine learning insights.
             </p>
             <div className="flex space-x-3">
               <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">
@@ -131,7 +131,7 @@ export function Footer() {
         <div className="border-t border-slate-800 mt-8 pt-8">
           <div className="flex flex-col md:flex-row justify-between items-center">
             <div className="text-slate-400 text-sm mb-4 md:mb-0">
-              © 2024 AI Tipster. All rights reserved. Licensed and regulated.
+              © 2024 SnapBet. All rights reserved. Licensed and regulated.
             </div>
             <div className="flex items-center space-x-4 text-slate-400 text-sm">
               <span>🔒 SSL Secured</span>

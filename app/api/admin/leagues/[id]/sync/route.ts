@@ -5,31 +5,16 @@ import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { Prisma } from '@prisma/client'
 import { z } from "zod"
+import { getCountryPricing } from '@/lib/pricing-service'
 
 // Helper function to get country-specific pricing from environment variables
 function getCountrySpecificPricing(countryCode: string) {
-  const countryCodeUpper = countryCode.toUpperCase()
-  
-  // Try to get country-specific pricing
-  const countryPrice = process.env[`${countryCodeUpper}_PREDICTION_PRICE`]
-  const countryOriginalPrice = process.env[`${countryCodeUpper}_PREDICTION_ORIGINAL_PRICE`]
-  
-  if (countryPrice && countryOriginalPrice) {
-    return {
-      price: parseFloat(countryPrice),
-      originalPrice: parseFloat(countryOriginalPrice),
-      source: `country-specific (${countryCodeUpper})`
-    }
-  }
-  
-  // Fallback to default pricing
-  const defaultPrice = parseFloat(process.env.DEFAULT_PREDICTION_PRICE || '2.99')
-  const defaultOriginalPrice = parseFloat(process.env.DEFAULT_PREDICTION_ORIGINAL_PRICE || '4.99')
+  const config = getCountryPricing(countryCode)
   
   return {
-    price: defaultPrice,
-    originalPrice: defaultOriginalPrice,
-    source: 'default'
+    price: config.price,
+    originalPrice: config.originalPrice,
+    source: config.source
   }
 }
 

@@ -25,10 +25,10 @@ export function MobileNavigation() {
         <div className="flex items-center justify-between">
           {/* Logo */}
           <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-lg flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-slate-900" />
+            <div className="w-6 h-6 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-lg flex items-center justify-center">
+              <TrendingUp className="w-4 h-4 text-slate-900" />
             </div>
-            <span className="text-lg font-bold text-white">AI Tipster</span>
+            <span className="text-lg font-bold text-white">SnapBet</span>
           </div>
 
           {/* Header Actions */}

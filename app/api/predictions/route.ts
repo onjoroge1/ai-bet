@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import type { Prediction, Match, Team, League } from '@prisma/client'
 import { logger } from '@/lib/logger'
+import { updateUserWinStreak } from "@/lib/streak-calculator"
 
 // Define types for better type safety
 type PredictionWithRelations = Prediction & {
@@ -139,7 +140,7 @@ export async function GET() {
       )
     }
 
-    if (!session.user.role || session.user.role.toLowerCase() !== 'admin') {
+    if (!session?.user?.role || session.user.role.toLowerCase() !== 'admin') {
       logger.warn('GET /api/predictions - Unauthorized: Not admin', {
         tags: ['api', 'predictions', 'auth'],
         data: { role: session.user.role }
@@ -246,7 +247,7 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.role || session.user.role !== 'admin') {
+    if (!session?.user?.role || session.user.role.toLowerCase() !== 'admin') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -305,9 +306,29 @@ export async function PUT(request: Request) {
         stake: updateData.stake ? parseFloat(updateData.stake.toString()) : null,
         potentialReturn: updateData.potentialReturn ? parseFloat(updateData.potentialReturn.toString()) : null,
       },
+      include: {
+        userPredictions: {
+          select: {
+            userId: true
+          }
+        }
+      }
     })
 
-    return NextResponse.json(prediction)
+    // Update win streaks for all users who bet on this prediction
+    const userIds = [...new Set(prediction.userPredictions.map(up => up.userId))]
+    const updatedStreaks = []
+    
+    for (const userId of userIds) {
+      const newStreak = await updateUserWinStreak(userId)
+      updatedStreaks.push({ userId, newStreak })
+    }
+
+    return NextResponse.json({
+      ...prediction,
+      updatedStreaks,
+      message: `Updated win streaks for ${userIds.length} users`
+    })
   } catch (error) {
     console.error('Error updating prediction:', error)
     return NextResponse.json({ error: 'Failed to update prediction' }, { status: 500 })
@@ -329,7 +350,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Prediction ID is required' }, { status: 400 })
     }
 
-    // Get match ID before deleting prediction
+    // Get prediction with match ID before deleting
     const prediction = await prisma.prediction.findUnique({
       where: { id },
       select: { matchId: true },
@@ -339,25 +360,46 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Prediction not found' }, { status: 404 })
     }
 
-    // Delete prediction
-    await prisma.prediction.delete({
-      where: { id },
-    })
-
-    // Delete match if no other predictions are using it
-    const remainingPredictions = await prisma.prediction.count({
-      where: { matchId: prediction.matchId },
-    })
-
-    if (remainingPredictions === 0) {
-      await prisma.match.delete({
-        where: { id: prediction.matchId },
+    // Use a transaction to ensure all operations succeed or fail together
+    await prisma.$transaction(async (tx) => {
+      // First, delete all UserPrediction records that reference this prediction
+      await tx.userPrediction.deleteMany({
+        where: { predictionId: id },
       })
-    }
+
+      // Then, delete all UserPackageTip records that reference this prediction
+      await tx.userPackageTip.deleteMany({
+        where: { predictionId: id },
+      })
+
+      // Now delete the prediction
+      await tx.prediction.delete({
+        where: { id },
+      })
+
+      // Finally, check if we can delete the match (if no other predictions use it)
+      const remainingPredictions = await tx.prediction.count({
+        where: { matchId: prediction.matchId },
+      })
+
+      if (remainingPredictions === 0) {
+        await tx.match.delete({
+          where: { id: prediction.matchId },
+        })
+      }
+    })
+
+    logger.info('DELETE /api/predictions - Success', {
+      tags: ['api', 'predictions'],
+      data: { predictionId: id }
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error deleting prediction:', error)
+    logger.error('DELETE /api/predictions - Error', {
+      tags: ['api', 'predictions'],
+      error: error instanceof Error ? error : undefined
+    })
     return NextResponse.json({ error: 'Failed to delete prediction' }, { status: 500 })
   }
 } 

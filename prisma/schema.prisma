@@ -199,6 +199,10 @@ model User {
   referralCode          String?             @unique
   totalReferralEarnings Decimal             @default(0)
   totalReferrals        Int                 @default(0)
+  emailNotifications    Boolean             @default(true)
+  pushNotifications     Boolean             @default(true)
+  inAppNotifications    Boolean             @default(true)
+  notificationSettings  Json?               // Detailed notification preferences
   chatMessages          ChatMessage[]
   leaderboardEntries    LeaderboardEntry[]
   PointTransaction      PointTransaction[]
@@ -211,6 +215,7 @@ model User {
   userPackages          UserPackage[]
   userPoints            UserPoints?
   userPredictions       UserPrediction[]
+  notifications         UserNotification[]
 }
 
 model UserPrediction {
@@ -430,16 +435,42 @@ model ChatMessage {
   user      User     @relation(fields: [userId], references: [id])
 }
 
-model Notification {
+model UserNotification {
   id              String    @id @default(cuid())
+  userId          String
   title           String
   message         String
-  type            String?
-  targetCountries Json?
-  targetUserTypes Json?
-  isActive        Boolean   @default(true)
+  type            String    // 'info', 'success', 'warning', 'error', 'prediction', 'payment', 'achievement'
+  category        String    // 'system', 'prediction', 'payment', 'achievement', 'marketing'
+  isRead          Boolean   @default(false)
+  isEmailSent     Boolean   @default(false)
+  isPushSent      Boolean   @default(false)
+  metadata        Json?     // Additional data like predictionId, matchId, etc.
+  actionUrl       String?   // URL to navigate to when clicked
   expiresAt       DateTime?
   createdAt       DateTime  @default(now())
+  readAt          DateTime?
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([userId, type])
+  @@index([userId, category])
+  @@index([createdAt])
+  @@index([expiresAt])
+}
+
+model NotificationTemplate {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  title           String
+  message         String
+  type            String   // 'info', 'success', 'warning', 'error', 'prediction', 'payment', 'achievement'
+  category        String   // 'system', 'prediction', 'payment', 'achievement', 'marketing'
+  isActive        Boolean  @default(true)
+  variables       String[] // Template variables like {{userName}}, {{predictionType}}, etc.
+  description     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model SystemHealth {
@@ -458,11 +489,12 @@ model SystemHealth {
 }
 
 model PackageCountryPrice {
-  id          String  @id @default(cuid())
-  countryId   String
-  packageType String
-  price       Decimal
-  country     Country @relation(fields: [countryId], references: [id])
+  id            String  @id @default(cuid())
+  countryId     String
+  packageType   String
+  price         Decimal
+  originalPrice Decimal?
+  country       Country @relation(fields: [countryId], references: [id])
 
   @@unique([countryId, packageType])
 }

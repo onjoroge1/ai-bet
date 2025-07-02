@@ -42,7 +42,7 @@ export function ReferralTracker() {
         <div className="text-slate-400 text-sm mb-2">Your Referral Link</div>
         <div className="flex items-center space-x-2">
           <div className="flex-1 bg-slate-800 rounded px-3 py-2 text-slate-300 text-sm font-mono">
-            https://aitipster.com/ref/james123
+            https://snapbet.com/ref/james123
           </div>
           <Button size="sm" variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-800">
             <Copy className="w-4 h-4" />

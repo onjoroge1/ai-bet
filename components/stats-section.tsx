@@ -1,8 +1,53 @@
+"use client"
+
+import { useQuery } from "@tanstack/react-query"
 import { Card } from "@/components/ui/card"
-import { TrendingUp, Users, Trophy, Globe } from "lucide-react"
+import { TrendingUp, Users, Trophy, Globe, Loader2, RefreshCw } from "lucide-react"
+import { Button } from "@/components/ui/button"
+
+// Type for the stats data
+type HomepageStats = {
+  winRate: {
+    value: string
+    rawValue: number
+    description: string
+  }
+  totalWinnings: {
+    value: string
+    rawValue: number
+    description: string
+  }
+  countries: {
+    value: string
+    rawValue: number
+    description: string
+  }
+  totalRevenue: {
+    value: string
+    rawValue: number
+    description: string
+  }
+}
+
+// Function to fetch homepage stats
+const fetchHomepageStats = async (): Promise<HomepageStats> => {
+  const response = await fetch('/api/homepage/stats')
+  if (!response.ok) {
+    throw new Error('Failed to fetch homepage stats')
+  }
+  return response.json()
+}
 
 export function StatsSection() {
-  const stats = [
+  const { data: stats, isLoading, error, refetch } = useQuery({
+    queryKey: ['homepage-stats'],
+    queryFn: fetchHomepageStats,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: false,
+  })
+
+  // Default stats for loading/error states
+  const defaultStats = [
     {
       icon: TrendingUp,
       value: "87%",
@@ -10,16 +55,10 @@ export function StatsSection() {
       description: "Average success rate across all predictions",
     },
     {
-      icon: Users,
-      value: "50K+",
-      label: "Active Users",
-      description: "Bettors trust our AI predictions daily",
-    },
-    {
       icon: Trophy,
-      value: "€2M+",
+      value: "Community Success",
       label: "Winnings Generated",
-      description: "Total profits for our community",
+      description: "Our community celebrates wins together",
     },
     {
       icon: Globe,
@@ -29,18 +68,65 @@ export function StatsSection() {
     },
   ]
 
+  // Dynamic stats from API
+  const dynamicStats = stats ? [
+    {
+      icon: TrendingUp,
+      value: stats.winRate.value,
+      label: "Win Rate",
+      description: stats.winRate.description,
+    },
+    {
+      icon: Trophy,
+      value: stats.totalWinnings.value,
+      label: "Winnings Generated",
+      description: stats.totalWinnings.description,
+    },
+    {
+      icon: Globe,
+      value: stats.countries.value,
+      label: "Countries",
+      description: stats.countries.description,
+    },
+  ] : defaultStats
+
+  const displayStats = isLoading ? defaultStats : dynamicStats
+
   return (
     <section className="py-16 px-4">
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Trusted by Bettors Worldwide</h2>
+          <div className="flex items-center justify-center space-x-4 mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-white">Trusted by Bettors Worldwide</h2>
+            {!isLoading && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => refetch()}
+                className="text-slate-400 hover:text-white"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
           <p className="text-slate-300 text-lg">
             Our AI-powered predictions deliver consistent results across global markets
           </p>
+          {isLoading && (
+            <div className="flex items-center justify-center mt-4">
+              <Loader2 className="w-5 h-5 animate-spin text-emerald-400 mr-2" />
+              <span className="text-slate-400 text-sm">Loading live stats...</span>
+            </div>
+          )}
+          {error && (
+            <div className="text-red-400 text-sm mt-2">
+              Using cached data. Click refresh to try again.
+            </div>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {stats.map((stat, index) => (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {displayStats.map((stat, index) => (
             <Card
               key={index}
               className="bg-slate-800/50 border-slate-700 p-6 text-center hover:bg-slate-800/70 transition-colors"
