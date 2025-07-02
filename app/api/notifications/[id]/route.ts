@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { logger } from '@/lib/logger'
-import { sql } from '@vercel/postgres'
-
-// Import fallback data from main route
-import { fallbackNotifications } from '../route'
+import prisma from '@/lib/db'
 
 export async function PATCH(
   request: NextRequest,
@@ -20,67 +17,60 @@ export async function PATCH(
 
     const { id } = params
     const body = await request.json()
-    const { isRead } = body
+    const { isRead, actionUrl, metadata } = body
 
-    try {
-      // Try to update real notification in database
-      const result = await sql`
-        UPDATE "UserNotification" 
-        SET "isRead" = ${isRead}, "readAt" = ${isRead ? new Date().toISOString() : null}
-        WHERE "id" = ${id} AND "userId" = ${session.user.id}
-        RETURNING *
-      `
-
-      if (result.rows.length === 0) {
-        return NextResponse.json({ error: 'Notification not found' }, { status: 404 })
-      }
-
-      const notification = result.rows[0]
-
-      logger.info('PATCH /api/notifications/[id] - Success (Database)', {
-        notificationId: id,
-        isRead,
+    // Verify the notification belongs to the user
+    const existingNotification = await prisma.userNotification.findFirst({
+      where: {
+        id,
         userId: session.user.id,
-      })
+      },
+    })
 
-      return NextResponse.json({
-        ...notification,
-        metadata: notification.metadata ? JSON.parse(notification.metadata as string) : null,
-      })
-
-    } catch (dbError) {
-      // Fallback to mock data if database update fails
-      logger.warn('Database update failed, using fallback', {
-        error: dbError as Error,
-        notificationId: id,
-        userId: session.user.id,
-      })
-
-      const notificationIndex = fallbackNotifications.findIndex(n => n.id === id)
-      if (notificationIndex === -1) {
-        return NextResponse.json({ error: 'Notification not found' }, { status: 404 })
-      }
-
-      // Update notification
-      fallbackNotifications[notificationIndex] = {
-        ...fallbackNotifications[notificationIndex],
-        isRead,
-        readAt: isRead ? new Date().toISOString() : null,
-      }
-
-      logger.info('PATCH /api/notifications/[id] - Success (Fallback)', {
-        notificationId: id,
-        isRead,
-        userId: session.user.id,
-      })
-
-      return NextResponse.json(fallbackNotifications[notificationIndex])
+    if (!existingNotification) {
+      return NextResponse.json(
+        { error: 'Notification not found' },
+        { status: 404 }
+      )
     }
 
+    // Update the notification
+    const updateData: any = {}
+    
+    if (typeof isRead === 'boolean') {
+      updateData.isRead = isRead
+      updateData.readAt = isRead ? new Date() : null
+    }
+    
+    if (actionUrl !== undefined) {
+      updateData.actionUrl = actionUrl
+    }
+    
+    if (metadata !== undefined) {
+      updateData.metadata = metadata
+    }
+
+    const updatedNotification = await prisma.userNotification.update({
+      where: { id },
+      data: updateData,
+    })
+
+    logger.info('PATCH /api/notifications/[id] - Success', {
+      data: {
+        notificationId: id,
+        userId: session.user.id,
+        updates: Object.keys(updateData),
+      }
+    })
+
+    return NextResponse.json({
+      ...updatedNotification,
+      metadata: updatedNotification.metadata ?? null,
+    })
   } catch (error) {
     logger.error('PATCH /api/notifications/[id] - Error', {
       error: error as Error,
-      notificationId: params.id,
+      data: { notificationId: params.id },
     })
     return NextResponse.json(
       { error: 'Failed to update notification' },
@@ -102,52 +92,38 @@ export async function DELETE(
 
     const { id } = params
 
-    try {
-      // Try to delete real notification from database
-      const result = await sql`
-        DELETE FROM "UserNotification" 
-        WHERE "id" = ${id} AND "userId" = ${session.user.id}
-        RETURNING "id"
-      `
-
-      if (result.rows.length === 0) {
-        return NextResponse.json({ error: 'Notification not found' }, { status: 404 })
-      }
-
-      logger.info('DELETE /api/notifications/[id] - Success (Database)', {
-        notificationId: id,
+    // Verify the notification belongs to the user
+    const existingNotification = await prisma.userNotification.findFirst({
+      where: {
+        id,
         userId: session.user.id,
-      })
+      },
+    })
 
-      return NextResponse.json({ success: true })
-
-    } catch (dbError) {
-      // Fallback to mock data if database delete fails
-      logger.warn('Database delete failed, using fallback', {
-        error: dbError as Error,
-        notificationId: id,
-        userId: session.user.id,
-      })
-
-      const notificationIndex = fallbackNotifications.findIndex(n => n.id === id)
-      if (notificationIndex === -1) {
-        return NextResponse.json({ error: 'Notification not found' }, { status: 404 })
-      }
-
-      fallbackNotifications.splice(notificationIndex, 1)
-
-      logger.info('DELETE /api/notifications/[id] - Success (Fallback)', {
-        notificationId: id,
-        userId: session.user.id,
-      })
-
-      return NextResponse.json({ success: true })
+    if (!existingNotification) {
+      return NextResponse.json(
+        { error: 'Notification not found' },
+        { status: 404 }
+      )
     }
 
+    // Delete the notification
+    await prisma.userNotification.delete({
+      where: { id },
+    })
+
+    logger.info('DELETE /api/notifications/[id] - Success', {
+      data: {
+        notificationId: id,
+        userId: session.user.id,
+      }
+    })
+
+    return NextResponse.json({ success: true })
   } catch (error) {
     logger.error('DELETE /api/notifications/[id] - Error', {
       error: error as Error,
-      notificationId: params.id,
+      data: { notificationId: params.id },
     })
     return NextResponse.json(
       { error: 'Failed to delete notification' },

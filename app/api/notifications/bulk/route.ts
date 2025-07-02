@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { logger } from '@/lib/logger'
-import { fallbackNotifications } from '../route'
+import prisma from '@/lib/db'
 
 export async function PATCH(request: NextRequest) {
   let session
@@ -28,23 +28,30 @@ export async function PATCH(request: NextRequest) {
       case 'markAsRead':
         if (markAllAsRead) {
           // Mark all unread notifications as read
-          fallbackNotifications.forEach((notification: any) => {
-            if (!notification.isRead) {
-              notification.isRead = true
-              notification.readAt = new Date().toISOString()
-              affectedCount++
-            }
+          const result = await prisma.userNotification.updateMany({
+            where: {
+              userId: session.user.id,
+              isRead: false,
+            },
+            data: {
+              isRead: true,
+              readAt: new Date(),
+            },
           })
+          affectedCount = result.count
         } else if (notificationIds && notificationIds.length > 0) {
           // Mark specific notifications as read
-          notificationIds.forEach((id: string) => {
-            const notification = fallbackNotifications.find((n: any) => n.id === id)
-            if (notification) {
-              notification.isRead = true
-              notification.readAt = new Date().toISOString()
-              affectedCount++
-            }
+          const result = await prisma.userNotification.updateMany({
+            where: {
+              id: { in: notificationIds },
+              userId: session.user.id,
+            },
+            data: {
+              isRead: true,
+              readAt: new Date(),
+            },
           })
+          affectedCount = result.count
         } else {
           return NextResponse.json(
             { error: 'Notification IDs or markAllAsRead is required' },
@@ -60,14 +67,17 @@ export async function PATCH(request: NextRequest) {
             { status: 400 }
           )
         }
-        notificationIds.forEach((id: string) => {
-          const notification = fallbackNotifications.find((n: any) => n.id === id)
-          if (notification) {
-            notification.isRead = false
-            notification.readAt = null
-            affectedCount++
-          }
+        const unreadResult = await prisma.userNotification.updateMany({
+          where: {
+            id: { in: notificationIds },
+            userId: session.user.id,
+          },
+          data: {
+            isRead: false,
+            readAt: null,
+          },
         })
+        affectedCount = unreadResult.count
         break
 
       case 'delete':
@@ -77,13 +87,13 @@ export async function PATCH(request: NextRequest) {
             { status: 400 }
           )
         }
-        notificationIds.forEach((id: string) => {
-          const index = fallbackNotifications.findIndex((n: any) => n.id === id)
-          if (index !== -1) {
-            fallbackNotifications.splice(index, 1)
-            affectedCount++
-          }
+        const deleteResult = await prisma.userNotification.deleteMany({
+          where: {
+            id: { in: notificationIds },
+            userId: session.user.id,
+          },
         })
+        affectedCount = deleteResult.count
         break
 
       default:
@@ -93,7 +103,7 @@ export async function PATCH(request: NextRequest) {
         )
     }
 
-    logger.info('PATCH /api/notifications/bulk - Success (Mock)', {
+    logger.info('PATCH /api/notifications/bulk - Success', {
       data: {
         action,
         affectedCount,

@@ -6,6 +6,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Menu, X, Home, Zap, Gift, Crown, Settings, BarChart3, Target, HeadphonesIcon, History, Bell } from "lucide-react"
+import { NotificationBell } from "@/components/notifications/NotificationBell"
 
 export function DashboardNavHeader() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -52,19 +53,25 @@ export function DashboardNavHeader() {
           )}
         </div>
 
-        {/* Quick Dashboard Link */}
-        {pathname !== "/dashboard" && (
-          <Link href="/dashboard">
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-emerald-500 text-emerald-400 hover:bg-emerald-500 hover:text-white"
-            >
-              <Home className="w-4 h-4 mr-2" />
-              Dashboard
-            </Button>
-          </Link>
-        )}
+        {/* Right side - Notification Bell and Dashboard Link */}
+        <div className="flex items-center space-x-3">
+          {/* Notification Bell */}
+          <NotificationBell className="text-slate-300 hover:text-white" />
+          
+          {/* Quick Dashboard Link */}
+          {pathname !== "/dashboard" && (
+            <Link href="/dashboard">
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-emerald-500 text-emerald-400 hover:bg-emerald-500 hover:text-white"
+              >
+                <Home className="w-4 h-4 mr-2" />
+                Dashboard
+              </Button>
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* Collapsible Navigation Menu */}

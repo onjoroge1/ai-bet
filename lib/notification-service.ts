@@ -1,5 +1,6 @@
 import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { EmailService } from '@/lib/email-service'
 
 export interface CreateNotificationData {
   userId: string
@@ -138,7 +139,13 @@ export class NotificationService {
     amount: number,
     packageName: string
   ) {
-    return this.createNotification({
+    // Get user email for email notification
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, fullName: true },
+    })
+
+    const notification = await this.createNotification({
       userId,
       title: '💳 Payment Successful',
       message: `Your payment of $${amount.toFixed(2)} for ${packageName} was successful. Your tips are now available!`,
@@ -150,6 +157,29 @@ export class NotificationService {
         packageName,
       },
     })
+
+    // Send email notification for payment confirmation
+    if (user?.email) {
+      try {
+        await EmailService.sendPaymentConfirmation({
+          amount,
+          packageName,
+          transactionId: `TXN-${Date.now()}`,
+          userName: user.email, // Email address
+          tipsCount: 5, // This should come from the package data
+        })
+        logger.info('Payment confirmation email sent', {
+          data: { userId, email: user.email, amount, packageName }
+        })
+      } catch (error) {
+        logger.error('Failed to send payment confirmation email', {
+          error: error as Error,
+          data: { userId, email: user.email }
+        })
+      }
+    }
+
+    return notification
   }
 
   /**
@@ -161,11 +191,17 @@ export class NotificationService {
     description: string,
     points?: number
   ) {
+    // Get user email for email notification
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, fullName: true },
+    })
+
     const message = points
       ? `Congratulations! You've earned the "${achievementName}" achievement and ${points} points!`
       : `Congratulations! You've earned the "${achievementName}" achievement!`
 
-    return this.createNotification({
+    const notification = await this.createNotification({
       userId,
       title: '🏆 Achievement Unlocked!',
       message,
@@ -177,6 +213,28 @@ export class NotificationService {
         points,
       },
     })
+
+    // Send email notification for achievements
+    if (user?.email) {
+      try {
+        await EmailService.sendAchievementNotification({
+          userName: user.email, // Email address
+          achievementName,
+          description,
+          points,
+        })
+        logger.info('Achievement email sent', {
+          data: { userId, email: user.email, achievementName }
+        })
+      } catch (error) {
+        logger.error('Failed to send achievement email', {
+          error: error as Error,
+          data: { userId, email: user.email }
+        })
+      }
+    }
+
+    return notification
   }
 
   /**
@@ -350,6 +408,203 @@ export class NotificationService {
         acc[item.category] = item._count.category
         return acc
       }, {} as Record<string, number>),
+    }
+  }
+
+  /**
+   * Create high-confidence prediction notifications and send email alerts
+   */
+  static async createHighConfidencePredictionAlert(
+    userIds: string[],
+    predictions: Array<{
+      match: string
+      prediction: string
+      confidence: number
+      odds: number
+      matchTime: string
+    }>
+  ) {
+    // Only send alerts for predictions with >85% confidence
+    const highConfidencePredictions = predictions.filter(p => p.confidence >= 85)
+    
+    if (highConfidencePredictions.length === 0) {
+      return []
+    }
+
+    const notifications = []
+    
+    for (const userId of userIds) {
+      try {
+        // Get user email for email notification
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { email: true, fullName: true },
+        })
+
+        // Create in-app notification
+        const notification = await this.createNotification({
+          userId,
+          title: '⚽ High-Confidence Predictions Available',
+          message: `${highConfidencePredictions.length} high-confidence prediction${highConfidencePredictions.length > 1 ? 's' : ''} with ${highConfidencePredictions[0].confidence}%+ confidence are ready for you!`,
+          type: 'prediction',
+          category: 'prediction',
+          actionUrl: `/dashboard/predictions`,
+          metadata: {
+            predictions: highConfidencePredictions,
+            count: highConfidencePredictions.length,
+          },
+        })
+
+        // Send email alert for high-confidence predictions
+        if (user?.email) {
+          try {
+            await EmailService.sendPredictionAlert({
+              userName: user.email, // Email address
+              predictions: highConfidencePredictions,
+            })
+            logger.info('High-confidence prediction email sent', {
+              data: { userId, email: user.email, predictionCount: highConfidencePredictions.length }
+            })
+          } catch (error) {
+            logger.error('Failed to send prediction alert email', {
+              error: error as Error,
+              data: { userId, email: user.email }
+            })
+          }
+        }
+
+        if (notification) {
+          notifications.push(notification)
+        }
+      } catch (error) {
+        logger.error('Failed to create high-confidence prediction notification', {
+          error: error as Error,
+          data: { userId }
+        })
+      }
+    }
+
+    return notifications
+  }
+
+  /**
+   * Send daily digest emails to users
+   */
+  static async sendDailyDigestEmails() {
+    try {
+      // Get all users with email notifications enabled
+      const users = await prisma.user.findMany({
+        where: {
+          emailNotifications: true,
+          // TODO: Add email preferences check once schema is updated
+        },
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+        },
+      })
+
+      for (const user of users) {
+        if (!user.email) continue
+
+        try {
+          // Get user's daily stats
+          const [newPredictions, topPredictions, recentResults, unreadNotifications] = await Promise.all([
+            // Count new predictions from last 24 hours
+            prisma.prediction.count({
+              where: {
+                createdAt: {
+                  gte: new Date(Date.now() - 24 * 60 * 60 * 1000),
+                },
+              },
+            }),
+            // Get top 3 predictions from last 24 hours
+            prisma.prediction.findMany({
+              where: {
+                createdAt: {
+                  gte: new Date(Date.now() - 24 * 60 * 60 * 1000),
+                },
+                confidenceScore: { gte: 80 },
+              },
+              take: 3,
+              orderBy: { confidenceScore: 'desc' },
+              include: {
+                match: {
+                  include: {
+                    homeTeam: true,
+                    awayTeam: true,
+                  },
+                },
+              },
+            }),
+            // Get recent user prediction results
+            prisma.userPrediction.findMany({
+              where: {
+                userId: user.id,
+                status: { in: ['won', 'lost'] },
+                placedAt: {
+                  gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // Last 7 days
+                },
+              },
+              take: 5,
+              orderBy: { placedAt: 'desc' },
+              include: {
+                prediction: {
+                  include: {
+                    match: {
+                      include: {
+                        homeTeam: true,
+                        awayTeam: true,
+                      },
+                    },
+                  },
+                },
+              },
+            }),
+            // Count unread notifications
+            prisma.userNotification.count({
+              where: {
+                userId: user.id,
+                isRead: false,
+              },
+            }),
+          ])
+
+          // Format data for email
+          const digestData = {
+            userName: user.email, // Email address
+            newPredictions,
+            topPredictions: topPredictions.map(p => ({
+              match: `${p.match.homeTeam.name} vs ${p.match.awayTeam.name}`,
+              prediction: p.predictionType,
+              confidence: p.confidenceScore,
+            })),
+            recentResults: recentResults.map(up => ({
+              match: `${up.prediction.match.homeTeam.name} vs ${up.prediction.match.awayTeam.name}`,
+              result: up.status === 'won' ? 'Won' : 'Lost',
+              isWin: up.status === 'won',
+            })),
+            unreadNotifications,
+          }
+
+          // Send daily digest email
+          await EmailService.sendDailyDigest(digestData)
+          
+          logger.info('Daily digest email sent', {
+            data: { userId: user.id, email: user.email }
+          })
+        } catch (error) {
+          logger.error('Failed to send daily digest email', {
+            error: error as Error,
+            data: { userId: user.id, email: user.email }
+          })
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to send daily digest emails', {
+        error: error as Error,
+      })
     }
   }
 } 
