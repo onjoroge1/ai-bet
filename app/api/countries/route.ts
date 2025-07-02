@@ -10,7 +10,7 @@ import { logger } from '@/lib/logger'
 const prisma = new PrismaClient()
 
 // GET /api/countries - Public endpoint for signup form
-export const GET = withPerformanceMonitoring(async () => {
+export async function GET() {
   try {
     const cacheKey = 'all-countries'
     
@@ -90,7 +90,7 @@ export const GET = withPerformanceMonitoring(async () => {
       'countries-api'
     )
   }
-})
+}
 
 // POST /api/countries - For country detection
 export async function POST(request: NextRequest) {

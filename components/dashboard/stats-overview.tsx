@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card } from "@/components/ui/card"
-import { TrendingUp, Target, Trophy, Calendar, ArrowUp, ArrowDown, Zap, Brain, Activity, Award, Clock, BarChart3 } from "lucide-react"
+import { TrendingUp, Trophy, ArrowUp, ArrowDown, Zap, Brain, Activity, Award, Star } from "lucide-react"
 import { useDashboardData } from "@/hooks/use-dashboard-data"
 import { DashboardResponse } from "@/types/dashboard"
 
@@ -33,17 +33,14 @@ export function StatsOverview() {
   }
 
   const metrics = calculateMetrics(data)
-  const finalValues: {
-    predictionAccuracy: number
-    monthlySuccess: number
-    totalPredictions: number
-    currentStreak: number
-  } = {
+  
+  // Memoize finalValues to prevent unnecessary re-renders
+  const finalValues = useMemo(() => ({
     predictionAccuracy: metrics.accuracy,
     monthlySuccess: metrics.monthlySuccess,
     totalPredictions: metrics.totalPredictions,
     currentStreak: metrics.currentStreak,
-  }
+  }), [metrics.accuracy, metrics.monthlySuccess, metrics.totalPredictions, metrics.currentStreak])
 
   useEffect(() => {
     if (!data) return

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -13,6 +13,14 @@ import { decodeQuickPurchasesData } from "@/lib/optimized-data-decoder"
 import { QuickPurchaseModal } from "@/components/quick-purchase-modal"
 import { toast } from "sonner"
 
+interface MatchData {
+  home_team?: string
+  away_team?: string
+  league?: string
+  date?: string
+  venue?: string
+}
+
 interface Match {
   id: string
   name: string
@@ -20,8 +28,8 @@ interface Match {
   originalPrice?: number
   type: string
   matchId?: string
-  matchData?: any
-  predictionData?: any
+  matchData?: MatchData
+  predictionData?: unknown
   predictionType?: string
   confidenceScore?: number
   odds?: number
@@ -52,6 +60,35 @@ interface MatchFilters {
   sortBy: string
 }
 
+// Add QuickPurchaseItem type for modal
+interface QuickPurchaseItem {
+  id: string
+  name: string
+  price: number
+  originalPrice?: number
+  description: string
+  features: string[]
+  type: "prediction" | "tip" | "package" | "vip"
+  iconName: string
+  colorGradientFrom: string
+  colorGradientTo: string
+  isUrgent?: boolean
+  timeLeft?: string
+  isPopular?: boolean
+  discountPercentage?: number
+  confidenceScore?: number
+  matchData?: MatchData
+  country?: {
+    currencyCode: string
+    currencySymbol: string
+  }
+  tipCount?: number
+  predictionType?: string
+  odds?: number
+  valueRating?: string
+  analysisSummary?: string
+}
+
 export default function MatchesPage() {
   const { isAuthenticated, isLoading: authLoading, user } = useAuth()
   const [matches, setMatches] = useState<Match[]>([])
@@ -59,6 +96,7 @@ export default function MatchesPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null)
+  const [modalItem, setModalItem] = useState<QuickPurchaseItem | null>(null)
   const [showPurchaseModal, setShowPurchaseModal] = useState(false)
   const [filters, setFilters] = useState<MatchFilters>({
     search: "",
@@ -70,75 +108,7 @@ export default function MatchesPage() {
 
   console.log('MatchesPage render - authLoading:', authLoading, 'isAuthenticated:', isAuthenticated, 'user:', user?.id, 'loading:', loading, 'matches count:', matches.length, 'filtered count:', filteredMatches.length, 'error:', error)
 
-  useEffect(() => {
-    console.log('MatchesPage useEffect - fetching matches, isAuthenticated:', isAuthenticated)
-    if (isAuthenticated) {
-      fetchMatches()
-    }
-  }, [isAuthenticated])
-
-  useEffect(() => {
-    console.log('MatchesPage useEffect - applying filters')
-    applyFilters()
-  }, [matches, filters])
-
-  // Handle escape key to close modal
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && showPurchaseModal) {
-        setShowPurchaseModal(false)
-        setSelectedMatch(null)
-      }
-    }
-
-    document.addEventListener('keydown', handleEscape)
-    return () => document.removeEventListener('keydown', handleEscape)
-  }, [showPurchaseModal])
-
-  const fetchMatches = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      console.log('Fetching matches from /api/quick-purchases...')
-      
-      const response = await fetch('/api/quick-purchases')
-      console.log('Response status:', response.status)
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch matches: ${response.status} ${response.statusText}`)
-      }
-      
-      const data = await response.json()
-      console.log('Raw API response:', data)
-      console.log('Total items received:', data.length)
-      
-      // Decode the optimized data structure
-      const decodedData = decodeQuickPurchasesData(data)
-      console.log('Decoded data:', decodedData.length, 'items')
-      
-      // Filter to only show prediction/tip type items that have match data
-      const predictionMatches = decodedData.filter((item: any) => 
-        (item.type === 'prediction' || item.type === 'tip') && 
-        item.matchId && 
-        item.isActive
-      )
-      
-      console.log('Filtered prediction matches:', predictionMatches.length)
-      console.log('Sample match data:', predictionMatches[0])
-      
-      setMatches(predictionMatches as Match[])
-    } catch (error) {
-      console.error('Error fetching matches:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
-      setError(errorMessage)
-      // Set empty array to prevent infinite loading
-      setMatches([])
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const applyFilters = () => {
+  const applyFilters = useCallback(() => {
     let filtered = [...matches]
 
     // Search filter
@@ -206,6 +176,74 @@ export default function MatchesPage() {
     })
 
     setFilteredMatches(filtered)
+  }, [matches, filters])
+
+  useEffect(() => {
+    console.log('MatchesPage useEffect - fetching matches, isAuthenticated:', isAuthenticated)
+    if (isAuthenticated) {
+      fetchMatches()
+    }
+  }, [isAuthenticated])
+
+  useEffect(() => {
+    console.log('MatchesPage useEffect - applying filters')
+    applyFilters()
+  }, [matches, filters, applyFilters])
+
+  // Handle escape key to close modal
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showPurchaseModal) {
+        setShowPurchaseModal(false)
+        setSelectedMatch(null)
+      }
+    }
+
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [showPurchaseModal])
+
+  const fetchMatches = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      console.log('Fetching matches from /api/quick-purchases...')
+      
+      const response = await fetch('/api/quick-purchases')
+      console.log('Response status:', response.status)
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch matches: ${response.status} ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      console.log('Raw API response:', data)
+      console.log('Total items received:', data.length)
+      
+      // Decode the optimized data structure
+      const decodedData = decodeQuickPurchasesData(data)
+      console.log('Decoded data:', decodedData.length, 'items')
+      
+      // Filter to only show prediction/tip type items that have match data
+      const predictionMatches = (decodedData as Match[]).filter((item) => 
+        (item.type === 'prediction' || item.type === 'tip') && 
+        item.matchId && 
+        item.isActive
+      )
+      
+      console.log('Filtered prediction matches:', predictionMatches.length)
+      console.log('Sample match data:', predictionMatches[0])
+      
+      setMatches(predictionMatches)
+    } catch (error) {
+      console.error('Error fetching matches:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      setError(errorMessage)
+      // Set empty array to prevent infinite loading
+      setMatches([])
+    } finally {
+      setLoading(false)
+    }
   }
 
   const getMatchStatus = (match: Match) => {
@@ -276,15 +314,14 @@ export default function MatchesPage() {
   }
 
   const handlePurchaseClick = (match: Match) => {
-    // Convert Match to QuickPurchaseItem format
-    const quickPurchaseItem = {
+    const quickPurchaseItem: QuickPurchaseItem = {
       id: match.id,
       name: match.name,
       price: match.price,
       originalPrice: match.originalPrice,
       description: match.analysisSummary || `AI prediction for ${match.name}`,
       features: match.features || ['AI Analysis', 'Match Statistics', 'Risk Assessment'],
-      type: match.type as "prediction" | "tip" | "package" | "vip",
+      type: (match.type as "prediction" | "tip" | "package" | "vip"),
       iconName: match.iconName || 'Star',
       colorGradientFrom: match.colorGradientFrom || '#3B82F6',
       colorGradientTo: match.colorGradientTo || '#1D4ED8',
@@ -301,8 +338,7 @@ export default function MatchesPage() {
       valueRating: match.valueRating,
       analysisSummary: match.analysisSummary
     }
-    
-    setSelectedMatch(quickPurchaseItem as any)
+    setModalItem(quickPurchaseItem)
     setShowPurchaseModal(true)
   }
 
@@ -583,14 +619,14 @@ export default function MatchesPage() {
       </div>
 
       {/* Purchase Modal */}
-      {showPurchaseModal && selectedMatch && (
+      {showPurchaseModal && modalItem && (
         <QuickPurchaseModal
           isOpen={showPurchaseModal}
           onClose={() => {
             setShowPurchaseModal(false)
-            setSelectedMatch(null)
+            setModalItem(null)
           }}
-          item={selectedMatch}
+          item={modalItem}
         />
       )}
 

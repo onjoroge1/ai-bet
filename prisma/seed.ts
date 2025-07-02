@@ -4,7 +4,7 @@ import { hash } from 'bcryptjs'
 const prisma = new PrismaClient()
 
 async function main() {
-  // Create countries
+  // Create countries with base pricing
   const countries = [
     {
       code: 'ke',
@@ -17,26 +17,6 @@ async function main() {
       marketContext: "Kenya's vibrant sports betting market"
     },
     {
-      code: 'in',
-      name: 'India',
-      flagEmoji: '🇮🇳',
-      currencyCode: 'INR',
-      currencySymbol: '₹',
-      brandName: "India's Premier AI Betting Platform",
-      tagline: 'Smart Predictions for Indian Sports',
-      marketContext: "India's growing sports betting market"
-    },
-    {
-      code: 'ph',
-      name: 'Philippines',
-      flagEmoji: '🇵🇭',
-      currencyCode: 'PHP',
-      currencySymbol: '₱',
-      brandName: "Philippines' Top AI Betting Platform",
-      tagline: 'Expert Predictions for Filipino Sports',
-      marketContext: "Philippines' dynamic sports betting market"
-    },
-    {
       code: 'ng',
       name: 'Nigeria',
       flagEmoji: '🇳🇬',
@@ -45,6 +25,46 @@ async function main() {
       brandName: "Nigeria's Leading AI Betting Platform",
       tagline: 'Win More with AI-Powered Tips',
       marketContext: "Nigeria's competitive sports betting market"
+    },
+    {
+      code: 'za',
+      name: 'South Africa',
+      flagEmoji: '🇿🇦',
+      currencyCode: 'ZAR',
+      currencySymbol: 'R',
+      brandName: "South Africa's Leading AI Betting Platform",
+      tagline: 'Expert Predictions for South African Sports',
+      marketContext: "South Africa's competitive sports betting market"
+    },
+    {
+      code: 'gh',
+      name: 'Ghana',
+      flagEmoji: '🇬🇭',
+      currencyCode: 'GHS',
+      currencySymbol: 'GH₵',
+      brandName: "Ghana's Top AI Betting Platform",
+      tagline: 'Win Big with AI-Powered Predictions',
+      marketContext: "Ghana's vibrant sports betting market"
+    },
+    {
+      code: 'ug',
+      name: 'Uganda',
+      flagEmoji: '🇺🇬',
+      currencyCode: 'UGX',
+      currencySymbol: 'UGX',
+      brandName: "Uganda's Premier AI Betting Platform",
+      tagline: 'Smart Predictions for Ugandan Sports',
+      marketContext: "Uganda's growing sports betting market"
+    },
+    {
+      code: 'tz',
+      name: 'Tanzania',
+      flagEmoji: '🇹🇿',
+      currencyCode: 'TZS',
+      currencySymbol: 'TSh',
+      brandName: "Tanzania's Premier AI Betting Platform",
+      tagline: 'Smart Predictions for Tanzanian Sports',
+      marketContext: "Tanzania's growing sports betting market"
     },
     {
       code: 'gb',
@@ -65,6 +85,76 @@ async function main() {
       brandName: "America's Premier AI Betting Platform",
       tagline: 'AI-Powered Sports Predictions',
       marketContext: 'US sports betting market'
+    },
+    {
+      code: 'br',
+      name: 'Brazil',
+      flagEmoji: '🇧🇷',
+      currencyCode: 'BRL',
+      currencySymbol: 'R$',
+      brandName: "Brazil's Premier AI Betting Platform",
+      tagline: 'Smart Predictions for Brazilian Sports',
+      marketContext: "Brazil's dynamic sports betting market"
+    },
+    {
+      code: 'in',
+      name: 'India',
+      flagEmoji: '🇮🇳',
+      currencyCode: 'INR',
+      currencySymbol: '₹',
+      brandName: "India's Premier AI Betting Platform",
+      tagline: 'Smart Predictions for Indian Sports',
+      marketContext: "India's growing sports betting market"
+    },
+    {
+      code: 'de',
+      name: 'Germany',
+      flagEmoji: '🇩🇪',
+      currencyCode: 'EUR',
+      currencySymbol: '€',
+      brandName: "Germany's Premier AI Betting Platform",
+      tagline: 'Smart Predictions for German Sports',
+      marketContext: "Germany's regulated sports betting market"
+    },
+    {
+      code: 'ph',
+      name: 'Philippines',
+      flagEmoji: '🇵🇭',
+      currencyCode: 'PHP',
+      currencySymbol: '₱',
+      brandName: "Philippines' Top AI Betting Platform",
+      tagline: 'Expert Predictions for Filipino Sports',
+      marketContext: "Philippines' dynamic sports betting market"
+    },
+    {
+      code: 'tr',
+      name: 'Turkey',
+      flagEmoji: '🇹🇷',
+      currencyCode: 'TRY',
+      currencySymbol: '₺',
+      brandName: "Turkey's Premier AI Betting Platform",
+      tagline: 'Smart Predictions for Turkish Sports',
+      marketContext: "Turkey's growing sports betting market"
+    },
+    {
+      code: 'it',
+      name: 'Italy',
+      flagEmoji: '🇮🇹',
+      currencyCode: 'EUR',
+      currencySymbol: '€',
+      brandName: "Italy's Premier AI Betting Platform",
+      tagline: 'Smart Predictions for Italian Sports',
+      marketContext: "Italy's regulated sports betting market"
+    },
+    {
+      code: 'es',
+      name: 'Spain',
+      flagEmoji: '🇪🇸',
+      currencyCode: 'EUR',
+      currencySymbol: '€',
+      brandName: "Spain's Premier AI Betting Platform",
+      tagline: 'Smart Predictions for Spanish Sports',
+      marketContext: "Spain's regulated sports betting market"
     }
   ]
 
@@ -99,53 +189,80 @@ async function main() {
     }
   })
 
-  // Seed PackageCountryPrice table
-  const packagePrices = [
-    // Kenya
-    { countryCode: 'ke', packageType: 'tip', price: 62.4 },
-    { countryCode: 'ke', packageType: 'weekend_pass', price: 156 },
-    { countryCode: 'ke', packageType: 'weekly_pass', price: 390 },
-    { countryCode: 'ke', packageType: 'special_game', price: 93.6 },
-    { countryCode: 'ke', packageType: 'monthly_sub', price: 936 },
-    // Nigeria
-    { countryCode: 'ng', packageType: 'tip', price: 750 },
-    { countryCode: 'ng', packageType: 'weekend_pass', price: 2250 },
-    { countryCode: 'ng', packageType: 'weekly_pass', price: 4500 },
-    { countryCode: 'ng', packageType: 'special_game', price: 1125 },
-    { countryCode: 'ng', packageType: 'monthly_sub', price: 12000 },
-    // Uganda
-    { countryCode: 'ug', packageType: 'tip', price: 1155 },
-    { countryCode: 'ug', packageType: 'weekend_pass', price: 2887.5 },
-    { countryCode: 'ug', packageType: 'weekly_pass', price: 7700 },
-    { countryCode: 'ug', packageType: 'special_game', price: 1925 },
-    { countryCode: 'ug', packageType: 'monthly_sub', price: 19250 },
-    // South Africa
-    { countryCode: 'za', packageType: 'tip', price: 13.5 },
-    { countryCode: 'za', packageType: 'weekend_pass', price: 36 },
-    { countryCode: 'za', packageType: 'weekly_pass', price: 72 },
-    { countryCode: 'za', packageType: 'special_game', price: 18 },
-    { countryCode: 'za', packageType: 'monthly_sub', price: 180 },
-    // India
-    { countryCode: 'in', packageType: 'tip', price: 33.2 },
-    { countryCode: 'in', packageType: 'weekend_pass', price: 83 },
-    { countryCode: 'in', packageType: 'weekly_pass', price: 207.5 },
-    { countryCode: 'in', packageType: 'special_game', price: 49.8 },
-    { countryCode: 'in', packageType: 'monthly_sub', price: 498 },
-    // USA
-    { countryCode: 'us', packageType: 'tip', price: 1.99 },
-    { countryCode: 'us', packageType: 'weekend_pass', price: 4.99 },
-    { countryCode: 'us', packageType: 'weekly_pass', price: 9.99 },
-    { countryCode: 'us', packageType: 'special_game', price: 2.5 },
-    { countryCode: 'us', packageType: 'monthly_sub', price: 20 },
-  ]
+  // Seed PackageCountryPrice table with base price + discount structure
+  const basePrices = {
+    'ke': 80,    // Kenya - KES
+    'ng': 250,   // Nigeria - NGN
+    'za': 20,    // South Africa - ZAR
+    'gh': 5,     // Ghana - GHS
+    'ug': 300,   // Uganda - UGX
+    'tz': 200,   // Tanzania - TZS
+    'gb': 0.80,  // UK - GBP
+    'us': 1.00,  // US - USD
+    'br': 3.00,  // Brazil - BRL
+    'in': 80,    // India - INR
+    'de': 1.00,  // Germany - EUR
+    'ph': 50,    // Philippines - PHP
+    'tr': 10,    // Turkey - TRY
+    'it': 1.00,  // Italy - EUR
+    'es': 1.00   // Spain - EUR
+  }
+
+  // Corrected package structure
+  const discounts: Record<string, number> = {
+    'prediction': 0,      // Single tip - no discount
+    'tip': 0,             // Single tip - no discount (alias)
+    'weekend_pass': 0.10, // Weekend package - 10% discount
+    'weekly_pass': 0.15,  // Weekly package - 15% discount
+    'monthly_sub': 0.30   // Monthly subscription - 30% discount
+  }
+
+  // Corrected number of tips per package
+  const packageTipCounts: Record<string, number> = {
+    'prediction': 1,      // Single tip
+    'tip': 1,             // Single tip (alias)
+    'weekend_pass': 5,    // 5 tips for weekend
+    'weekly_pass': 8,     // 8 tips for week
+    'monthly_sub': 30     // 30 tips for month
+  }
+
+  // Generate pricing for all countries and package types
+  const packagePrices = []
+  
+  for (const [countryCode, basePrice] of Object.entries(basePrices)) {
+    for (const [packageType, discount] of Object.entries(discounts)) {
+      const tipCount = packageTipCounts[packageType]
+      const originalPrice = basePrice * tipCount
+      const discountedPrice = originalPrice * (1 - discount)
+      
+      packagePrices.push({
+        countryCode,
+        packageType,
+        price: discountedPrice,
+        originalPrice: originalPrice
+      })
+    }
+  }
 
   for (const pkg of packagePrices) {
     const country = await prisma.country.findUnique({ where: { code: pkg.countryCode } })
-    if (!country) continue
+    if (!country) {
+      console.warn(`Country not found: ${pkg.countryCode}`)
+      continue
+    }
+    
     await prisma.packageCountryPrice.upsert({
       where: { countryId_packageType: { countryId: country.id, packageType: pkg.packageType } },
-      update: { price: pkg.price },
-      create: { countryId: country.id, packageType: pkg.packageType, price: pkg.price },
+      update: { 
+        price: pkg.price,
+        originalPrice: pkg.originalPrice
+      },
+      create: { 
+        countryId: country.id, 
+        packageType: pkg.packageType, 
+        price: pkg.price,
+        originalPrice: pkg.originalPrice
+      },
     })
   }
 

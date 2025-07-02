@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Bell, Check, Trash2, X } from 'lucide-react'
+import { Bell, Check, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -63,8 +63,7 @@ export function NotificationBell({ className }: NotificationBellProps) {
 
   // Fetch unread count separately and immediately
   const {
-    data: unreadData,
-    refetch: refetchUnread
+    data: unreadData
   } = useQuery<UnreadCountResponse>({
     queryKey: ['notifications-unread'],
     queryFn: async () => {

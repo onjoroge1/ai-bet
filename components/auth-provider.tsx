@@ -49,13 +49,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession()
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const router = useRouter()
 
   // Fetch user profile with React Query for better caching
   const {
     data: userProfile,
-    isLoading: profileLoading,
-    error: profileError
+    isLoading: profileLoading
   } = useQuery({
     queryKey: ['user-profile', session?.user?.id],
     queryFn: async (): Promise<User> => {

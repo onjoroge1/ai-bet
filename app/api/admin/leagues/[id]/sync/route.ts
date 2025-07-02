@@ -4,7 +4,6 @@ import { authOptions } from '@/lib/auth'
 import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { Prisma } from '@prisma/client'
-import { z } from "zod"
 import { getCountryPricing } from '@/lib/pricing-service'
 
 // Helper function to get country-specific pricing from environment variables

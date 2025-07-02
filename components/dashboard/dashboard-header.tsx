@@ -4,11 +4,10 @@ import { useState, useEffect } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Crown, Bell, Settings, User, TrendingUp, Zap, FlameIcon as Fire, Target, Loader2, Brain, Sparkles } from "lucide-react"
+import { Settings, TrendingUp, Zap, FlameIcon as Fire, Target, Loader2, Brain, Sparkles } from "lucide-react"
 import { useRouter } from 'next/navigation'
 import { useAuth } from "@/components/auth-provider"
 import { useDashboardData } from "@/hooks/use-dashboard-data"
-import { DashboardHeaderProps } from "@/types/dashboard"
 import { NotificationBell } from "@/components/notifications/NotificationBell"
 
 export function DashboardHeader() {

@@ -90,64 +90,17 @@ async function seedPackageOffers() {
       }
     ]
 
-    // Pricing structure for different countries
-    const pricingStructure = {
-      // Kenya (KES)
-      ke: {
-        daily: { price: 250, originalPrice: 350 },
-        weekend: { price: 500, originalPrice: 700 },
-        weekly: { price: 1000, originalPrice: 1200 },
-        monthly: { price: 2500, originalPrice: 3500 }
-      },
-      // Nigeria (NGN)
-      ng: {
-        daily: { price: 1500, originalPrice: 2000 },
-        weekend: { price: 3000, originalPrice: 4000 },
-        weekly: { price: 6000, originalPrice: 8000 },
-        monthly: { price: 15000, originalPrice: 20000 }
-      },
-      // South Africa (ZAR)
-      za: {
-        daily: { price: 25, originalPrice: 35 },
-        weekend: { price: 50, originalPrice: 70 },
-        weekly: { price: 100, originalPrice: 120 },
-        monthly: { price: 250, originalPrice: 350 }
-      },
-      // Ghana (GHS)
-      gh: {
-        daily: { price: 15, originalPrice: 20 },
-        weekend: { price: 30, originalPrice: 40 },
-        weekly: { price: 60, originalPrice: 80 },
-        monthly: { price: 150, originalPrice: 200 }
-      },
-      // Uganda (UGX)
-      ug: {
-        daily: { price: 5000, originalPrice: 7000 },
-        weekend: { price: 10000, originalPrice: 14000 },
-        weekly: { price: 20000, originalPrice: 24000 },
-        monthly: { price: 50000, originalPrice: 70000 }
-      },
-      // Tanzania (TZS)
-      tz: {
-        daily: { price: 3500, originalPrice: 5000 },
-        weekend: { price: 7000, originalPrice: 10000 },
-        weekly: { price: 14000, originalPrice: 17000 },
-        monthly: { price: 35000, originalPrice: 50000 }
-      },
-      // United States (USD)
-      us: {
-        daily: { price: 2.99, originalPrice: 4.99 },
-        weekend: { price: 5.99, originalPrice: 8.99 },
-        weekly: { price: 11.99, originalPrice: 14.99 },
-        monthly: { price: 29.99, originalPrice: 39.99 }
-      },
-      // Italy (EUR)
-      it: {
-        daily: { price: 2.99, originalPrice: 4.99 },
-        weekend: { price: 5.99, originalPrice: 8.99 },
-        weekly: { price: 11.99, originalPrice: 14.99 },
-        monthly: { price: 29.99, originalPrice: 39.99 }
-      }
+    // Define base prices for each country (same as main seed)
+    const basePrices: Record<string, number> = {
+      ke: 80, ng: 250, za: 20, gh: 5, ug: 300, tz: 200, gb: 0.80, us: 1.00, br: 3.00, in: 80, de: 1.00, ph: 50, tr: 10, it: 1.00, es: 1.00
+    }
+
+    // Map offer packageType to tip count and discount
+    const offerMeta: Record<string, { tipCount: number, discount: number }> = {
+      daily: { tipCount: 1, discount: 0 }, // single tip
+      weekend: { tipCount: 5, discount: 0.10 },
+      weekly: { tipCount: 8, discount: 0.15 },
+      monthly: { tipCount: 30, discount: 0.30 }
     }
 
     // Create package offers
@@ -170,30 +123,25 @@ async function seedPackageOffers() {
         }
       })
 
-      // Create country-specific pricing
       for (const country of countries) {
         const countryCode = country.code.toLowerCase()
-        const pricing = pricingStructure[countryCode as keyof typeof pricingStructure]
-        
-        if (pricing && country.currencyCode && country.currencySymbol) {
-          const packagePricing = pricing[offer.packageType as keyof typeof pricing]
-          
-          if (packagePricing) {
-            await prisma.packageOfferCountryPrice.create({
-              data: {
-                packageOfferId: createdOffer.id,
-                countryId: country.id,
-                price: packagePricing.price,
-                originalPrice: packagePricing.originalPrice,
-                currencyCode: country.currencyCode,
-                currencySymbol: country.currencySymbol,
-                isActive: true
-              }
-            })
-            
-            console.log(`  - ${country.name}: ${country.currencySymbol}${packagePricing.price}`)
+        const base = basePrices[countryCode] ?? 1 // fallback to $1
+        const meta = offerMeta[offer.packageType]
+        if (!meta) continue
+        const originalPrice = base * meta.tipCount
+        const price = originalPrice * (1 - meta.discount)
+        await prisma.packageOfferCountryPrice.create({
+          data: {
+            packageOfferId: createdOffer.id,
+            countryId: country.id,
+            price,
+            originalPrice,
+            currencyCode: country.currencyCode || 'USD',
+            currencySymbol: country.currencySymbol || '$',
+            isActive: true
           }
-        }
+        })
+        console.log(`  - ${country.name}: ${country.currencySymbol}${price}`)
       }
     }
 

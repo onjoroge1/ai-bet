@@ -210,32 +210,60 @@ export function getQuickPurchasePricing(countryCode: string): Record<string, num
 
 /**
  * Get country-specific pricing from the database (PackageCountryPrice table)
- * Falls back to env-based logic if not found
+ * This is the primary and only source of pricing - no environment variable fallbacks
  * @param countryCode - ISO country code (e.g., 'KE', 'NG', 'US')
  * @param packageType - e.g., 'prediction'
- * @returns PricingConfig or null
+ * @returns PricingConfig
+ * @throws Error if country or pricing not found in database
  */
 export async function getDbCountryPricing(countryCode: string, packageType = 'prediction'): Promise<PricingConfig> {
-  // Look up the country by code
-  const country = await prisma.country.findUnique({ where: { code: countryCode.toUpperCase() } })
+  // Look up the country by code - database stores lowercase codes
+  const country = await prisma.country.findUnique({ where: { code: countryCode.toLowerCase() } })
   if (!country) {
-    // fallback to env-based logic
-    return getCountryPricing(countryCode)
+    // Fallback for unknown countries: USD $1 base price
+    const base = 1
+    const tipCounts: Record<string, number> = {
+      prediction: 1,
+      tip: 1,
+      weekend_pass: 5,
+      weekly_pass: 8,
+      monthly_sub: 30
+    }
+    const discounts: Record<string, number> = {
+      prediction: 0,
+      tip: 0,
+      weekend_pass: 0.10,
+      weekly_pass: 0.15,
+      monthly_sub: 0.30
+    }
+    const tips = tipCounts[packageType] ?? 1
+    const discount = discounts[packageType] ?? 0
+    const originalPrice = base * tips
+    const price = originalPrice * (1 - discount)
+    return {
+      price,
+      originalPrice,
+      currencyCode: 'USD',
+      currencySymbol: '$',
+      source: 'default-fallback'
+    }
   }
+  
   // Look up the price by countryId and packageType
   const priceRow = await prisma.packageCountryPrice.findUnique({
     where: { countryId_packageType: { countryId: country.id, packageType } },
     include: { country: true }
   })
-  if (priceRow) {
-    return {
-      price: Number(priceRow.price),
-      originalPrice: Number(priceRow.price), // You can extend this if you add originalPrice to the table
-      currencyCode: country.currencyCode || '',
-      currencySymbol: country.currencySymbol || '',
-      source: 'db'
-    }
+  
+  if (!priceRow) {
+    throw new Error(`Pricing not found in database for country: ${countryCode}, packageType: ${packageType}`)
   }
-  // fallback to env-based logic
-  return getCountryPricing(countryCode)
+  
+  return {
+    price: Number(priceRow.price),
+    originalPrice: Number(priceRow.originalPrice || priceRow.price), // Use originalPrice if available, otherwise same as price
+    currencyCode: country.currencyCode || '',
+    currencySymbol: country.currencySymbol || '',
+    source: 'db'
+  }
 } 

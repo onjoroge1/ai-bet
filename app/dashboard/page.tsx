@@ -26,10 +26,6 @@ const TimelineFeed = dynamic(() => import('@/components/dashboard/timeline-feed'
   loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
 })
 
-const TipsHistoryWidget = dynamic(() => import('@/components/dashboard/tips-history-widget').then(mod => mod.TipsHistoryWidget), {
-  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
-})
-
 const MyTipsWidget = dynamic(() => import('@/components/dashboard/my-tips-widget').then(mod => mod.MyTipsWidget), {
   loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
 })

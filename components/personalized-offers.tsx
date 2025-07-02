@@ -42,20 +42,27 @@ export function PersonalizedOffers() {
   const [isLoading, setIsLoading] = useState(true)
   const [selectedOffer, setSelectedOffer] = useState<any>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const { convertPrice } = useUserCountry()
+  const { convertPrice, userCountry } = useUserCountry()
 
   useEffect(() => {
-    fetchPackageOffers()
-  }, [])
+    if (!userCountry) return;
+    fetchPremiumPackages(userCountry.toLowerCase());
+  }, [userCountry]);
 
-  const fetchPackageOffers = async () => {
+  const fetchPremiumPackages = async (countryCode: string) => {
     try {
-      const response = await fetch("/api/package-offers")
-      if (!response.ok) throw new Error("Failed to fetch package offers")
+      const response = await fetch(`/api/homepage/pricing?country=${countryCode}`)
+      if (!response.ok) throw new Error("Failed to fetch premium packages")
       const data = await response.json()
-      setPackageOffers(data)
+      
+      // Filter for package offers (they have countryPrices array structure)
+      const packageOffers = data.plans.filter((plan: any) => 
+        plan.countryPrices && Array.isArray(plan.countryPrices) && plan.countryPrices.length > 0
+      )
+      
+      setPackageOffers(packageOffers)
     } catch (error) {
-      console.error("Error fetching package offers:", error)
+      console.error("Error fetching premium packages:", error)
     } finally {
       setIsLoading(false)
     }
@@ -154,7 +161,7 @@ export function PersonalizedOffers() {
                 {/* Package Type Badge */}
                 <div className="absolute top-2 right-2">
                   <Badge className="bg-slate-800/80 border-slate-600 text-xs">
-                    {offer.packageType.toUpperCase()}
+                    {offer.name}
                   </Badge>
                 </div>
 

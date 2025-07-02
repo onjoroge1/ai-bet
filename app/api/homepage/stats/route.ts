@@ -4,11 +4,11 @@ import { convertToUSD, formatUSD } from "@/lib/exchange-rates"
 
 const prisma = new PrismaClient()
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    // Get current date and 30 days ago for comparisons
+    // Get current date for calculations
     const now = new Date()
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
 
     // Fetch all statistics in parallel
     const [
@@ -44,8 +44,8 @@ export async function GET(request: NextRequest) {
       }),
     ])
 
-    // Calculate win rate
-    const winRate = totalPredictions > 0 
+    // Calculate win rate percentage
+    const winRatePercentage = totalPredictions > 0 
       ? Math.round((successfulPredictions / totalPredictions) * 100)
       : 0
 
@@ -59,10 +59,20 @@ export async function GET(request: NextRequest) {
       ? convertToUSD(Number(totalWinnings._sum.totalWinnings), "USD")
       : 0
 
+    // Format numbers for display
+    const formatCurrency = (amount: number) => {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(amount)
+    }
+
     const stats = {
       winRate: {
-        value: `${winRate}%`,
-        rawValue: winRate,
+        value: `${winRatePercentage}%`,
+        rawValue: winRatePercentage,
         description: "Average success rate across all predictions"
       },
       totalWinnings: {
@@ -76,7 +86,7 @@ export async function GET(request: NextRequest) {
         description: "Global reach with local payment methods"
       },
       totalRevenue: {
-        value: formatUSD(revenueUSD),
+        value: formatCurrency(revenueUSD),
         rawValue: revenueUSD,
         description: "Total platform revenue"
       }
