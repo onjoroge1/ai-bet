@@ -398,7 +398,54 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
         ) : (
           <div className="space-y-4">
             {clientSecret ? (
-              <Elements stripe={stripePromise} options={{ clientSecret }}>
+              <Elements 
+                stripe={stripePromise} 
+                options={{ 
+                  clientSecret,
+                  appearance: {
+                    theme: 'night',
+                    variables: {
+                      colorPrimary: '#10b981',
+                      colorBackground: '#1e293b',
+                      colorText: '#f1f5f9',
+                      colorDanger: '#ef4444',
+                      fontFamily: 'Inter, system-ui, sans-serif',
+                      spacingUnit: '4px',
+                      borderRadius: '8px',
+                    },
+                    rules: {
+                      '.Tab': {
+                        border: '1px solid #475569',
+                        boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+                      },
+                      '.Tab:hover': {
+                        color: '#10b981',
+                        borderColor: '#10b981',
+                      },
+                      '.Tab--selected': {
+                        borderColor: '#10b981',
+                        backgroundColor: '#10b981',
+                        color: '#ffffff',
+                      },
+                      '.Input': {
+                        border: '1px solid #475569',
+                        backgroundColor: '#334155',
+                        color: '#f1f5f9',
+                      },
+                      '.Input:focus': {
+                        borderColor: '#10b981',
+                        boxShadow: '0 0 0 1px #10b981',
+                      },
+                      '.Label': {
+                        color: '#f1f5f9',
+                      },
+                      '.Text': {
+                        color: '#cbd5e1',
+                      },
+                    },
+                  },
+                }}
+              >
                 <PaymentForm
                   clientSecret={clientSecret}
                   amount={item.price}

@@ -4,10 +4,8 @@ import { useState, useEffect } from "react"
 import { useStripe, useElements, PaymentElement } from "@stripe/react-stripe-js"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Loader2, CreditCard, Apple, Smartphone, CheckCircle, XCircle } from "lucide-react"
+import { Loader2, CreditCard, CheckCircle, XCircle, Shield, Zap } from "lucide-react"
 import { toast } from "sonner"
-import { getAvailablePaymentMethods, SupportedPaymentMethod } from "@/lib/stripe"
 
 interface PaymentFormProps {
   clientSecret: string
@@ -36,16 +34,11 @@ export function PaymentForm({
   const elements = useElements()
   const [isProcessing, setIsProcessing] = useState(false)
   const [paymentStatus, setPaymentStatus] = useState<'pending' | 'success' | 'error'>('pending')
-  const [availableMethods, setAvailableMethods] = useState<SupportedPaymentMethod[]>([])
 
   // Ensure amount is a number
   const numericAmount = typeof amount === 'string' ? parseFloat(amount) : 
                        typeof amount === 'number' ? amount : 
                        parseFloat(amount.toString())
-
-  useEffect(() => {
-    setAvailableMethods(getAvailablePaymentMethods(userCountryCode))
-  }, [userCountryCode])
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -84,94 +77,36 @@ export function PaymentForm({
     }
   }
 
-  const getPaymentMethodIcon = (method: SupportedPaymentMethod) => {
-    switch (method) {
-      case 'card':
-        return <CreditCard className="w-4 h-4" />
-      case 'apple_pay':
-        return <Apple className="w-4 h-4" />
-      case 'google_pay':
-        return <Smartphone className="w-4 h-4" />
-      case 'paypal':
-        return <div className="w-4 h-4 text-blue-500 font-bold text-xs">P</div>
-      default:
-        return <CreditCard className="w-4 h-4" />
-    }
-  }
-
-  const getPaymentMethodName = (method: SupportedPaymentMethod) => {
-    switch (method) {
-      case 'card':
-        return 'Credit Card'
-      case 'apple_pay':
-        return 'Apple Pay'
-      case 'google_pay':
-        return 'Google Pay'
-      case 'paypal':
-        return 'PayPal'
-      default:
-        return method
-    }
-  }
-
-  // Helper to get icon and label for selected method
-  const selectedMethodIcon = selectedPaymentMethod ? getPaymentMethodIcon(selectedPaymentMethod as SupportedPaymentMethod) : null;
-  const selectedMethodLabel = selectedPaymentMethod ? getPaymentMethodName(selectedPaymentMethod as SupportedPaymentMethod) : null;
-
   return (
-    <Card className="w-full max-w-md mx-auto bg-slate-800 border-slate-700" aria-label="Payment form">
-      <CardHeader className="text-center">
+    <Card className="w-full max-w-lg mx-auto bg-slate-800/90 border-slate-700 backdrop-blur-sm" aria-label="Payment form">
+      <CardHeader className="text-center pb-4">
         <CardTitle className="text-white flex items-center justify-center space-x-2">
-          <CreditCard className="w-5 h-5 text-emerald-400" />
-          <span>Complete Payment</span>
+          <Zap className="w-5 h-5 text-emerald-400" />
+          <span>Complete Your Purchase</span>
         </CardTitle>
       </CardHeader>
       
       <CardContent className="space-y-6">
         {/* Order Summary */}
-        <div className="bg-slate-700/50 rounded-lg p-4">
-          <h3 className="text-white font-medium mb-2">Order Summary</h3>
+        <div className="bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-500/20 rounded-xl p-4">
+          <h3 className="text-white font-semibold mb-3 flex items-center">
+            <CreditCard className="w-4 h-4 mr-2 text-emerald-400" />
+            Order Summary
+          </h3>
           <div className="flex justify-between items-center">
-            <span className="text-slate-300">{itemName}</span>
-            <span className="text-emerald-400 font-bold">
+            <span className="text-slate-300 text-sm">{itemName}</span>
+            <span className="text-emerald-400 font-bold text-lg">
               {currencySymbol}{numericAmount.toFixed(2)}
             </span>
           </div>
         </div>
 
-        {/* Selected Payment Method Summary */}
-        {selectedPaymentMethod && (
-          <div className="flex items-center space-x-2 bg-slate-700/60 rounded px-3 py-2">
-            {selectedMethodIcon}
-            <span className="text-white font-medium">{selectedMethodLabel}</span>
-          </div>
-        )}
-
-        {/* Available Payment Methods */}
-        <div className="space-y-2">
-          <h4 className="text-white font-medium text-sm">Available Payment Methods</h4>
-          <div className="flex flex-wrap gap-2">
-            {availableMethods.map((method) => (
-              <Badge
-                key={method}
-                variant="secondary"
-                className={`bg-slate-700 text-slate-300 border-slate-600 ${selectedPaymentMethod === method ? 'ring-2 ring-emerald-400' : ''}`}
-              >
-                <div className="flex items-center space-x-1">
-                  {getPaymentMethodIcon(method)}
-                  <span className="text-xs">{getPaymentMethodName(method)}</span>
-                </div>
-              </Badge>
-            ))}
-          </div>
-        </div>
-
         {/* Payment Status */}
         {paymentStatus !== 'pending' && (
-          <div className={`flex items-center space-x-2 p-3 rounded-lg ${
+          <div className={`flex items-center space-x-3 p-4 rounded-xl border ${
             paymentStatus === 'success' 
-              ? 'bg-emerald-500/20 border border-emerald-500/30' 
-              : 'bg-red-500/20 border border-red-500/30'
+              ? 'bg-emerald-500/20 border-emerald-500/30' 
+              : 'bg-red-500/20 border-red-500/30'
           }`}>
             {paymentStatus === 'success' ? (
               <CheckCircle className="w-5 h-5 text-emerald-400" />
@@ -186,16 +121,21 @@ export function PaymentForm({
           </div>
         )}
 
-        {/* Payment Form */}
-        <form onSubmit={handleSubmit} className="space-y-4" aria-label="Stripe payment form">
-          <div className="bg-slate-900 rounded-lg p-4 border border-slate-700">
+        {/* Payment Form with Accordion Layout */}
+        <form onSubmit={handleSubmit} className="space-y-6" aria-label="Stripe payment form">
+          <div className="bg-slate-900/50 rounded-xl p-6 border border-slate-700/50">
             <PaymentElement 
               options={{
-                layout: 'tabs',
-                paymentMethodOrder: selectedPaymentMethod ? [selectedPaymentMethod, ...availableMethods.filter(m => m !== selectedPaymentMethod)] : availableMethods,
+                layout: {
+                  type: 'accordion',
+                  defaultCollapsed: false,
+                  radios: true,
+                  spacedAccordionItems: false
+                },
+                paymentMethodOrder: selectedPaymentMethod ? [selectedPaymentMethod] : undefined,
                 wallets: {
-                  applePay: selectedPaymentMethod === 'apple_pay' ? 'auto' : 'never',
-                  googlePay: selectedPaymentMethod === 'google_pay' ? 'auto' : 'never',
+                  applePay: 'auto',
+                  googlePay: 'auto',
                 },
               }}
             />
@@ -207,7 +147,7 @@ export function PaymentForm({
               variant="outline"
               onClick={onCancel}
               disabled={isProcessing}
-              className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700"
+              className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700 hover:border-slate-500 transition-colors"
             >
               Cancel
             </Button>
@@ -215,7 +155,7 @@ export function PaymentForm({
             <Button
               type="submit"
               disabled={!stripe || isProcessing}
-              className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold py-3 transition-all duration-200 hover:shadow-lg hover:shadow-emerald-500/25"
             >
               {isProcessing ? (
                 <div className="flex items-center space-x-2">
@@ -224,7 +164,7 @@ export function PaymentForm({
                 </div>
               ) : (
                 <div className="flex items-center space-x-2">
-                  <CreditCard className="w-4 h-4" />
+                  <Zap className="w-4 h-4" />
                   <span>Pay {currencySymbol}{numericAmount.toFixed(2)}</span>
                 </div>
               )}
@@ -233,10 +173,16 @@ export function PaymentForm({
         </form>
 
         {/* Security Notice */}
-        <div className="text-center">
-          <p className="text-xs text-slate-400">
-            🔒 Your payment is secured by Stripe. We never store your card details.
-          </p>
+        <div className="bg-slate-900/30 border border-slate-700/50 rounded-lg p-4">
+          <div className="flex items-start space-x-3">
+            <Shield className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+            <div className="text-sm">
+              <p className="text-emerald-300 font-medium mb-1">Secure Payment</p>
+              <p className="text-slate-400">
+                Your payment is protected by 256-bit SSL encryption. We never store your card details.
+              </p>
+            </div>
+          </div>
         </div>
       </CardContent>
     </Card>
