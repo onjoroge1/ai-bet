@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { useStripe, useElements, PaymentElement } from "@stripe/react-stripe-js"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Loader2, CreditCard, CheckCircle, XCircle, Shield, Zap } from "lucide-react"
+import { Loader2, CreditCard, CheckCircle, XCircle, Shield, Zap, Clock } from "lucide-react"
 import { toast } from "sonner"
 
 interface PaymentFormProps {
@@ -33,12 +33,70 @@ export function PaymentForm({
   const stripe = useStripe()
   const elements = useElements()
   const [isProcessing, setIsProcessing] = useState(false)
-  const [paymentStatus, setPaymentStatus] = useState<'pending' | 'success' | 'error'>('pending')
+  const [paymentStatus, setPaymentStatus] = useState<'pending' | 'processing' | 'success' | 'error'>('pending')
+  const [paymentIntentId, setPaymentIntentId] = useState<string>('')
+  const [pollingAttempts, setPollingAttempts] = useState(0)
 
   // Ensure amount is a number
   const numericAmount = typeof amount === 'string' ? parseFloat(amount) : 
                        typeof amount === 'number' ? amount : 
                        parseFloat(amount.toString())
+
+  // Poll for payment confirmation
+  const pollPaymentStatus = async (intentId: string) => {
+    const maxAttempts = 15 // 30 seconds total (15 * 2 seconds)
+    let attempts = 0
+
+    const poll = async (): Promise<boolean> => {
+      try {
+        const response = await fetch(`/api/payments/status?payment_intent=${intentId}`)
+        const data = await response.json()
+
+        if (data.status === 'succeeded') {
+          setPaymentStatus('success')
+          toast.success('Payment confirmed! Your purchase is now available.')
+          setTimeout(() => {
+            onSuccess()
+          }, 2000)
+          return true
+        } else if (data.status === 'failed') {
+          setPaymentStatus('error')
+          toast.error('Payment failed. Please try again.')
+          return true
+        } else {
+          // Still processing
+          attempts++
+          setPollingAttempts(attempts)
+          
+          if (attempts >= maxAttempts) {
+            setPaymentStatus('error')
+            toast.error('Payment confirmation timeout. Please contact support.')
+            return true
+          }
+          
+          // Continue polling
+          setTimeout(poll, 2000)
+          return false
+        }
+      } catch (error) {
+        console.error('Error polling payment status:', error)
+        attempts++
+        setPollingAttempts(attempts)
+        
+        if (attempts >= maxAttempts) {
+          setPaymentStatus('error')
+          toast.error('Unable to confirm payment. Please contact support.')
+          return true
+        }
+        
+        // Continue polling
+        setTimeout(poll, 2000)
+        return false
+      }
+    }
+
+    return poll()
+  }
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -48,6 +106,8 @@ export function PaymentForm({
     }
 
     setIsProcessing(true)
+    setPaymentStatus('processing')
+    setPollingAttempts(0)
 
     try {
       const { error, paymentIntent } = await stripe.confirmPayment({
@@ -61,12 +121,21 @@ export function PaymentForm({
       if (error) {
         setPaymentStatus('error')
         toast.error(error.message || 'Payment failed')
-      } else if (paymentIntent && paymentIntent.status === 'succeeded') {
-        setPaymentStatus('success')
-        toast.success('Payment successful!')
-        setTimeout(() => {
-          onSuccess()
-        }, 2000)
+      } else if (paymentIntent) {
+        setPaymentIntentId(paymentIntent.id)
+        
+        // Start polling for backend confirmation
+        if (paymentIntent.status === 'succeeded') {
+          // Stripe says succeeded, but we need backend confirmation
+          await pollPaymentStatus(paymentIntent.id)
+        } else if (paymentIntent.status === 'processing') {
+          // Payment is still processing, poll for updates
+          await pollPaymentStatus(paymentIntent.id)
+        } else {
+          // Other statuses (requires_payment_method, requires_confirmation, etc.)
+          setPaymentStatus('error')
+          toast.error('Payment requires additional action. Please try again.')
+        }
       }
     } catch (error) {
       console.error('Payment error:', error)
@@ -106,18 +175,31 @@ export function PaymentForm({
           <div className={`flex items-center space-x-3 p-4 rounded-xl border ${
             paymentStatus === 'success' 
               ? 'bg-emerald-500/20 border-emerald-500/30' 
+              : paymentStatus === 'processing'
+              ? 'bg-blue-500/20 border-blue-500/30'
               : 'bg-red-500/20 border-red-500/30'
           }`}>
             {paymentStatus === 'success' ? (
               <CheckCircle className="w-5 h-5 text-emerald-400" />
+            ) : paymentStatus === 'processing' ? (
+              <Clock className="w-5 h-5 text-blue-400" />
             ) : (
               <XCircle className="w-5 h-5 text-red-400" />
             )}
-            <span className={`text-sm font-medium ${
-              paymentStatus === 'success' ? 'text-emerald-400' : 'text-red-400'
-            }`}>
-              {paymentStatus === 'success' ? 'Payment Successful!' : 'Payment Failed'}
-            </span>
+            <div className="flex-1">
+              <span className={`text-sm font-medium ${
+                paymentStatus === 'success' ? 'text-emerald-400' : 
+                paymentStatus === 'processing' ? 'text-blue-400' : 'text-red-400'
+              }`}>
+                {paymentStatus === 'success' ? 'Payment Confirmed!' : 
+                 paymentStatus === 'processing' ? 'Confirming Payment...' : 'Payment Failed'}
+              </span>
+              {paymentStatus === 'processing' && (
+                <div className="text-xs text-slate-400 mt-1">
+                  Attempt {pollingAttempts}/15 - Please wait while we confirm your payment
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -146,7 +228,7 @@ export function PaymentForm({
               type="button"
               variant="outline"
               onClick={onCancel}
-              disabled={isProcessing}
+              disabled={isProcessing || paymentStatus === 'processing'}
               className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700 hover:border-slate-500 transition-colors"
             >
               Cancel
@@ -154,13 +236,13 @@ export function PaymentForm({
             
             <Button
               type="submit"
-              disabled={!stripe || isProcessing}
+              disabled={!stripe || isProcessing || paymentStatus === 'processing'}
               className="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold py-3 transition-all duration-200 hover:shadow-lg hover:shadow-emerald-500/25"
             >
-              {isProcessing ? (
+              {isProcessing || paymentStatus === 'processing' ? (
                 <div className="flex items-center space-x-2">
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Processing...</span>
+                  <span>{paymentStatus === 'processing' ? 'Confirming...' : 'Processing...'}</span>
                 </div>
               ) : (
                 <div className="flex items-center space-x-2">

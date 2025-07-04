@@ -61,12 +61,50 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
   const itemType = metadata.itemType
   const itemId = metadata.itemId
 
-  if (itemType === 'package') {
-    // Create user package
-    await createUserPackage(userId, itemId, paymentIntent)
-  } else if (itemType === 'tip') {
-    // Process tip purchase
-    await processTipPurchase(userId, itemId, paymentIntent)
+  try {
+    // Create purchase record first
+    const purchase = await prisma.purchase.create({
+      data: {
+        userId,
+        quickPurchaseId: itemId, // For now, use itemId as quickPurchaseId
+        amount: new Prisma.Decimal(paymentIntent.amount / 100), // Convert from cents
+        paymentMethod: 'stripe',
+        status: 'completed',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+    })
+
+    console.log(`Created purchase record: ${purchase.id} for intent: ${paymentIntent.id}`)
+
+    if (itemType === 'package') {
+      // Create user package
+      const userPackage = await createUserPackage(userId, itemId, paymentIntent)
+      
+      // Note: We can't link purchase to userPackage directly as there's no foreign key
+      // The purchase record serves as proof of payment
+    } else if (itemType === 'tip') {
+      // Process tip purchase
+      const userPrediction = await processTipPurchase(userId, itemId, paymentIntent)
+      
+      // Note: We can't link purchase to userPrediction directly as there's no foreign key
+      // The purchase record serves as proof of payment
+    }
+
+    // Send notification
+    try {
+      const { NotificationService } = await import('@/lib/notification-service')
+      await NotificationService.createPaymentSuccessNotification(
+        userId,
+        paymentIntent.amount / 100,
+        itemType === 'package' ? 'Package' : 'Tip'
+      )
+    } catch (error) {
+      console.error('Failed to send payment notification:', error)
+    }
+
+  } catch (error) {
+    console.error("Error handling payment success:", error)
   }
 }
 
@@ -177,7 +215,7 @@ async function createUserPackage(userId: string, packageOfferId: string, payment
         })
 
         console.log(`Created user package: ${userPackage.id} for user: ${userId} (PackageCountryPrice)`)
-        return
+        return userPackage
       } else {
         console.error(`Invalid package ID format: ${packageOfferId}`)
         return
@@ -234,8 +272,10 @@ async function createUserPackage(userId: string, packageOfferId: string, payment
     })
 
     console.log(`Created user package: ${userPackage.id} for user: ${userId} (PackageOffer)`)
+    return userPackage
   } catch (error) {
     console.error("Error creating user package:", error)
+    return null
   }
 }
 
@@ -248,7 +288,7 @@ async function processTipPurchase(userId: string, itemId: string, paymentIntent:
 
     if (!quickPurchase) {
       console.error(`Quick purchase item not found: ${itemId}`)
-      return
+      return null
     }
 
     // Create a user prediction record for the tip
@@ -268,11 +308,14 @@ async function processTipPurchase(userId: string, itemId: string, paymentIntent:
             status: 'pending'
           }
         })
+        return prediction
       }
     }
 
     console.log(`Processed tip purchase: ${itemId} for user: ${userId}`)
+    return null
   } catch (error) {
     console.error("Error processing tip purchase:", error)
+    return null
   }
 } 
