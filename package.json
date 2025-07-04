@@ -23,7 +23,10 @@
     "db:studio": "prisma studio",
     "db:seed": "node scripts/seed-database.js",
     "db:reset": "node scripts/reset-database.js",
-    "update-streaks": "node scripts/update-all-win-streaks.js"
+    "update-streaks": "node scripts/update-all-win-streaks.js",
+    "check-production": "node scripts/check-production-webhook.js",
+    "diagnose-stripe": "node scripts/diagnose-stripe.js",
+    "test-webhook": "node scripts/test-webhook.js"
   },
   "dependencies": {
     "@alloc/quick-lru": "^5.2.0",
