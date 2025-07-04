@@ -1,116 +1,108 @@
-import { NextResponse } from "next/server"
-import { headers } from "next/headers"
-import prisma from "@/lib/db"
-import { stripe } from "@/lib/stripe-server"
-import Stripe from "stripe"
-import { Prisma } from "@prisma/client"
+import { NextRequest, NextResponse } from 'next/server';
+import Stripe from 'stripe';
+import prisma from '@/lib/db';
+import { Prisma } from '@prisma/client';
 
-// POST /api/payments/webhook - Handle Stripe webhooks
-export async function POST(request: Request) {
-  const body = await request.text()
-  const headersList = await headers()
-  const signature = headersList.get("stripe-signature")
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: '2025-05-28.basil',
+});
+const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
-  if (!signature) {
-    return NextResponse.json({ error: "No signature" }, { status: 400 })
-  }
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-  let event: Stripe.Event
+export async function POST(req: NextRequest) {
+  const sig = req.headers.get('stripe-signature') ?? '';
+  const buf = Buffer.from(await req.arrayBuffer());
 
+  let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(
-      body,
-      signature,
-      process.env.STRIPE_WEBHOOK_SECRET!
-    )
+    event = stripe.webhooks.constructEvent(buf, sig, endpointSecret);
   } catch (err) {
-    console.error("Webhook signature verification failed:", err)
-    return NextResponse.json({ error: "Invalid signature" }, { status: 400 })
+    console.error('⚠️  Signature verify failed:', err);
+    return new NextResponse('Sig error', { status: 400 });
   }
 
   try {
     switch (event.type) {
-      case "payment_intent.succeeded":
-        await handlePaymentSuccess(event.data.object as Stripe.PaymentIntent)
-        break
-      
-      case "payment_intent.payment_failed":
-        await handlePaymentFailure(event.data.object as Stripe.PaymentIntent)
-        break
-      
+      case 'payment_intent.succeeded':
+        await handlePaymentSuccess(event.data.object as Stripe.PaymentIntent);
+        break;
+      case 'payment_intent.payment_failed':
+        await handlePaymentFailure(event.data.object as Stripe.PaymentIntent);
+        break;
+      // Add more event types as needed
       default:
-        console.log(`Unhandled event type: ${event.type}`)
+        console.log('Unhandled event:', event.type);
     }
-
-    return NextResponse.json({ received: true })
+    return NextResponse.json({ received: true });
   } catch (error) {
-    console.error("Error processing webhook:", error)
-    return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 })
+    console.error('Error processing webhook:', error);
+    return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 });
   }
 }
 
 async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
-  const { metadata } = paymentIntent
-  
+  const { metadata } = paymentIntent;
   if (!metadata.userId || !metadata.itemType || !metadata.itemId) {
-    console.error("Missing required metadata in payment intent")
-    return
+    console.error('Missing required metadata in payment intent');
+    return;
   }
-
-  const userId = metadata.userId
-  const itemType = metadata.itemType
-  const itemId = metadata.itemId
-
+  const userId = metadata.userId;
+  const itemType = metadata.itemType;
+  const itemId = metadata.itemId;
   try {
-    // Create purchase record first
+    // Idempotent: Check for recent purchases for this user and item
+    const existing = await prisma.purchase.findFirst({
+      where: {
+        userId,
+        quickPurchaseId: itemId,
+        createdAt: {
+          gte: new Date(Date.now() - 5 * 60 * 1000) // Last 5 minutes
+        }
+      },
+    });
+    if (existing) {
+      console.log(`Purchase already exists for user ${userId} and item ${itemId}`);
+      return;
+    }
+    // Create purchase record
     const purchase = await prisma.purchase.create({
       data: {
         userId,
-        quickPurchaseId: itemId, // For now, use itemId as quickPurchaseId
-        amount: new Prisma.Decimal(paymentIntent.amount / 100), // Convert from cents
+        quickPurchaseId: itemId,
+        amount: new Prisma.Decimal(paymentIntent.amount / 100),
         paymentMethod: 'stripe',
         status: 'completed',
         createdAt: new Date(),
-        updatedAt: new Date()
-      }
-    })
-
-    console.log(`Created purchase record: ${purchase.id} for intent: ${paymentIntent.id}`)
-
+        updatedAt: new Date(),
+      },
+    });
+    console.log(`Created purchase record: ${purchase.id} for intent: ${paymentIntent.id}`);
     if (itemType === 'package') {
-      // Create user package
-      const userPackage = await createUserPackage(userId, itemId, paymentIntent)
-      
-      // Note: We can't link purchase to userPackage directly as there's no foreign key
-      // The purchase record serves as proof of payment
+      await createUserPackage(userId, itemId, paymentIntent);
     } else if (itemType === 'tip') {
-      // Process tip purchase
-      const userPrediction = await processTipPurchase(userId, itemId, paymentIntent)
-      
-      // Note: We can't link purchase to userPrediction directly as there's no foreign key
-      // The purchase record serves as proof of payment
+      await processTipPurchase(userId, itemId, paymentIntent);
     }
-
     // Send notification
     try {
-      const { NotificationService } = await import('@/lib/notification-service')
+      const { NotificationService } = await import('@/lib/notification-service');
       await NotificationService.createPaymentSuccessNotification(
         userId,
         paymentIntent.amount / 100,
         itemType === 'package' ? 'Package' : 'Tip'
-      )
+      );
     } catch (error) {
-      console.error('Failed to send payment notification:', error)
+      console.error('Failed to send payment notification:', error);
     }
-
   } catch (error) {
-    console.error("Error handling payment success:", error)
+    console.error('Error handling payment success:', error);
   }
 }
 
 async function handlePaymentFailure(paymentIntent: Stripe.PaymentIntent) {
-  console.log(`Payment failed for intent: ${paymentIntent.id}`)
-  // You could send an email notification here
+  console.log(`Payment failed for intent: ${paymentIntent.id}`);
+  // Optionally notify user
 }
 
 async function createUserPackage(userId: string, packageOfferId: string, paymentIntent: Stripe.PaymentIntent) {
