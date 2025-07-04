@@ -10,6 +10,7 @@ const HEALTH_ENDPOINT = `${PRODUCTION_URL}/api/health`;
 
 console.log('🔍 Production Webhook Diagnostic Tool');
 console.log('=====================================\n');
+console.log(`🌐 Testing domain: ${PRODUCTION_URL}`);
 
 // Test health endpoint
 async function testHealth() {
