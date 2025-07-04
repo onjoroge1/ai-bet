@@ -17,6 +17,7 @@ import { Separator } from "@/components/ui/separator"
 import { Elements } from "@stripe/react-stripe-js"
 import { stripePromise } from "@/lib/stripe"
 import { PaymentForm } from "@/components/payment-form"
+import { CreditCard as CreditCardIcon } from "lucide-react"
 
 interface QuickPurchaseItem {
   id: string
@@ -73,30 +74,54 @@ interface QuickPurchaseModalProps {
   item: QuickPurchaseItem | null
 }
 
+function PaymentMethodCard({ method, selected, onClick, comingSoon }: { method: any, selected: boolean, onClick: () => void, comingSoon?: boolean }) {
+  return (
+    <Card
+      className={`bg-slate-700/50 border-slate-600 transition-colors ${selected ? 'ring-2 ring-green-500' : ''} hover:bg-slate-700 cursor-pointer relative`}
+      onClick={comingSoon ? undefined : onClick}
+      aria-label={method.label + (comingSoon ? ' (Coming soon)' : '')}
+      tabIndex={0}
+      role="button"
+      onKeyDown={e => { if (!comingSoon && (e.key === 'Enter' || e.key === ' ')) onClick(); }}
+    >
+      <CardContent className="p-4 text-center">
+        {method.icon}
+        <div className="text-sm font-medium text-white">{method.label}</div>
+        <div className="text-xs text-slate-400">{method.desc}</div>
+        {comingSoon && (
+          <span className="absolute top-2 right-2 bg-yellow-500 text-xs text-white px-2 py-0.5 rounded">Coming soon</span>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModalProps) {
-  const { countryData, convertPrice } = useUserCountry()
+  const { countryData, convertPrice, userCountry } = useUserCountry()
   const { user, isAuthenticated } = useAuth()
   const router = useRouter()
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("")
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>("")
   const [isProcessing, setIsProcessing] = useState(false)
   const [showReceipt, setShowReceipt] = useState(false)
   const [purchasedTip, setPurchasedTip] = useState<any>(null)
-  const [paymentMethod, setPaymentMethod] = useState<"money" | "credits">("money")
   const [packageStatus, setPackageStatus] = useState<PackageStatus | null>(null)
-  const [paymentStep, setPaymentStep] = useState<'details' | 'payment'>('details')
+  const [paymentStep, setPaymentStep] = useState<'select' | 'pay'>('select')
   const [clientSecret, setClientSecret] = useState<string>('')
   const [isLoading, setIsLoading] = useState(false)
-  const [userCountryCode, setUserCountryCode] = useState('US')
+  const [userCountryCode, setUserCountryCode] = useState(userCountry || 'US')
+  const [activeTab, setActiveTab] = useState<string>("");
 
-  // Reset payment method when modal opens
   useEffect(() => {
     if (isOpen) {
-      setSelectedPaymentMethod("")
-      fetchPackageStatus()
-      setPaymentStep('details')
-      setClientSecret('')
+      setSelectedPaymentMethod("");
+      fetchPackageStatus();
+      setPaymentStep('select');
+      setClientSecret('');
+      setUserCountryCode(userCountry || 'US');
+      // Default tab: always global first
+      setActiveTab('global');
     }
-  }, [isOpen])
+  }, [isOpen, userCountry]);
 
   const fetchPackageStatus = async () => {
     try {
@@ -110,45 +135,51 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
     }
   }
 
-  const handleProceedToPayment = async () => {
-    setIsLoading(true)
+  // New: Unified payment method selection (refactored)
+  const handleSelectPayment = async (method: string) => {
+    setSelectedPaymentMethod(method);
+    setClientSecret('');
+    setPaymentStep('select');
+    // Local payments (not implemented): show toast and do not transition
+    if (isKenya && (method === 'mpesa' || method === 'airtel_money')) {
+      toast('Coming soon: Local payment integration for ' + (method === 'mpesa' ? 'M-Pesa' : 'Airtel Money'));
+      return;
+    }
+    // Global payments: proceed to payment form
+    setIsLoading(true);
     try {
       const response = await fetch('/api/payments/create-payment-intent', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           itemId: item?.id,
           itemType: item?.type === 'package' ? 'package' : 'tip',
+          paymentMethod: method,
         }),
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to create payment intent')
-      }
-
-      const data = await response.json()
-      setClientSecret(data.clientSecret)
-      setPaymentStep('payment')
+      });
+      if (!response.ok) throw new Error('Failed to create payment intent');
+      const data = await response.json();
+      setClientSecret(data.clientSecret);
+      setPaymentStep('pay');
     } catch (error) {
-      console.error('Error creating payment intent:', error)
-      toast.error('Failed to initialize payment. Please try again.')
+      toast.error('Failed to initialize payment. Please try again.');
+      setSelectedPaymentMethod("");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handlePaymentSuccess = () => {
     toast.success('Purchase successful!')
     onClose()
-    // Optionally refresh the page or update the UI
-    window.location.reload()
+    // Optionally: trigger admin notification here (e.g., via API or socket)
+    // window.location.reload()
   }
 
   const handlePaymentCancel = () => {
-    setPaymentStep('details')
+    setPaymentStep('select')
     setClientSecret('')
+    setSelectedPaymentMethod("")
   }
 
   const getItemIcon = () => {
@@ -190,6 +221,21 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
     return `${packageStatus.totalTipsRemaining} Credits Available`
   }
 
+  // Helper: Is user in Kenya?
+  const isKenya = userCountryCode.toLowerCase() === 'ke' || userCountryCode.toLowerCase() === 'kenya';
+
+  // Payment methods config
+  const globalPayments = [
+    { key: 'card', label: 'Credit Card', icon: <CreditCard className="w-8 h-8 mx-auto mb-2 text-emerald-400" />, desc: 'Visa, Mastercard, Amex' },
+    { key: 'apple_pay', label: 'Apple Pay', icon: <div className="w-8 h-8 mx-auto mb-2 text-blue-400">📱</div>, desc: 'Quick & Secure' },
+    { key: 'google_pay', label: 'Google Pay', icon: <div className="w-8 h-8 mx-auto mb-2 text-green-400">📱</div>, desc: 'Quick & Secure' },
+    { key: 'paypal', label: 'PayPal', icon: <div className="w-8 h-8 mx-auto mb-2 text-blue-500 font-bold text-lg">P</div>, desc: 'Pay with PayPal' },
+  ];
+  const localPaymentsKE = [
+    { key: 'mpesa', label: 'M-Pesa', icon: <Smartphone className="w-8 h-8 mx-auto mb-2 text-green-500" />, desc: 'Pay with M-Pesa' },
+    { key: 'airtel_money', label: 'Airtel Money', icon: <Smartphone className="w-8 h-8 mx-auto mb-2 text-red-500" />, desc: 'Pay with Airtel Money' },
+  ];
+
   if (showReceipt && purchasedTip) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
@@ -204,18 +250,17 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px] bg-slate-800 border-slate-700 text-white">
+      <DialogContent className="fixed left-[50%] top-[50%] z-50 grid w-full translate-x-[-50%] translate-y-[-50%] gap-4 border p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg max-w-4xl max-h-[90vh] overflow-y-auto bg-slate-900 border-slate-700">
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold flex items-center space-x-2">
             {getItemIcon()}
             <span>Quick Purchase</span>
           </DialogTitle>
         </DialogHeader>
-
-        {paymentStep === 'details' ? (
+        {paymentStep === 'select' ? (
           <div className="space-y-6">
-            {/* Item Details */}
-            <Card className="bg-slate-700/50 border-slate-600">
+            {/* Purchase Details */}
+            <Card className="bg-slate-800 border-slate-700 rounded-xl">
               <CardContent className="p-6">
                 <div className="flex items-start justify-between mb-4">
                   <div>
@@ -289,56 +334,64 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
                 </div>
               </CardContent>
             </Card>
-
-            {/* Payment Options */}
-            <div className="space-y-4">
-              <h4 className="text-white font-medium">Payment Options</h4>
-              <div className="grid grid-cols-2 gap-3">
-                <Card className="bg-slate-700/50 border-slate-600 hover:bg-slate-700 cursor-pointer">
-                  <CardContent className="p-4 text-center">
-                    <CreditCard className="w-8 h-8 mx-auto mb-2 text-emerald-400" />
-                    <div className="text-sm font-medium text-white">Credit Card</div>
-                    <div className="text-xs text-slate-400">Visa, Mastercard, Amex</div>
-                  </CardContent>
-                </Card>
-                <Card className="bg-slate-700/50 border-slate-600 hover:bg-slate-700 cursor-pointer">
-                  <CardContent className="p-4 text-center">
-                    <div className="w-8 h-8 mx-auto mb-2 text-blue-400">📱</div>
-                    <div className="text-sm font-medium text-white">Digital Wallets</div>
-                    <div className="text-xs text-slate-400">Apple Pay, Google Pay</div>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex space-x-3">
-              <Button
-                variant="outline"
-                onClick={onClose}
-                className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleProceedToPayment}
-                disabled={isLoading}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-                style={{
-                  background: `linear-gradient(135deg, ${item.colorGradientFrom}, ${item.colorGradientTo})`
-                }}
-              >
-                {isLoading ? (
-                  <div className="flex items-center space-x-2">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Loading...</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center space-x-2">
-                    <CreditCard className="w-4 h-4" />
-                    <span>Proceed to Payment</span>
-                  </div>
+            {/* Payment Tabs */}
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="mb-4 flex bg-transparent p-0 border-0">
+                {isKenya && (
+                  <TabsTrigger value="local" className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:bg-emerald-600">
+                    Local Payments (Kenya)
+                  </TabsTrigger>
                 )}
+                <TabsTrigger value="global" className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:bg-emerald-600">
+                  Global Payments
+                </TabsTrigger>
+              </TabsList>
+              {isKenya && (
+                <TabsContent value="local">
+                  <div className="grid grid-cols-2 gap-4">
+                    {localPaymentsKE.map(method => (
+                      <PaymentMethodCard
+                        key={method.key}
+                        method={method}
+                        selected={selectedPaymentMethod === method.key}
+                        onClick={() => handleSelectPayment(method.key)}
+                        comingSoon={true}
+                      />
+                    ))}
+                  </div>
+                </TabsContent>
+              )}
+              <TabsContent value="global">
+                <div className="grid grid-cols-2 gap-4">
+                  {globalPayments.map(method => (
+                    <PaymentMethodCard
+                      key={method.key}
+                      method={method}
+                      selected={selectedPaymentMethod === method.key}
+                      onClick={() => handleSelectPayment(method.key)}
+                    />
+                  ))}
+                </div>
+              </TabsContent>
+            </Tabs>
+            {/* Secure Payment Info */}
+            <div className="bg-emerald-900/10 border border-emerald-700 rounded-lg p-4 flex items-center space-x-3">
+              <Shield className="w-5 h-5 text-emerald-400" />
+              <span className="text-emerald-300 text-sm font-semibold">
+                Secure Payment
+                <span className="block text-slate-400 font-normal">Your payment is protected by 256-bit SSL encryption. We never store your payment details.</span>
+              </span>
+            </div>
+            {/* Action Buttons */}
+            <div className="flex space-x-3 mt-4">
+              <Button variant="outline" onClick={onClose} className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700">Cancel</Button>
+              <Button
+                onClick={() => selectedPaymentMethod && handleSelectPayment(selectedPaymentMethod)}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center justify-center gap-2"
+                disabled={!selectedPaymentMethod || isLoading}
+              >
+                <CreditCardIcon className="w-5 h-5 mr-2" />
+                {`Pay ${convertPrice(item.price.toString())}`}
               </Button>
             </div>
           </div>
@@ -353,6 +406,7 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
                   currencySymbol={item.country?.currencySymbol || '$'}
                   itemName={item.name}
                   userCountryCode={userCountryCode}
+                  selectedPaymentMethod={selectedPaymentMethod}
                   onSuccess={handlePaymentSuccess}
                   onCancel={handlePaymentCancel}
                 />

@@ -77,15 +77,118 @@ async function handlePaymentFailure(paymentIntent: Stripe.PaymentIntent) {
 
 async function createUserPackage(userId: string, packageOfferId: string, paymentIntent: Stripe.PaymentIntent) {
   try {
-    // Get package offer
-    const packageOffer = await prisma.packageOffer.findUnique({
+    // First try to find a PackageOffer with this ID
+    let packageOffer = await prisma.packageOffer.findUnique({
       where: { id: packageOfferId }
     })
 
+    let tipCount: number
+    let validityDays: number
+    let packageName: string
+    let packageType: string
+
+    // If not found, try to parse as PackageCountryPrice ID (format: countryId_packageType)
     if (!packageOffer) {
-      console.error(`Package offer not found: ${packageOfferId}`)
-      return
+      const parts = packageOfferId.split('_')
+      if (parts.length === 2) {
+        const [countryId, pkgType] = parts
+        
+        // Set package details based on package type
+        switch (pkgType) {
+          case 'prediction':
+            tipCount = 1
+            validityDays = 1
+            packageName = 'Single Tip'
+            packageType = 'prediction'
+            break
+          case 'weekend_pass':
+            tipCount = 5
+            validityDays = 3
+            packageName = 'Weekend Package'
+            packageType = 'weekend_pass'
+            break
+          case 'weekly_pass':
+            tipCount = 8
+            validityDays = 7
+            packageName = 'Weekly Package'
+            packageType = 'weekly_pass'
+            break
+          case 'monthly_sub':
+            tipCount = -1 // Unlimited
+            validityDays = 30
+            packageName = 'Monthly Subscription'
+            packageType = 'monthly_sub'
+            break
+          default:
+            tipCount = 1
+            validityDays = 1
+            packageName = pkgType
+            packageType = pkgType
+        }
+
+        // Get user's country pricing
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { countryId: true }
+        })
+
+        if (!user?.countryId) {
+          console.error(`User country not found: ${userId}`)
+          return
+        }
+
+        const countryPrice = await prisma.packageCountryPrice.findFirst({
+          where: {
+            countryId: user.countryId,
+            packageType: pkgType
+          },
+          include: {
+            country: {
+              select: {
+                currencyCode: true,
+                currencySymbol: true
+              }
+            }
+          }
+        })
+
+        if (!countryPrice) {
+          console.error(`Country price not found for package: ${packageOfferId}`)
+          return
+        }
+
+        // Calculate expiration date
+        const expiresAt = new Date()
+        expiresAt.setDate(expiresAt.getDate() + validityDays)
+
+        // Create user package with virtual package offer
+        const userPackage = await prisma.userPackage.create({
+          data: {
+            userId,
+            packageOfferId: packageOfferId, // Use the original ID as reference
+            expiresAt,
+            tipsRemaining: tipCount === -1 ? 0 : tipCount,
+            totalTips: tipCount === -1 ? 0 : tipCount,
+            pricePaid: countryPrice.price,
+            currencyCode: countryPrice.country.currencyCode || 'USD',
+            currencySymbol: countryPrice.country.currencySymbol || '$',
+            status: 'active'
+          }
+        })
+
+        console.log(`Created user package: ${userPackage.id} for user: ${userId} (PackageCountryPrice)`)
+        return
+      } else {
+        console.error(`Invalid package ID format: ${packageOfferId}`)
+        return
+      }
     }
+
+    // Found PackageOffer record - proceed with original logic
+    tipCount = packageOffer.tipCount
+    validityDays = packageOffer.validityDays
+    packageName = packageOffer.name
+    packageType = packageOffer.packageType
 
     // Get user's country pricing
     const user = await prisma.user.findUnique({
@@ -130,7 +233,7 @@ async function createUserPackage(userId: string, packageOfferId: string, payment
       }
     })
 
-    console.log(`Created user package: ${userPackage.id} for user: ${userId}`)
+    console.log(`Created user package: ${userPackage.id} for user: ${userId} (PackageOffer)`)
   } catch (error) {
     console.error("Error creating user package:", error)
   }

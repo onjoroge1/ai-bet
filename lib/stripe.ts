@@ -32,6 +32,33 @@ export function getAvailablePaymentMethods(countryCode: string): SupportedPaymen
   return baseMethods
 }
 
+// Get payment method configuration for Stripe
+export function getPaymentMethodConfiguration(countryCode: string) {
+  const availableMethods = getAvailablePaymentMethods(countryCode)
+  
+  return {
+    payment_method_types: availableMethods.map(method => {
+      switch (method) {
+        case 'apple_pay':
+        case 'google_pay':
+          return 'card' // Both use card as base type
+        case 'paypal':
+          return 'paypal'
+        case 'card':
+          return 'card'
+        default:
+          return 'card'
+      }
+    }).filter((value, index, self) => self.indexOf(value) === index), // Remove duplicates
+    
+    payment_method_options: {
+      card: {
+        request_three_d_secure: 'automatic' as const,
+      },
+    },
+  }
+}
+
 // Convert currency code to Stripe currency format
 export function getStripeCurrency(currencyCode: string): string {
   return currencyCode.toLowerCase()

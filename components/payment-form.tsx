@@ -16,6 +16,7 @@ interface PaymentFormProps {
   currencySymbol: string
   itemName: string
   userCountryCode: string
+  selectedPaymentMethod?: string
   onSuccess: () => void
   onCancel: () => void
 }
@@ -27,6 +28,7 @@ export function PaymentForm({
   currencySymbol,
   itemName,
   userCountryCode,
+  selectedPaymentMethod,
   onSuccess,
   onCancel
 }: PaymentFormProps) {
@@ -112,8 +114,12 @@ export function PaymentForm({
     }
   }
 
+  // Helper to get icon and label for selected method
+  const selectedMethodIcon = selectedPaymentMethod ? getPaymentMethodIcon(selectedPaymentMethod as SupportedPaymentMethod) : null;
+  const selectedMethodLabel = selectedPaymentMethod ? getPaymentMethodName(selectedPaymentMethod as SupportedPaymentMethod) : null;
+
   return (
-    <Card className="w-full max-w-md mx-auto bg-slate-800 border-slate-700">
+    <Card className="w-full max-w-md mx-auto bg-slate-800 border-slate-700" aria-label="Payment form">
       <CardHeader className="text-center">
         <CardTitle className="text-white flex items-center justify-center space-x-2">
           <CreditCard className="w-5 h-5 text-emerald-400" />
@@ -133,6 +139,14 @@ export function PaymentForm({
           </div>
         </div>
 
+        {/* Selected Payment Method Summary */}
+        {selectedPaymentMethod && (
+          <div className="flex items-center space-x-2 bg-slate-700/60 rounded px-3 py-2">
+            {selectedMethodIcon}
+            <span className="text-white font-medium">{selectedMethodLabel}</span>
+          </div>
+        )}
+
         {/* Available Payment Methods */}
         <div className="space-y-2">
           <h4 className="text-white font-medium text-sm">Available Payment Methods</h4>
@@ -141,7 +155,7 @@ export function PaymentForm({
               <Badge
                 key={method}
                 variant="secondary"
-                className="bg-slate-700 text-slate-300 border-slate-600"
+                className={`bg-slate-700 text-slate-300 border-slate-600 ${selectedPaymentMethod === method ? 'ring-2 ring-emerald-400' : ''}`}
               >
                 <div className="flex items-center space-x-1">
                   {getPaymentMethodIcon(method)}
@@ -173,13 +187,19 @@ export function PaymentForm({
         )}
 
         {/* Payment Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <PaymentElement 
-            options={{
-              layout: 'tabs',
-              paymentMethodOrder: availableMethods,
-            }}
-          />
+        <form onSubmit={handleSubmit} className="space-y-4" aria-label="Stripe payment form">
+          <div className="bg-slate-900 rounded-lg p-4 border border-slate-700">
+            <PaymentElement 
+              options={{
+                layout: 'tabs',
+                paymentMethodOrder: selectedPaymentMethod ? [selectedPaymentMethod, ...availableMethods.filter(m => m !== selectedPaymentMethod)] : availableMethods,
+                wallets: {
+                  applePay: selectedPaymentMethod === 'apple_pay' ? 'auto' : 'never',
+                  googlePay: selectedPaymentMethod === 'google_pay' ? 'auto' : 'never',
+                },
+              }}
+            />
+          </div>
           
           <div className="flex space-x-3">
             <Button

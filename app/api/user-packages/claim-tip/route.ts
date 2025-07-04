@@ -38,7 +38,74 @@ export async function POST(request: Request) {
       }
     })
 
-    if (userPackages.length === 0) {
+    // Create virtual package offers for packages without PackageOffer relation
+    const processedUserPackages = userPackages.map(userPackage => {
+      if (userPackage.packageOffer) {
+        return userPackage
+      }
+
+      // Handle packages created from PackageCountryPrice (format: countryId_packageType)
+      const parts = userPackage.packageOfferId.split('_')
+      if (parts.length === 2) {
+        const [countryId, packageType] = parts
+        
+        // Create virtual package offer based on package type
+        let tipCount: number
+        let validityDays: number
+        let name: string
+        
+        switch (packageType) {
+          case 'prediction':
+            tipCount = 1
+            validityDays = 1
+            name = 'Single Tip'
+            break
+          case 'weekend_pass':
+            tipCount = 5
+            validityDays = 3
+            name = 'Weekend Package'
+            break
+          case 'weekly_pass':
+            tipCount = 8
+            validityDays = 7
+            name = 'Weekly Package'
+            break
+          case 'monthly_sub':
+            tipCount = -1 // Unlimited
+            validityDays = 30
+            name = 'Monthly Subscription'
+            break
+          default:
+            tipCount = 1
+            validityDays = 1
+            name = packageType
+        }
+
+        return {
+          ...userPackage,
+          packageOffer: {
+            id: userPackage.packageOfferId,
+            name,
+            packageType,
+            tipCount,
+            validityDays,
+            description: `${name} package`,
+            isActive: true,
+            displayOrder: 0,
+            features: [],
+            iconName: 'Gift',
+            colorGradientFrom: '#8B5CF6',
+            colorGradientTo: '#EC4899',
+            createdAt: new Date(),
+            updatedAt: new Date()
+          }
+        }
+      }
+
+      return userPackage
+    })
+
+    if (processedUserPackages.length === 0) {
       return NextResponse.json({ 
         error: "No active packages found. Please purchase a package to access tips." 
       }, { status: 400 })
@@ -132,7 +199,7 @@ export async function POST(request: Request) {
 
     // Find the best package to use (prioritize limited packages over unlimited)
     let selectedPackage = null
-    for (const userPackage of userPackages) {
+    for (const userPackage of processedUserPackages) {
       if (userPackage.packageOffer.tipCount === -1) {
         // Unlimited package - use this as fallback
         if (!selectedPackage) {
@@ -226,11 +293,78 @@ export async function GET() {
       }
     })
 
+    // Create virtual package offers for packages without PackageOffer relation
+    const processedUserPackages = userPackages.map(userPackage => {
+      if (userPackage.packageOffer) {
+        return userPackage
+      }
+
+      // Handle packages created from PackageCountryPrice (format: countryId_packageType)
+      const parts = userPackage.packageOfferId.split('_')
+      if (parts.length === 2) {
+        const [countryId, packageType] = parts
+        
+        // Create virtual package offer based on package type
+        let tipCount: number
+        let validityDays: number
+        let name: string
+        
+        switch (packageType) {
+          case 'prediction':
+            tipCount = 1
+            validityDays = 1
+            name = 'Single Tip'
+            break
+          case 'weekend_pass':
+            tipCount = 5
+            validityDays = 3
+            name = 'Weekend Package'
+            break
+          case 'weekly_pass':
+            tipCount = 8
+            validityDays = 7
+            name = 'Weekly Package'
+            break
+          case 'monthly_sub':
+            tipCount = -1 // Unlimited
+            validityDays = 30
+            name = 'Monthly Subscription'
+            break
+          default:
+            tipCount = 1
+            validityDays = 1
+            name = packageType
+        }
+
+        return {
+          ...userPackage,
+          packageOffer: {
+            id: userPackage.packageOfferId,
+            name,
+            packageType,
+            tipCount,
+            validityDays,
+            description: `${name} package`,
+            isActive: true,
+            displayOrder: 0,
+            features: [],
+            iconName: 'Gift',
+            colorGradientFrom: '#8B5CF6',
+            colorGradientTo: '#EC4899',
+            createdAt: new Date(),
+            updatedAt: new Date()
+          }
+        }
+      }
+
+      return userPackage
+    })
+
     // Calculate total tips remaining
     let totalTipsRemaining = 0
     let hasUnlimited = false
 
-    for (const userPackage of userPackages) {
+    for (const userPackage of processedUserPackages) {
       if (userPackage.packageOffer.tipCount === -1) {
         hasUnlimited = true
         break
@@ -290,7 +424,7 @@ export async function GET() {
     }))
 
     return NextResponse.json({
-      userPackages,
+      userPackages: processedUserPackages,
       totalTipsRemaining: hasUnlimited ? "Unlimited" : totalTipsRemaining,
       hasUnlimited,
       recentTips: transformedRecentTips,
