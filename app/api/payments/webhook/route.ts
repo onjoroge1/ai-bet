@@ -12,12 +12,17 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  console.log('--- Stripe Webhook Hit ---');
   const sig = req.headers.get('stripe-signature') ?? '';
+  console.log('Stripe-Signature header present:', !!sig);
+  console.log('Webhook secret loaded:', endpointSecret ? 'YES' : 'NO');
   const buf = Buffer.from(await req.arrayBuffer());
 
   let event: Stripe.Event;
   try {
+    console.log('Attempting to construct Stripe event...');
     event = stripe.webhooks.constructEvent(buf, sig, endpointSecret);
+    console.log('Stripe event constructed successfully. Event type:', event.type);
   } catch (err) {
     console.error('⚠️  Signature verify failed:', err);
     return new NextResponse('Sig error', { status: 400 });
@@ -26,15 +31,18 @@ export async function POST(req: NextRequest) {
   try {
     switch (event.type) {
       case 'payment_intent.succeeded':
+        console.log('Handling payment_intent.succeeded event');
         await handlePaymentSuccess(event.data.object as Stripe.PaymentIntent);
         break;
       case 'payment_intent.payment_failed':
+        console.log('Handling payment_intent.payment_failed event');
         await handlePaymentFailure(event.data.object as Stripe.PaymentIntent);
         break;
       // Add more event types as needed
       default:
         console.log('Unhandled event:', event.type);
     }
+    console.log('Webhook event processed successfully. Sending 200 response.');
     return NextResponse.json({ received: true });
   } catch (error) {
     console.error('Error processing webhook:', error);
@@ -44,6 +52,7 @@ export async function POST(req: NextRequest) {
 
 async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
   const { metadata } = paymentIntent;
+  console.log('PaymentIntent metadata:', metadata);
   if (!metadata.userId || !metadata.itemType || !metadata.itemId) {
     console.error('Missing required metadata in payment intent');
     return;
@@ -53,6 +62,7 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
   const itemId = metadata.itemId;
   try {
     // Idempotent: Check for recent purchases for this user and item
+    console.log('Checking for existing purchase record...');
     const existing = await prisma.purchase.findFirst({
       where: {
         userId,
@@ -67,6 +77,7 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
       return;
     }
     // Create purchase record
+    console.log('Creating purchase record...');
     const purchase = await prisma.purchase.create({
       data: {
         userId,
@@ -80,18 +91,22 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
     });
     console.log(`Created purchase record: ${purchase.id} for intent: ${paymentIntent.id}`);
     if (itemType === 'package') {
+      console.log('Creating user package...');
       await createUserPackage(userId, itemId, paymentIntent);
     } else if (itemType === 'tip') {
+      console.log('Processing tip purchase...');
       await processTipPurchase(userId, itemId, paymentIntent);
     }
     // Send notification
     try {
+      console.log('Sending payment success notification...');
       const { NotificationService } = await import('@/lib/notification-service');
       await NotificationService.createPaymentSuccessNotification(
         userId,
         paymentIntent.amount / 100,
         itemType === 'package' ? 'Package' : 'Tip'
       );
+      console.log('Notification sent.');
     } catch (error) {
       console.error('Failed to send payment notification:', error);
     }
