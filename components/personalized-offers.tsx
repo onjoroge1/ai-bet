@@ -225,7 +225,7 @@ export function PersonalizedOffers() {
                       <div className="flex items-center space-x-1 text-emerald-400">
                         <TrendingUp className="w-4 h-4" />
                         <span className="text-sm">
-                          Save {userPrice.currencySymbol}{userPrice.originalPrice - userPrice.price}
+                          Save {userPrice.currencySymbol}{(userPrice.originalPrice - userPrice.price).toFixed(2)}
                         </span>
                       </div>
                     )}

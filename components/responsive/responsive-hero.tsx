@@ -179,7 +179,7 @@ export function ResponsiveHero() {
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-emerald-400 font-semibold text-sm md:text-base flex items-center">
                 <Bell className="w-3 h-3 md:w-4 md:h-4 mr-2 animate-pulse" />
-                Today's Free Tip
+                Today&apos;s Free Tip
               </h3>
               <Badge className="bg-red-500/20 text-red-400 border-red-500/30 animate-pulse text-xs">LIVE</Badge>
             </div>

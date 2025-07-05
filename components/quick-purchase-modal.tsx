@@ -6,18 +6,16 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { CreditCard, Smartphone, Globe, CheckCircle, Clock, Shield, Zap, Star, Crown, Gift, Brain, TrendingUp, Target, AlertCircle, Loader2 } from "lucide-react"
-import { CountrySelector } from "@/components/country-selector"
+import { CreditCard, Smartphone, CheckCircle, Clock, Shield, Zap, Star, Crown, Gift, Brain, TrendingUp, Target, Loader2 } from "lucide-react"
 import { useUserCountry } from "@/contexts/user-country-context"
 import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
 import { toast } from "react-hot-toast"
 import { TipReceipt } from "@/components/tip-receipt"
-import { Separator } from "@/components/ui/separator"
 import { Elements } from "@stripe/react-stripe-js"
 import { stripePromise } from "@/lib/stripe"
 import { PaymentForm } from "@/components/payment-form"
-import { CreditCard as CreditCardIcon } from "lucide-react"
+import { useQueryClient } from '@tanstack/react-query'
 
 interface QuickPurchaseItem {
   id: string
@@ -74,7 +72,14 @@ interface QuickPurchaseModalProps {
   item: QuickPurchaseItem | null
 }
 
-function PaymentMethodCard({ method, selected, onClick, comingSoon }: { method: any, selected: boolean, onClick: () => void, comingSoon?: boolean }) {
+interface PaymentMethod {
+  key: string
+  label: string
+  desc: string
+  icon: React.ReactNode
+}
+
+function PaymentMethodCard({ method, selected, onClick, comingSoon }: { method: PaymentMethod, selected: boolean, onClick: () => void, comingSoon?: boolean }) {
   return (
     <Card
       className={`bg-slate-700/50 border-slate-600 transition-colors ${selected ? 'ring-2 ring-green-500' : ''} hover:bg-slate-700 cursor-pointer relative`}
@@ -97,11 +102,9 @@ function PaymentMethodCard({ method, selected, onClick, comingSoon }: { method: 
 }
 
 export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModalProps) {
-  const { countryData, convertPrice, userCountry } = useUserCountry()
-  const { user, isAuthenticated } = useAuth()
-  const router = useRouter()
+  const { convertPrice, userCountry } = useUserCountry()
+  const queryClient = useQueryClient();
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>("")
-  const [isProcessing, setIsProcessing] = useState(false)
   const [showReceipt, setShowReceipt] = useState(false)
   const [purchasedTip, setPurchasedTip] = useState<any>(null)
   const [packageStatus, setPackageStatus] = useState<PackageStatus | null>(null)
@@ -169,11 +172,25 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
     }
   };
 
-  const handlePaymentSuccess = () => {
-    toast.success('Purchase successful!')
-    onClose()
-    // Optionally: trigger admin notification here (e.g., via API or socket)
-    // window.location.reload()
+  const handlePaymentSuccess = async () => {
+    toast.success('Purchase successful!');
+    // Fetch the latest purchased tip
+    try {
+      const res = await fetch('/api/my-tips?latest=1');
+      const data = await res.json();
+      if (data && data.tips && data.tips.length > 0) {
+        setPurchasedTip(data.tips[0]);
+        setShowReceipt(true);
+      } else {
+        onClose();
+      }
+    } catch {
+      onClose();
+    }
+    // Invalidate notification unread count to update bell
+    if (queryClient) {
+      queryClient.invalidateQueries({ queryKey: ['notifications-unread'] });
+    }
   }
 
   const handlePaymentCancel = () => {
@@ -193,32 +210,6 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
       default:
         return <Star className="w-6 h-6 text-emerald-400" />
     }
-  }
-
-  const getFeatureIcon = (feature: string) => {
-    switch (feature.toLowerCase()) {
-      case "ai analysis":
-        return <Brain className="w-4 h-4" />
-      case "match statistics":
-        return <TrendingUp className="w-4 h-4" />
-      case "risk assessment":
-        return <Shield className="w-4 h-4" />
-      case "confidence scores":
-        return <Target className="w-4 h-4" />
-      default:
-        return <CheckCircle className="w-4 h-4" />
-    }
-  }
-
-  const canUseCredits = packageStatus && (
-    packageStatus.hasUnlimited || 
-    (typeof packageStatus.totalTipsRemaining === 'number' && packageStatus.totalTipsRemaining > 0)
-  )
-
-  const getCreditsText = () => {
-    if (!packageStatus) return "Loading..."
-    if (packageStatus.hasUnlimited) return "∞ Credits Available"
-    return `${packageStatus.totalTipsRemaining} Credits Available`
   }
 
   // Helper: Is user in Kenya?
@@ -306,7 +297,7 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
 
                 {/* Features */}
                 <div className="space-y-2">
-                  <h4 className="text-white font-medium text-sm">What's included:</h4>
+                  <h4 className="text-white font-medium text-sm">What&apos;s included:</h4>
                   <div className="grid grid-cols-1 gap-2">
                     {[
                       item.tipCount === -1 ? 'Unlimited Tips' : `${item.tipCount} Premium Tips`,
@@ -396,7 +387,7 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center justify-center gap-2"
                 disabled={!selectedPaymentMethod || isLoading}
               >
-                <CreditCardIcon className="w-5 h-5 mr-2" />
+                <CreditCard className="w-5 h-5 mr-2" />
                 {`Pay ${convertPrice(item.price.toString())}`}
               </Button>
             </div>

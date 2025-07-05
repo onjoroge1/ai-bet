@@ -5,6 +5,7 @@ import { Inter } from "next/font/google"
 import { Navigation } from "@/components/navigation"
 import { Footer } from "@/components/footer"
 import { Providers } from "./providers"
+import { SkipToMainContent, LiveRegion } from "@/components/ui/accessibility"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -87,8 +88,12 @@ export default function RootLayout({
       </head>
       <body className={`overflow-x-hidden ${inter.className}`} suppressHydrationWarning>
         <Providers>
+          <SkipToMainContent />
+          <LiveRegion announcement="" />
           <Navigation />
-          <main className="pb-16 md:pb-0">{children}</main>
+          <main id="main-content" className="pb-16 md:pb-0" role="main" tabIndex={-1}>
+            {children}
+          </main>
           <Footer />
         </Providers>
       </body>

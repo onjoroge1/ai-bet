@@ -54,7 +54,7 @@ export async function POST(request: Request) {
 
     if (itemType === 'package') {
       // First try to find a PackageOffer with this ID
-      let packageOffer = await prisma.packageOffer.findUnique({
+      const packageOffer = await prisma.packageOffer.findUnique({
         where: { id: itemId },
         include: {
           countryPrices: {

@@ -1,60 +1,66 @@
-type LogLevel = "info" | "warn" | "error" | "debug"
-
-type LogOptions = {
-  tags?: string[]
-  data?: Record<string, any>
-  error?: Error
+interface LogLevel {
+  ERROR: 'error'
+  WARN: 'warn'
+  INFO: 'info'
+  DEBUG: 'debug'
 }
 
-class Logger {
-  private isDev = process.env.NODE_ENV !== "production"
+const LOG_LEVELS: LogLevel = {
+  ERROR: 'error',
+  WARN: 'warn',
+  INFO: 'info',
+  DEBUG: 'debug'
+}
 
-  log(level: LogLevel, message: string, options: LogOptions = {}) {
-    // In production, only log warnings and errors
-    if (!this.isDev && level !== "warn" && level !== "error") {
-      return
+const isDevelopment = process.env.NODE_ENV === 'development'
+
+class Logger {
+  private log(level: string, message: string, data?: any) {
+    if (!isDevelopment && level === 'debug') {
+      return // Don't log debug messages in production
     }
 
-    const { tags = [], data = {}, error } = options
     const timestamp = new Date().toISOString()
-    const tagString = tags.length ? `[${tags.join(", ")}]` : ""
+    const logMessage = `[${timestamp}] [${level.toUpperCase()}] ${message}`
 
-    // Format the log message
-    const logMessage = `[${timestamp}] [${level.toUpperCase()}] ${message} ${tagString}`
-
-    // Log to console with appropriate level
     switch (level) {
-      case "info":
-        console.info(logMessage, data)
+      case 'error':
+        console.error(logMessage, data || '')
         break
-      case "warn":
-        console.warn(logMessage, data)
+      case 'warn':
+        console.warn(logMessage, data || '')
         break
-      case "error":
-        console.error(logMessage, error || data)
-        break
-      case "debug":
-        if (this.isDev) {
-          console.debug(logMessage, data)
+      case 'info':
+        if (isDevelopment) {
+          console.info(logMessage, data || '')
         }
         break
+      case 'debug':
+        if (isDevelopment) {
+          console.debug(logMessage, data || '')
+        }
+        break
+      default:
+        if (isDevelopment) {
+          console.log(logMessage, data || '')
+        }
     }
   }
 
-  info(message: string, options?: LogOptions) {
-    this.log("info", message, options)
+  error(message: string, data?: any) {
+    this.log(LOG_LEVELS.ERROR, message, data)
   }
 
-  warn(message: string, options?: LogOptions) {
-    this.log("warn", message, options)
+  warn(message: string, data?: any) {
+    this.log(LOG_LEVELS.WARN, message, data)
   }
 
-  error(message: string, options?: LogOptions) {
-    this.log("error", message, options)
+  info(message: string, data?: any) {
+    this.log(LOG_LEVELS.INFO, message, data)
   }
 
-  debug(message: string, options?: LogOptions) {
-    this.log("debug", message, options)
+  debug(message: string, data?: any) {
+    this.log(LOG_LEVELS.DEBUG, message, data)
   }
 }
 

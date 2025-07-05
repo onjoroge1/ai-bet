@@ -123,7 +123,7 @@ async function handlePaymentFailure(paymentIntent: Stripe.PaymentIntent) {
 async function createUserPackage(userId: string, packageOfferId: string, paymentIntent: Stripe.PaymentIntent) {
   try {
     // First try to find a PackageOffer with this ID
-    let packageOffer = await prisma.packageOffer.findUnique({
+    const packageOffer = await prisma.packageOffer.findUnique({
       where: { id: packageOfferId }
     })
 
