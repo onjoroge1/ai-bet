@@ -51,13 +51,27 @@ export async function POST(request: NextRequest) {
 
 async function getQuizQuestions() {
   try {
-    const questions = await prisma.quizQuestion.findMany({
+    // Get all active questions
+    const allQuestions = await prisma.quizQuestion.findMany({
       where: { isActive: true },
-      orderBy: { createdAt: "desc" },
-      take: 5
+      select: {
+        id: true,
+        question: true,
+        correctAnswer: true,
+        options: true,
+        category: true,
+        difficulty: true,
+        points: true
+      }
     })
     
-    return NextResponse.json({ questions })
+    // Shuffle the questions array
+    const shuffledQuestions = allQuestions.sort(() => Math.random() - 0.5)
+    
+    // Take the first 5 questions from the shuffled array
+    const selectedQuestions = shuffledQuestions.slice(0, 5)
+    
+    return NextResponse.json({ questions: selectedQuestions })
   } catch (error) {
     console.error("Error fetching quiz questions:", error)
     return NextResponse.json({ error: "Failed to fetch questions" }, { status: 500 })
@@ -94,29 +108,6 @@ async function startQuiz(data: {
 }) {
   try {
     const session = await getServerSession(authOptions)
-    
-    // Check if user has already taken a quiz this week
-    if (session?.user?.id) {
-      const oneWeekAgo = new Date()
-      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7)
-      
-      const recentParticipation = await prisma.quizParticipation.findFirst({
-        where: {
-          userId: session.user.id,
-          participatedAt: {
-            gte: oneWeekAgo
-          }
-        }
-      })
-      
-      if (recentParticipation) {
-        const daysUntilNextQuiz = 7 - Math.floor((Date.now() - recentParticipation.participatedAt.getTime()) / (1000 * 60 * 60 * 24))
-        return NextResponse.json({ 
-          error: `You can only take the quiz once per week. Try again in ${daysUntilNextQuiz} days.`,
-          daysUntilNextQuiz
-        }, { status: 429 })
-      }
-    }
     
     const participation = await prisma.quizParticipation.create({
       data: {
@@ -310,35 +301,6 @@ async function claimQuizCredits(data: { participationId: string }) {
     
     if (!participation.isCompleted) {
       return NextResponse.json({ error: "Quiz must be completed before claiming credits" }, { status: 400 })
-    }
-    
-    // Check if user has already claimed credits this week
-    const oneWeekAgo = new Date()
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7)
-    
-    // First get the user's UserPoints record
-    const userPoints = await prisma.userPoints.findUnique({
-      where: { userId: session.user.id }
-    })
-    
-    if (userPoints) {
-      const recentClaim = await prisma.pointTransaction.findFirst({
-        where: {
-          userPointsId: userPoints.id,
-          type: "QUIZ_COMPLETION",
-          createdAt: {
-            gte: oneWeekAgo
-          }
-        }
-      })
-      
-      if (recentClaim) {
-        const daysUntilNextClaim = 7 - Math.floor((Date.now() - recentClaim.createdAt.getTime()) / (1000 * 60 * 60 * 24))
-        return NextResponse.json({ 
-          error: `You can only claim quiz credits once per week. Try again in ${daysUntilNextClaim} days.`,
-          daysUntilNextClaim
-        }, { status: 429 })
-      }
     }
     
     // Convert quiz points to dashboard credits (50 points = 1 credit)

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -36,6 +36,7 @@ interface QuizQuestionsProps {
   onAnswerSubmit: (answerIndex: number) => void
   totalScore: number
   user: QuizUser
+  onTimeUp: () => void // New prop to handle quiz ending
 }
 
 export function QuizQuestions({
@@ -44,11 +45,37 @@ export function QuizQuestions({
   onAnswerSubmit,
   totalScore,
   user,
+  onTimeUp,
 }: QuizQuestionsProps) {
   // Move all hooks to the top before any conditional returns
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
-  const [timeLeft, setTimeLeft] = useState(30)
+  const [timeLeft, setTimeLeft] = useState(30) // 30 seconds for entire quiz
   const [showFeedback, setShowFeedback] = useState(false)
+
+  // Timer effect for entire quiz
+  useEffect(() => {
+    if (showFeedback) return // Don't count down during feedback
+
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          // Time's up - end the entire quiz immediately
+          clearInterval(timer)
+          setShowFeedback(true)
+          setTimeout(() => {
+            // Submit current answer (if any) and end quiz
+            const finalAnswerIndex = selectedAnswer !== null ? selectedAnswer : -1
+            onAnswerSubmit(finalAnswerIndex)
+            onTimeUp() // Signal that quiz should end
+          }, 1000)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [showFeedback, onAnswerSubmit, onTimeUp, selectedAnswer])
 
   // Guard: If index is out of bounds, render nothing
   if (currentQuestionIndex < 0 || currentQuestionIndex >= questions.length) {
@@ -73,7 +100,7 @@ export function QuizQuestions({
       onAnswerSubmit(selectedAnswer)
       setSelectedAnswer(null)
       setShowFeedback(false)
-      setTimeLeft(30)
+      // Don't reset timer - it continues for the entire quiz
     }, 2000)
   }
 
@@ -94,7 +121,7 @@ export function QuizQuestions({
               </div>
               <div className="flex items-center space-x-2 text-slate-300">
                 <Clock className="w-4 h-4" />
-                <span>{timeLeft}s</span>
+                <span className={timeLeft <= 10 ? "text-red-400 font-bold" : ""}>{timeLeft}s</span>
               </div>
             </div>
           </div>

@@ -28,7 +28,8 @@
     "diagnose-stripe": "node scripts/diagnose-stripe.js",
     "test-webhook": "node scripts/test-webhook.js",
     "test-production": "node scripts/test-production-payment.js",
-    "check-webhook-events": "node scripts/check-webhook-events.js"
+    "check-webhook-events": "node scripts/check-webhook-events.js",
+    "test-tip-purchase": "node scripts/test-tip-purchase.js"
   },
   "dependencies": {
     "@alloc/quick-lru": "^5.2.0",

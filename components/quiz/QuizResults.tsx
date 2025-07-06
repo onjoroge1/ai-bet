@@ -1,4 +1,4 @@
-import { Trophy, Star, Percent, Coins, Gift, Lock, Repeat, Users, MessageCircle } from "lucide-react"
+import { Trophy, Star, Percent, Coins, Gift, Lock, Repeat, Users, MessageCircle, User } from "lucide-react"
 import { useState } from "react"
 
 interface RegistrationData {
@@ -130,20 +130,20 @@ export default function QuizResults({
         {/* Action buttons */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
           <button
-            onClick={onImprove}
-            className="w-full flex flex-col items-center justify-center bg-gradient-to-r from-emerald-400 to-cyan-400 text-white font-bold text-lg rounded-lg py-6 shadow-lg hover:scale-105 transition-transform duration-200"
-          >
-            <Lock className="w-7 h-7 mb-2" />
-            Improve Your Betting
-            <span className="text-sm font-normal mt-1">Access your dashboard</span>
-          </button>
-          <button
             onClick={onRestart}
             className="w-full flex flex-col items-center justify-center bg-slate-800/70 text-white font-bold text-lg rounded-lg py-6 shadow-lg hover:bg-slate-700 transition-colors duration-200"
           >
             <Repeat className="w-7 h-7 mb-2" />
             Take Quiz Again
             <span className="text-sm font-normal mt-1">Try to beat your score</span>
+          </button>
+          <button
+            onClick={onImprove}
+            className="w-full flex flex-col items-center justify-center bg-gradient-to-r from-emerald-400 to-cyan-400 text-white font-bold text-lg rounded-lg py-6 shadow-lg hover:scale-105 transition-transform duration-200"
+          >
+            <User className="w-7 h-7 mb-2" />
+            Improve Your Betting
+            <span className="text-sm font-normal mt-1">Access your dashboard</span>
           </button>
         </div>
         {/* Community section */}

@@ -174,19 +174,81 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
 
   const handlePaymentSuccess = async () => {
     toast.success('Purchase successful!');
+    
     // Fetch the latest purchased tip
     try {
       const res = await fetch('/api/my-tips?latest=1');
+      if (!res.ok) {
+        throw new Error('Failed to fetch purchase details');
+      }
+      
       const data = await res.json();
       if (data && data.tips && data.tips.length > 0) {
-        setPurchasedTip(data.tips[0]);
+        const latestTip = data.tips[0];
+        setPurchasedTip(latestTip);
         setShowReceipt(true);
       } else {
-        onClose();
+        // If no tips found, create a fallback receipt with the original item data
+        const fallbackTip = {
+          id: item?.id || 'unknown',
+          purchaseId: item?.id || 'unknown',
+          name: item?.name || 'Tip Purchase',
+          type: item?.type || 'tip',
+          price: item?.price || 0,
+          amount: item?.price || 0,
+          description: item?.description || 'Tip purchase completed successfully',
+          features: item?.features || [],
+          isUrgent: item?.isUrgent || false,
+          timeLeft: item?.timeLeft || null,
+          currencySymbol: item?.country?.currencySymbol || '$',
+          currencyCode: item?.country?.currencyCode || 'USD',
+          purchaseDate: new Date().toISOString(),
+          paymentMethod: selectedPaymentMethod || 'card',
+          homeTeam: item?.matchData?.home_team,
+          awayTeam: item?.matchData?.away_team,
+          matchDate: item?.matchData?.date,
+          league: item?.matchData?.league,
+          predictionType: item?.predictionType,
+          confidenceScore: item?.confidenceScore,
+          odds: item?.odds,
+          valueRating: item?.valueRating
+        };
+        setPurchasedTip(fallbackTip);
+        setShowReceipt(true);
       }
-    } catch {
-      onClose();
+    } catch (error) {
+      console.error('Error fetching purchase details:', error);
+      toast.error('Purchase successful but could not load receipt details');
+      
+      // Create a minimal receipt with available data
+      const minimalTip = {
+        id: item?.id || 'unknown',
+        purchaseId: item?.id || 'unknown',
+        name: item?.name || 'Tip Purchase',
+        type: item?.type || 'tip',
+        price: item?.price || 0,
+        amount: item?.price || 0,
+        description: item?.description || 'Tip purchase completed successfully',
+        features: item?.features || [],
+        isUrgent: item?.isUrgent || false,
+        timeLeft: item?.timeLeft || null,
+        currencySymbol: item?.country?.currencySymbol || '$',
+        currencyCode: item?.country?.currencyCode || 'USD',
+        purchaseDate: new Date().toISOString(),
+        paymentMethod: selectedPaymentMethod || 'card',
+        homeTeam: item?.matchData?.home_team,
+        awayTeam: item?.matchData?.away_team,
+        matchDate: item?.matchData?.date,
+        league: item?.matchData?.league,
+        predictionType: item?.predictionType,
+        confidenceScore: item?.confidenceScore,
+        odds: item?.odds,
+        valueRating: item?.valueRating
+      };
+      setPurchasedTip(minimalTip);
+      setShowReceipt(true);
     }
+    
     // Invalidate notification unread count to update bell
     if (queryClient) {
       queryClient.invalidateQueries({ queryKey: ['notifications-unread'] });

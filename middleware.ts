@@ -27,7 +27,12 @@ const publicPaths = [
 const adminPaths = [
   '/admin',
   '/api/admin',
-  '/api/predictions',
+  '/api/predictions', // Keep this for prediction management (POST, PUT, DELETE) but exclude timeline
+]
+
+// Paths that require authentication but not admin role
+const authenticatedPaths = [
+  '/api/predictions/timeline', // Allow regular users to view predictions timeline
 ]
 
 // Paths that require authentication
@@ -42,6 +47,12 @@ const rateLimitConfig = {
   default: { maxRequests: 100, windowMs: 60000 }, // 100 requests per minute
   auth: { maxRequests: 5, windowMs: 60000 }, // 5 auth attempts per minute
   api: { maxRequests: 1000, windowMs: 60000 }, // 1000 API calls per minute
+}
+
+// Helper function to check if path is admin-only (excluding authenticated paths)
+const isAdminOnlyPath = (pathname: string) => {
+  return adminPaths.some(p => pathname.startsWith(p)) && 
+         !authenticatedPaths.some(p => pathname.startsWith(p))
 }
 
 export async function middleware(request: NextRequest) {
@@ -144,7 +155,8 @@ export async function middleware(request: NextRequest) {
 
     // Check if path requires authentication
     const isProtectedPath = protectedPaths.some(p => pathname.startsWith(p))
-    const isAdminPath = adminPaths.some(p => pathname.startsWith(p))
+    const isAuthenticatedPath = authenticatedPaths.some(p => pathname.startsWith(p))
+    const isAdminPath = isAdminOnlyPath(pathname)
     const isPublicPath = publicPaths.some(p => pathname.startsWith(p))
 
     // If user is authenticated and tries to access signin/signup, redirect to dashboard
@@ -154,10 +166,10 @@ export async function middleware(request: NextRequest) {
     }
 
     // If path requires authentication and no token exists, redirect to signin
-    if ((isProtectedPath || isAdminPath) && !token) {
+    if ((isProtectedPath || isAdminPath || isAuthenticatedPath) && !token) {
       logger.warn('Middleware - Unauthorized access attempt', {
         tags: ['middleware', 'unauthorized'],
-        data: { pathname, isProtectedPath, isAdminPath, ip }
+        data: { pathname, isProtectedPath, isAdminPath, isAuthenticatedPath, ip }
       })
       const signInUrl = new URL('/signin', request.url)
       signInUrl.searchParams.set('callbackUrl', pathname)
@@ -189,6 +201,7 @@ export async function middleware(request: NextRequest) {
         isPublicPath,
         isProtectedPath,
         isAdminPath,
+        isAuthenticatedPath,
         hasToken: !!token,
         responseTime: Date.now() - startTime
       }

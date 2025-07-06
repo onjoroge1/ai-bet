@@ -61,42 +61,94 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
   const itemType = metadata.itemType;
   const itemId = metadata.itemId;
   try {
-    // Idempotent: Check for recent purchases for this user and item
-    console.log('Checking for existing purchase record...');
-    const existing = await prisma.purchase.findFirst({
-      where: {
+    if (itemType === 'package') {
+      console.log('Processing package purchase...');
+      
+      // Check for existing package purchase (idempotency)
+      const existingPackagePurchase = await prisma.packagePurchase.findFirst({
+        where: {
+          userId,
+          createdAt: {
+            gte: new Date(Date.now() - 5 * 60 * 1000) // Last 5 minutes
+          }
+        },
+      });
+      
+      if (existingPackagePurchase) {
+        console.log(`Package purchase already exists for user ${userId}`);
+        return;
+      }
+      
+      // Create package purchase record
+      console.log('Creating package purchase record...');
+      let packagePurchaseData: any = {
         userId,
-        quickPurchaseId: itemId,
-        createdAt: {
-          gte: new Date(Date.now() - 5 * 60 * 1000) // Last 5 minutes
-        }
-      },
-    });
-    if (existing) {
-      console.log(`Purchase already exists for user ${userId} and item ${itemId}`);
-      return;
-    }
-    // Create purchase record
-    console.log('Creating purchase record...');
-    const purchase = await prisma.purchase.create({
-      data: {
-        userId,
-        quickPurchaseId: itemId,
         amount: new Prisma.Decimal(paymentIntent.amount / 100),
         paymentMethod: 'stripe',
         status: 'completed',
         createdAt: new Date(),
         updatedAt: new Date(),
-      },
-    });
-    console.log(`Created purchase record: ${purchase.id} for intent: ${paymentIntent.id}`);
-    if (itemType === 'package') {
+      };
+      
+      // Parse the itemId to determine if it's a PackageOffer ID or countryId_packageType
+      const firstUnderscoreIndex = itemId.indexOf('_');
+      if (firstUnderscoreIndex === -1) {
+        // It's a PackageOffer ID
+        packagePurchaseData.packageOfferId = itemId;
+        packagePurchaseData.packageType = metadata.packageType || 'unknown';
+      } else {
+        // It's a countryId_packageType format
+        const countryId = itemId.substring(0, firstUnderscoreIndex);
+        const packageType = itemId.substring(firstUnderscoreIndex + 1);
+        packagePurchaseData.packageType = packageType;
+        packagePurchaseData.countryId = countryId;
+      }
+      
+      const packagePurchase = await prisma.packagePurchase.create({
+        data: packagePurchaseData,
+      });
+      console.log(`Created package purchase record: ${packagePurchase.id} for intent: ${paymentIntent.id}`);
+      
+      // Create user package
       console.log('Creating user package...');
       await createUserPackage(userId, itemId, paymentIntent);
+      
     } else if (itemType === 'tip') {
       console.log('Processing tip purchase...');
+      
+      // Idempotent: Check for recent purchases for this user and item
+      console.log('Checking for existing purchase record...');
+      const existing = await prisma.purchase.findFirst({
+        where: {
+          userId,
+          quickPurchaseId: itemId,
+          createdAt: {
+            gte: new Date(Date.now() - 5 * 60 * 1000) // Last 5 minutes
+          }
+        },
+      });
+      if (existing) {
+        console.log(`Purchase already exists for user ${userId} and item ${itemId}`);
+        return;
+      }
+      // Create purchase record
+      console.log('Creating purchase record...');
+      const purchase = await prisma.purchase.create({
+        data: {
+          userId,
+          quickPurchaseId: itemId,
+          amount: new Prisma.Decimal(paymentIntent.amount / 100),
+          paymentMethod: 'stripe',
+          status: 'completed',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
+      console.log(`Created purchase record: ${purchase.id} for intent: ${paymentIntent.id}`);
+      
       await processTipPurchase(userId, itemId, paymentIntent);
     }
+    
     // Send notification
     try {
       console.log('Sending payment success notification...');
@@ -246,7 +298,7 @@ async function createUserPackage(userId: string, packageOfferId: string, payment
       return
     }
 
-    const countryPrice = await prisma.packageOfferCountryPrice.findFirst({
+    let countryPrice = await prisma.packageOfferCountryPrice.findFirst({
       where: {
         packageOfferId,
         countryId: user.countryId,
@@ -254,9 +306,43 @@ async function createUserPackage(userId: string, packageOfferId: string, payment
       }
     })
 
+    // If PackageOfferCountryPrice not found, try to create it from PackageCountryPrice
     if (!countryPrice) {
-      console.error(`Country price not found for package: ${packageOfferId}`)
-      return
+      console.log(`PackageOfferCountryPrice not found, trying to create from PackageCountryPrice for package: ${packageOfferId}`)
+      
+      const packageCountryPrice = await prisma.packageCountryPrice.findFirst({
+        where: {
+          countryId: user.countryId,
+          packageType: packageOffer.packageType
+        },
+        include: {
+          country: {
+            select: {
+              currencyCode: true,
+              currencySymbol: true
+            }
+          }
+        }
+      })
+
+      if (packageCountryPrice) {
+        // Create PackageOfferCountryPrice record
+        countryPrice = await prisma.packageOfferCountryPrice.create({
+          data: {
+            packageOfferId,
+            countryId: user.countryId,
+            price: packageCountryPrice.price,
+            originalPrice: packageCountryPrice.originalPrice,
+            currencyCode: packageCountryPrice.country.currencyCode || 'USD',
+            currencySymbol: packageCountryPrice.country.currencySymbol || '$',
+            isActive: true
+          }
+        })
+        console.log(`Created PackageOfferCountryPrice record: ${countryPrice.id}`)
+      } else {
+        console.error(`Neither PackageOfferCountryPrice nor PackageCountryPrice found for package: ${packageOfferId}`)
+        return
+      }
     }
 
     // Calculate expiration date

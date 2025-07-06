@@ -3,11 +3,25 @@ import { getServerSession } from "next-auth"
 import prisma from "@/lib/db"
 import { authOptions } from "@/lib/auth"
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const { searchParams } = new URL(request.url)
+    const latest = searchParams.get('latest')
+    const limit = latest ? 1 : undefined
+
+    // Get user's current country for currency display
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      include: { country: true }
+    })
+
+    if (!user?.country) {
+      return NextResponse.json({ error: "User country not found" }, { status: 404 })
     }
 
     // Get purchases with prediction data and match information
@@ -25,7 +39,8 @@ export async function GET() {
       },
       orderBy: {
         createdAt: 'desc'
-      }
+      },
+      take: limit
     })
 
     // Transform the data to include prediction details
@@ -37,6 +52,7 @@ export async function GET() {
       
       return {
         id: purchase.id,
+        purchaseId: purchase.id, // For receipt display
         purchaseDate: purchase.createdAt,
         amount: purchase.amount,
         paymentMethod: purchase.paymentMethod,
@@ -61,12 +77,21 @@ export async function GET() {
         features: qp.features || [],
         isUrgent: qp.isUrgent || false,
         timeLeft: qp.timeLeft || null,
-        currencySymbol: qp.country?.currencySymbol || '$',
-        currencyCode: qp.country?.currencyCode || 'USD',
+        // Use user's current country for currency display (not the QuickPurchase's country)
+        currencySymbol: user.country.currencySymbol || '$',
+        currencyCode: user.country.currencyCode || 'USD',
         // Pass the deeply nested prediction data to the frontend
         predictionData: predictionPayload,
       }
     })
+
+    // If latest=1 is requested, return the first tip in the expected format
+    if (latest === '1') {
+      return NextResponse.json({
+        tips: tips,
+        total: tips.length
+      })
+    }
 
     return NextResponse.json(tips)
   } catch (error) {

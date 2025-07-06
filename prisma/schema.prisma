@@ -207,6 +207,7 @@ model User {
   leaderboardEntries    LeaderboardEntry[]
   PointTransaction      PointTransaction[]
   purchases             Purchase[]
+  packagePurchases      PackagePurchase[]
   quizParticipations    QuizParticipation[]
   referralsReceived     Referral[]          @relation("Referred")
   referralsGiven        Referral[]          @relation("Referrer")
@@ -513,6 +514,24 @@ model Purchase {
 
   @@index([userId])
   @@index([quickPurchaseId])
+}
+
+model PackagePurchase {
+  id              String        @id @default(dbgenerated("gen_random_uuid()"))
+  userId          String
+  amount          Decimal
+  paymentMethod   String
+  status          String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  packageOfferId  String?       // For PackageOffer-based purchases
+  packageType     String        // For PackageCountryPrice-based purchases (e.g., "weekly_pass")
+  countryId       String?       // For PackageCountryPrice-based purchases
+  user            User          @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([packageOfferId])
+  @@index([packageType, countryId])
 }
 
 model PackageOffer {

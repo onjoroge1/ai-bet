@@ -124,12 +124,12 @@ export default function SnapBetQuizPage() {
         </p>
         <div className="flex flex-col md:flex-row items-center justify-center gap-8 mb-10 animate-fadeIn">
           <div className="flex flex-col items-center">
-            <span className="text-2xl md:text-3xl font-bold text-emerald-400">2,500+</span>
-            <span className="text-slate-300 text-sm">Players This Week</span>
+            <span className="text-2xl md:text-3xl font-bold text-emerald-400">60+</span>
+            <span className="text-slate-300 text-sm">Questions Available</span>
           </div>
           <div className="flex flex-col items-center">
-            <span className="text-2xl md:text-3xl font-bold text-cyan-300">₹50K</span>
-            <span className="text-slate-300 text-sm">Total Prizes</span>
+            <span className="text-2xl md:text-3xl font-bold text-cyan-300">Free</span>
+            <span className="text-slate-300 text-sm">Expert Tips</span>
           </div>
           <div className="flex flex-col items-center">
             <span className="text-2xl md:text-3xl font-bold text-amber-300">10</span>
@@ -247,6 +247,41 @@ export default function SnapBetQuizPage() {
         currentQuestionIndex={answers.length}
         onAnswerSubmit={async (answerIndex: number) => {
           const q = questions[answers.length]
+          
+          // Handle timer running out (no answer selected)
+          if (answerIndex === -1) {
+            setAnswers([
+              ...answers,
+              {
+                questionId: q.id,
+                selectedAnswer: "No answer selected",
+                isCorrect: false,
+                pointsEarned: 0,
+              },
+            ])
+            
+            // Timer ran out - complete quiz immediately
+            try {
+              const completeResponse = await fetch("/api/quiz", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "complete",
+                  participationId
+                })
+              })
+              
+              if (!completeResponse.ok) {
+                console.error("Failed to complete quiz")
+              }
+            } catch (error) {
+              console.error("Failed to complete quiz:", error)
+            }
+            
+            setTimeout(() => setStep(4), 500)
+            return
+          }
+          
           const selectedAnswer = q.options[answerIndex]
           
           // Submit answer to API
@@ -278,6 +313,7 @@ export default function SnapBetQuizPage() {
                 },
               ])
               
+              // Check if this was the last question
               if (answers.length + 1 === questions.length) {
                 // Complete quiz
                 try {
@@ -304,6 +340,29 @@ export default function SnapBetQuizPage() {
               setError("Failed to submit answer. Please try again.")
             }
           }
+        }}
+        onTimeUp={async () => {
+          // Handle quiz ending due to timer running out
+          if (participationId) {
+            try {
+              const completeResponse = await fetch("/api/quiz", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "complete",
+                  participationId
+                })
+              })
+              
+              if (!completeResponse.ok) {
+                console.error("Failed to complete quiz")
+              }
+            } catch (error) {
+              console.error("Failed to complete quiz:", error)
+            }
+          }
+          
+          setTimeout(() => setStep(4), 500)
         }}
         totalScore={score}
         user={{
