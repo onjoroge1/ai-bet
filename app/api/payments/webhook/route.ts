@@ -111,7 +111,41 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
       
       // Create user package
       console.log('Creating user package...');
-      await createUserPackage(userId, itemId, paymentIntent);
+      const userPackage = await createUserPackage(userId, itemId, paymentIntent);
+      
+      // Add credits to user account
+      if (userPackage) {
+        console.log('Adding credits to user account...');
+        
+        // Get user's current credits before adding new ones
+        const currentUser = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { predictionCredits: true }
+        });
+        
+        const creditResult = await addCreditsToUser(userId, userPackage);
+        
+        // Calculate credits gained
+        const creditsGained = creditResult?.predictionCredits ? 
+          creditResult.predictionCredits - (currentUser?.predictionCredits || 0) : 
+          undefined;
+        
+        // Send notification with package details
+        try {
+          console.log('Sending payment success notification...');
+          const { NotificationService } = await import('@/lib/notification-service');
+          await NotificationService.createPaymentSuccessNotification(
+            userId,
+            paymentIntent.amount / 100,
+            itemType === 'package' ? 'Premium Package' : 'Tip',
+            packagePurchase.packageType,
+            creditsGained
+          );
+          console.log('Notification sent.');
+        } catch (error) {
+          console.error('Failed to send payment notification:', error);
+        }
+      }
       
     } else if (itemType === 'tip') {
       console.log('Processing tip purchase...');
@@ -146,7 +180,13 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
       });
       console.log(`Created purchase record: ${purchase.id} for intent: ${paymentIntent.id}`);
       
-      await processTipPurchase(userId, itemId, paymentIntent);
+      const tipResult = await processTipPurchase(userId, itemId, paymentIntent);
+      
+      // Add credits for tip purchase
+      if (tipResult) {
+        console.log('Adding credits for tip purchase...');
+        await addCreditsToUser(userId, { totalTips: 1 }); // Single tip = 1 credit
+      }
     }
     
     // Send notification
@@ -410,5 +450,58 @@ async function processTipPurchase(userId: string, itemId: string, paymentIntent:
   } catch (error) {
     console.error("Error processing tip purchase:", error)
     return null
+  }
+}
+
+async function addCreditsToUser(userId: string, userPackage: any) {
+  try {
+    console.log(`Adding credits for user package: ${userPackage.id}`);
+    
+    // Calculate credits to add based on package type
+    let creditsToAdd = 0;
+    
+    if (userPackage.totalTips === -1) {
+      // Unlimited package - add a large number of credits
+      creditsToAdd = 150; // Unlimited credits for monthly subscription (5 tips/day * 30 days)
+    } else {
+      // Limited package - add credits equal to tip count
+      creditsToAdd = userPackage.totalTips;
+    }
+    
+    // Update user's prediction credits
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        predictionCredits: {
+          increment: creditsToAdd
+        }
+      },
+      select: {
+        id: true,
+        email: true,
+        predictionCredits: true
+      }
+    });
+    
+    console.log(`Added ${creditsToAdd} credits to user ${updatedUser.email}. New total: ${updatedUser.predictionCredits}`);
+    
+    // Create a notification for the user about credits added
+    try {
+      const { NotificationService } = await import('@/lib/notification-service');
+      await NotificationService.createNotification({
+        userId,
+        title: 'Credits Added',
+        message: `Your account has been credited with ${creditsToAdd} prediction credits for your package purchase.`,
+        type: 'success',
+        category: 'payment'
+      });
+    } catch (error) {
+      console.error('Failed to create credits notification:', error);
+    }
+    
+    return updatedUser;
+  } catch (error) {
+    console.error('Error adding credits to user:', error);
+    return null;
   }
 } 

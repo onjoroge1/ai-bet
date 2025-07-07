@@ -137,7 +137,9 @@ export class NotificationService {
   static async createPaymentSuccessNotification(
     userId: string,
     amount: number,
-    packageName: string
+    packageName: string,
+    packageType?: string,
+    creditsGained?: number
   ) {
     // Get user email for email notification
     const user = await prisma.user.findUnique({
@@ -148,13 +150,15 @@ export class NotificationService {
     const notification = await this.createNotification({
       userId,
       title: '💳 Payment Successful',
-      message: `Your payment of $${amount.toFixed(2)} for ${packageName} was successful. Your tips are now available!`,
+      message: `Your payment of $${amount.toFixed(2)} for ${packageName} was successful. ${creditsGained ? `${creditsGained} credits have been added to your account.` : 'Your tips are now available!'}`,
       type: 'success',
       category: 'payment',
       actionUrl: `/dashboard/my-tips`,
       metadata: {
         amount,
         packageName,
+        packageType,
+        creditsGained,
       },
     })
 
@@ -166,10 +170,10 @@ export class NotificationService {
           packageName,
           transactionId: `TXN-${Date.now()}`,
           userName: user.email, // Email address
-          tipsCount: 5, // This should come from the package data
+          tipsCount: creditsGained || 5, // Use credits gained or default to 5
         })
         logger.info('Payment confirmation email sent', {
-          data: { userId, email: user.email, amount, packageName }
+          data: { userId, email: user.email, amount, packageName, creditsGained }
         })
       } catch (error) {
         logger.error('Failed to send payment confirmation email', {

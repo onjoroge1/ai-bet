@@ -63,6 +63,16 @@ function getPackageType(quickPurchaseType: string): string {
   }
 }
 
+// Helper function to generate the correct ID for premium packages
+function generatePackageId(countryId: string, packageType: string, quickPurchaseId: string): string {
+  // For premium packages, use the countryId_packageType format
+  if (packageType === 'weekend_pass' || packageType === 'weekly_pass' || packageType === 'monthly_sub') {
+    return `${countryId}_${packageType}`;
+  }
+  // For other types (tips, predictions), use the original QuickPurchase ID
+  return quickPurchaseId;
+}
+
 // GET /api/quick-purchases
 export async function GET(request: Request) {
   try {
@@ -121,8 +131,11 @@ export async function GET(request: Request) {
           const finalPrice = countryPricing.price
           const finalOriginalPrice = countryPricing.originalPrice
           
+          // Generate the correct ID for premium packages
+          const correctId = generatePackageId(user.countryId, packageType, purchase.id)
+          
           return {
-            id: purchase.id,
+            id: correctId,
             name: purchase.name,
             price: finalPrice,
             originalPrice: finalOriginalPrice,
@@ -185,14 +198,14 @@ export async function POST() {
       include: { country: true }
     })
 
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 })
+    if (!user?.countryId) {
+      return NextResponse.json({ error: "User country not found" }, { status: 404 })
     }
 
     const quickPurchases = await prismaClient.quickPurchase.findMany({
       where: { 
         isActive: true,
-        countryId: user.countryId || undefined
+        countryId: user.countryId
       },
       orderBy: { displayOrder: "asc" },
       include: {
@@ -209,8 +222,11 @@ export async function POST() {
           // Always get pricing from PackageCountryPrice table - single source of truth
           const countryPricing = await getCountryPricingFromDb(user.country?.code || 'US', packageType)
           
+          // Generate the correct ID for premium packages
+          const correctId = generatePackageId(user.countryId, packageType, purchase.id)
+          
           return {
-            id: purchase.id,
+            id: correctId,
             name: purchase.name,
             price: countryPricing.price,
             originalPrice: countryPricing.originalPrice,

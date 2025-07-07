@@ -199,6 +199,7 @@ model User {
   referralCode          String?             @unique
   totalReferralEarnings Decimal             @default(0)
   totalReferrals        Int                 @default(0)
+  predictionCredits     Int                 @default(0)
   emailNotifications    Boolean             @default(true)
   pushNotifications     Boolean             @default(true)
   inAppNotifications    Boolean             @default(true)
