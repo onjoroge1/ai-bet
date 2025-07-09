@@ -126,7 +126,12 @@ export function DashboardHeader() {
             View All Matches
           </Button>
           <NotificationBell className="text-slate-300 hover:text-white" />
-          <Button variant="ghost" size="sm" className="text-slate-300 hover:text-white">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="text-slate-300 hover:text-white"
+            onClick={() => router.push('/dashboard/settings')}
+          >
             <Settings className="w-4 h-4" />
           </Button>
           <Button onClick={handleSignOut}>Sign Out</Button>
