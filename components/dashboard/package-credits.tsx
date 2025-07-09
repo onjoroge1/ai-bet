@@ -298,6 +298,14 @@ export function PackageCredits() {
                     </div>
                   </div>
                 )}
+                {/* Claim Prediction Tips Button */}
+                <div className="mt-4">
+                  <a href="/dashboard/predictions">
+                    <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
+                      🎯 Claim Prediction Tips
+                    </Button>
+                  </a>
+                </div>
               </>
             )
           })()}

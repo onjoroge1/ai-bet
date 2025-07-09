@@ -20,6 +20,7 @@ import {
   ExternalLink
 } from "lucide-react"
 import Link from "next/link"
+import { ClaimTipButton } from "@/components/ui/ClaimTipButton"
 
 // Types
 type TimelineItem = {
@@ -290,7 +291,7 @@ export function TimelineFeed() {
                 )}
               </div>
 
-              {/* Actions */}
+              {/* Action Buttons */}
               <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-700">
                 <div className="flex items-center space-x-2">
                   {item.prediction.isFree && (
@@ -310,12 +311,36 @@ export function TimelineFeed() {
                   </Link>
                 </div>
                 
-                {item.timelineStatus === 'won' && (
-                  <div className="flex items-center space-x-1 text-emerald-400">
-                    <Trophy className="w-3 h-3" />
-                    <span className="text-xs font-medium">Winner!</span>
-                  </div>
-                )}
+                <div className="flex items-center space-x-2">
+                  {/* Claim Tip Button - only show for non-free tips */}
+                  {!item.prediction.isFree && (
+                    <ClaimTipButton
+                      predictionId={item.id}
+                      predictionType={item.prediction.type}
+                      odds={item.prediction.odds}
+                      confidenceScore={item.prediction.confidence}
+                      valueRating={item.prediction.valueRating}
+                      matchDetails={{
+                        homeTeam: item.match.homeTeam.name,
+                        awayTeam: item.match.awayTeam.name,
+                        league: item.match.league.name,
+                        matchDate: item.match.matchDate
+                      }}
+                      className="text-xs"
+                      onClaimSuccess={(data) => {
+                        // Refresh the data after successful claim
+                        refetch();
+                      }}
+                    />
+                  )}
+                  
+                  {item.timelineStatus === 'won' && (
+                    <div className="flex items-center space-x-1 text-emerald-400">
+                      <Trophy className="w-3 h-3" />
+                      <span className="text-xs font-medium">Winner!</span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )

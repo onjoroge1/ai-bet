@@ -23,6 +23,7 @@ import {
   ExternalLink
 } from "lucide-react"
 import Link from "next/link"
+import { ClaimTipButton } from "@/components/ui/ClaimTipButton"
 
 // Types
 type TimelineItem = {
@@ -339,167 +340,174 @@ export default function PredictionsPage() {
         </div>
       </Card>
 
-      {/* Timeline */}
-      <Card className="bg-slate-800/50 border-slate-700 p-6">
-        <div className="relative">
-          {/* Timeline line */}
-          <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-slate-600"></div>
+      {/* Predictions Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {statusFilteredData.length === 0 && (
+          <div className="col-span-full text-center text-slate-400 py-8">
+            No predictions found for the selected filters.
+          </div>
+        )}
+        
+        {statusFilteredData.map((item, index) => {
+          const status = getStatusConfig(item.timelineStatus)
+          const StatusIcon = status.icon
           
-          <div className="space-y-6">
-            {statusFilteredData.length === 0 && (
-              <div className="text-center text-slate-400 py-8">
-                No predictions found for the selected filters.
-              </div>
-            )}
-            
-            {statusFilteredData.map((item, index) => {
-              const status = getStatusConfig(item.timelineStatus)
-              const StatusIcon = status.icon
-              
-              return (
-                <div
-                  key={item.id}
-                  className="relative flex items-start space-x-4 group"
-                  onMouseEnter={() => setHoveredItem(item.id)}
-                  onMouseLeave={() => setHoveredItem(null)}
-                >
-                  {/* Timeline dot */}
-                  <div className={`relative z-10 w-3 h-3 rounded-full border-2 border-slate-600 bg-slate-800 ${
-                    hoveredItem === item.id ? 'scale-125' : ''
-                  } transition-transform duration-200`}>
-                    <div className={`absolute inset-0 rounded-full ${status.bgColor} ${
-                      hoveredItem === item.id ? 'animate-pulse' : ''
-                    }`}></div>
-                  </div>
-
-                  {/* Content card */}
-                  <div className={`flex-1 bg-slate-900/50 rounded-lg p-4 border transition-all duration-300 ${
-                    hoveredItem === item.id 
-                      ? 'bg-slate-900/70 border-slate-600 scale-[1.02]' 
-                      : 'border-slate-700'
-                  }`}>
-                    {/* Header */}
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-1">
-                          <h3 className="text-white font-medium">
-                            {item.match.homeTeam.name} vs {item.match.awayTeam.name}
-                          </h3>
-                          {item.match.homeScore !== undefined && item.match.awayScore !== undefined && (
-                            <Badge variant="outline" className="text-xs">
-                              {item.match.homeScore} - {item.match.awayScore}
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center space-x-4 text-slate-400 text-sm">
-                          <span>{item.match.league.name}</span>
-                          <span>•</span>
-                          <span>{formatDate(item.match.matchDate)}</span>
-                          <span>•</span>
-                          <span>{formatMatchTime(item.match.matchDate)}</span>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center space-x-2">
-                        <StatusIcon className={`w-5 h-5 ${status.color}`} />
-                        <Badge className={`${status.bgColor} ${status.color} ${status.borderColor}`}>
-                          {status.emoji} {status.label}
+          return (
+            <Card
+              key={item.id}
+              className={`bg-slate-900/50 border transition-all duration-300 hover:bg-slate-900/70 hover:border-slate-600 hover:scale-[1.02] ${
+                hoveredItem === item.id 
+                  ? 'bg-slate-900/70 border-slate-600 scale-[1.02]' 
+                  : 'border-slate-700'
+              }`}
+              onMouseEnter={() => setHoveredItem(item.id)}
+              onMouseLeave={() => setHoveredItem(null)}
+            >
+              <div className="p-4">
+                {/* Header */}
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-2 mb-1">
+                      <h3 className="text-white font-medium text-sm">
+                        {item.match.homeTeam.name} vs {item.match.awayTeam.name}
+                      </h3>
+                      {item.match.homeScore !== undefined && item.match.awayScore !== undefined && (
+                        <Badge variant="outline" className="text-xs">
+                          {item.match.homeScore} - {item.match.awayScore}
                         </Badge>
-                      </div>
-                    </div>
-
-                    {/* Prediction details */}
-                    <div className="bg-slate-800/30 rounded-lg p-3 mb-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-emerald-400 font-medium text-sm">Prediction</span>
-                        <div className="flex items-center space-x-2">
-                          <span className="text-slate-300 text-sm">@{item.prediction.odds}</span>
-                          <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
-                            {item.prediction.confidence}%
-                          </Badge>
-                        </div>
-                      </div>
-                      <div className="text-white font-semibold">
-                        {item.prediction.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                      </div>
-                      {item.prediction.valueRating && (
-                        <div className="text-slate-400 text-sm mt-1">
-                          Value Rating: {item.prediction.valueRating}
-                        </div>
                       )}
                     </div>
-
-                    {/* User prediction details */}
-                    {item.userPrediction && (
-                      <div className="bg-blue-500/10 rounded-lg p-3 mb-3 border border-blue-500/20">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <DollarSign className="w-4 h-4 text-blue-400" />
-                            <span className="text-blue-400 font-medium text-sm">Your Bet</span>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-white font-medium">
-                              ${item.userPrediction.amount}
-                            </div>
-                            {item.userPrediction.profit !== undefined && (
-                              <div className={`text-sm font-medium ${
-                                item.userPrediction.profit > 0 
-                                  ? 'text-emerald-400' 
-                                  : item.userPrediction.profit < 0 
-                                    ? 'text-red-400' 
-                                    : 'text-slate-400'
-                              }`}>
-                                {item.userPrediction.profit > 0 ? '+' : ''}${item.userPrediction.profit}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Actions */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        {item.prediction.isFree && (
-                          <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
-                            Free
-                          </Badge>
-                        )}
-                        {item.prediction.explanation && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-slate-400 hover:text-white p-1"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                        )}
-                        <Link href={`/dashboard/matches?matchId=${item.match.id}`}>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-slate-400 hover:text-white p-1"
-                            title="View match details"
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                          </Button>
-                        </Link>
-                      </div>
-                      
-                      {item.timelineStatus === 'won' && (
-                        <div className="flex items-center space-x-1 text-emerald-400">
-                          <Trophy className="w-4 h-4" />
-                          <span className="text-sm font-medium">Winner!</span>
-                        </div>
-                      )}
+                    <div className="flex items-center space-x-4 text-slate-400 text-xs">
+                      <span>{item.match.league.name}</span>
+                      <span>•</span>
+                      <span>{formatDate(item.match.matchDate)}</span>
+                      <span>•</span>
+                      <span>{formatMatchTime(item.match.matchDate)}</span>
                     </div>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <StatusIcon className={`w-4 h-4 ${status.color}`} />
+                    <Badge className={`${status.bgColor} ${status.color} ${status.borderColor} text-xs`}>
+                      {status.emoji} {status.label}
+                    </Badge>
                   </div>
                 </div>
-              )
-            })}
-          </div>
-        </div>
-      </Card>
+
+                {/* Prediction details */}
+                <div className="bg-slate-800/30 rounded-lg p-3 mb-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-emerald-400 font-medium text-xs">Prediction</span>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-slate-300 text-xs">@{item.prediction.odds}</span>
+                      <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">
+                        {item.prediction.confidence}%
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="text-white font-semibold text-sm">
+                    {item.prediction.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  </div>
+                  {item.prediction.valueRating && (
+                    <div className="text-slate-400 text-xs mt-1">
+                      Value Rating: {item.prediction.valueRating}
+                    </div>
+                  )}
+                </div>
+
+                {/* User prediction details */}
+                {item.userPrediction && (
+                  <div className="bg-blue-500/10 rounded-lg p-3 mb-3 border border-blue-500/20">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <DollarSign className="w-4 h-4 text-blue-400" />
+                        <span className="text-blue-400 font-medium text-xs">Your Bet</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-white font-medium text-sm">
+                          ${item.userPrediction.amount}
+                        </div>
+                        {item.userPrediction.profit !== undefined && (
+                          <div className={`text-xs font-medium ${
+                            item.userPrediction.profit > 0 
+                              ? 'text-emerald-400' 
+                              : item.userPrediction.profit < 0 
+                                ? 'text-red-400' 
+                                : 'text-slate-400'
+                          }`}>
+                            {item.userPrediction.profit > 0 ? '+' : ''}${item.userPrediction.profit}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    {item.prediction.isFree && (
+                      <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-xs">
+                        Free
+                      </Badge>
+                    )}
+                    {item.prediction.explanation && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-slate-400 hover:text-white p-1"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                    )}
+                    <Link href={`/dashboard/matches?matchId=${item.match.id}`}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-slate-400 hover:text-white p-1"
+                        title="View match details"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </Button>
+                    </Link>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    {/* Claim Tip Button or View Tip Button */}
+                    {!item.prediction.isFree && (
+                      <ClaimTipButton
+                        predictionId={item.id}
+                        predictionType={item.prediction.type}
+                        odds={item.prediction.odds}
+                        confidenceScore={item.prediction.confidence}
+                        valueRating={item.prediction.valueRating}
+                        matchDetails={{
+                          homeTeam: item.match.homeTeam.name,
+                          awayTeam: item.match.awayTeam.name,
+                          league: item.match.league.name,
+                          matchDate: item.match.matchDate
+                        }}
+                        className="text-xs"
+                        onClaimSuccess={(data) => {
+                          // Refresh the data after successful claim
+                          refetch();
+                        }}
+                      />
+                    )}
+                    
+                    {item.timelineStatus === 'won' && (
+                      <div className="flex items-center space-x-1 text-emerald-400">
+                        <Trophy className="w-4 h-4" />
+                        <span className="text-xs font-medium">Winner!</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </Card>
+          )
+        })}
+      </div>
     </div>
   )
 }

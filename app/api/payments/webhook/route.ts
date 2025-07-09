@@ -305,7 +305,7 @@ async function createUserPackage(userId: string, packageOfferId: string, payment
             packageOfferId: packageOfferId, // Use the original ID as reference
             expiresAt,
             tipsRemaining: tipCount === -1 ? 0 : tipCount,
-            totalTips: tipCount === -1 ? 0 : tipCount,
+            totalTips: tipCount, // Keep -1 for unlimited packages
             pricePaid: countryPrice.price,
             currencyCode: countryPrice.country.currencyCode || 'USD',
             currencySymbol: countryPrice.country.currencySymbol || '$',
@@ -396,7 +396,7 @@ async function createUserPackage(userId: string, packageOfferId: string, payment
         packageOfferId,
         expiresAt,
         tipsRemaining: packageOffer.tipCount === -1 ? 0 : packageOffer.tipCount,
-        totalTips: packageOffer.tipCount === -1 ? 0 : packageOffer.tipCount,
+        totalTips: packageOffer.tipCount, // Keep -1 for unlimited packages
         pricePaid: countryPrice.price,
         currencyCode: countryPrice.currencyCode,
         currencySymbol: countryPrice.currencySymbol,

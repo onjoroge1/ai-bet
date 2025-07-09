@@ -24,12 +24,13 @@ async function testCreditSystem() {
       { name: 'Single Tip', totalTips: 1, expectedCredits: 1 },
       { name: 'Weekend Package', totalTips: 5, expectedCredits: 5 },
       { name: 'Weekly Package', totalTips: 8, expectedCredits: 8 },
-      { name: 'Monthly Subscription', totalTips: -1, expectedCredits: 1000 }
+      { name: 'Monthly Subscription', totalTips: -1, expectedCredits: 150 }
     ];
     
+    // Test credit calculation logic
     console.log('📊 Credit System Test Results:');
     testPackages.forEach(pkg => {
-      const creditsToAdd = pkg.totalTips === -1 ? 1000 : pkg.totalTips;
+      const creditsToAdd = pkg.totalTips === -1 ? 150 : pkg.totalTips;
       console.log(`   - ${pkg.name}: ${pkg.totalTips} tips → ${creditsToAdd} credits`);
     });
     

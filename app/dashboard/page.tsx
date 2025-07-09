@@ -30,6 +30,10 @@ const MyTipsWidget = dynamic(() => import('@/components/dashboard/my-tips-widget
   loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
 })
 
+const ClaimedTipsSection = dynamic(() => import('@/components/dashboard/ClaimedTipsSection').then(mod => mod.ClaimedTipsSection), {
+  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
+})
+
 const UpgradeOffers = dynamic(() => import('@/components/upgrade-offers').then(mod => mod.UpgradeOffers), {
   loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
 })
@@ -109,6 +113,13 @@ export default function DashboardPage() {
         </Suspense>
         <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
           <MyTipsWidget />
+        </Suspense>
+      </div>
+
+      {/* Claimed Tips Section - Full Width */}
+      <div className="mb-8">
+        <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
+          <ClaimedTipsSection />
         </Suspense>
       </div>
 
