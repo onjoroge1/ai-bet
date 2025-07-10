@@ -146,7 +146,7 @@ export function ClaimTipButton({
           className="w-full bg-blue-600 hover:bg-blue-700 text-white"
           asChild
         >
-          <Link href={`/dashboard/tips/${predictionId}`}>
+          <Link href="/dashboard/my-tips">
             <Eye className="w-4 h-4 mr-2" />
             View Tip
           </Link>

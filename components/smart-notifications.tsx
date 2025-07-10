@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Bell, Zap, Target, TrendingUp, AlertTriangle, Crown } from "lucide-react"
+import Link from "next/link"
 
 export function SmartNotifications() {
   const [notifications, setNotifications] = useState([
@@ -94,8 +95,10 @@ export function SmartNotifications() {
               <div className="flex items-center justify-between mt-3">
                 {notification.timeLeft && <div className="text-slate-400 text-xs">{notification.timeLeft}</div>}
                 <div className="flex space-x-2">
-                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                    View Tip
+                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" asChild>
+                    <Link href="/dashboard/my-tips">
+                      View Tip
+                    </Link>
                   </Button>
                   <Button variant="ghost" size="sm" className="text-slate-400">
                     Dismiss
