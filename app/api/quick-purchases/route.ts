@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { PrismaClient } from "@prisma/client"
-import { getDbCountryPricing } from '@/lib/pricing-service'
+import { getDbCountryPricing } from '@/lib/server-pricing-service'
 
 const prismaClient = new PrismaClient()
 
@@ -124,7 +124,7 @@ export async function GET(request: Request) {
           const packageType = getPackageType(purchase.type)
           
           // Always get pricing from PackageCountryPrice table - single source of truth
-          const countryPricing = await getCountryPricingFromDb(userCountry.code, packageType)
+          const countryPricing = await getCountryPricingFromDb(userCountry.code || 'US', packageType)
           
           // Use PackageCountryPrice for ALL types, not just predictions
           // This ensures consistent pricing across all package types
@@ -132,7 +132,7 @@ export async function GET(request: Request) {
           const finalOriginalPrice = countryPricing.originalPrice
           
           // Generate the correct ID for premium packages
-          const correctId = generatePackageId(user.countryId, packageType, purchase.id)
+          const correctId = generatePackageId(user.countryId || 'default', packageType, purchase.id)
           
           return {
             id: correctId,
@@ -223,7 +223,7 @@ export async function POST() {
           const countryPricing = await getCountryPricingFromDb(user.country?.code || 'US', packageType)
           
           // Generate the correct ID for premium packages
-          const correctId = generatePackageId(user.countryId, packageType, purchase.id)
+          const correctId = generatePackageId(user.countryId!, packageType, purchase.id)
           
           return {
             id: correctId,

@@ -61,7 +61,7 @@ export function ClaimedTipsSection() {
   const fetchClaimedTips = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/credits/claim-tip?status=${activeTab}&limit=20`);
+      const response = await fetch(`/api/credits/claim-tip?limit=20`);
       const data = await response.json();
       
       if (data.success) {
@@ -114,6 +114,48 @@ export function ClaimedTipsSection() {
     }
   };
 
+  const getActiveTipsCount = () => {
+    if (!claimedTips?.claimedTips) return 0;
+    return claimedTips.claimedTips.filter(tip => {
+      const isExpired = new Date(tip.expiresAt) < new Date();
+      const matchDate = new Date(tip.prediction.match.matchDate);
+      const isMatchPlayed = matchDate < new Date();
+      return tip.status === 'completed' && !isExpired && !isMatchPlayed;
+    }).length;
+  };
+
+  const getUsedTipsCount = () => {
+    if (!claimedTips?.claimedTips) return 0;
+    return claimedTips.claimedTips.filter(tip => {
+      const matchDate = new Date(tip.prediction.match.matchDate);
+      const isMatchPlayed = matchDate < new Date();
+      return tip.status === 'completed' && isMatchPlayed;
+    }).length;
+  };
+
+  const getExpiredTipsCount = () => {
+    if (!claimedTips?.claimedTips) return 0;
+    return claimedTips.claimedTips.filter(tip => {
+      const isExpired = new Date(tip.expiresAt) < new Date();
+      const matchDate = new Date(tip.prediction.match.matchDate);
+      const isMatchPlayed = matchDate < new Date();
+      return tip.status === 'completed' && isExpired && !isMatchPlayed;
+    }).length;
+  };
+
+  const getCurrentTabCount = () => {
+    switch (activeTab) {
+      case 'active':
+        return getActiveTipsCount();
+      case 'used':
+        return getUsedTipsCount();
+      case 'expired':
+        return getExpiredTipsCount();
+      default:
+        return 0;
+    }
+  };
+
   if (isLoading) {
     return (
       <Card>
@@ -140,7 +182,7 @@ export function ClaimedTipsSection() {
           Claimed Tips
           {claimedTips && (
             <Badge variant="outline" className="ml-2">
-              {claimedTips.pagination.total}
+              {getCurrentTabCount()}
             </Badge>
           )}
         </CardTitle>
@@ -148,13 +190,18 @@ export function ClaimedTipsSection() {
       <CardContent>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="active">Active</TabsTrigger>
-            <TabsTrigger value="used">Used</TabsTrigger>
-            <TabsTrigger value="expired">Expired</TabsTrigger>
+            <TabsTrigger value="active">Active ({getActiveTipsCount()})</TabsTrigger>
+            <TabsTrigger value="used">Used ({getUsedTipsCount()})</TabsTrigger>
+            <TabsTrigger value="expired">Expired ({getExpiredTipsCount()})</TabsTrigger>
           </TabsList>
           
           <TabsContent value="active" className="space-y-4">
-            {claimedTips?.claimedTips.filter(tip => tip.status === 'active' && new Date(tip.expiresAt) > new Date()).length === 0 ? (
+            {claimedTips?.claimedTips.filter(tip => {
+              const isExpired = new Date(tip.expiresAt) < new Date();
+              const matchDate = new Date(tip.prediction.match.matchDate);
+              const isMatchPlayed = matchDate < new Date();
+              return tip.status === 'completed' && !isExpired && !isMatchPlayed;
+            }).length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <CreditCard className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>No active claimed tips</p>
@@ -163,7 +210,12 @@ export function ClaimedTipsSection() {
             ) : (
               <div className="space-y-3">
                 {claimedTips?.claimedTips
-                  .filter(tip => tip.status === 'active' && new Date(tip.expiresAt) > new Date())
+                  .filter(tip => {
+                    const isExpired = new Date(tip.expiresAt) < new Date();
+                    const matchDate = new Date(tip.prediction.match.matchDate);
+                    const isMatchPlayed = matchDate < new Date();
+                    return tip.status === 'completed' && !isExpired && !isMatchPlayed;
+                  })
                   .map((tip) => (
                     <div key={tip.id} className="border rounded-lg p-4 space-y-3">
                       <div className="flex items-start justify-between">
@@ -209,7 +261,11 @@ export function ClaimedTipsSection() {
           </TabsContent>
           
           <TabsContent value="used" className="space-y-4">
-            {claimedTips?.claimedTips.filter(tip => tip.status === 'used').length === 0 ? (
+            {claimedTips?.claimedTips.filter(tip => {
+              const matchDate = new Date(tip.prediction.match.matchDate);
+              const isMatchPlayed = matchDate < new Date();
+              return tip.status === 'completed' && isMatchPlayed;
+            }).length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <CheckCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>No used tips</p>
@@ -217,7 +273,11 @@ export function ClaimedTipsSection() {
             ) : (
               <div className="space-y-3">
                 {claimedTips?.claimedTips
-                  .filter(tip => tip.status === 'used')
+                  .filter(tip => {
+                    const matchDate = new Date(tip.prediction.match.matchDate);
+                    const isMatchPlayed = matchDate < new Date();
+                    return tip.status === 'completed' && isMatchPlayed;
+                  })
                   .map((tip) => (
                     <div key={tip.id} className="border rounded-lg p-4 space-y-3 opacity-75">
                       <div className="flex items-start justify-between">
@@ -252,7 +312,12 @@ export function ClaimedTipsSection() {
           </TabsContent>
           
           <TabsContent value="expired" className="space-y-4">
-            {claimedTips?.claimedTips.filter(tip => new Date(tip.expiresAt) < new Date() && tip.status !== 'used').length === 0 ? (
+            {claimedTips?.claimedTips.filter(tip => {
+              const isExpired = new Date(tip.expiresAt) < new Date();
+              const matchDate = new Date(tip.prediction.match.matchDate);
+              const isMatchPlayed = matchDate < new Date();
+              return tip.status === 'completed' && isExpired && !isMatchPlayed;
+            }).length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <XCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>No expired tips</p>
@@ -260,7 +325,12 @@ export function ClaimedTipsSection() {
             ) : (
               <div className="space-y-3">
                 {claimedTips?.claimedTips
-                  .filter(tip => new Date(tip.expiresAt) < new Date() && tip.status !== 'used')
+                  .filter(tip => {
+                    const isExpired = new Date(tip.expiresAt) < new Date();
+                    const matchDate = new Date(tip.prediction.match.matchDate);
+                    const isMatchPlayed = matchDate < new Date();
+                    return tip.status === 'completed' && isExpired && !isMatchPlayed;
+                  })
                   .map((tip) => (
                     <div key={tip.id} className="border rounded-lg p-4 space-y-3 opacity-50">
                       <div className="flex items-start justify-between">

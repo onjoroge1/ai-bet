@@ -189,10 +189,15 @@ class CacheManager {
     USER_PROFILE: { ttl: 1800, prefix: 'user' }, // 30 minutes
     PACKAGE_OFFERS: { ttl: 7200, prefix: 'packages' }, // 2 hours
     SYSTEM_HEALTH: { ttl: 300, prefix: 'health' }, // 5 minutes
+    CLAIMED_TIPS: { ttl: 1800, prefix: 'claimed-tips' }, // 30 minutes default
+    CREDIT_BALANCE: { ttl: 300, prefix: 'credits' }, // 5 minutes
   } as const
 }
 
 export const cacheManager = new CacheManager()
+
+// Export the class for static access
+export { CacheManager }
 
 // Convenience functions
 export const cache = {
@@ -201,4 +206,6 @@ export const cache = {
   userProfile: (key: string) => cacheManager.get(key, CacheManager.CONFIGS.USER_PROFILE),
   packageOffers: (key: string) => cacheManager.get(key, CacheManager.CONFIGS.PACKAGE_OFFERS),
   systemHealth: (key: string) => cacheManager.get(key, CacheManager.CONFIGS.SYSTEM_HEALTH),
+  claimedTips: (key: string) => cacheManager.get(key, CacheManager.CONFIGS.CLAIMED_TIPS),
+  creditBalance: (key: string) => cacheManager.get(key, CacheManager.CONFIGS.CREDIT_BALANCE),
 } 

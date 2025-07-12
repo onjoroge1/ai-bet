@@ -1,11 +1,10 @@
 /**
- * Centralized Pricing Service
+ * Centralized Pricing Service (Client-Safe)
  * 
  * This service provides consistent pricing across the entire application
  * by reading from environment variables and providing a single source of truth.
+ * This version is safe for client-side use.
  */
-
-import prisma from '@/lib/db'
 
 export interface PricingConfig {
   price: number
@@ -201,69 +200,46 @@ export function getQuickPurchasePricing(countryCode: string): Record<string, num
   const config = getCountryPricing(countryCode)
   
   return {
-    [`${countryCode.toUpperCase()}_PREDICTION_PRICE`]: config.price,
-    [`${countryCode.toUpperCase()}_PREDICTION_ORIGINAL_PRICE`]: config.originalPrice,
-    [`${countryCode.toUpperCase()}_TIP_PRICE`]: config.price * 0.5, // 50% of prediction price
-    [`${countryCode.toUpperCase()}_PACKAGE_PRICE`]: config.price * 2 // 2x prediction price
+    prediction: config.price,
+    prediction_original: config.originalPrice,
+    daily: config.price * 5, // 5 predictions
+    daily_original: config.originalPrice * 5,
+    weekly: config.price * 15, // 15 predictions
+    weekly_original: config.originalPrice * 15,
+    monthly: config.price * 50, // 50 predictions
+    monthly_original: config.originalPrice * 50,
+    unlimited: config.price * 100, // 100 predictions (unlimited)
+    unlimited_original: config.originalPrice * 100
   }
 }
 
 /**
- * Get country-specific pricing from the database (PackageCountryPrice table)
- * This is the primary and only source of pricing - no environment variable fallbacks
- * @param countryCode - ISO country code (e.g., 'KE', 'NG', 'US')
- * @param packageType - e.g., 'prediction'
- * @returns PricingConfig
- * @throws Error if country or pricing not found in database
+ * Get package pricing for a specific country and package type
+ * @param countryCode - Country code
+ * @param packageType - Type of package
+ * @returns Package pricing configuration
  */
-export async function getDbCountryPricing(countryCode: string, packageType = 'prediction'): Promise<PricingConfig> {
-  // Look up the country by code - database stores lowercase codes
-  const country = await prisma.country.findUnique({ where: { code: countryCode.toLowerCase() } })
-  if (!country) {
-    // Fallback for unknown countries: USD $1 base price
-    const base = 1
-    const tipCounts: Record<string, number> = {
-      prediction: 1,
-      tip: 1,
-      weekend_pass: 5,
-      weekly_pass: 8,
-      monthly_sub: 30
-    }
-    const discounts: Record<string, number> = {
-      prediction: 0,
-      tip: 0,
-      weekend_pass: 0.10,
-      weekly_pass: 0.15,
-      monthly_sub: 0.30
-    }
-    const tips = tipCounts[packageType] ?? 1
-    const discount = discounts[packageType] ?? 0
-    const originalPrice = base * tips
-    const price = originalPrice * (1 - discount)
-    return {
-      price,
-      originalPrice,
-      currencyCode: 'USD',
-      currencySymbol: '$',
-      source: 'default-fallback'
-    }
+export function getPackagePricing(countryCode: string, packageType: string): PricingConfig {
+  const baseConfig = getCountryPricing(countryCode)
+  
+  // Define multipliers for different package types
+  const multipliers: Record<string, { count: number; discount: number }> = {
+    daily: { count: 5, discount: 0.1 }, // 10% discount
+    weekly: { count: 15, discount: 0.2 }, // 20% discount
+    monthly: { count: 50, discount: 0.3 }, // 30% discount
+    unlimited: { count: 100, discount: 0.4 } // 40% discount
   }
   
-  // Look up the price by countryId and packageType
-  const priceRow = await prisma.packageCountryPrice.findUnique({
-    where: { countryId_packageType: { countryId: country.id, packageType } },
-    include: { country: true }
-  })
+  const multiplier = multipliers[packageType] || { count: 1, discount: 0 }
   
-  if (!priceRow) {
-    throw new Error(`Pricing not found in database for country: ${countryCode}, packageType: ${packageType}`)
-  }
+  const originalPrice = baseConfig.originalPrice * multiplier.count
+  const discountedPrice = originalPrice * (1 - multiplier.discount)
   
   return {
-    price: Number(priceRow.price),
-    originalPrice: Number(priceRow.originalPrice || priceRow.price), // Use originalPrice if available, otherwise same as price
-    currencyCode: country.currencyCode || '',
-    currencySymbol: country.currencySymbol || '',
-    source: 'db'
+    price: discountedPrice,
+    originalPrice: originalPrice,
+    currencyCode: baseConfig.currencyCode,
+    currencySymbol: baseConfig.currencySymbol,
+    source: `package-${packageType}-${baseConfig.source}`
   }
 } 

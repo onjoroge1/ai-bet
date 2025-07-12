@@ -1,23 +1,38 @@
 import { PrismaClient } from '@prisma/client'
 
-const prismaClientSingleton = () => {
-  return new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
-    datasources: {
-      db: {
-        url: process.env.DATABASE_URL,
-      },
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined
+}
+
+const prisma = globalForPrisma.prisma ?? new PrismaClient({
+  log: ['query', 'error', 'warn'],
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL,
     },
+  },
+})
+
+// Add connection health check (server-side only)
+if (typeof (globalThis as any).window === 'undefined') {
+  prisma.$connect()
+    .then(() => {
+      console.log('✅ Database connected successfully')
+    })
+    .catch((error) => {
+      console.error('❌ Database connection failed:', error)
+    })
+
+  // Graceful shutdown
+  process.on('beforeExit', async () => {
+    await prisma.$disconnect()
   })
 }
 
-declare global {
-  var prismaGlobal: undefined | ReturnType<typeof prismaClientSingleton>
-}
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
 
-const prisma = globalThis.prismaGlobal ?? prismaClientSingleton()
-
-export async function checkDatabaseConnection() {
+// Database connection health check function
+export async function checkDatabaseConnection(): Promise<boolean> {
   try {
     await prisma.$queryRaw`SELECT 1`
     return true
@@ -27,12 +42,4 @@ export async function checkDatabaseConnection() {
   }
 }
 
-process.on('beforeExit', async () => {
-  await prisma.$disconnect()
-})
-
 export default prisma
-
-if (process.env.NODE_ENV !== 'production') {
-  globalThis.prismaGlobal = prisma
-}

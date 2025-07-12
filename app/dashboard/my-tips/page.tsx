@@ -12,6 +12,8 @@ interface Tip {
   purchaseDate: string
   amount: number
   paymentMethod: string
+  tipType: 'purchase' | 'credit_claim'
+  creditsSpent?: number
   // Match information
   homeTeam: string
   awayTeam: string
@@ -37,6 +39,33 @@ interface Tip {
   currencyCode: string
   // Raw prediction data from database
   predictionData: any | null
+  // Formatted prediction data for frontend components
+  prediction: {
+    match: any
+    prediction: string
+    odds: string
+    confidence: number
+    analysis: string
+    valueRating: string
+    detailedReasoning: string[]
+    extraMarkets: any[]
+    thingsToAvoid: string[]
+    riskLevel: string
+    confidenceStars: number
+    probabilitySnapshot: any
+    aiVerdict: any
+    mlPrediction: any
+    riskAnalysis: any
+    bettingIntelligence: any
+    confidenceBreakdown: string
+    additionalMarkets: any
+    analysisMetadata: any
+    processingTime: number
+    timestamp: string
+  } | null
+  // Additional credit claim info
+  expiresAt?: string | null
+  status?: string | null
 }
 
 export default function MyTipsPage() {
@@ -110,11 +139,12 @@ export default function MyTipsPage() {
 
   return (
     <div className="container mx-auto py-8">
-      <h1 className="text-2xl font-bold text-white mb-6">My Purchased Predictions</h1>
+      <h1 className="text-2xl font-bold text-white mb-6">My Predictions</h1>
       
       {tips.length === 0 ? (
         <Card className="bg-slate-800 border-slate-700 p-6 text-center">
-          <p className="text-slate-400">You haven&apos;t purchased any predictions yet.</p>
+          <p className="text-slate-400">You haven&apos;t purchased or claimed any predictions yet.</p>
+          <p className="text-slate-500 text-sm mt-2">Start by claiming tips with credits or purchasing premium predictions!</p>
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -164,17 +194,32 @@ export default function MyTipsPage() {
                 {/* Purchase Info */}
                 <div className="border-t border-slate-700 pt-3">
                   <div className="flex justify-between items-center text-sm">
-                    <span className="text-slate-400">Price:</span>
+                    <span className="text-slate-400">
+                      {tip.tipType === 'credit_claim' ? 'Cost:' : 'Price:'}
+                    </span>
                     <span className="text-emerald-400 font-medium">
-                      {tip.currencySymbol}{tip.price}
+                      {tip.tipType === 'credit_claim' 
+                        ? `${tip.currencySymbol}${tip.creditsSpent} credit${tip.creditsSpent !== 1 ? 's' : ''}`
+                        : `${tip.currencySymbol}${tip.price}`
+                      }
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-sm mt-1">
-                    <span className="text-slate-400">Purchased:</span>
+                    <span className="text-slate-400">
+                      {tip.tipType === 'credit_claim' ? 'Claimed:' : 'Purchased:'}
+                    </span>
                     <span className="text-slate-300">
                       {new Date(tip.purchaseDate).toLocaleDateString()}
                     </span>
                   </div>
+                  {tip.tipType === 'credit_claim' && tip.expiresAt && (
+                    <div className="flex justify-between items-center text-sm mt-1">
+                      <span className="text-slate-400">Expires:</span>
+                      <span className="text-orange-400">
+                        {new Date(tip.expiresAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <Button 
@@ -232,10 +277,10 @@ export default function MyTipsPage() {
                   {/* Right Side - Recommended Bet */}
                   <div className="text-center lg:text-right space-y-3">
                     <div className="text-slate-400 text-sm">Recommended Bet</div>
-                    {selectedTip.predictionType && selectedTip.odds && typeof selectedTip.odds === 'number' ? (
+                    {selectedTip.predictionType && selectedTip.odds ? (
                       <>
                         <div className="text-3xl font-bold text-emerald-400">
-                          {getPredictionTypeLabel(selectedTip.predictionType)} @ {selectedTip.odds.toFixed(2)}
+                          {getPredictionTypeLabel(selectedTip.predictionType)} @ {typeof selectedTip.odds === 'number' ? selectedTip.odds.toFixed(2) : selectedTip.odds}
                         </div>
                         {selectedTip.confidenceScore && (
                           <div className="flex items-center justify-center lg:justify-end space-x-2">
@@ -251,6 +296,25 @@ export default function MyTipsPage() {
                           </div>
                         )}
                       </>
+                    ) : selectedTip.prediction?.prediction ? (
+                      <>
+                        <div className="text-3xl font-bold text-emerald-400">
+                          {selectedTip.prediction.prediction.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} @ {selectedTip.prediction.odds}
+                        </div>
+                        {selectedTip.prediction?.confidence && (
+                          <div className="flex items-center justify-center lg:justify-end space-x-2">
+                            <span className="text-slate-300">Confidence</span>
+                            <div className="flex space-x-1">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <span key={star} className="text-yellow-400">
+                                  {star <= Math.ceil(selectedTip.prediction!.confidence / 20) ? '★' : '☆'}
+                                </span>
+                              ))}
+                            </div>
+                            <span className="text-emerald-400 font-medium">({selectedTip.prediction!.confidence}%)</span>
+                          </div>
+                        )}
+                      </>
                     ) : (
                       <div className="text-xl text-slate-400">No prediction available</div>
                     )}
@@ -259,14 +323,13 @@ export default function MyTipsPage() {
               </Card>
 
               {/* 2. Probability Snapshot */}
-              {selectedTip.predictionData && (
+              {selectedTip.prediction && (
                 <Card className="bg-slate-800 border-slate-700 p-6">
                   <h4 className="text-lg font-semibold text-white mb-4">Probability Assessment</h4>
                   <div className="grid grid-cols-3 gap-4">
                     {['home_win', 'draw', 'away_win'].map((type) => {
-                      // Get probability from comprehensive analysis if available
-                      const probability = selectedTip.predictionData?.comprehensive_analysis?.ai_verdict?.probability_assessment?.[type.replace('_win', '')] || 
-                                        selectedTip.predictionData?.comprehensive_analysis?.ml_prediction?.[type] || 0
+                      // Get probability from formatted prediction data
+                      const probability = selectedTip.prediction?.probabilitySnapshot?.[type.replace('_win', '')] || 0
                       const percentage = (probability * 100).toFixed(0)
                       const isSelected = selectedTip.predictionType === type
                       return (
@@ -287,84 +350,54 @@ export default function MyTipsPage() {
               )}
 
               {/* 3. Additional Markets */}
-              {selectedTip.predictionData?.additional_markets && (
-                <Card className="bg-slate-800 border-slate-700 p-6">
-                  <h4 className="text-lg font-semibold text-white mb-4 flex items-center">
-                    <TrendingUp className="w-5 h-5 mr-2 text-emerald-400" />
-                    Additional Markets
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* Total Goals */}
-                    {selectedTip.predictionData.additional_markets.total_goals && (
-                      <div className="space-y-2">
-                        <div className="text-sm text-slate-400 font-medium">Total Goals</div>
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-sm">
-                            <span className="text-slate-300">Over 2.5:</span>
-                            <span className="text-emerald-400">{(selectedTip.predictionData.additional_markets.total_goals.over_2_5 * 100).toFixed(0)}%</span>
-                          </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-slate-300">Under 2.5:</span>
-                            <span className="text-emerald-400">{(selectedTip.predictionData.additional_markets.total_goals.under_2_5 * 100).toFixed(0)}%</span>
-                          </div>
+              {selectedTip.prediction?.extraMarkets && selectedTip.prediction.extraMarkets.length > 0 && (
+                <Card className="bg-slate-800/50 border-slate-600 p-6">
+                  <div className="flex items-center space-x-2 mb-4">
+                    <Target className="w-5 h-5 text-blue-400" />
+                    <h3 className="text-lg font-semibold text-white">Additional Markets</h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {selectedTip.prediction?.extraMarkets.map((market, index) => (
+                      <div key={index} className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-white font-medium text-sm">{market.market}</span>
+                          <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
+                            {market.probability != null ? market.probability : 0}%
+                          </Badge>
+                        </div>
+                        <div className="text-emerald-400 font-semibold text-sm mb-1">
+                          {market.prediction}
+                        </div>
+                        <div className="text-slate-400 text-xs">
+                          {market.reasoning}
                         </div>
                       </div>
-                    )}
-
-                    {/* Both Teams Score */}
-                    {selectedTip.predictionData.additional_markets.both_teams_score && (
-                      <div className="space-y-2">
-                        <div className="text-sm text-slate-400 font-medium">Both Teams Score</div>
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-sm">
-                            <span className="text-slate-300">Yes:</span>
-                            <span className="text-emerald-400">{(selectedTip.predictionData.additional_markets.both_teams_score.yes * 100).toFixed(0)}%</span>
-                          </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-slate-300">No:</span>
-                            <span className="text-emerald-400">{(selectedTip.predictionData.additional_markets.both_teams_score.no * 100).toFixed(0)}%</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Asian Handicap */}
-                    {selectedTip.predictionData.additional_markets.asian_handicap && (
-                      <div className="space-y-2">
-                        <div className="text-sm text-slate-400 font-medium">Asian Handicap</div>
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-sm">
-                            <span className="text-slate-300">Home:</span>
-                            <span className="text-emerald-400">{selectedTip.predictionData.additional_markets.asian_handicap.home_handicap}</span>
-                          </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-slate-300">Away:</span>
-                            <span className="text-emerald-400">{selectedTip.predictionData.additional_markets.asian_handicap.away_handicap}</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                    ))}
                   </div>
                 </Card>
               )}
 
-              {/* 4. Quick AI Synopsis */}
-              {selectedTip.analysisSummary && (
+              {/* 4. AI Analysis */}
+              {selectedTip.prediction?.analysis && (
                 <Card className="bg-slate-800 border-slate-700 p-6">
                   <h4 className="text-lg font-semibold text-white mb-4 flex items-center">
                     <Target className="w-5 h-5 mr-2 text-emerald-400" />
                     AI Analysis
                   </h4>
                   <div className="space-y-4">
-                    <p className="text-slate-300 leading-relaxed">{selectedTip.analysisSummary}</p>
+                    <p className="text-slate-300 leading-relaxed">{selectedTip.prediction.analysis}</p>
                     
                     {/* Confidence Breakdown */}
-                    {selectedTip.predictionData?.comprehensive_analysis?.confidence_breakdown && (
+                    {selectedTip.prediction?.confidenceStars && (
                       <div className="space-y-2">
-                        <div className="text-sm text-slate-400 font-medium">Confidence Breakdown:</div>
-                        <p className="text-slate-300 text-sm leading-relaxed">
-                          {selectedTip.predictionData.comprehensive_analysis.confidence_breakdown}
-                        </p>
+                        <div className="text-sm text-slate-400 font-medium">Confidence Rating:</div>
+                        <div className="flex space-x-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <span key={star} className="text-yellow-400">
+                              {star <= (selectedTip.prediction?.confidenceStars || 0) ? '★' : '☆'}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -372,17 +405,14 @@ export default function MyTipsPage() {
               )}
 
               {/* 5. Detailed Reasoning */}
-              {selectedTip.predictionData?.comprehensive_analysis?.detailed_reasoning && (
+              {selectedTip.prediction?.detailedReasoning && selectedTip.prediction.detailedReasoning.length > 0 && (
                 <Card className="bg-slate-800 border-slate-700 p-6">
                   <h4 className="text-lg font-semibold text-white mb-4">Detailed Reasoning</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 space-y-4">
-                    {Object.entries(selectedTip.predictionData.comprehensive_analysis.detailed_reasoning).map(([key, value]) => (
-                      <div key={key} className="space-y-2">
-                        <div className="text-sm text-slate-400 font-medium capitalize">
-                          {key.replace(/_/g, ' ')}:
-                        </div>
-                        <div className="text-slate-300 text-sm">
-                          {value as string}
+                  <div className="space-y-4">
+                    {selectedTip.prediction.detailedReasoning.map((reasoning: string, index: number) => (
+                      <div key={index} className="space-y-2">
+                        <div className="text-slate-300 text-sm leading-relaxed">
+                          {reasoning}
                         </div>
                       </div>
                     ))}
@@ -398,27 +428,22 @@ export default function MyTipsPage() {
                     Betting Intelligence
                   </h4>
                   <div className="space-y-4">
-                    {/* Primary Bet */}
-                    {selectedTip.predictionData?.comprehensive_analysis?.betting_intelligence?.primary_bet && (
+                    {/* Value Rating */}
+                    {selectedTip.prediction?.valueRating && (
                       <div className="space-y-2">
-                        <div className="text-sm text-slate-400 font-medium">Primary Bet:</div>
+                        <div className="text-sm text-slate-400 font-medium">Value Rating:</div>
                         <div className="text-emerald-400 text-sm">
-                          {selectedTip.predictionData.comprehensive_analysis.betting_intelligence.primary_bet}
+                          {selectedTip.prediction.valueRating}
                         </div>
                       </div>
                     )}
-
-                    {/* Value Bets */}
-                    {selectedTip.predictionData?.comprehensive_analysis?.betting_intelligence?.value_bets && (
+                    
+                    {/* Risk Level */}
+                    {selectedTip.prediction?.riskLevel && (
                       <div className="space-y-2">
-                        <div className="text-sm text-slate-400 font-medium">Value Bets:</div>
-                        <div className="space-y-1">
-                          {selectedTip.predictionData.comprehensive_analysis.betting_intelligence.value_bets.map((bet: string, index: number) => (
-                            <div key={index} className="text-slate-300 text-sm flex items-center">
-                              <span className="text-emerald-400 mr-2">•</span>
-                              {bet}
-                            </div>
-                          ))}
+                        <div className="text-sm text-slate-400 font-medium">Risk Level:</div>
+                        <div className="text-orange-400 text-sm">
+                          {selectedTip.prediction.riskLevel}
                         </div>
                       </div>
                     )}
@@ -427,19 +452,19 @@ export default function MyTipsPage() {
 
                 <Card className="bg-slate-800 border-slate-700 p-6">
                   <h4 className="text-lg font-semibold text-white mb-4 flex items-center">
-                    <span className="text-2xl mr-2">🚫</span>
-                    Avoid Bets
+                    <Shield className="w-5 h-5 mr-2 text-red-400" />
+                    Things to Avoid
                   </h4>
                   <div className="space-y-2">
-                    {selectedTip.predictionData?.comprehensive_analysis?.betting_intelligence?.avoid_bets ? (
-                      selectedTip.predictionData.comprehensive_analysis.betting_intelligence.avoid_bets.map((bet: string, index: number) => (
-                        <div key={index} className="text-slate-300 text-sm flex items-center">
-                          <span className="text-red-400 mr-2">•</span>
-                          {bet}
+                    {selectedTip.prediction?.thingsToAvoid && selectedTip.prediction.thingsToAvoid.length > 0 ? (
+                      selectedTip.prediction.thingsToAvoid.map((warning: string, index: number) => (
+                        <div key={index} className="flex items-start space-x-2">
+                          <span className="text-red-400 text-sm">•</span>
+                          <span className="text-slate-300 text-sm">{warning}</span>
                         </div>
                       ))
                     ) : (
-                      <div className="text-slate-400 text-sm">No specific bets to avoid</div>
+                      <p className="text-slate-400 text-sm">No specific warnings for this prediction.</p>
                     )}
                   </div>
                 </Card>
@@ -455,16 +480,16 @@ export default function MyTipsPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-slate-400">Overall Risk:</span>
                     <Badge className={`${getValueRatingColor(selectedTip.valueRating)} text-white`}>
-                      {selectedTip.predictionData?.comprehensive_analysis?.risk_analysis?.overall_risk || selectedTip.valueRating || 'Unknown'}
+                      {selectedTip.prediction?.riskAnalysis?.overall_risk || selectedTip.valueRating || 'Unknown'}
                     </Badge>
                   </div>
                   
                   {/* Key Risks */}
-                  {selectedTip.predictionData?.comprehensive_analysis?.risk_analysis?.key_risks && (
+                  {selectedTip.prediction?.riskAnalysis?.key_risks && (
                     <div>
                       <div className="text-sm text-slate-400 mb-2">Key Risks:</div>
                       <ul className="space-y-1">
-                        {selectedTip.predictionData.comprehensive_analysis.risk_analysis.key_risks.map((risk: string, index: number) => (
+                        {selectedTip.prediction.riskAnalysis.key_risks.map((risk: string, index: number) => (
                           <li key={index} className="text-slate-300 text-sm flex items-start">
                             <span className="text-orange-400 mr-2">•</span>
                             {risk}
@@ -475,16 +500,144 @@ export default function MyTipsPage() {
                   )}
                   
                   {/* Upset Potential */}
-                  {selectedTip.predictionData?.comprehensive_analysis?.risk_analysis?.upset_potential && (
+                  {selectedTip.prediction?.riskAnalysis?.upset_potential && (
                     <div>
                       <span className="text-slate-400 text-sm">Upset Potential: </span>
-                      <span className="text-slate-300 text-sm">{selectedTip.predictionData.comprehensive_analysis.risk_analysis.upset_potential}</span>
+                      <span className="text-slate-300 text-sm">{selectedTip.prediction.riskAnalysis.upset_potential}</span>
                     </div>
                   )}
                 </div>
               </Card>
 
-              {/* 8. Action Buttons */}
+              {/* 8. AI Verdict & ML Prediction */}
+              {selectedTip.prediction?.aiVerdict && (
+                <Card className="bg-slate-800 border-slate-700 p-6">
+                  <h4 className="text-lg font-semibold text-white mb-4 flex items-center">
+                    <Target className="w-5 h-5 mr-2 text-blue-400" />
+                    AI Verdict & ML Prediction
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* AI Verdict */}
+                    <div className="space-y-3">
+                      <h5 className="text-md font-medium text-white">AI Verdict</h5>
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Recommended Outcome:</span>
+                          <span className="text-emerald-400 font-medium">{selectedTip.prediction.aiVerdict.recommended_outcome}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Confidence Level:</span>
+                          <span className="text-blue-400">{selectedTip.prediction.aiVerdict.confidence_level}</span>
+                        </div>
+                        {selectedTip.prediction.aiVerdict.probability_assessment && (
+                          <div className="space-y-1">
+                            <div className="text-sm text-slate-400">Probability Assessment:</div>
+                            <div className="grid grid-cols-3 gap-2 text-xs">
+                              <div className="text-center">
+                                <div className="text-slate-300">Home</div>
+                                <div className="text-emerald-400">{(selectedTip.prediction.aiVerdict.probability_assessment.home * 100).toFixed(0)}%</div>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-slate-300">Draw</div>
+                                <div className="text-yellow-400">{(selectedTip.prediction.aiVerdict.probability_assessment.draw * 100).toFixed(0)}%</div>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-slate-300">Away</div>
+                                <div className="text-red-400">{(selectedTip.prediction.aiVerdict.probability_assessment.away * 100).toFixed(0)}%</div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ML Prediction */}
+                    {selectedTip.prediction?.mlPrediction && (
+                      <div className="space-y-3">
+                        <h5 className="text-md font-medium text-white">ML Prediction</h5>
+                        <div className="space-y-2">
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Model Type:</span>
+                            <span className="text-purple-400">{selectedTip.prediction.mlPrediction.model_type}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Confidence:</span>
+                            <span className="text-emerald-400">{selectedTip.prediction.mlPrediction.confidence.toFixed(1)}%</span>
+                          </div>
+                          <div className="space-y-1">
+                            <div className="text-sm text-slate-400">Predictions:</div>
+                            <div className="grid grid-cols-3 gap-2 text-xs">
+                              <div className="text-center">
+                                <div className="text-slate-300">Home Win</div>
+                                <div className="text-emerald-400">{(selectedTip.prediction.mlPrediction.home_win * 100).toFixed(0)}%</div>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-slate-300">Draw</div>
+                                <div className="text-yellow-400">{(selectedTip.prediction.mlPrediction.draw * 100).toFixed(0)}%</div>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-slate-300">Away Win</div>
+                                <div className="text-red-400">{(selectedTip.prediction.mlPrediction.away_win * 100).toFixed(0)}%</div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              )}
+
+              {/* 9. Betting Intelligence */}
+              {selectedTip.prediction?.bettingIntelligence && (
+                <Card className="bg-slate-800 border-slate-700 p-6">
+                  <h4 className="text-lg font-semibold text-white mb-4 flex items-center">
+                    <span className="text-2xl mr-2">💎</span>
+                    Betting Intelligence
+                  </h4>
+                  <div className="space-y-4">
+                    {/* Primary Bet */}
+                    {selectedTip.prediction.bettingIntelligence.primary_bet && (
+                      <div className="space-y-2">
+                        <div className="text-sm text-slate-400 font-medium">Primary Bet:</div>
+                        <div className="text-emerald-400 text-sm">
+                          {selectedTip.prediction.bettingIntelligence.primary_bet}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Value Bets */}
+                    {selectedTip.prediction.bettingIntelligence.value_bets && selectedTip.prediction.bettingIntelligence.value_bets.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-sm text-slate-400 font-medium">Value Bets:</div>
+                        <div className="space-y-1">
+                          {selectedTip.prediction.bettingIntelligence.value_bets.map((bet: string, index: number) => (
+                            <div key={index} className="text-slate-300 text-sm flex items-center">
+                              <span className="text-emerald-400 mr-2">•</span>
+                              {bet}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              )}
+
+              {/* 10. Confidence Breakdown */}
+              {selectedTip.prediction?.confidenceBreakdown && (
+                <Card className="bg-slate-800 border-slate-700 p-6">
+                  <h4 className="text-lg font-semibold text-white mb-4 flex items-center">
+                    <Target className="w-5 h-5 mr-2 text-yellow-400" />
+                    Confidence Breakdown
+                  </h4>
+                  <div className="space-y-4">
+                    <p className="text-slate-300 leading-relaxed">{selectedTip.prediction.confidenceBreakdown}</p>
+                  </div>
+                </Card>
+              )}
+
+              {/* 11. Action Buttons */}
               <div className="flex flex-wrap gap-3">
                 <Button className="bg-emerald-600 hover:bg-emerald-700 flex-1">
                   Add to Bet-slip
@@ -497,15 +650,15 @@ export default function MyTipsPage() {
                 </Button>
               </div>
 
-              {/* 9. Match & Analysis Metadata */}
+              {/* 12. Match & Analysis Metadata */}
               <Card className="bg-slate-800 border-slate-700 p-6">
                 <h4 className="text-lg font-semibold text-white mb-4">Analysis Metadata</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-slate-400">Analysis timestamp:</span>
                     <div className="text-slate-300">
-                      {selectedTip.predictionData?.comprehensive_analysis?.analysis_metadata?.analysis_timestamp ? 
-                        new Date(selectedTip.predictionData.comprehensive_analysis.analysis_metadata.analysis_timestamp).toLocaleDateString('en-US', {
+                      {selectedTip.prediction?.analysisMetadata?.analysis_timestamp ? 
+                        new Date(selectedTip.prediction.analysisMetadata.analysis_timestamp).toLocaleDateString('en-US', {
                           year: 'numeric',
                           month: 'short',
                           day: 'numeric',
@@ -525,31 +678,31 @@ export default function MyTipsPage() {
                   <div>
                     <span className="text-slate-400">Data sources:</span>
                     <div className="text-slate-300">
-                      {selectedTip.predictionData?.comprehensive_analysis?.analysis_metadata?.data_sources?.join(' • ') || 'ML model • injury reports • team news • tactical DB'}
+                      {selectedTip.prediction?.analysisMetadata?.data_sources?.join(' • ') || 'ML model • injury reports • team news • tactical DB'}
                     </div>
                   </div>
-                  {selectedTip.predictionData?.comprehensive_analysis?.analysis_metadata?.ml_model_accuracy && (
+                  {selectedTip.prediction?.analysisMetadata?.ml_model_accuracy && (
                     <div>
                       <span className="text-slate-400">ML model accuracy:</span>
-                      <div className="text-slate-300">{selectedTip.predictionData.comprehensive_analysis.analysis_metadata.ml_model_accuracy} back-test</div>
+                      <div className="text-slate-300">{selectedTip.prediction.analysisMetadata.ml_model_accuracy} back-test</div>
                     </div>
                   )}
-                  {selectedTip.predictionData?.comprehensive_analysis?.analysis_metadata?.processing_time && (
+                  {selectedTip.prediction?.processingTime && (
                     <div>
                       <span className="text-slate-400">Processing time:</span>
-                      <div className="text-slate-300">{selectedTip.predictionData.comprehensive_analysis.analysis_metadata.processing_time}s</div>
+                      <div className="text-slate-300">{selectedTip.prediction.processingTime}s</div>
                     </div>
                   )}
-                  {selectedTip.predictionData?.comprehensive_analysis?.analysis_metadata?.ai_model && (
+                  {selectedTip.prediction?.analysisMetadata?.ai_model && (
                     <div>
                       <span className="text-slate-400">AI Model:</span>
-                      <div className="text-slate-300">{selectedTip.predictionData.comprehensive_analysis.analysis_metadata.ai_model}</div>
+                      <div className="text-slate-300">{selectedTip.prediction.analysisMetadata.ai_model}</div>
                     </div>
                   )}
-                  {selectedTip.predictionData?.comprehensive_analysis?.analysis_metadata?.analysis_type && (
+                  {selectedTip.prediction?.analysisMetadata?.analysis_type && (
                     <div>
                       <span className="text-slate-400">Analysis Type:</span>
-                      <div className="text-slate-300">{selectedTip.predictionData.comprehensive_analysis.analysis_metadata.analysis_type.replace(/_/g, ' ')}</div>
+                      <div className="text-slate-300">{selectedTip.prediction.analysisMetadata.analysis_type.replace(/_/g, ' ')}</div>
                     </div>
                   )}
                 </div>

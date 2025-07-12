@@ -147,10 +147,46 @@ export class NotificationService {
       select: { email: true, fullName: true },
     })
 
+    // Get unified credit count to match dashboard display
+    const userPackages = await prisma.userPackage.findMany({
+      where: {
+        userId: userId,
+        status: "active",
+        expiresAt: {
+          gt: new Date()
+        }
+      },
+      include: {
+        packageOffer: true
+      }
+    });
+
+    // Calculate package credits
+    let packageCreditsCount = 0;
+    let hasUnlimited = false;
+
+    for (const userPackage of userPackages) {
+      if (userPackage.packageOffer.tipCount === -1) {
+        hasUnlimited = true;
+        break;
+      } else {
+        packageCreditsCount += userPackage.tipsRemaining;
+      }
+    }
+
+    // Get quiz credits
+    const userPoints = await prisma.userPoints.findUnique({
+      where: { userId }
+    });
+    const quizCreditsCount = userPoints ? Math.floor(userPoints.points / 50) : 0;
+
+    // Calculate total unified credits (same logic as dashboard)
+    const totalUnifiedCredits = hasUnlimited ? "∞" : (packageCreditsCount + quizCreditsCount);
+
     const notification = await this.createNotification({
       userId,
       title: '💳 Payment Successful',
-      message: `Your payment of $${amount.toFixed(2)} for ${packageName} was successful. ${creditsGained ? `${creditsGained} credits have been added to your account.` : 'Your tips are now available!'}`,
+      message: `Your payment of $${amount.toFixed(2)} for ${packageName} was successful. ${creditsGained ? `${creditsGained} credits have been added to your account. You now have ${totalUnifiedCredits} total credits available.` : 'Your tips are now available!'}`,
       type: 'success',
       category: 'payment',
       actionUrl: `/dashboard/my-tips`,
@@ -159,6 +195,13 @@ export class NotificationService {
         packageName,
         packageType,
         creditsGained,
+        totalCredits: totalUnifiedCredits,
+        creditBreakdown: {
+          packageCredits: packageCreditsCount,
+          quizCredits: quizCreditsCount,
+          totalCredits: totalUnifiedCredits,
+          hasUnlimited
+        }
       },
     })
 

@@ -8,10 +8,14 @@ import { Brain, Crown, Target, Star, Clock, CheckCircle, XCircle, ArrowDownLeft,
 import { useUserCountry } from "@/contexts/user-country-context"
 
 interface PredictionCreditsData {
-  availableCredits: number
-  totalCredits: number
-  subscriptionLevel: string
-  subscriptionStatus: string
+  currentCredits: number
+  directCredits: number
+  creditBreakdown: {
+    packageCredits: number
+    quizCredits: number
+    totalCredits: number
+    hasUnlimited: boolean
+  }
   recentActivity: Array<{
     id: string
     type: string
@@ -27,56 +31,91 @@ export function PredictionCredits() {
   const [loading, setLoading] = useState(true)
   const { convertPrice, countryData } = useUserCountry()
 
-  useEffect(() => {
-    // Simulate fetching prediction credits data
-    const fetchCreditsData = async () => {
-      // In real implementation, this would fetch from your database
-      const mockData: PredictionCreditsData = {
-        availableCredits: 15,
-        totalCredits: 50,
-        subscriptionLevel: "Premium",
-        subscriptionStatus: "active",
-        recentActivity: [
-          {
-            id: "1",
-            type: "purchase",
-            credits: 20,
-            status: "completed",
-            description: "Premium Package Purchase",
-            createdAt: "2024-01-15T10:30:00Z",
+  const fetchCreditsData = async () => {
+    try {
+      // Fetch real credit balance from API
+      const response = await fetch('/api/credits/balance')
+      if (response.ok) {
+        const data = await response.json()
+        
+        // Transform API data to component format
+        const transformedData: PredictionCreditsData = {
+          currentCredits: data.data.currentCredits,
+          directCredits: data.data.directCredits,
+          creditBreakdown: data.data.creditBreakdown,
+          recentActivity: [
+            {
+              id: "1",
+              type: "package",
+              credits: data.data.creditBreakdown.packageCredits,
+              status: "completed",
+              description: "Package Credits Available",
+              createdAt: new Date().toISOString(),
+            },
+            {
+              id: "2",
+              type: "quiz",
+              credits: data.data.creditBreakdown.quizCredits,
+              status: "completed",
+              description: "Quiz Credits Available",
+              createdAt: new Date().toISOString(),
+            },
+            {
+              id: "3",
+              type: "direct",
+              credits: data.data.directCredits,
+              status: "completed",
+              description: "Direct Credits Available",
+              createdAt: new Date().toISOString(),
+            }
+          ]
+        }
+        
+        setCreditsData(transformedData)
+      } else {
+        console.error('Failed to fetch credit balance')
+        // Fallback to mock data if API fails
+        setCreditsData({
+          currentCredits: 0,
+          directCredits: 0,
+          creditBreakdown: {
+            packageCredits: 0,
+            quizCredits: 0,
+            totalCredits: 0,
+            hasUnlimited: false
           },
-          {
-            id: "2",
-            type: "used",
-            credits: -1,
-            status: "completed",
-            description: "AI Prediction - Arsenal vs Chelsea",
-            createdAt: "2024-01-15T09:15:00Z",
-          },
-          {
-            id: "3",
-            type: "bonus",
-            credits: 5,
-            status: "completed",
-            description: "Welcome Bonus Credits",
-            createdAt: "2024-01-14T16:20:00Z",
-          },
-          {
-            id: "4",
-            type: "used",
-            credits: -1,
-            status: "completed",
-            description: "AI Prediction - Man City vs Liverpool",
-            createdAt: "2024-01-14T14:10:00Z",
-          },
-        ],
+          recentActivity: []
+        })
       }
-
-      setCreditsData(mockData)
+    } catch (error) {
+      console.error('Error fetching credits:', error)
+      // Fallback to mock data if API fails
+      setCreditsData({
+        currentCredits: 0,
+        directCredits: 0,
+        creditBreakdown: {
+          packageCredits: 0,
+          quizCredits: 0,
+          totalCredits: 0,
+          hasUnlimited: false
+        },
+        recentActivity: []
+      })
+    } finally {
       setLoading(false)
     }
+  }
 
+  useEffect(() => {
     fetchCreditsData()
+  }, [])
+
+  // Expose refresh function for parent components
+  useEffect(() => {
+    // Add to window for global access (for debugging/testing)
+    if (typeof window !== 'undefined') {
+      (window as any).refreshPredictionCredits = fetchCreditsData
+    }
   }, [])
 
   const getActivityIcon = (type: string, status: string) => {
@@ -169,9 +208,9 @@ export function PredictionCredits() {
 
         {/* Credits Display */}
         <div className="mb-6">
-          <div className="text-3xl font-bold text-white mb-1">{creditsData.availableCredits}</div>
+          <div className="text-3xl font-bold text-white mb-1">{creditsData.currentCredits}</div>
           <div className="text-slate-400 text-sm">Available Credits</div>
-          <div className="text-xs text-slate-500 mt-1">Total: {creditsData.totalCredits} credits</div>
+          <div className="text-xs text-slate-500 mt-1">Total: {creditsData.creditBreakdown.totalCredits} credits</div>
         </div>
 
         {/* Subscription Status */}
@@ -179,12 +218,18 @@ export function PredictionCredits() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <Crown className="w-4 h-4 text-yellow-400" />
-              <span className="text-white text-sm font-medium">Subscription</span>
+              <span className="text-white text-sm font-medium">Credit Breakdown</span>
             </div>
-            {getSubscriptionBadge(creditsData.subscriptionLevel)}
+            {creditsData.creditBreakdown.hasUnlimited ? (
+              <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">Unlimited</Badge>
+            ) : (
+              <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">Limited</Badge>
+            )}
           </div>
           <div className="text-slate-400 text-xs mt-1">
-            Status: <span className="text-emerald-400 capitalize">{creditsData.subscriptionStatus}</span>
+            Package: <span className="text-emerald-400">{creditsData.creditBreakdown.packageCredits}</span> • 
+            Quiz: <span className="text-blue-400">{creditsData.creditBreakdown.quizCredits}</span> • 
+            Direct: <span className="text-yellow-400">{creditsData.directCredits}</span>
           </div>
         </div>
 
@@ -195,7 +240,10 @@ export function PredictionCredits() {
             {creditsData.recentActivity.slice(0, 4).map((activity) => (
               <div key={activity.id} className="flex items-center justify-between p-3 bg-slate-700/30 rounded-lg">
                 <div className="flex items-center space-x-3">
-                  {getActivityIcon(activity.type, activity.status)}
+                  {/* Map type to icon */}
+                  {activity.type === "package" && <Sparkles className="w-4 h-4 text-emerald-400" />}
+                  {activity.type === "quiz" && <Target className="w-4 h-4 text-blue-400" />}
+                  {activity.type === "direct" && <ArrowDownLeft className="w-4 h-4 text-emerald-400" />}
                   <div>
                     <div className="text-white text-sm font-medium">{activity.description}</div>
                     <div className="text-slate-400 text-xs">{new Date(activity.createdAt).toLocaleDateString()}</div>

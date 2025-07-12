@@ -89,19 +89,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Prediction not found' }, { status: 404 });
     }
 
-    // Check if user already claimed this tip
-    const existingClaim = await prisma.creditTipClaim.findUnique({
+    // Check if user already purchased this tip (either with money or credits)
+    const existingPurchase = await prisma.purchase.findFirst({
       where: {
-        userId_predictionId: {
-          userId,
-          predictionId
+        userId,
+        quickPurchase: {
+          matchId: prediction.matchId
         }
       }
     });
 
     // Determine eligibility
     const hasEnoughCredits = totalCredits > 1; // More than 1 credit required
-    const alreadyClaimed = !!existingClaim;
+    const alreadyClaimed = !!existingPurchase;
     const isEligible = hasEnoughCredits && !alreadyClaimed && !prediction.isFree;
 
     return NextResponse.json({
@@ -132,10 +132,10 @@ export async function GET(request: NextRequest) {
             matchDate: prediction.match.matchDate
           }
         },
-        existingClaim: existingClaim ? {
-          id: existingClaim.id,
-          claimedAt: existingClaim.claimedAt,
-          status: existingClaim.status
+        existingClaim: existingPurchase ? {
+          id: existingPurchase.id,
+          claimedAt: existingPurchase.createdAt,
+          status: existingPurchase.status
         } : null
       }
     });
