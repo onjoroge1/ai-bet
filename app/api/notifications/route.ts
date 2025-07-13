@@ -3,6 +3,13 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { logger } from '@/lib/logger'
 import prisma from '@/lib/db'
+import { cacheManager } from '@/lib/cache-manager'
+
+// Cache configuration for notifications
+const CACHE_CONFIG = {
+  ttl: 180, // 3 minutes - short TTL for fresh notifications
+  prefix: 'user-notifications'
+}
 
 // Temporary mock data as fallback
 export const fallbackNotifications = [
@@ -57,6 +64,26 @@ export async function GET(request: NextRequest) {
     const isRead = searchParams.get('isRead')
     const unreadOnly = searchParams.get('unreadOnly') === 'true'
 
+    // Create cache key based on user and filters
+    const cacheKey = `notifications:${session.user.id}:${page}:${limit}:${type || 'all'}:${category || 'all'}:${isRead || 'all'}:${unreadOnly}`
+
+    // Check cache first
+    const cachedData = await cacheManager.get(cacheKey, CACHE_CONFIG)
+    if (cachedData) {
+      logger.info('GET /api/notifications - Cache hit', {
+        tags: ['api', 'notifications', 'cache'],
+        data: {
+          userId: session.user.id,
+          source: 'cache'
+        }
+      })
+      
+      return NextResponse.json({
+        ...cachedData,
+        source: 'cache'
+      })
+    }
+
     try {
       // Build Prisma where filter
       const where: any = { userId: session.user.id }
@@ -80,16 +107,7 @@ export async function GET(request: NextRequest) {
         where: { userId: session.user.id, isRead: false },
       })
 
-      logger.info('GET /api/notifications - Success (Database)', {
-        data: {
-          count: notifications.length,
-          totalCount,
-          unreadCount,
-          userId: session.user.id,
-        }
-      })
-
-      return NextResponse.json({
+      const responseData = {
         notifications,
         pagination: {
           page,
@@ -100,6 +118,24 @@ export async function GET(request: NextRequest) {
           hasPrev: page > 1,
         },
         unreadCount,
+      }
+
+      // Cache the response
+      await cacheManager.set(cacheKey, responseData, CACHE_CONFIG)
+
+      logger.info('GET /api/notifications - Success (Database)', {
+        data: {
+          count: notifications.length,
+          totalCount,
+          unreadCount,
+          userId: session.user.id,
+          source: 'database'
+        }
+      })
+
+      return NextResponse.json({
+        ...responseData,
+        source: 'database'
       })
     } catch (dbError) {
       // Fallback to mock data if database query fails
@@ -133,16 +169,7 @@ export async function GET(request: NextRequest) {
       const totalCount = filteredNotifications.length
       const unreadCount = fallbackNotifications.filter(n => !n.isRead).length
 
-      logger.info('GET /api/notifications - Success (Fallback)', {
-        data: {
-          count: paginatedNotifications.length,
-          totalCount,
-          unreadCount,
-          userId: session.user.id,
-        }
-      })
-
-      return NextResponse.json({
+      const fallbackData = {
         notifications: paginatedNotifications,
         pagination: {
           page,
@@ -153,6 +180,21 @@ export async function GET(request: NextRequest) {
           hasPrev: page > 1,
         },
         unreadCount,
+      }
+
+      logger.info('GET /api/notifications - Success (Fallback)', {
+        data: {
+          count: paginatedNotifications.length,
+          totalCount,
+          unreadCount,
+          userId: session.user.id,
+          source: 'fallback'
+        }
+      })
+
+      return NextResponse.json({
+        ...fallbackData,
+        source: 'fallback'
       })
     }
 

@@ -154,6 +154,11 @@ model Match {
   homeTeam     Team         @relation("HomeTeam", fields: [homeTeamId], references: [id])
   league       League       @relation(fields: [leagueId], references: [id])
   predictions  Prediction[]
+
+  @@index([matchDate, status])
+  @@index([homeTeamId, awayTeamId])
+  @@index([leagueId, matchDate])
+  @@index([status, matchDate])
 }
 
 model Prediction {
@@ -180,6 +185,11 @@ model Prediction {
   userPackageTips      UserPackageTip[]
   userPredictions      UserPrediction[]
   creditTipClaims      CreditTipClaim[]
+
+  @@index([isFree, showInDailyTips, status])
+  @@index([confidenceScore, valueRating, createdAt])
+  @@index([matchId, status])
+  @@index([createdAt])
 }
 
 model User {
@@ -236,6 +246,11 @@ model UserPrediction {
   placedAt        DateTime   @default(now())
   prediction      Prediction @relation(fields: [predictionId], references: [id])
   user            User       @relation(fields: [userId], references: [id])
+
+  @@index([userId, status])
+  @@index([predictionId, userId])
+  @@index([placedAt])
+  @@index([status, placedAt])
 }
 
 model Referral {

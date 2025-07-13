@@ -4,14 +4,93 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
-import { TrendingUp, Zap, Globe, Trophy, Target, Brain, Bell, Play } from "lucide-react"
+import { TrendingUp, Zap, Globe, Trophy, Target, Brain, Bell, Play, Loader2 } from "lucide-react"
+
+// Type for free tip data
+type FreeTip = {
+  id: string
+  match: {
+    homeTeam: string
+    awayTeam: string
+    league: string
+    matchDate: string
+    status: string
+    time: string
+  }
+  prediction: string
+  confidence: number
+  odds: string
+  valueRating: string
+  analysis: string
+  isLive: boolean
+  updatedAt: string
+}
+
+// Helper function to format prediction text
+const formatPrediction = (prediction: string, homeTeam: string, awayTeam: string): string => {
+  switch (prediction) {
+    case 'home_win':
+      return `${homeTeam} Win`
+    case 'away_win':
+      return `${awayTeam} Win`
+    case 'draw':
+      return 'Draw'
+    case 'over_1_5':
+      return 'Over 1.5 Goals'
+    case 'over_2_5':
+      return 'Over 2.5 Goals'
+    case 'over_3_5':
+      return 'Over 3.5 Goals'
+    case 'under_1_5':
+      return 'Under 1.5 Goals'
+    case 'under_2_5':
+      return 'Under 2.5 Goals'
+    case 'under_3_5':
+      return 'Under 3.5 Goals'
+    case 'btts':
+      return 'Both Teams to Score'
+    case 'btts_no':
+      return 'Both Teams NOT to Score'
+    default:
+      return prediction.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+  }
+}
 
 export function ResponsiveHero() {
-  const [winCount, setWinCount] = useState(1247)
-  const [activeUsers, setActiveUsers] = useState(2834)
+  const [winCount, setWinCount] = useState(0)
+  const [activeUsers, setActiveUsers] = useState(0)
   const [showNotification, setShowNotification] = useState(false)
+  const [freeTip, setFreeTip] = useState<FreeTip | null>(null)
+  const [isLoadingTip, setIsLoadingTip] = useState(true)
+  const [tipError, setTipError] = useState<string | null>(null)
 
-  // Simulate live updates
+  // Fetch today's free tip
+  useEffect(() => {
+    const fetchFreeTip = async () => {
+      try {
+        setIsLoadingTip(true)
+        setTipError(null)
+        
+        const response = await fetch('/api/homepage/free-tip')
+        const data = await response.json()
+        
+        if (data.success && data.data) {
+          setFreeTip(data.data)
+        } else {
+          setTipError(data.message || 'No free tip available')
+        }
+      } catch (error) {
+        console.error('Error fetching free tip:', error)
+        setTipError('Unable to load free tip')
+      } finally {
+        setIsLoadingTip(false)
+      }
+    }
+
+    fetchFreeTip()
+  }, [])
+
+  // Simulate live updates for demo purposes (these would be real in production)
   useEffect(() => {
     const interval = setInterval(() => {
       if (Math.random() > 0.7) {
@@ -26,13 +105,6 @@ export function ResponsiveHero() {
 
     return () => clearInterval(interval)
   }, [])
-
-  const floatingPredictions = [
-    { match: "Arsenal vs Chelsea", prediction: "Over 2.5", confidence: 92, position: "top-20 left-10" },
-    { match: "Man City vs Liverpool", prediction: "BTTS", confidence: 87, position: "top-32 right-16" },
-    { match: "Barcelona vs Madrid", prediction: "Barca Win", confidence: 78, position: "bottom-40 left-20" },
-    { match: "Bayern vs Dortmund", prediction: "U3.5 Goals", confidence: 84, position: "bottom-20 right-12" },
-  ]
 
   return (
     <section className="relative px-4 py-12 md:py-20 text-center overflow-hidden min-h-[70vh] md:min-h-[90vh] flex items-center">
@@ -57,25 +129,6 @@ export function ResponsiveHero() {
           />
         ))}
       </div>
-
-      {/* Floating Prediction Cards - Desktop only */}
-      {floatingPredictions.map((pred, index) => (
-        <Card
-          key={index}
-          className={`absolute hidden xl:block ${pred.position} bg-slate-800/80 backdrop-blur-sm border-slate-700 p-3 w-48 animate-bounce`}
-          style={{
-            animationDelay: `${index * 0.5}s`,
-            animationDuration: "3s",
-          }}
-        >
-          <div className="text-xs text-slate-300 mb-1">{pred.match}</div>
-          <div className="text-sm font-semibold text-white">{pred.prediction}</div>
-          <div className="flex items-center justify-between mt-2">
-            <Badge className="bg-emerald-500/20 text-emerald-400 text-xs">{pred.confidence}%</Badge>
-            <Target className="w-3 h-3 text-emerald-400" />
-          </div>
-        </Card>
-      ))}
 
       {/* Live Win Notification - Responsive */}
       {showNotification && (
@@ -141,8 +194,8 @@ export function ResponsiveHero() {
               <div className="text-xs text-slate-400">Active Users</div>
             </div>
             <div>
-              <div className="text-xl md:text-2xl font-bold text-yellow-400">87%</div>
-              <div className="text-xs text-slate-400">Win Rate</div>
+              <div className="text-xl md:text-2xl font-bold text-yellow-400">AI Powered</div>
+              <div className="text-xs text-slate-400">Advanced Analytics</div>
             </div>
           </div>
         </div>
@@ -181,30 +234,48 @@ export function ResponsiveHero() {
                 <Bell className="w-3 h-3 md:w-4 md:h-4 mr-2 animate-pulse" />
                 Today's Free Tip
               </h3>
-              <Badge className="bg-red-500/20 text-red-400 border-red-500/30 animate-pulse text-xs">LIVE</Badge>
+              {freeTip?.isLive && (
+                <Badge className="bg-red-500/20 text-red-400 border-red-500/30 animate-pulse text-xs">LIVE</Badge>
+              )}
             </div>
-            <div className="text-white font-medium text-sm md:text-base">Arsenal vs Chelsea</div>
-            <div className="text-slate-300 text-sm">Over 2.5 Goals • 92% Confidence</div>
-            <div className="text-emerald-400 text-sm mt-2 flex items-center">
-              <Brain className="w-3 h-3 mr-1" />
-              AI Analysis: High-scoring teams, weak defenses
-            </div>
-            <div className="mt-3 flex items-center justify-between">
-              <span className="text-xs text-slate-400">Updated 2 min ago</span>
-              <div className="flex space-x-1">
-                <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" style={{ animationDelay: "0.2s" }} />
-                <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" style={{ animationDelay: "0.4s" }} />
+            
+            {isLoadingTip ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="w-5 h-5 animate-spin text-emerald-400 mr-2" />
+                <span className="text-slate-300 text-sm">Loading today's tip...</span>
               </div>
-            </div>
-
-            {/* Mobile CTA Button */}
-            <div className="mt-4 md:hidden">
-              <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
-                <Play className="w-4 h-4 mr-2" />
-                View Full Analysis
-              </Button>
-            </div>
+            ) : tipError ? (
+              <div className="text-slate-300 text-sm py-2">
+                {tipError}
+              </div>
+            ) : freeTip ? (
+              <>
+                <div className="text-white font-medium text-sm md:text-base">
+                  {freeTip.match.homeTeam} vs {freeTip.match.awayTeam}
+                </div>
+                <div className="text-slate-300 text-sm">
+                  {formatPrediction(freeTip.prediction, freeTip.match.homeTeam, freeTip.match.awayTeam)} • {freeTip.confidence}% Confidence
+                </div>
+                <div className="text-emerald-400 text-sm mt-2 flex items-center">
+                  <Brain className="w-3 h-3 mr-1" />
+                  AI Analysis: {freeTip.analysis}
+                </div>
+                <div className="mt-3 flex items-center justify-between">
+                  <span className="text-xs text-slate-400">
+                    {freeTip.match.time} • {freeTip.match.league}
+                  </span>
+                  <div className="flex space-x-1">
+                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" style={{ animationDelay: "0.2s" }} />
+                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" style={{ animationDelay: "0.4s" }} />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="text-slate-300 text-sm py-2">
+                Check back later for today's free tip
+              </div>
+            )}
           </Card>
         </div>
       </div>

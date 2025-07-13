@@ -2,7 +2,7 @@ import { ResponsiveHero } from "@/components/responsive/responsive-hero"
 import { ResponsivePredictions } from "@/components/responsive/responsive-predictions"
 import { StatsSection } from "@/components/stats-section"
 import { TrustBadges } from "@/components/trust-badges"
-import { TestimonialsSection } from "@/components/testimonials-section"
+import { QuizSection } from "@/components/quiz-section"
 
 export default function HomePage() {
   return (
@@ -11,7 +11,7 @@ export default function HomePage() {
       <StatsSection />
       <ResponsivePredictions />
       <TrustBadges />
-      <TestimonialsSection />
+      <QuizSection />
     </div>
   )
 }

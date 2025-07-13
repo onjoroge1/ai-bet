@@ -17,6 +17,7 @@ export async function GET() {
       totalRevenue,
       totalCountries,
       totalWinnings,
+      totalUsers,
     ] = await Promise.all([
       // Total predictions
       prisma.userPrediction.count(),
@@ -41,6 +42,11 @@ export async function GET() {
       prisma.user.aggregate({
         where: { isActive: true },
         _sum: { totalWinnings: true }
+      }),
+
+      // Total active users
+      prisma.user.count({
+        where: { isActive: true }
       }),
     ])
 
@@ -69,26 +75,68 @@ export async function GET() {
       }).format(amount)
     }
 
-    const stats = {
-      winRate: {
-        value: `${winRatePercentage}%`,
-        rawValue: winRatePercentage,
-        description: "Average success rate across all predictions"
-      },
-      totalWinnings: {
-        value: "Community Success",
+    // Determine win rate display based on data availability
+    let winRateDisplay = {
+      value: "Calculating...",
+      rawValue: 0,
+      description: "Win rate calculation in progress"
+    }
+
+    if (totalPredictions > 0) {
+      if (successfulPredictions > 0) {
+        winRateDisplay = {
+          value: `${winRatePercentage}%`,
+          rawValue: winRatePercentage,
+          description: `Based on ${totalPredictions} predictions`
+        }
+      } else {
+        winRateDisplay = {
+          value: "0%",
+          rawValue: 0,
+          description: "No successful predictions yet"
+        }
+      }
+    } else {
+      winRateDisplay = {
+        value: "New Platform",
+        rawValue: 0,
+        description: "Building our prediction history"
+      }
+    }
+
+    // Determine winnings display
+    let winningsDisplay = {
+      value: "Community Success",
+      rawValue: winningsUSD,
+      description: "Our community celebrates wins together"
+    }
+
+    if (winningsUSD > 0) {
+      winningsDisplay = {
+        value: formatCurrency(winningsUSD),
         rawValue: winningsUSD,
-        description: "Our community celebrates wins together"
-      },
+        description: "Total community winnings"
+      }
+    } else if (totalUsers > 0) {
+      winningsDisplay = {
+        value: `${totalUsers}+ Users`,
+        rawValue: totalUsers,
+        description: "Active community members"
+      }
+    }
+
+    const stats = {
+      winRate: winRateDisplay,
+      totalWinnings: winningsDisplay,
       countries: {
         value: `${totalCountries}+`,
         rawValue: totalCountries,
         description: "Global reach with local payment methods"
       },
       totalRevenue: {
-        value: formatCurrency(revenueUSD),
+        value: revenueUSD > 0 ? formatCurrency(revenueUSD) : "Growing Platform",
         rawValue: revenueUSD,
-        description: "Total platform revenue"
+        description: revenueUSD > 0 ? "Total platform revenue" : "Building our platform"
       }
     }
 

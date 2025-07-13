@@ -30,8 +30,8 @@ export function TrustBadges() {
     },
     {
       icon: Award,
-      title: "87% Win Rate",
-      description: "Proven track record",
+      title: "Data Driven",
+      description: "Comprehensive analysis & insights",
     },
   ]
 

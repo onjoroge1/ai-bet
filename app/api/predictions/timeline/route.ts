@@ -3,6 +3,13 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/db"
 import { logger } from "@/lib/logger"
+import { cacheManager } from "@/lib/cache-manager"
+
+// Cache configuration for predictions timeline
+const CACHE_CONFIG = {
+  ttl: 300, // 5 minutes - short TTL for fresh predictions
+  prefix: 'predictions-timeline'
+}
 
 // GET /api/predictions/timeline
 export async function GET(request: NextRequest) {
@@ -17,6 +24,26 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status') // won, lost, pending, upcoming
     const dateFrom = searchParams.get('dateFrom')
     const dateTo = searchParams.get('dateTo')
+
+    // Create cache key based on user and filters
+    const cacheKey = `timeline:${session.user.id}:${limit}:${status || 'all'}:${dateFrom || 'all'}:${dateTo || 'all'}`
+
+    // Check cache first
+    const cachedData = await cacheManager.get(cacheKey, CACHE_CONFIG)
+    if (cachedData) {
+      logger.info('GET /api/predictions/timeline - Cache hit', {
+        tags: ['api', 'predictions', 'timeline', 'cache'],
+        data: {
+          userId: session.user.id,
+          source: 'cache'
+        }
+      })
+      
+      return NextResponse.json({
+        ...cachedData,
+        source: 'cache'
+      })
+    }
 
     // Build where clause for predictions
     const predictionWhere: any = {}
@@ -122,16 +149,30 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    logger.info('GET /api/predictions/timeline - Success', {
+    const responseData = {
+      predictions: timelineData,
+      count: timelineData.length,
+      userId: session.user.id,
+      filters: { status, dateFrom, dateTo, limit }
+    }
+
+    // Cache the response
+    await cacheManager.set(cacheKey, responseData, CACHE_CONFIG)
+
+    logger.info('GET /api/predictions/timeline - Success (Database)', {
       tags: ['api', 'predictions', 'timeline'],
       data: { 
         count: timelineData.length,
         userId: session.user.id,
-        filters: { status, dateFrom, dateTo, limit }
+        filters: { status, dateFrom, dateTo, limit },
+        source: 'database'
       }
     })
 
-    return NextResponse.json(timelineData)
+    return NextResponse.json({
+      ...responseData,
+      source: 'database'
+    })
   } catch (error) {
     logger.error('GET /api/predictions/timeline - Error', {
       tags: ['api', 'predictions', 'timeline'],
