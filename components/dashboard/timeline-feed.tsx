@@ -63,7 +63,10 @@ const fetchTimelineData = async (): Promise<TimelineItem[]> => {
   if (!response.ok) {
     throw new Error('Failed to fetch timeline data')
   }
-  return response.json()
+  const data = await response.json()
+  // The API returns an object with a predictions property, so we need to extract it
+  console.log('Timeline API response:', data) // Debug log
+  return data.predictions || []
 }
 
 // Status configuration
@@ -114,8 +117,8 @@ export function TimelineFeed() {
 
   // Filter data based on selected status
   const filteredData = selectedStatus === 'all' 
-    ? timelineData 
-    : timelineData.filter(item => item.timelineStatus === selectedStatus)
+    ? (Array.isArray(timelineData) ? timelineData : [])
+    : (Array.isArray(timelineData) ? timelineData.filter(item => item.timelineStatus === selectedStatus) : [])
 
   // Format date for display
   const formatDate = (dateString: string) => {

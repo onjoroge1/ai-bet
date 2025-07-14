@@ -7,6 +7,7 @@ import { Footer } from "@/components/footer"
 import { Providers } from "./providers"
 import { SkipToMainContent, LiveRegion } from "@/components/ui/accessibility"
 import { AllSchemaMarkup } from "@/components/schema-markup"
+import { GoogleAnalytics } from "@/components/analytics/google-analytics"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -107,6 +108,8 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID
+
   return (
     <html lang="en" className={`dark ${inter.variable}`} suppressHydrationWarning>
       <head>
@@ -149,6 +152,11 @@ export default function RootLayout({
           </main>
           <Footer />
         </Providers>
+        
+        {/* Google Analytics - Only load in production */}
+        {GA_MEASUREMENT_ID && process.env.NODE_ENV === 'production' && (
+          <GoogleAnalytics GA_MEASUREMENT_ID={GA_MEASUREMENT_ID} />
+        )}
       </body>
     </html>
   )
