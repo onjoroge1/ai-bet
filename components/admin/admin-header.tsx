@@ -1,7 +1,8 @@
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Shield, Bell, Settings, Download, RefreshCw } from "lucide-react"
+import { Shield, Bell, Settings, Download, RefreshCw, FileText } from "lucide-react"
+import Link from "next/link"
 
 export function AdminHeader() {
   return (
@@ -20,6 +21,12 @@ export function AdminHeader() {
             <Shield className="w-4 h-4 mr-2" />
             Super Admin
           </Badge>
+          <Button asChild variant="outline" size="sm" className="border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white">
+            <Link href="/admin/blogs">
+              <FileText className="w-4 h-4 mr-2" />
+              Blog
+            </Link>
+          </Button>
           <Button variant="ghost" size="sm" className="text-slate-300 hover:text-white relative">
             <Bell className="w-4 h-4" />
             <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping" />

@@ -11,7 +11,7 @@ import {
   NavigationMenuList,
   NavigationMenuTrigger,
 } from "@/components/ui/navigation-menu"
-import { Menu, X, TrendingUp, Users, Crown, HelpCircle, CreditCard, Globe, Moon, Sun, User, LogOut, MapPin } from "lucide-react"
+import { Menu, X, TrendingUp, Users, Crown, HelpCircle, CreditCard, Globe, Moon, Sun, User, LogOut, MapPin, BookOpen } from "lucide-react"
 import { useUserCountry } from "@/contexts/user-country-context"
 import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
@@ -104,6 +104,10 @@ export function Navigation() {
                   <NavigationMenuTrigger className="text-slate-300 hover:text-white">More</NavigationMenuTrigger>
                   <NavigationMenuContent>
                     <div className="w-48 p-4 space-y-2">
+                      <NavigationMenuLink href="/blog" className="block p-2 hover:bg-slate-800 rounded">
+                        <BookOpen className="w-4 h-4 inline mr-2" />
+                        Blog
+                      </NavigationMenuLink>
                       <NavigationMenuLink className="block p-2 hover:bg-slate-800 rounded">
                         <HelpCircle className="w-4 h-4 inline mr-2" />
                         FAQ
@@ -125,7 +129,7 @@ export function Navigation() {
 
           {/* Right Side Actions */}
           <div className="flex items-center space-x-4">
-            {/* User Country Display - Hidden on mobile */}
+            {/* User Country Display */}
             {!isLoading && countryData && (
               <div className="hidden lg:flex items-center space-x-2 text-slate-300">
                 <MapPin className="w-4 h-4" />
@@ -136,16 +140,7 @@ export function Navigation() {
               </div>
             )}
 
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsDark(!isDark)}
-              className="text-slate-300 hover:text-white"
-            >
-              {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </Button>
-
-            {/* Auth Buttons - Show different options based on auth state */}
+            {/* Desktop Auth Buttons */}
             <div className="hidden md:flex items-center space-x-2">
               {isAuthenticated ? (
                 <>
@@ -204,6 +199,10 @@ export function Navigation() {
                 </a>
               ))}
 
+              <a href="/blog" className="block px-3 py-2 text-slate-300 hover:text-white">
+                <BookOpen className="w-4 h-4 inline mr-2" />
+                Blog
+              </a>
               <a href="#" className="block px-3 py-2 text-slate-300 hover:text-white">
                 FAQ
               </a>
@@ -212,7 +211,7 @@ export function Navigation() {
               </a>
 
               {/* Mobile Auth Buttons */}
-              <div className="pt-4 space-y-2">
+              <div className="pt-4 border-t border-slate-800">
                 {isAuthenticated ? (
                   <>
                     <Button variant="ghost" className="w-full text-slate-300 hover:text-white">

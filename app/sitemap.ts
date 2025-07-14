@@ -56,6 +56,52 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ]
 
+  // Blog pages
+  const blogPages = [
+    {
+      url: `${baseUrl}/blog`,
+      lastModified: currentDate,
+      changeFrequency: 'weekly' as const,
+      priority: 0.8,
+    },
+    {
+      url: `${baseUrl}/blog/how-ai-predictions-work`,
+      lastModified: currentDate,
+      changeFrequency: 'monthly' as const,
+      priority: 0.7,
+    },
+    {
+      url: `${baseUrl}/blog/top-betting-strategies`,
+      lastModified: currentDate,
+      changeFrequency: 'monthly' as const,
+      priority: 0.7,
+    },
+    {
+      url: `${baseUrl}/blog/confidence-scores-explained`,
+      lastModified: currentDate,
+      changeFrequency: 'monthly' as const,
+      priority: 0.6,
+    },
+    {
+      url: `${baseUrl}/blog/ai-sports-analysis`,
+      lastModified: currentDate,
+      changeFrequency: 'monthly' as const,
+      priority: 0.6,
+    },
+    {
+      url: `${baseUrl}/blog/success-stories`,
+      lastModified: currentDate,
+      changeFrequency: 'monthly' as const,
+      priority: 0.6,
+    },
+    {
+      url: `${baseUrl}/blog/daily-football-tips`,
+      lastModified: currentDate,
+      changeFrequency: 'monthly' as const,
+      priority: 0.6,
+    },
+  ]
+
   // TODO: Add dynamic prediction pages when needed
   // const predictions = await prisma.prediction.findMany({
   //   where: { isActive: true },
@@ -69,25 +115,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   //   priority: 0.6,
   // }))
 
-  // TODO: Add blog pages when blog is implemented
-  // const blogPages = [
-  //   {
-  //     url: `${baseUrl}/blog`,
-  //     lastModified: currentDate,
-  //     changeFrequency: 'weekly' as const,
-  //     priority: 0.8,
-  //   },
-  //   {
-  //     url: `${baseUrl}/blog/how-ai-predictions-work`,
-  //     lastModified: currentDate,
-  //     changeFrequency: 'monthly' as const,
-  //     priority: 0.7,
-  //   },
-  // ]
-
   return [
     ...staticPages,
+    ...blogPages,
     // ...predictionPages,
-    // ...blogPages,
   ]
 } 

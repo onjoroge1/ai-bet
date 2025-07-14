@@ -682,3 +682,34 @@ model CreditTipClaim {
   @@index([expiresAt])
   @@index([claimedAt])
 }
+
+model BlogPost {
+  id              String   @id @default(cuid())
+  title           String
+  slug            String   @unique
+  excerpt         String?
+  content         String
+  author          String   @default("SnapBet AI Team")
+  category        String
+  tags            String[]
+  geoTarget       String[] @default(["worldwide"]) // ['KE', 'NG', 'ZA', 'worldwide']
+  featured        Boolean  @default(false)
+  publishedAt     DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  viewCount       Int      @default(0)
+  shareCount      Int      @default(0)
+  readTime        Int      // in minutes
+  seoTitle        String?
+  seoDescription  String?
+  seoKeywords     String[]
+  isPublished     Boolean  @default(true)
+  isActive        Boolean  @default(true)
+
+  @@index([category, isPublished, isActive])
+  @@index([geoTarget, isPublished, isActive])
+  @@index([featured, isPublished, isActive])
+  @@index([publishedAt, isPublished, isActive])
+  @@index([viewCount, isPublished, isActive])
+  @@index([slug, isPublished, isActive])
+}
