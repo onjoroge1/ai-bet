@@ -1,7 +1,7 @@
 import { MetadataRoute } from 'next'
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = process.env.NEXTAUTH_URL || 'https://snapbet.ai'
+  const baseUrl = process.env.NEXTAUTH_URL || 'https://snapbet.bet'
   const currentDate = new Date()
 
   // Static pages with their priorities and change frequencies
@@ -37,6 +37,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.7,
     },
     {
+      url: `${baseUrl}/blog`,
+      lastModified: currentDate,
+      changeFrequency: 'weekly' as const,
+      priority: 0.8,
+    },
+    {
+      url: `${baseUrl}/faq`,
+      lastModified: currentDate,
+      changeFrequency: 'monthly' as const,
+      priority: 0.7,
+    },
+    {
       url: `${baseUrl}/signup`,
       lastModified: currentDate,
       changeFrequency: 'monthly' as const,
@@ -54,16 +66,28 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'daily' as const,
       priority: 0.7,
     },
-  ]
-
-  // Blog pages
-  const blogPages = [
     {
-      url: `${baseUrl}/blog`,
+      url: `${baseUrl}/pricing`,
       lastModified: currentDate,
-      changeFrequency: 'weekly' as const,
+      changeFrequency: 'monthly' as const,
       priority: 0.8,
     },
+    {
+      url: `${baseUrl}/about`,
+      lastModified: currentDate,
+      changeFrequency: 'monthly' as const,
+      priority: 0.6,
+    },
+    {
+      url: `${baseUrl}/contact`,
+      lastModified: currentDate,
+      changeFrequency: 'monthly' as const,
+      priority: 0.5,
+    },
+  ]
+
+  // Blog pages - using the actual slugs from our database
+  const blogPages = [
     {
       url: `${baseUrl}/blog/how-ai-predictions-work`,
       lastModified: currentDate,
@@ -71,31 +95,31 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.7,
     },
     {
-      url: `${baseUrl}/blog/top-betting-strategies`,
+      url: `${baseUrl}/blog/top-betting-strategies-football`,
       lastModified: currentDate,
       changeFrequency: 'monthly' as const,
       priority: 0.7,
     },
     {
-      url: `${baseUrl}/blog/confidence-scores-explained`,
+      url: `${baseUrl}/blog/understanding-confidence-scores`,
       lastModified: currentDate,
       changeFrequency: 'monthly' as const,
       priority: 0.6,
     },
     {
-      url: `${baseUrl}/blog/ai-sports-analysis`,
+      url: `${baseUrl}/blog/science-behind-ai-tipster`,
       lastModified: currentDate,
       changeFrequency: 'monthly' as const,
       priority: 0.6,
     },
     {
-      url: `${baseUrl}/blog/success-stories`,
+      url: `${baseUrl}/blog/success-stories-users-won-big`,
       lastModified: currentDate,
       changeFrequency: 'monthly' as const,
       priority: 0.6,
     },
     {
-      url: `${baseUrl}/blog/daily-football-tips`,
+      url: `${baseUrl}/blog/daily-football-tips-ai-predictions`,
       lastModified: currentDate,
       changeFrequency: 'monthly' as const,
       priority: 0.6,

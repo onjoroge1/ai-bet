@@ -108,7 +108,7 @@ export function Navigation() {
                         <BookOpen className="w-4 h-4 inline mr-2" />
                         Blog
                       </NavigationMenuLink>
-                      <NavigationMenuLink className="block p-2 hover:bg-slate-800 rounded">
+                      <NavigationMenuLink href="/faq" className="block p-2 hover:bg-slate-800 rounded">
                         <HelpCircle className="w-4 h-4 inline mr-2" />
                         FAQ
                       </NavigationMenuLink>
@@ -203,7 +203,7 @@ export function Navigation() {
                 <BookOpen className="w-4 h-4 inline mr-2" />
                 Blog
               </a>
-              <a href="#" className="block px-3 py-2 text-slate-300 hover:text-white">
+              <a href="/faq" className="block px-3 py-2 text-slate-300 hover:text-white">
                 FAQ
               </a>
               <a href="#" className="block px-3 py-2 text-slate-300 hover:text-white">
