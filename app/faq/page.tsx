@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { AdvancedBreadcrumb } from '@/components/advanced-breadcrumb'
 import { 
   Search, 
   HelpCircle, 
@@ -217,6 +218,7 @@ const faqs = [
 
 export default function FAQPage() {
   const [searchQuery, setSearchQuery] = useState('')
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
 
   // Filter FAQs based on search query
   const filteredFaqs = useMemo(() => {
@@ -247,37 +249,31 @@ export default function FAQPage() {
       {/* Schema Markup */}
       <FAQSchema faqs={faqs.flatMap(category => category.questions)} />
       
+      {/* Breadcrumb Navigation */}
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+        <AdvancedBreadcrumb />
+      </div>
+
       {/* Header */}
-      <div className="bg-slate-800/50 border-b border-slate-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-          <div className="text-center">
-            <div className="flex items-center justify-center gap-3 mb-6">
-              <HelpCircle className="w-12 h-12 text-emerald-400" />
-              <h1 className="text-4xl md:text-5xl font-bold text-white">
-                Frequently Asked Questions
-              </h1>
-            </div>
-            <p className="text-xl text-slate-300 mb-8 max-w-3xl mx-auto">
-              Find answers to common questions about AI sports predictions, betting tips, and how SnapBet AI works.
-            </p>
-            
-            {/* Search */}
-            <div className="max-w-2xl mx-auto">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
-                <Input
-                  placeholder="Search questions..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 bg-slate-700 border-slate-600 text-white placeholder-slate-400"
-                />
-              </div>
-              {searchQuery && (
-                <p className="text-slate-400 text-sm mt-2">
-                  Found {filteredFaqs.reduce((total, category) => total + category.questions.length, 0)} results
-                </p>
-              )}
-            </div>
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="text-center mb-12">
+          <div className="flex items-center justify-center mb-4">
+            <HelpCircle className="w-12 h-12 text-emerald-400 mr-3" />
+            <h1 className="text-4xl md:text-5xl font-bold text-white">FAQ</h1>
+          </div>
+          <p className="text-xl text-slate-300 mb-8">
+            Find answers to the most common questions about SnapBet AI
+          </p>
+          
+          {/* Search */}
+          <div className="relative max-w-md mx-auto">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
+            <Input
+              placeholder="Search questions..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 bg-slate-700 border-slate-600 text-white placeholder-slate-400"
+            />
           </div>
         </div>
       </div>

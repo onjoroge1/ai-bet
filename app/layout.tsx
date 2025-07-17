@@ -48,9 +48,7 @@ export const metadata: Metadata = {
     telephone: false,
   },
   metadataBase: new URL(process.env.NEXTAUTH_URL || "http://localhost:3000"),
-  alternates: {
-    canonical: "/",
-  },
+  // Removed static canonical URL - will be set dynamically per page
   openGraph: {
     title: "SnapBet AI - AI-Powered Sports Predictions & Betting Tips",
     description: "Get winning sports predictions powered by AI. Join thousands of successful bettors with our data-driven football, basketball, and tennis tips. Start winning today!",

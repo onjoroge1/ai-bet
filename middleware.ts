@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { logger } from '@/lib/logger'
 import { getCountryFromRequest } from "@/lib/country-pricing"
+import { getCountryByCode, getPrimarySupportedCountries } from '@/lib/countries'
 import { checkRateLimit } from '@/lib/security'
 import { addSecurityHeaders, configureCORS } from '@/lib/security'
 
@@ -53,6 +54,28 @@ const rateLimitConfig = {
 const isAdminOnlyPath = (pathname: string) => {
   return adminPaths.some(p => pathname.startsWith(p)) && 
          !authenticatedPaths.some(p => pathname.startsWith(p))
+}
+
+// Helper function to check if path is a country-specific path
+const isCountryPath = (pathname: string) => {
+  const segments = pathname.split('/').filter(Boolean)
+  if (segments.length === 0) return false
+  
+  const firstSegment = segments[0].toLowerCase()
+  const supportedCountries = getPrimarySupportedCountries()
+  return supportedCountries.some(country => country.code.toLowerCase() === firstSegment)
+}
+
+// Helper function to get country code from pathname
+const getCountryFromPath = (pathname: string): string | null => {
+  const segments = pathname.split('/').filter(Boolean)
+  if (segments.length === 0) return null
+  
+  const firstSegment = segments[0].toLowerCase()
+  const supportedCountries = getPrimarySupportedCountries()
+  const country = supportedCountries.find(country => country.code.toLowerCase() === firstSegment)
+  
+  return country ? country.code : null
 }
 
 export async function middleware(request: NextRequest) {
@@ -131,6 +154,40 @@ export async function middleware(request: NextRequest) {
     requestHeaders.set('x-detected-country', detectedCountry)
     requestHeaders.set('x-client-ip', ip)
 
+    // Handle country-specific routing
+    const countryFromPath = getCountryFromPath(pathname)
+    
+    if (countryFromPath) {
+      // This is a country-specific path, validate the country
+      const country = getCountryByCode(countryFromPath)
+      if (!country || !country.isSupported) {
+        logger.warn('Invalid country path accessed', {
+          tags: ['middleware', 'country-routing', 'invalid-country'],
+          data: { pathname, countryCode: countryFromPath, ip }
+        })
+        
+        // Redirect to main homepage for invalid countries
+        const response = NextResponse.redirect(new URL('/', request.url))
+        return addSecurityHeaders(response)
+      }
+      
+      // Add country info to headers
+      requestHeaders.set('x-country-code', countryFromPath)
+      requestHeaders.set('x-country-name', country.name)
+      
+      logger.info('Country-specific page accessed', {
+        tags: ['middleware', 'country-routing', 'valid-country'],
+        data: { pathname, countryCode: countryFromPath, countryName: country.name, ip }
+      })
+    } else if (pathname === '/' && !isApiPath) {
+      // Root path - could implement automatic country detection and redirect
+      // For now, let the homepage handle country detection
+      logger.debug('Root path accessed - using default country detection', {
+        tags: ['middleware', 'country-routing', 'root-path'],
+        data: { pathname, detectedCountry, ip }
+      })
+    }
+
     // Get the token using next-auth
     const token = await getToken({ 
       req: request,
@@ -145,6 +202,7 @@ export async function middleware(request: NextRequest) {
         hasToken: !!token,
         ip,
         detectedCountry,
+        countryFromPath,
         // Only log non-sensitive token data
         tokenData: token ? { 
           role: token.role,
@@ -206,30 +264,27 @@ export async function middleware(request: NextRequest) {
         responseTime: Date.now() - startTime
       }
     })
-    
+
+    // Create response with updated headers
     const response = NextResponse.next({
       request: {
         headers: requestHeaders,
       },
     })
-    
-    // Add security headers and CORS
-    const securedResponse = addSecurityHeaders(response)
-    return configureCORS(securedResponse, request.headers.get('origin') || undefined)
 
+    return addSecurityHeaders(response)
   } catch (error) {
-    const responseTime = Date.now() - startTime
     logger.error('Middleware error', {
       tags: ['middleware', 'error'],
       error: error instanceof Error ? error : undefined,
-      data: { pathname, responseTime }
+      data: { pathname, ip: 'unknown' }
     })
     
+    // Return error response
     const response = new NextResponse(
       JSON.stringify({ error: 'Internal Server Error' }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     )
-    
     return addSecurityHeaders(response)
   }
 }
@@ -241,8 +296,8 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * - public folder
+     * - public files (images, etc.)
      */
-    '/((?!_next/static|_next/image|favicon.ico|public/).*)',
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 } 

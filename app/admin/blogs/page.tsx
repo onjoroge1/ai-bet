@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { AdvancedBreadcrumb } from '@/components/advanced-breadcrumb'
 import { 
   Plus, 
   Search, 
@@ -17,7 +18,8 @@ import {
   User,
   Tag,
   Globe,
-  TrendingUp
+  TrendingUp,
+  BookOpen
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -113,20 +115,32 @@ export default function AdminBlogsPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      {/* Breadcrumb Navigation */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+        <AdvancedBreadcrumb />
+      </div>
+
       {/* Header */}
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-white mb-2">Blog Management</h1>
-          <p className="text-slate-400">Manage your blog posts and content</p>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-white mb-2 flex items-center space-x-2">
+              <BookOpen className="w-8 h-8 text-emerald-400" />
+              <span>Blog Management</span>
+            </h1>
+            <p className="text-slate-300">Create, edit, and manage blog content</p>
+          </div>
+
+          <div className="flex items-center space-x-4 mt-4 md:mt-0">
+            <Button asChild className="bg-emerald-600 hover:bg-emerald-700">
+              <Link href="/admin/blogs/create">
+                <Plus className="w-4 h-4 mr-2" />
+                Create Post
+              </Link>
+            </Button>
+          </div>
         </div>
-        <Button 
-          onClick={() => router.push('/admin/blogs/create')}
-          className="bg-emerald-600 hover:bg-emerald-700"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Create New Post
-        </Button>
       </div>
 
       {/* Stats */}

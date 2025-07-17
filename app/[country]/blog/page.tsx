@@ -1,4 +1,7 @@
 import { Metadata } from 'next'
+import { notFound } from 'next/navigation'
+import { getCountryByCode, getPrimarySupportedCountries } from '@/lib/countries'
+import { logger } from '@/lib/logger'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -13,11 +16,12 @@ import {
   User, 
   Eye,
   TrendingUp,
-  BookOpen
+  BookOpen,
+  MapPin,
+  Share2,
+  FileText
 } from 'lucide-react'
 import Link from 'next/link'
-import prisma from '@/lib/db'
-import { generateMetadata } from '@/lib/seo-helpers'
 
 interface BlogPost {
   id: string
@@ -37,16 +41,69 @@ interface BlogPost {
   isActive: boolean
 }
 
-export const metadata: Metadata = generateMetadata({
-  title: 'Blog - Sports Betting Tips & AI Predictions Guide',
-  description: 'Expert sports betting tips, AI prediction guides, and strategy articles. Learn how to improve your betting success with our comprehensive blog.',
-  url: '/blog',
-  keywords: ['sports betting blog', 'betting tips', 'AI predictions guide', 'football betting strategy', 'sports analysis'],
-})
+interface CountryBlogPageProps {
+  params: {
+    country: string
+  }
+}
 
-async function getBlogPosts(): Promise<BlogPost[]> {
+export async function generateMetadata({ params }: CountryBlogPageProps): Promise<Metadata> {
+  const { country } = await params
+  const countryCode = country.toUpperCase()
+  const countryData = getCountryByCode(countryCode)
+  
+  if (!countryData || !countryData.isSupported) {
+    return {
+      title: 'Country Not Found | SnapBet AI',
+      description: 'This country is not currently supported by SnapBet AI.'
+    }
+  }
+
+  return {
+    title: `Sports Betting Blog - ${countryData.name} | SnapBet AI`,
+    description: `Latest sports betting tips, predictions, and analysis for ${countryData.name}. Get expert insights on football, basketball, and tennis predictions with AI-powered analysis.`,
+    keywords: [
+      'sports betting blog', 'football predictions', 'betting tips',
+      'sports analysis', 'AI predictions', 'betting strategy',
+      countryData.name.toLowerCase(), `${countryData.name} sports betting`, `${countryData.name} predictions`,
+      'daily tips', 'weekly predictions', 'sports betting guide'
+    ],
+    openGraph: {
+      title: `Sports Betting Blog - ${countryData.name} | SnapBet AI`,
+      description: `Latest sports betting tips, predictions, and analysis for ${countryData.name}. Get expert insights on football, basketball, and tennis predictions.`,
+      locale: countryData.locale || 'en_US',
+      images: [
+        {
+          url: '/og-image.jpg',
+          width: 1200,
+          height: 630,
+          alt: `SnapBet AI Blog - Sports Predictions for ${countryData.name}`
+        }
+      ]
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: `Sports Betting Blog - ${countryData.name} | SnapBet AI`,
+      description: `Latest sports betting tips, predictions, and analysis for ${countryData.name}. Get expert insights on football, basketball, and tennis predictions.`,
+      images: ['/og-image.jpg']
+    },
+    alternates: {
+      canonical: `https://snapbet.bet/${countryCode.toLowerCase()}/blog`
+    }
+  }
+}
+
+export async function generateStaticParams() {
+  const supportedCountries = getPrimarySupportedCountries()
+  
+  return supportedCountries.map((country) => ({
+    country: country.code.toLowerCase(),
+  }))
+}
+
+async function getBlogPosts(countryCode: string): Promise<BlogPost[]> {
   try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/blogs?limit=20`, {
+    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/blogs?limit=20&country=${countryCode}`, {
       next: { revalidate: 3600 } // Revalidate every hour
     })
     
@@ -62,8 +119,29 @@ async function getBlogPosts(): Promise<BlogPost[]> {
   }
 }
 
-export default async function BlogPage() {
-  const blogPosts = await getBlogPosts()
+export default async function CountryBlogPage({ params }: CountryBlogPageProps) {
+  const { country } = await params
+  const countryCode = country.toUpperCase()
+  const countryData = getCountryByCode(countryCode)
+  
+  if (!countryData || !countryData.isSupported) {
+    logger.warn('Invalid country blog access attempt', {
+      tags: ['country-blog', 'invalid-country'],
+      data: { countryCode, requestedCountry: country }
+    })
+    notFound()
+  }
+
+  const blogPosts = await getBlogPosts(countryCode)
+
+  logger.info('Country blog page accessed', {
+    tags: ['country-blog', 'access'],
+    data: { 
+      countryCode, 
+      countryName: countryData.name,
+      postCount: blogPosts.length
+    }
+  })
 
   const categories = [
     { value: 'all', label: 'All Categories' },
@@ -86,11 +164,17 @@ export default async function BlogPage() {
       <div className="bg-slate-800/50 border-b border-slate-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <div className="text-center">
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <MapPin className="w-6 h-6 text-emerald-400" />
+              <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+                {countryData.flagEmoji} {countryData.name}
+              </Badge>
+            </div>
             <h1 className="text-4xl md:text-5xl font-bold text-white mb-6">
-              SnapBet AI Blog
+              SnapBet AI Blog - {countryData.name}
             </h1>
             <p className="text-xl text-slate-300 mb-8 max-w-3xl mx-auto">
-              Expert insights, AI prediction guides, and proven betting strategies to help you make informed decisions and maximize your success.
+              Expert insights, AI prediction guides, and proven betting strategies tailored for {countryData.name}. Get local insights and global expertise.
             </p>
             
             {/* Search and Filter */}
@@ -124,7 +208,7 @@ export default async function BlogPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="flex items-center gap-3 mb-8">
             <TrendingUp className="w-6 h-6 text-emerald-400" />
-            <h2 className="text-2xl font-bold text-white">Featured Articles</h2>
+            <h2 className="text-2xl font-bold text-white">Featured Articles for {countryData.name}</h2>
           </div>
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -141,7 +225,7 @@ export default async function BlogPage() {
                   </div>
                   
                   <h3 className="text-xl font-bold text-white mb-3">
-                    <Link href={`/blog/${post.slug}`} className="hover:text-emerald-400 transition-colors">
+                    <Link href={`/${countryCode.toLowerCase()}/blog/${post.slug}`} className="hover:text-emerald-400 transition-colors">
                       {post.title}
                     </Link>
                   </h3>
@@ -157,17 +241,19 @@ export default async function BlogPage() {
                         {post.author}
                       </div>
                       <div className="flex items-center gap-1">
-                        <Calendar className="w-4 h-4" />
-                        {new Date(post.publishedAt).toLocaleDateString()}
-                      </div>
-                      <div className="flex items-center gap-1">
                         <Clock className="w-4 h-4" />
                         {post.readTime} min read
                       </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Eye className="w-4 h-4" />
-                      {post.viewCount}
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        <Eye className="w-4 h-4" />
+                        {post.viewCount}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Share2 className="w-4 h-4" />
+                        {post.shareCount}
+                      </div>
                     </div>
                   </div>
                 </CardContent>
@@ -180,8 +266,8 @@ export default async function BlogPage() {
       {/* All Posts */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="flex items-center gap-3 mb-8">
-          <BookOpen className="w-6 h-6 text-emerald-400" />
-          <h2 className="text-2xl font-bold text-white">Latest Articles</h2>
+          <FileText className="w-6 h-6 text-emerald-400" />
+          <h2 className="text-2xl font-bold text-white">All Articles for {countryData.name}</h2>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -200,7 +286,7 @@ export default async function BlogPage() {
                 </div>
                 
                 <h3 className="text-lg font-bold text-white mb-3">
-                  <Link href={`/blog/${post.slug}`} className="hover:text-emerald-400 transition-colors">
+                  <Link href={`/${countryCode.toLowerCase()}/blog/${post.slug}`} className="hover:text-emerald-400 transition-colors">
                     {post.title}
                   </Link>
                 </h3>
@@ -209,8 +295,8 @@ export default async function BlogPage() {
                   {post.excerpt}
                 </p>
                 
-                <div className="flex items-center justify-between text-sm text-slate-400 mb-4">
-                  <div className="flex items-center gap-3">
+                <div className="flex items-center justify-between text-sm text-slate-400">
+                  <div className="flex items-center gap-4">
                     <div className="flex items-center gap-1">
                       <User className="w-4 h-4" />
                       {post.author}
@@ -220,26 +306,12 @@ export default async function BlogPage() {
                       {post.readTime} min
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <Eye className="w-4 h-4" />
-                    {post.viewCount}
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
+                      <Eye className="w-4 h-4" />
+                      {post.viewCount}
+                    </div>
                   </div>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-500">
-                    {new Date(post.publishedAt).toLocaleDateString()}
-                  </span>
-                  <Button 
-                    asChild
-                    variant="ghost" 
-                    size="sm"
-                    className="text-emerald-400 hover:text-emerald-300"
-                  >
-                    <Link href={`/blog/${post.slug}`}>
-                      Read More →
-                    </Link>
-                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -248,34 +320,11 @@ export default async function BlogPage() {
         
         {blogPosts.length === 0 && (
           <div className="text-center py-12">
-            <BookOpen className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-slate-400 mb-2">No articles found</h3>
-            <p className="text-slate-500">Check back soon for new content!</p>
+            <FileText className="w-16 h-16 text-slate-600 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-slate-300 mb-2">No articles found</h3>
+            <p className="text-slate-400">Check back soon for new content tailored for {countryData.name}.</p>
           </div>
         )}
-      </div>
-
-      {/* Newsletter Signup */}
-      <div className="bg-slate-800/50 border-t border-slate-700">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold text-white mb-4">
-              Stay Updated with Latest Tips
-            </h2>
-            <p className="text-slate-300 mb-6">
-              Get the latest AI predictions, betting strategies, and expert insights delivered to your inbox.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 max-w-md mx-auto">
-              <Input
-                placeholder="Enter your email"
-                className="bg-slate-700 border-slate-600 text-white"
-              />
-              <Button className="bg-emerald-600 hover:bg-emerald-700">
-                Subscribe
-              </Button>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   )

@@ -192,6 +192,65 @@ export function ProductSchema({
   )
 }
 
+export function NewsArticleSchema({ 
+  headline, 
+  description, 
+  image, 
+  datePublished, 
+  dateModified, 
+  author, 
+  publisher, 
+  articleSection,
+  articleBody
+}: { 
+  headline: string
+  description: string
+  image?: string
+  datePublished: string
+  dateModified?: string
+  author: string
+  publisher: string
+  articleSection?: string
+  articleBody?: string
+}) {
+  const baseUrl = process.env.NEXTAUTH_URL || 'https://snapbet.ai'
+  
+  const schema = {
+    "@context": "https://schema.org",
+    "@type": "NewsArticle",
+    "headline": headline,
+    "description": description,
+    "image": image ? `${baseUrl}${image}` : `${baseUrl}/og-image.jpg`,
+    "datePublished": datePublished,
+    "dateModified": dateModified || datePublished,
+    "author": {
+      "@type": "Person",
+      "name": author
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": publisher,
+      "logo": {
+        "@type": "ImageObject",
+        "url": `${baseUrl}/logo.png`
+      }
+    },
+    "mainEntityOfPage": {
+      "@type": "WebPage",
+      "@id": `${baseUrl}/blog/${headline.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+    },
+    ...(articleSection && { "articleSection": articleSection }),
+    ...(articleBody && { "articleBody": articleBody })
+  }
+  
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+    />
+  )
+}
+
 export function AllSchemaMarkup() {
   return (
     <>

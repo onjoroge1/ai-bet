@@ -1,25 +1,27 @@
 import { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import Link from 'next/link'
+import { getCountryByCode } from '@/lib/countries'
+import { logger } from '@/lib/logger'
+import prisma from '@/lib/db'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Card } from '@/components/ui/card'
 import { 
+  ArrowLeft, 
+  User, 
   Calendar, 
   Clock, 
-  User, 
   Eye, 
-  Share2, 
-  ArrowLeft,
-  BookOpen,
-  Zap,
-  Target,
-  TrendingUp,
-  CheckCircle
+  BookOpen, 
+  Zap, 
+  Target, 
+  TrendingUp 
 } from 'lucide-react'
-import Link from 'next/link'
-import { generateBlogMetadata } from '@/lib/seo-helpers'
-import { HreflangTags } from '@/components/hreflang-tags'
-import { NewsArticleSchema } from '@/components/schema-markup'
+
+interface CountryBlogPostPageProps {
+  params: Promise<{ country: string; slug: string }>
+}
 
 interface BlogPost {
   id: string
@@ -33,7 +35,6 @@ interface BlogPost {
   geoTarget: string[]
   featured: boolean
   publishedAt: string
-  updatedAt?: string
   viewCount: number
   shareCount: number
   readTime: number
@@ -44,148 +45,205 @@ interface BlogPost {
   isActive: boolean
 }
 
-// Generate metadata for each blog post
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
-  const { slug } = await params
+export async function generateMetadata({ params }: CountryBlogPostPageProps): Promise<Metadata> {
+  const { country, slug } = await params
+  const countryCode = country.toUpperCase()
+  const countryData = getCountryByCode(countryCode)
   
-  try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/blogs?slug=${slug}`, {
-      next: { revalidate: 3600 }
-    })
-    
-    if (!response.ok) {
-      return {
-        title: 'Blog Post Not Found',
-        description: 'The requested blog post could not be found.'
-      }
-    }
-    
-    const data = await response.json()
-    const post = data.success ? data.data : null
-    
-    if (!post) {
-      return {
-        title: 'Blog Post Not Found',
-        description: 'The requested blog post could not be found.'
-      }
-    }
-
-    // Use the new dynamic metadata helper
-    const metadata = generateBlogMetadata(
-      post.seoTitle || post.title,
-      post.seoDescription || post.excerpt,
-      post.slug,
-      post.publishedAt,
-      post.updatedAt,
-      post.author,
-      post.tags || []
-    )
-
-    // Add Google News specific meta tags
+  if (!countryData || !countryData.isSupported) {
     return {
-      ...metadata,
-      other: {
-        ...metadata.other,
-        'news_keywords': (post.tags?.join(', ') || 'sports betting, AI predictions, football tips') as string,
-        'article:tag': (post.tags?.join(', ') || '') as string,
-        'article:published_time': post.publishedAt as string,
-        'article:modified_time': (post.updatedAt || post.publishedAt) as string,
-        'article:author': post.author as string,
-        'article:publisher': 'SnapBet AI',
-        'article:section': post.category as string,
-        'robots': 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'
-      } as { [name: string]: string | number | (string | number)[] }
+      title: 'Country Not Found | SnapBet AI',
+      description: 'This country is not currently supported by SnapBet AI.'
+    }
+  }
+
+  try {
+    const blogPost = await prisma.blogPost.findFirst({
+      where: {
+        slug,
+        isPublished: true,
+        isActive: true,
+        OR: [
+          { geoTarget: { has: countryCode } },
+          { geoTarget: { has: 'worldwide' } }, // Worldwide posts
+          { geoTarget: { isEmpty: true } }, // Empty geoTarget (legacy)
+        ],
+      },
+      select: {
+        title: true,
+        excerpt: true,
+        seoTitle: true,
+        seoDescription: true,
+        seoKeywords: true,
+        author: true,
+        publishedAt: true,
+        category: true,
+        tags: true,
+      },
+    })
+
+    if (!blogPost) {
+      return {
+        title: 'Blog Post Not Found | SnapBet AI',
+        description: 'The requested blog post could not be found.'
+      }
+    }
+
+    const title = blogPost.seoTitle || `${blogPost.title} - ${countryData.name} | SnapBet AI`
+    const description = blogPost.seoDescription || blogPost.excerpt || `Read about ${blogPost.title} in ${countryData.name}. Get expert sports betting insights and AI predictions.`
+
+    return {
+      title,
+      description,
+      keywords: blogPost.seoKeywords || [
+        'sports betting',
+        'AI predictions',
+        'football tips',
+        countryData.name.toLowerCase(),
+        blogPost.category?.toLowerCase(),
+        ...(blogPost.tags || []),
+      ].filter(Boolean),
+      openGraph: {
+        title,
+        description,
+        type: 'article',
+        locale: countryData.code.toLowerCase(),
+        siteName: 'SnapBet AI',
+        publishedTime: blogPost.publishedAt?.toISOString(),
+        authors: blogPost.author ? [blogPost.author] : undefined,
+        tags: blogPost.tags || [],
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title,
+        description,
+      },
     }
   } catch (error) {
+    logger.error('Error generating blog post metadata', {
+      tags: ['country-blog-post', 'metadata-error'],
+      error,
+      data: { countryCode, slug }
+    })
+
     return {
-      title: 'Blog Post Not Found',
-      description: 'The requested blog post could not be found.'
+      title: 'Blog Post | SnapBet AI',
+      description: `Sports betting insights and AI predictions for ${countryData.name}.`
     }
   }
 }
 
-// Generate static params for all blog posts
-export async function generateStaticParams() {
+async function getBlogPost(slug: string, countryCode: string): Promise<BlogPost | null> {
   try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/blogs?limit=50`, {
-      next: { revalidate: 3600 }
+    const blogPost = await prisma.blogPost.findFirst({
+      where: {
+        slug,
+        isPublished: true,
+        isActive: true,
+        OR: [
+          { geoTarget: { has: countryCode } },
+          { geoTarget: { has: 'worldwide' } }, // Worldwide posts
+          { geoTarget: { isEmpty: true } }, // Empty geoTarget (legacy)
+        ],
+      },
     })
-    
-    if (!response.ok) {
-      return []
-    }
-    
-    const data = await response.json()
-    const posts = data.success ? data.data : []
-    
-    return posts.map((post: BlogPost) => ({
-      slug: post.slug,
-    }))
-  } catch (error) {
-    return []
-  }
-}
 
-async function getBlogPost(slug: string): Promise<BlogPost | null> {
-  try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/blogs?slug=${slug}`, {
-      next: { revalidate: 3600 }
-    })
-    
-    if (!response.ok) {
+    if (!blogPost) {
       return null
     }
-    
-    const data = await response.json()
-    return data.success ? data.data : null
+
+    return {
+      id: blogPost.id,
+      title: blogPost.title,
+      slug: blogPost.slug,
+      excerpt: blogPost.excerpt,
+      content: blogPost.content,
+      author: blogPost.author,
+      category: blogPost.category,
+      tags: blogPost.tags,
+      geoTarget: blogPost.geoTarget,
+      featured: blogPost.featured,
+      publishedAt: blogPost.publishedAt?.toISOString() || '',
+      viewCount: blogPost.viewCount,
+      shareCount: blogPost.shareCount,
+      readTime: blogPost.readTime,
+      seoTitle: blogPost.seoTitle,
+      seoDescription: blogPost.seoDescription,
+      seoKeywords: blogPost.seoKeywords,
+      isPublished: blogPost.isPublished,
+      isActive: blogPost.isActive,
+    }
   } catch (error) {
-    console.error('Error fetching blog post:', error)
+    logger.error('Error fetching blog post', {
+      tags: ['country-blog-post', 'fetch-error'],
+      error,
+      data: { slug, countryCode }
+    })
     return null
   }
 }
 
-export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params
-  const post = await getBlogPost(slug)
-
-  if (!post || !post.isPublished || !post.isActive) {
+export default async function CountryBlogPostPage({ params }: CountryBlogPostPageProps) {
+  const { country, slug } = await params
+  const countryCode = country.toUpperCase()
+  const countryData = getCountryByCode(countryCode)
+  
+  if (!countryData || !countryData.isSupported) {
+    logger.warn('Invalid country blog post access attempt', {
+      tags: ['country-blog-post', 'invalid-country'],
+      data: { countryCode, requestedCountry: country, slug }
+    })
     notFound()
   }
 
-  const baseUrl = process.env.NEXTAUTH_URL || 'https://snapbet.ai'
-  const currentUrl = `${baseUrl}/blog/${slug}`
+  const post = await getBlogPost(slug, countryCode)
+
+  if (!post || !post.isPublished || !post.isActive) {
+    logger.warn('Blog post not found for country', {
+      tags: ['country-blog-post', 'not-found'],
+      data: { countryCode, slug, countryName: countryData.name }
+    })
+    notFound()
+  }
+
+  // Update view count
+  try {
+    await prisma.blogPost.update({
+      where: { id: post.id },
+      data: { viewCount: { increment: 1 } },
+    })
+  } catch (error) {
+    logger.error('Error updating view count', {
+      tags: ['country-blog-post', 'view-count-error'],
+      error,
+      data: { postId: post.id }
+    })
+  }
+
+  logger.info('Country blog post accessed', {
+    tags: ['country-blog-post', 'access'],
+    data: { 
+      countryCode, 
+      countryName: countryData.name,
+      slug,
+      title: post.title
+    }
+  })
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Hreflang Tags for SEO */}
-      <HreflangTags 
-        currentUrl={currentUrl}
-        slug={slug}
-        isBlogPost={true}
-      />
-      
-      {/* News Article Schema for Google News */}
-      <NewsArticleSchema 
-        headline={post.title}
-        description={post.excerpt}
-        datePublished={post.publishedAt}
-        dateModified={post.updatedAt}
-        author={post.author}
-        publisher="SnapBet AI"
-        articleSection={post.category}
-        articleBody={post.content.replace(/<[^>]*>/g, '')} // Strip HTML tags for schema
-      />
-      
       {/* Navigation */}
       <div>
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <Link 
-            href="/blog"
-            className="inline-flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Blog
-          </Link>
+          <div className="mt-4">
+            <Link 
+              href={`/${country.toLowerCase()}/blog`}
+              className="inline-flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to {countryData.name} Blog
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -229,6 +287,9 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                 Featured
               </Badge>
             )}
+            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
+              {countryData.name}
+            </Badge>
           </div>
         </div>
 
@@ -312,19 +373,19 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
           {/* Call to Action */}
           <div className="mt-12 p-6 bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-lg text-center">
-            <h3 className="text-xl font-bold text-white mb-4">Ready to Start Winning?</h3>
+            <h3 className="text-xl font-bold text-white mb-4">Ready to Start Winning in {countryData.name}?</h3>
             <p className="text-slate-300 mb-6">
-              Join thousands of successful bettors who trust SnapBet AI for their predictions.
+              Join thousands of successful bettors in {countryData.name} who trust SnapBet AI for their predictions.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button asChild className="bg-emerald-600 hover:bg-emerald-700">
-                <Link href="/">
+                <Link href={`/${country.toLowerCase()}`}>
                   <Target className="w-4 h-4 mr-2" />
                   View Today's Predictions
                 </Link>
               </Button>
               <Button asChild variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700">
-                <Link href="/blog">
+                <Link href={`/${country.toLowerCase()}/blog`}>
                   <TrendingUp className="w-4 h-4 mr-2" />
                   More Articles
                 </Link>
