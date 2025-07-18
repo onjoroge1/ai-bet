@@ -46,7 +46,7 @@ export const metadata: Metadata = generateMetadata({
 
 async function getBlogPosts(): Promise<BlogPost[]> {
   try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/blogs?limit=20`, {
+    const response = await fetch(`${process.env.NEXTAUTH_URL || 'https://snapbet.bet'}/api/blogs?limit=20`, {
       next: { revalidate: 3600 } // Revalidate every hour
     })
     

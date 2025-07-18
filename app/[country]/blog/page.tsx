@@ -103,7 +103,7 @@ export async function generateStaticParams() {
 
 async function getBlogPosts(countryCode: string): Promise<BlogPost[]> {
   try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/blogs?limit=20&country=${countryCode}`, {
+    const response = await fetch(`${process.env.NEXTAUTH_URL || 'https://snapbet.bet'}/api/blogs?limit=20&country=${countryCode}`, {
       next: { revalidate: 3600 } // Revalidate every hour
     })
     

@@ -49,7 +49,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params
   
   try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/blogs?slug=${slug}`, {
+    const response = await fetch(`${process.env.NEXTAUTH_URL || 'https://snapbet.bet'}/api/blogs?slug=${slug}`, {
       next: { revalidate: 3600 }
     })
     
@@ -94,7 +94,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
         'article:publisher': 'SnapBet AI',
         'article:section': post.category as string,
         'robots': 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'
-      } as { [name: string]: string | number | (string | number)[] }
+      }
     }
   } catch (error) {
     return {
@@ -107,7 +107,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 // Generate static params for all blog posts
 export async function generateStaticParams() {
   try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/blogs?limit=50`, {
+    const response = await fetch(`${process.env.NEXTAUTH_URL || 'https://snapbet.bet'}/api/blogs?limit=50`, {
       next: { revalidate: 3600 }
     })
     
@@ -128,7 +128,7 @@ export async function generateStaticParams() {
 
 async function getBlogPost(slug: string): Promise<BlogPost | null> {
   try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/blogs?slug=${slug}`, {
+    const response = await fetch(`${process.env.NEXTAUTH_URL || 'https://snapbet.bet'}/api/blogs?slug=${slug}`, {
       next: { revalidate: 3600 }
     })
     
