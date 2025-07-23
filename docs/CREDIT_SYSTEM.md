@@ -68,6 +68,7 @@ const totalCredits = hasUnlimited ? Infinity : (packageCreditsCount + quizCredit
   "data": {
     "currentCredits": 8,
     "directCredits": 17,
+    "quizCredits": 0, // <-- NEW: always present, number of available quiz credits
     "creditBreakdown": {
       "packageCredits": 8,
       "quizCredits": 0,
@@ -77,6 +78,10 @@ const totalCredits = hasUnlimited ? Infinity : (packageCreditsCount + quizCredit
   }
 }
 ```
+
+- **quizCredits**: The number of available quiz credits, always present. Calculated as `Math.floor(UserPoints.points / 50)`. This is also included in `creditBreakdown.quizCredits` and is part of `currentCredits`.
+- **currentCredits**: The sum of all available credits (package + quiz credits).
+- **directCredits**: Legacy direct credits, used as a fallback.
 
 **Caching**: 5 minutes with Redis
 

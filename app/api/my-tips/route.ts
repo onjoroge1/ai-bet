@@ -2,6 +2,14 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import prisma from "@/lib/db"
 import { authOptions } from "@/lib/auth"
+import type { 
+  PredictionPayload, 
+  FormattedPrediction, 
+  MarketData, 
+  GoalsData, 
+  BttsData, 
+  HandicapData 
+} from "@/types/api"
 
 export async function GET(request: Request) {
   try {
@@ -25,7 +33,6 @@ export async function GET(request: Request) {
     }
 
     // Get purchases with prediction data and match information
-    // This now includes both monetary purchases and credit purchases (unified approach)
     const purchases = await prisma.purchase.findMany({
       where: {
         userId: session.user.id,
@@ -49,13 +56,13 @@ export async function GET(request: Request) {
       const qp = purchase.quickPurchase
       
       // The actual prediction payload is nested inside the 'prediction' property
-      const predictionPayload = (qp.predictionData as any)?.prediction || null
+      const predictionPayload = (qp.predictionData as PredictionPayload)?.prediction || null
       
       // Helper variable to avoid repeated null checks
       const confidenceScore = qp.confidenceScore || 0
       
       // Transform raw prediction data into frontend-expected format
-      const formattedPrediction = predictionPayload ? {
+      const formattedPrediction: FormattedPrediction = predictionPayload ? {
         match: predictionPayload.match_info || {},
         prediction: qp.predictionType || 'unknown',
         odds: qp.odds?.toString() || '0',
@@ -69,20 +76,19 @@ export async function GET(request: Request) {
           predictionPayload.comprehensive_analysis.detailed_reasoning.injury_impact,
           predictionPayload.comprehensive_analysis.detailed_reasoning.tactical_factors,
           predictionPayload.comprehensive_analysis.detailed_reasoning.historical_context
-        ].filter(Boolean) : [],
+        ].filter((item): item is string => Boolean(item)) : [],
         
         // Extract additional markets from the additional_markets object
-        extraMarkets: predictionPayload.additional_markets ? Object.entries(predictionPayload.additional_markets).map(([market, data]) => {
+        extraMarkets: predictionPayload.additional_markets ? Object.entries(predictionPayload.additional_markets).map(([market, data]): MarketData => {
           // Transform the raw market data into frontend-expected format
           let prediction = ''
           let probability = 0
           let reasoning = ''
           
           if (market === 'total_goals') {
-            const goalsData = data as any
+            const goalsData = data as GoalsData
             // Find the highest probability among all goal thresholds
             const goalEntries = Object.entries(goalsData)
-            let bestPrediction = ''
             let bestProbability = 0
             let bestThreshold = ''
             
@@ -111,7 +117,7 @@ export async function GET(request: Request) {
             
             probability = Math.round(bestProbability * 100)
           } else if (market === 'both_teams_score') {
-            const bttsData = data as any
+            const bttsData = data as BttsData
             if (bttsData.yes > bttsData.no) {
               prediction = 'Both Teams to Score'
               probability = Math.round(bttsData.yes * 100)
@@ -122,10 +128,9 @@ export async function GET(request: Request) {
               reasoning = 'One team likely to keep a clean sheet'
             }
           } else if (market === 'asian_handicap') {
-            const handicapData = data as any
+            const handicapData = data as HandicapData
             // Find the highest probability among all handicap options
             const handicapEntries = Object.entries(handicapData)
-            let bestPrediction = ''
             let bestProbability = 0
             let bestOption = ''
             
@@ -207,27 +212,26 @@ export async function GET(request: Request) {
           confidence: confidenceScore
         },
         
-        // Extract risk analysis - FIXED: Use correct path
+        // Extract risk analysis
         riskAnalysis: predictionPayload.comprehensive_analysis?.risk_analysis || {},
         
-        // Extract betting intelligence - FIXED: Use correct path
+        // Extract betting intelligence
         bettingIntelligence: predictionPayload.comprehensive_analysis?.betting_intelligence || {},
         
-        // Extract confidence breakdown - FIXED: Use correct path
+        // Extract confidence breakdown
         confidenceBreakdown: predictionPayload.comprehensive_analysis?.confidence_breakdown || '',
         
         // Extract additional markets (same as extraMarkets but for compatibility)
-        additionalMarkets: predictionPayload.additional_markets ? Object.entries(predictionPayload.additional_markets).map(([market, data]) => {
+        additionalMarkets: predictionPayload.additional_markets ? Object.entries(predictionPayload.additional_markets).map(([market, data]): MarketData => {
           // Transform the raw market data into frontend-expected format
           let prediction = ''
           let probability = 0
           let reasoning = ''
           
           if (market === 'total_goals') {
-            const goalsData = data as any
+            const goalsData = data as GoalsData
             // Find the highest probability among all goal thresholds
             const goalEntries = Object.entries(goalsData)
-            let bestPrediction = ''
             let bestProbability = 0
             let bestThreshold = ''
             
@@ -256,7 +260,7 @@ export async function GET(request: Request) {
             
             probability = Math.round(bestProbability * 100)
           } else if (market === 'both_teams_score') {
-            const bttsData = data as any
+            const bttsData = data as BttsData
             if (bttsData.yes > bttsData.no) {
               prediction = 'Both Teams to Score'
               probability = Math.round(bttsData.yes * 100)
@@ -267,10 +271,9 @@ export async function GET(request: Request) {
               reasoning = 'One team likely to keep a clean sheet'
             }
           } else if (market === 'asian_handicap') {
-            const handicapData = data as any
+            const handicapData = data as HandicapData
             // Find the highest probability among all handicap options
             const handicapEntries = Object.entries(handicapData)
-            let bestPrediction = ''
             let bestProbability = 0
             let bestOption = ''
             
@@ -407,7 +410,6 @@ export async function GET(request: Request) {
         isUrgent: qp.isUrgent || false,
         timeLeft: qp.timeLeft || null,
         // Use user's current country for currency display (not the QuickPurchase's country)
-        // Fixed linter errors by adding null checks
         currencySymbol: user.country?.currencySymbol || '$',
         currencyCode: user.country?.currencyCode || 'USD',
         // Pass the deeply nested prediction data to the frontend

@@ -61,7 +61,7 @@ type TimelineItem = {
 }
 
 // Fetch timeline data with filters
-const fetchTimelineData = async (filters: any): Promise<TimelineItem[]> => {
+const fetchTimelineData = async (filters: any): Promise<{ predictions: TimelineItem[], count: number, userId: string, filters: any }> => {
   const params = new URLSearchParams()
   if (filters.limit) params.append('limit', filters.limit.toString())
   if (filters.status && filters.status !== 'all') params.append('status', filters.status)
@@ -122,11 +122,14 @@ export default function PredictionsPage() {
   
   const [hoveredItem, setHoveredItem] = useState<string | null>(null)
   
-  const { data: timelineData = [], isLoading, error, refetch } = useQuery({
+  const { data: timelineResponse, isLoading, error, refetch } = useQuery({
     queryKey: ['timeline', filters],
     queryFn: () => fetchTimelineData(filters),
     refetchInterval: 30000, // Refresh every 30 seconds
   })
+
+  // Extract the predictions array from the response
+  const timelineData = timelineResponse?.predictions || []
 
   // Filter data based on search
   const filteredData = timelineData.filter(item => {

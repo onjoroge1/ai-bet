@@ -2,7 +2,12 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import prisma from "@/lib/db"
 import { authOptions } from "@/lib/auth"
-import { stripe } from "@/lib/stripe-server"
+import type { PaymentIntent, PrismaDecimal } from "@/types/api"
+import Stripe from "stripe"
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: "2025-05-28.basil",
+})
 
 // GET /api/payments/status - Check payment status by payment intent ID
 export async function GET(request: Request) {
@@ -71,7 +76,22 @@ export async function GET(request: Request) {
     if (recentPurchases.length > 0 || recentUserPackages.length > 0 || recentPackagePurchases.length > 0) {
       const purchase = recentPurchases[0]
       const userPackage = recentUserPackages[0]
-      const userPrediction = recentUserPackages[0]
+      const packagePurchase = recentPackagePurchases[0]
+
+      // If we have a package purchase but no user package, trigger manual processing
+      if (packagePurchase && recentUserPackages.length === 0) {
+        console.log(`Found package purchase ${packagePurchase.id} but no user package. Triggering manual processing...`)
+        
+        // Get the payment intent to trigger manual processing
+        try {
+          const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
+          if (paymentIntent.status === 'succeeded') {
+            await processPaymentManually(paymentIntent, session.user.id)
+          }
+        } catch (error) {
+          console.error('Error triggering manual processing:', error)
+        }
+      }
 
       return NextResponse.json({
         status: 'succeeded',
@@ -85,9 +105,9 @@ export async function GET(request: Request) {
           packageName: userPackage.packageOffer.name,
           tipCount: userPackage.packageOffer.tipCount,
           expiresAt: userPackage.expiresAt
-        } : userPrediction ? {
-          predictionType: userPrediction.prediction.predictionType,
-          matchDetails: userPrediction.prediction.matchId
+        } : recentPackagePurchases.length > 0 ? {
+          predictionType: 'package_purchase',
+          matchDetails: 'Package purchase completed'
         } : {
           itemName: purchase?.quickPurchase?.name
         }
@@ -159,8 +179,8 @@ async function processPaymentManually(paymentIntent: any, userId: string) {
     if (itemType === 'package') {
       console.log('Processing package purchase manually...')
       
-      // Check for existing package purchase (idempotency)
-      const existingPackagePurchase = await prisma.packagePurchase.findFirst({
+      // Check for existing user package (idempotency) - only check UserPackage, not PackagePurchase
+      const existingUserPackage = await prisma.userPackage.findFirst({
         where: {
           userId,
           createdAt: {
@@ -169,21 +189,21 @@ async function processPaymentManually(paymentIntent: any, userId: string) {
         },
       })
       
-      if (existingPackagePurchase) {
-        console.log(`Package purchase already exists for user ${userId}`)
+      if (existingUserPackage) {
+        console.log(`User package already exists for user ${userId}`)
         return
       }
       
-      // Create package purchase record
+      // Create package purchase record (if it doesn't exist)
       console.log('Creating package purchase record...')
-      let packagePurchaseData: any = {
+      const packagePurchaseData = {
         userId,
-        amount: new (prisma as any).Decimal(paymentIntent.amount / 100),
+        amount: paymentIntent.amount / 100,
         paymentMethod: 'stripe',
         status: 'completed',
         createdAt: new Date(),
         updatedAt: new Date(),
-      }
+      } as Record<string, unknown>
       
       // Parse the itemId to determine if it's a PackageOffer ID or countryId_packageType
       const firstUnderscoreIndex = itemId.indexOf('_')
@@ -199,13 +219,27 @@ async function processPaymentManually(paymentIntent: any, userId: string) {
         packagePurchaseData.countryId = countryId
       }
       
-      const packagePurchase = await prisma.packagePurchase.create({
-        data: packagePurchaseData,
+      // Only create PackagePurchase if it doesn't exist
+      const existingPackagePurchase = await prisma.packagePurchase.findFirst({
+        where: {
+          userId,
+          createdAt: {
+            gte: new Date(Date.now() - 5 * 60 * 1000) // Last 5 minutes
+          }
+        },
       })
-      console.log(`Created package purchase record: ${packagePurchase.id}`)
+      
+      if (!existingPackagePurchase) {
+        const packagePurchase = await prisma.packagePurchase.create({
+          data: packagePurchaseData as any,
+        })
+        console.log(`Created package purchase record: ${packagePurchase.id}`)
+      } else {
+        console.log(`Package purchase already exists, skipping creation`)
+      }
       
       // Create user package and add credits
-      await createUserPackageAndCredits(userId, itemId, paymentIntent)
+      await createUserPackageAndCredits(userId, itemId, paymentIntent, metadata)
       
     } else if (itemType === 'tip') {
       console.log('Processing tip purchase manually...')
@@ -250,19 +284,23 @@ async function processPaymentManually(paymentIntent: any, userId: string) {
 }
 
 // Helper function to create user package and add credits
-async function createUserPackageAndCredits(userId: string, itemId: string, paymentIntent: any) {
+async function createUserPackageAndCredits(userId: string, itemId: string, paymentIntent: any, metadata: any) {
   try {
+    console.log(`[createUserPackageAndCredits] Starting for userId: ${userId}, itemId: ${itemId}`);
+    
     // Parse itemId to get package type
     const firstUnderscoreIndex = itemId.indexOf('_')
     let packageType = 'unknown'
     
     if (firstUnderscoreIndex === -1) {
       // It's a PackageOffer ID, get the package type from metadata
-      packageType = paymentIntent.metadata.packageType || 'unknown'
+      packageType = metadata.packageType || 'unknown'
     } else {
       // It's a countryId_packageType format
       packageType = itemId.substring(firstUnderscoreIndex + 1)
     }
+    
+    console.log(`[createUserPackageAndCredits] Package type: ${packageType}`);
     
     // Determine tip count and validity based on package type
     let tipCount = 1
@@ -290,22 +328,97 @@ async function createUserPackageAndCredits(userId: string, itemId: string, payme
         validityDays = 1
     }
     
-    // Create user package
-    const userPackage = await prisma.userPackage.create({
-      data: {
-        userId,
-        packageOfferId: firstUnderscoreIndex === -1 ? itemId : null,
-        packageType,
-        tipsRemaining: tipCount === -1 ? -1 : tipCount,
-        totalTips: tipCount === -1 ? -1 : tipCount,
-        status: 'active',
-        expiresAt: new Date(Date.now() + validityDays * 24 * 60 * 60 * 1000),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
+    // Get user's country for pricing
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { countryId: true }
     })
     
-    console.log(`Created user package: ${userPackage.id}`)
+    if (!user?.countryId) {
+      console.error(`[createUserPackageAndCredits] User country not found: ${userId}`);
+      return;
+    }
+    
+    // Get country pricing
+    const countryPrice = await prisma.packageCountryPrice.findFirst({
+      where: {
+        countryId: user.countryId,
+        packageType: packageType
+      },
+      include: {
+        country: {
+          select: {
+            currencyCode: true,
+            currencySymbol: true
+          }
+        }
+      }
+    })
+    
+    if (!countryPrice) {
+      console.error(`[createUserPackageAndCredits] Country price not found for package: ${itemId}`);
+      return;
+    }
+    
+    // Calculate expiration date
+    const expiresAt = new Date()
+    expiresAt.setDate(expiresAt.getDate() + validityDays)
+    
+    // Create user package with proper structure
+    const userPackageData: any = {
+      userId,
+      expiresAt,
+      tipsRemaining: tipCount === -1 ? 0 : tipCount,
+      totalTips: tipCount,
+      pricePaid: countryPrice.price,
+      currencyCode: countryPrice.country.currencyCode || 'USD',
+      currencySymbol: countryPrice.country.currencySymbol || '$',
+      status: 'active',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+    
+    // Only set packageOfferId if it's a valid PackageOffer ID (not countryId_packageType)
+    if (firstUnderscoreIndex === -1) {
+      userPackageData.packageOfferId = itemId
+    } else {
+      // For countryId_packageType format, create a virtual PackageOffer first
+      console.log(`[createUserPackageAndCredits] Creating virtual PackageOffer for country-based package: ${packageType}`);
+      
+      const virtualPackageOffer = await prisma.packageOffer.upsert({
+        where: { 
+          id: itemId // Use the original itemId as the PackageOffer ID
+        },
+        update: {},
+        create: {
+          id: itemId,
+          name: packageType === 'prediction' ? 'Single Tip' : 
+                packageType === 'weekend_pass' ? 'Weekend Package' :
+                packageType === 'weekly_pass' ? 'Weekly Package' :
+                packageType === 'monthly_sub' ? 'Monthly Subscription' : packageType,
+          packageType: packageType,
+          description: `Virtual package for ${packageType}`,
+          tipCount: tipCount,
+          validityDays: validityDays,
+          isActive: true,
+          displayOrder: 0,
+          features: [],
+          iconName: 'Gift',
+          colorGradientFrom: '#8B5CF6',
+          colorGradientTo: '#EC4899'
+        }
+      });
+      
+      console.log(`[createUserPackageAndCredits] Created virtual PackageOffer: ${virtualPackageOffer.id}`);
+      userPackageData.packageOfferId = itemId;
+    }
+    // For countryId_packageType format, don't set packageOfferId (it doesn't exist in PackageOffer table)
+    
+    const userPackage = await prisma.userPackage.create({
+      data: userPackageData,
+    })
+    
+    console.log(`[createUserPackageAndCredits] Created user package: ${userPackage.id}`)
     
     // Add credits to user
     const currentUser = await prisma.user.findUnique({
@@ -321,7 +434,7 @@ async function createUserPackageAndCredits(userId: string, itemId: string, payme
       data: { predictionCredits: newCredits }
     })
     
-    console.log(`Added ${creditsToAdd} credits to user ${userId}`)
+    console.log(`[createUserPackageAndCredits] Added ${creditsToAdd} credits to user ${userId}`)
     
     // Send notification
     try {
@@ -333,13 +446,35 @@ async function createUserPackageAndCredits(userId: string, itemId: string, payme
         packageType,
         creditsToAdd
       )
-      console.log('Payment success notification sent')
+      console.log('[createUserPackageAndCredits] Payment success notification sent')
     } catch (error) {
-      console.error('Failed to send payment notification:', error)
+      console.error('[createUserPackageAndCredits] Failed to send payment notification:', error)
+    }
+    
+    // Send payment confirmation email
+    try {
+      const userWithEmail = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, fullName: true }
+      });
+      
+      if (userWithEmail && userWithEmail.email) {
+        const { EmailService } = await import('@/lib/email-service');
+        await EmailService.sendPaymentConfirmation({
+          userName: userWithEmail.email, // This should be the email address
+          packageName: metadata.packageName || 'Premium Package',
+          amount: paymentIntent.amount / 100,
+          transactionId: paymentIntent.id,
+          tipsCount: metadata.tipsCount ? Number(metadata.tipsCount) : 1
+        });
+        console.log('[createUserPackageAndCredits] Payment confirmation email sent');
+      }
+    } catch (emailError) {
+      console.error('[createUserPackageAndCredits] Failed to send payment confirmation email:', emailError);
     }
     
   } catch (error) {
-    console.error('Error creating user package and credits:', error)
+    console.error('[createUserPackageAndCredits] Error creating user package and credits:', error)
   }
 }
 

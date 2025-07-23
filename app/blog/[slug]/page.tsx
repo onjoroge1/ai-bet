@@ -234,26 +234,6 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
         {/* Article Content */}
         <Card className="bg-slate-800/50 border-slate-700 p-8 mb-8">
-          {/* Table of Contents */}
-          <div className="mb-8 p-6 bg-slate-700/30 rounded-lg border border-slate-600">
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-              <BookOpen className="w-5 h-5 mr-2 text-emerald-400" />
-              Table of Contents
-            </h3>
-            <div className="grid md:grid-cols-2 gap-2 text-sm">
-              <div className="space-y-1">
-                <a href="#confidence-scores" className="text-emerald-400 hover:text-emerald-300 transition-colors block">What Are Confidence Scores?</a>
-                <a href="#confidence-ranges" className="text-emerald-400 hover:text-emerald-300 transition-colors block">Confidence Score Ranges</a>
-                <a href="#calculation" className="text-emerald-400 hover:text-emerald-300 transition-colors block">How Scores Are Calculated</a>
-              </div>
-              <div className="space-y-1">
-                <a href="#effective-use" className="text-emerald-400 hover:text-emerald-300 transition-colors block">Using Scores Effectively</a>
-                <a href="#vs-odds" className="text-emerald-400 hover:text-emerald-300 transition-colors block">Scores vs. Odds</a>
-                <a href="#strategy" className="text-emerald-400 hover:text-emerald-300 transition-colors block">Building Your Strategy</a>
-              </div>
-            </div>
-          </div>
-
           <div 
             className="prose prose-invert prose-lg max-w-none
               prose-headings:text-white prose-headings:font-bold prose-headings:tracking-tight

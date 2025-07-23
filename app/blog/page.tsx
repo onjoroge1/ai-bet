@@ -46,24 +46,35 @@ export const metadata: Metadata = generateMetadata({
 
 async function getBlogPosts(): Promise<BlogPost[]> {
   try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'https://snapbet.bet'}/api/blogs?limit=20`, {
+    const url = `${process.env.NEXTAUTH_URL || 'https://snapbet.bet'}/api/blogs?limit=20`
+    //console.log('[BlogPage] Fetching blogs from:', url)
+    const response = await fetch(url, {
       next: { revalidate: 3600 } // Revalidate every hour
     })
-    
-    if (!response.ok) {
-      throw new Error('Failed to fetch blog posts')
+    //console.log('[BlogPage] Response status:', response.status)
+    const text = await response.text()
+    //console.log('[BlogPage] Raw response text:', text)
+    let data
+    try {
+      data = JSON.parse(text)
+    } catch (e) {
+      console.error('[BlogPage] Failed to parse JSON:', e)
+      return []
     }
-    
-    const data = await response.json()
+    console.log('[BlogPage] Parsed data:', data)
+    if (Array.isArray(data)) {
+      return data
+    }
     return data.success ? data.data : []
   } catch (error) {
-    console.error('Error fetching blog posts:', error)
+    console.error('[BlogPage] Error fetching blog posts:', error)
     return []
   }
 }
 
 export default async function BlogPage() {
   const blogPosts = await getBlogPosts()
+  console.log('[BlogPage] blogPosts array:', blogPosts)
 
   const categories = [
     { value: 'all', label: 'All Categories' },

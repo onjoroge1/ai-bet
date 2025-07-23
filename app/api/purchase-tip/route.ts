@@ -2,15 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import prisma from "@/lib/db"
 import { authOptions } from "@/lib/auth"
-import { Prisma } from "@prisma/client"
-
-type PurchaseData = {
-  userId: string
-  quickPurchaseId: string
-  amount: Prisma.Decimal
-  paymentMethod: string
-  status: string
-}
+import type { PredictionPayload, FormattedPrediction } from "@/types/api"
 
 export async function POST(req: Request) {
   try {
@@ -19,109 +11,82 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { itemId, paymentMethod, price, isTest } = await req.json()
-    console.log("Received request:", { itemId, paymentMethod, price, isTest })
+    const { quickPurchaseId } = await req.json()
 
-    // Parse the price string into a decimal number, removing any currency symbols, prefixes, and spaces
-    const cleanPrice = price.toString()
-      .replace(/[A-Za-z]/g, '') // Remove any letters (currency codes)
-      .replace(/[^0-9.]/g, '') // Remove any remaining non-numeric characters except decimal point
-      .trim()
-    console.log("Cleaned price:", cleanPrice)
-
-    // Validate the cleaned price is a valid decimal
-    if (!/^\d+\.?\d*$/.test(cleanPrice)) {
-      return NextResponse.json({ error: "Invalid price format" }, { status: 400 })
+    if (!quickPurchaseId) {
+      return NextResponse.json({ error: "Quick purchase ID is required" }, { status: 400 })
     }
 
-    // Look up the quick purchase
-    console.log("Looking up quick purchase:", itemId)
+    // Get the quick purchase details
     const quickPurchase = await prisma.quickPurchase.findUnique({
-      where: { id: itemId },
-      include: {
-        country: {
-          select: {
-            currencyCode: true,
-            currencySymbol: true
-          }
-        }
-      }
+      where: { id: quickPurchaseId },
+      include: { country: true }
     })
-    console.log("Quick purchase lookup result:", quickPurchase)
 
     if (!quickPurchase) {
       return NextResponse.json({ error: "Quick purchase not found" }, { status: 404 })
     }
 
-    // Create purchase record
-    const purchaseData: PurchaseData = {
-      userId: session.user.id,
-      quickPurchaseId: itemId,
-      amount: new Prisma.Decimal(cleanPrice),
-      paymentMethod: isTest ? 'test-payment' : paymentMethod,
-      status: 'completed'
+    if (!quickPurchase.isActive) {
+      return NextResponse.json({ error: "Quick purchase is not active" }, { status: 400 })
     }
 
-    console.log("Creating purchase record with data:", purchaseData)
-
-    const purchase = await prisma.$transaction(async (tx) => {
-      const createdPurchase = await tx.purchase.create({
-        data: purchaseData,
-        include: {
-          quickPurchase: {
-            include: {
-              country: {
-                select: {
-                  currencyCode: true,
-                  currencySymbol: true
-                }
-              }
-            }
-          }
-        }
-      })
-      return createdPurchase
+    // Check if user has enough credits
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { predictionCredits: true }
     })
 
-    console.log("Successfully created purchase record")
-
-    // Prepare response data
-    const responseData: any = {
-      success: true, 
-      purchase: {
-        id: purchase.id,
-        amount: purchase.amount,
-        status: purchase.status,
-        createdAt: purchase.createdAt,
-        quickPurchase: {
-          id: purchase.quickPurchase.id,
-          name: purchase.quickPurchase.name,
-          price: purchase.quickPurchase.price,
-          description: purchase.quickPurchase.description,
-          type: purchase.quickPurchase.type,
-          country: {
-            currencyCode: purchase.quickPurchase.country.currencyCode,
-            currencySymbol: purchase.quickPurchase.country.currencySymbol
-          }
-        }
-      },
-      userEmail: session.user.email
+    if (!user || user.predictionCredits < 1) {
+      return NextResponse.json({ error: "Insufficient credits" }, { status: 400 })
     }
+
+    // Check if user already purchased this tip
+    const existingPurchase = await prisma.purchase.findFirst({
+      where: {
+        userId: session.user.id,
+        quickPurchaseId: quickPurchaseId,
+        status: 'completed'
+      }
+    })
+
+    if (existingPurchase) {
+      return NextResponse.json({ error: "Tip already purchased" }, { status: 400 })
+    }
+
+    // Create purchase record
+    const purchase = await prisma.purchase.create({
+      data: {
+        userId: session.user.id,
+        quickPurchaseId: quickPurchaseId,
+        amount: 0, // Free with credits
+        paymentMethod: 'credits',
+        status: 'completed',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    })
+
+    // Deduct credits from user
+    await prisma.user.update({
+      where: { id: session.user.id },
+      data: { predictionCredits: user.predictionCredits - 1 }
+    })
 
     // If this QuickPurchase contains prediction data, include it in the response
     if (quickPurchase.predictionData && quickPurchase.isPredictionActive) {
-      const predictionData = quickPurchase.predictionData as any
-      const matchData = quickPurchase.matchData as any
+      const predictionData = quickPurchase.predictionData as PredictionPayload
+      const matchData = quickPurchase.matchData as Record<string, unknown>
       
       // Format the prediction data for delivery
-      const formattedPrediction: any = {
+      const formattedPrediction: FormattedPrediction = {
         match: {
-          homeTeam: { name: matchData?.home_team || 'Unknown' },
-          awayTeam: { name: matchData?.away_team || 'Unknown' },
-          league: { name: matchData?.league || 'Unknown' },
-          dateTime: matchData?.date || new Date().toISOString(),
-          venue: matchData?.venue || 'Unknown',
-          importance: matchData?.match_importance || 'Regular'
+          home_team: (matchData?.home_team as string) || 'Unknown',
+          away_team: (matchData?.away_team as string) || 'Unknown',
+          league: (matchData?.league as string) || 'Unknown',
+          date: (matchData?.date as string) || new Date().toISOString(),
+          venue: (matchData?.venue as string) || 'Unknown',
+          match_importance: (matchData?.match_importance as string) || 'Regular'
         },
         prediction: quickPurchase.predictionType || 'unknown',
         odds: quickPurchase.odds?.toString() || '2.0',
@@ -134,47 +99,63 @@ export async function POST(req: Request) {
           predictionData.comprehensive_analysis.detailed_reasoning.form_analysis,
           predictionData.comprehensive_analysis.detailed_reasoning.tactical_factors,
           predictionData.comprehensive_analysis.detailed_reasoning.historical_context
-        ].filter(Boolean) : [],
-        extraMarkets: predictionData?.additional_markets ? [
-          {
-            market: "Over/Under 2.5",
-            prediction: predictionData.additional_markets.total_goals.over_2_5 > 50 ? "Over" : "Under",
-            probability: Math.max(predictionData.additional_markets.total_goals.over_2_5, predictionData.additional_markets.total_goals.under_2_5),
-            reasoning: "Based on team scoring patterns and historical data"
-          },
-          {
-            market: "BTTS",
-            prediction: predictionData.additional_markets.both_teams_score.yes > 50 ? "Yes" : "No",
-            probability: Math.max(predictionData.additional_markets.both_teams_score.yes, predictionData.additional_markets.both_teams_score.no),
-            reasoning: "Based on team defensive and offensive statistics"
-          }
-        ] : [],
+        ].filter((item): item is string => Boolean(item)) : [],
+        extraMarkets: [],
+        additionalMarkets: [],
         thingsToAvoid: predictionData?.comprehensive_analysis?.betting_intelligence?.avoid_bets || [],
         riskLevel: predictionData?.comprehensive_analysis?.risk_analysis?.overall_risk || 'Medium',
-        confidenceStars: Math.ceil((quickPurchase.confidenceScore || 0) / 20), // Convert confidence to 1-5 stars
-        probabilitySnapshot: predictionData?.comprehensive_analysis?.ml_prediction ? {
-          homeWin: predictionData.comprehensive_analysis.ml_prediction.home_win,
-          draw: predictionData.comprehensive_analysis.ml_prediction.draw,
-          awayWin: predictionData.comprehensive_analysis.ml_prediction.away_win
-        } : { homeWin: 33, draw: 34, awayWin: 33 }
+        confidenceStars: Math.floor((quickPurchase.confidenceScore || 0) / 20),
+        probabilitySnapshot: predictionData?.comprehensive_analysis?.ai_verdict?.probability_assessment || {},
+        aiVerdict: predictionData?.comprehensive_analysis?.ai_verdict || {},
+        mlPrediction: {
+          confidence: quickPurchase.confidenceScore || 0
+        },
+        riskAnalysis: predictionData?.comprehensive_analysis?.risk_analysis || {},
+        bettingIntelligence: predictionData?.comprehensive_analysis?.betting_intelligence || {},
+        confidenceBreakdown: predictionData?.comprehensive_analysis?.confidence_breakdown || ''
       }
 
-      // Add the prediction data to the response
-      responseData.prediction = formattedPrediction
+      return NextResponse.json({
+        success: true,
+        purchase: {
+          id: purchase.id,
+          quickPurchaseId: quickPurchase.id,
+          amount: 0,
+          currency: quickPurchase.country.currencyCode,
+          currencySymbol: quickPurchase.country.currencySymbol,
+          prediction: formattedPrediction,
+          status: purchase.status,
+          paymentMethod: purchase.paymentMethod,
+          country: {
+            code: quickPurchase.country.code,
+            name: quickPurchase.country.name,
+            flagEmoji: quickPurchase.country.flagEmoji
+          }
+        }
+      })
     }
 
-    return NextResponse.json(responseData)
+    // Return basic purchase info if no prediction data
+    return NextResponse.json({
+      success: true,
+      purchase: {
+        id: purchase.id,
+        quickPurchaseId: quickPurchase.id,
+        amount: 0,
+        currency: quickPurchase.country.currencyCode,
+        currencySymbol: quickPurchase.country.currencySymbol,
+        status: purchase.status,
+        paymentMethod: purchase.paymentMethod,
+        country: {
+          code: quickPurchase.country.code,
+          name: quickPurchase.country.name,
+          flagEmoji: quickPurchase.country.flagEmoji
+        }
+      }
+    })
 
   } catch (error) {
-    console.error("Purchase error:", error)
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      if (error.code === 'P2002') {
-        return NextResponse.json({ error: "A purchase with this ID already exists" }, { status: 409 })
-      }
-      if (error.code === 'P2003') {
-        return NextResponse.json({ error: "Invalid reference to quick purchase or user" }, { status: 400 })
-      }
-    }
-    return NextResponse.json({ error: "Payment failed" }, { status: 500 })
+    console.error("Error purchasing tip:", error)
+    return NextResponse.json({ error: "Failed to purchase tip" }, { status: 500 })
   }
 } 

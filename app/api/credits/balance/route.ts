@@ -117,6 +117,7 @@ export async function GET(request: NextRequest) {
         totalCredits: totalUnifiedCredits,
         hasUnlimited
       },
+      quizCredits: quizCreditsCount, // <-- Add this line for explicit quizCredits field
       packages: packageDetails,
       quizPoints: userPoints ? userPoints.points : 0,
       recentActivity: recentTransactions.map(tx => ({

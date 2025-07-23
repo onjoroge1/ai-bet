@@ -6,9 +6,10 @@ import { authOptions } from "@/lib/auth"
 // PATCH /api/user-packages/tips/[tipId]/status - Update tip status and notes
 export async function PATCH(
   request: Request,
-  { params }: { params: { tipId: string } }
+  { params }: { params: Promise<{ tipId: string }> }
 ) {
   try {
+    const { tipId } = await params
     const session = await getServerSession(authOptions)
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -27,7 +28,7 @@ export async function PATCH(
     // Update the tip status and notes
     const updatedTip = await prisma.userPackageTip.update({
       where: {
-        id: params.tipId,
+        id: tipId,
         userPackage: {
           userId: session.user.id // Ensure user owns this tip
         }

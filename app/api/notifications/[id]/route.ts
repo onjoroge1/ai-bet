@@ -1,133 +1,100 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
-import { logger } from '@/lib/logger'
-import prisma from '@/lib/db'
+import { NextResponse } from "next/server"
+import { getServerSession } from "next-auth"
+import prisma from "@/lib/db"
+import { authOptions } from "@/lib/auth"
+import type { NotificationData } from "@/types/api"
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  let session
   try {
-    session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { id } = await params
+    const session = await getServerSession(authOptions)
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { id } = params
-    const body = await request.json()
-    const { isRead, actionUrl, metadata } = body
-
-    // Verify the notification belongs to the user
-    const existingNotification = await prisma.userNotification.findFirst({
+    const notification = await prisma.userNotification.findFirst({
       where: {
-        id,
-        userId: session.user.id,
-      },
-    })
-
-    if (!existingNotification) {
-      return NextResponse.json(
-        { error: 'Notification not found' },
-        { status: 404 }
-      )
-    }
-
-    // Update the notification
-    const updateData: any = {}
-    
-    if (typeof isRead === 'boolean') {
-      updateData.isRead = isRead
-      updateData.readAt = isRead ? new Date() : null
-    }
-    
-    if (actionUrl !== undefined) {
-      updateData.actionUrl = actionUrl
-    }
-    
-    if (metadata !== undefined) {
-      updateData.metadata = metadata
-    }
-
-    const updatedNotification = await prisma.userNotification.update({
-      where: { id },
-      data: updateData,
-    })
-
-    logger.info('PATCH /api/notifications/[id] - Success', {
-      data: {
-        notificationId: id,
-        userId: session.user.id,
-        updates: Object.keys(updateData),
+        id: id,
+        userId: session.user.id
       }
     })
 
-    return NextResponse.json({
-      ...updatedNotification,
-      metadata: updatedNotification.metadata ?? null,
-    })
+    if (!notification) {
+      return NextResponse.json({ error: "Notification not found" }, { status: 404 })
+    }
+
+    return NextResponse.json(notification)
   } catch (error) {
-    logger.error('PATCH /api/notifications/[id] - Error', {
-      error: error as Error,
-      data: { notificationId: params.id },
+    console.error("Error fetching notification:", error)
+    return NextResponse.json({ error: "Failed to fetch notification" }, { status: 500 })
+  }
+}
+
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const session = await getServerSession(authOptions)
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const data = await request.json()
+    
+    // Update notification
+    const notification = await prisma.userNotification.updateMany({
+      where: {
+        id: id,
+        userId: session.user.id
+      },
+      data: {
+        isRead: data.isRead !== undefined ? data.isRead : true,
+        readAt: data.isRead ? new Date() : null
+      }
     })
-    return NextResponse.json(
-      { error: 'Failed to update notification' },
-      { status: 500 }
-    )
+
+    if (notification.count === 0) {
+      return NextResponse.json({ error: "Notification not found" }, { status: 404 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Error updating notification:", error)
+    return NextResponse.json({ error: "Failed to update notification" }, { status: 500 })
   }
 }
 
 export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  let session
   try {
-    session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { id } = await params
+    const session = await getServerSession(authOptions)
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { id } = params
-
-    // Verify the notification belongs to the user
-    const existingNotification = await prisma.userNotification.findFirst({
+    // Delete the notification (hard delete since there's no soft delete field)
+    const notification = await prisma.userNotification.deleteMany({
       where: {
-        id,
-        userId: session.user.id,
-      },
-    })
-
-    if (!existingNotification) {
-      return NextResponse.json(
-        { error: 'Notification not found' },
-        { status: 404 }
-      )
-    }
-
-    // Delete the notification
-    await prisma.userNotification.delete({
-      where: { id },
-    })
-
-    logger.info('DELETE /api/notifications/[id] - Success', {
-      data: {
-        notificationId: id,
-        userId: session.user.id,
+        id: id,
+        userId: session.user.id
       }
     })
 
+    if (notification.count === 0) {
+      return NextResponse.json({ error: "Notification not found" }, { status: 404 })
+    }
+
     return NextResponse.json({ success: true })
   } catch (error) {
-    logger.error('DELETE /api/notifications/[id] - Error', {
-      error: error as Error,
-      data: { notificationId: params.id },
-    })
-    return NextResponse.json(
-      { error: 'Failed to delete notification' },
-      { status: 500 }
-    )
+    console.error("Error deleting notification:", error)
+    return NextResponse.json({ error: "Failed to delete notification" }, { status: 500 })
   }
 } 

@@ -6,7 +6,7 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 export interface EmailNotificationData {
   to: string
   subject: string
-  template: 'payment-confirmation' | 'prediction-alert' | 'daily-digest' | 'achievement' | 'security'
+  template: 'payment-confirmation' | 'prediction-alert' | 'daily-digest' | 'achievement' | 'security' | 'welcome-email'
   data: Record<string, any>
 }
 
@@ -53,6 +53,106 @@ export interface AchievementData {
 }
 
 export class EmailService {
+  /**
+   * Send welcome email to new users
+   */
+  static async sendWelcomeEmail(data: {
+    to: string
+    userName: string
+    appUrl?: string
+    supportEmail?: string
+  }) {
+    try {
+      // Try to use the email template system first
+      const { EmailTemplateService } = await import('@/lib/email-template-service')
+      
+      // Check if welcome email template exists
+      const template = await EmailTemplateService.getTemplateBySlug('welcome-email')
+      
+      if (template && template.isActive) {
+        // Use the template system
+        const renderedEmail = await EmailTemplateService.renderTemplate('welcome-email', {
+          userName: data.userName,
+          appUrl: data.appUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+          supportEmail: data.supportEmail || 'support@snapbet.com'
+        })
+        
+        return this.sendEmail({
+          to: data.to,
+          subject: renderedEmail.subject,
+          template: 'welcome-email',
+          data: {
+            userName: data.userName,
+            appUrl: data.appUrl,
+            supportEmail: data.supportEmail
+          },
+        }, renderedEmail.html)
+      }
+    } catch (error) {
+      // Fall back to hardcoded template if template system fails
+      logger.warn('Failed to use email template system, falling back to hardcoded template', {
+        error: error as Error,
+        data: { email: data.to }
+      })
+    }
+
+    // Fallback hardcoded template
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #8b5cf6, #7c3aed); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+          <h1 style="margin: 0; font-size: 28px;">Welcome to SnapBet! 🎉</h1>
+          <p style="margin: 10px 0 0 0; opacity: 0.9;">Your journey to smarter sports predictions starts now</p>
+        </div>
+        
+        <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+          <h2 style="color: #374151; margin-top: 0;">Hi ${data.userName},</h2>
+          
+          <p style="color: #6b7280; line-height: 1.6;">
+            Welcome to SnapBet! We're excited to have you join our community of sports prediction enthusiasts. 
+            You're now part of a platform that combines AI-powered insights with expert analysis to help you 
+            make informed betting decisions.
+          </p>
+          
+          <div style="background: #f0f9ff; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #0ea5e9;">
+            <h3 style="color: #374151; margin-top: 0;">🚀 What's Next?</h3>
+            <ul style="color: #6b7280; line-height: 1.8;">
+              <li>Explore our daily free tips</li>
+              <li>Check out premium prediction packages</li>
+              <li>Take our quiz to earn credits</li>
+              <li>Join our community discussions</li>
+            </ul>
+          </div>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${data.appUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard" 
+               style="background: #8b5cf6; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+              Get Started
+            </a>
+          </div>
+          
+          <p style="color: #6b7280; line-height: 1.6;">
+            We're committed to providing you with the best possible experience. If you have any questions or 
+            need assistance, our support team is here to help.
+          </p>
+          
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+          
+          <p style="color: #9ca3af; font-size: 14px; text-align: center;">
+            Need help? Contact us at ${data.supportEmail || 'support@snapbet.com'}<br>
+            © 2024 SnapBet. All rights reserved.
+          </p>
+        </div>
+      </div>
+    `
+
+    return this.sendEmail({
+      to: data.to,
+      subject: `Welcome to SnapBet, ${data.userName}! 🎉`,
+      template: 'welcome-email',
+      data,
+    }, html)
+  }
+
   /**
    * Send payment confirmation email
    */
@@ -419,4 +519,4 @@ export class EmailService {
       return { success: false, error: error as Error }
     }
   }
-} 
+}

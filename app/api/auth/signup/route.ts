@@ -5,6 +5,7 @@ import { logger } from "@/lib/logger"
 import { z } from "zod"
 import { generateToken } from "@/lib/auth"
 import { getCountryByCode, isValidCountryCode } from "@/lib/countries"
+import { EmailService } from "@/lib/email-service"
 
 const signupSchema = z.object({
   name: z.string().min(1, "Full name is required"),
@@ -117,6 +118,28 @@ export async function POST(request: NextRequest) {
 
     // Note: Welcome notification and wallet creation are now handled by triggers/separate processes
     // to keep the signup flow fast and simple.
+
+    // Send welcome email to new user
+    try {
+      await EmailService.sendWelcomeEmail({
+        to: user.email,
+        userName: user.fullName || user.email,
+        appUrl: process.env.NEXT_PUBLIC_APP_URL,
+        supportEmail: process.env.SUPPORT_EMAIL || 'support@snapbet.com'
+      })
+      
+      logger.info('Welcome email sent successfully', {
+        tags: ["auth", "signup", "email"],
+        data: { email: user.email, userId: user.id },
+      })
+    } catch (emailError) {
+      // Don't fail signup if email fails, just log it
+      logger.error('Failed to send welcome email', {
+        tags: ["auth", "signup", "email"],
+        error: emailError instanceof Error ? emailError : undefined,
+        data: { email: user.email, userId: user.id },
+      })
+    }
 
     if (!user.countryId) {
         logger.error("User created without a countryId", { data: { userId: user.id } });
