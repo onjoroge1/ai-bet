@@ -20,7 +20,8 @@ import {
   Globe,
   TrendingUp,
   BookOpen,
-  Send
+  Send,
+  Bot
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -150,6 +151,13 @@ export default function AdminBlogsPage() {
           </div>
 
           <div className="flex items-center space-x-4 mt-4 md:mt-0">
+            <Button asChild className="bg-purple-600 hover:bg-purple-700">
+              <Link href="/admin/blog-automation">
+                <Bot className="w-4 h-4 mr-2" />
+                Blog Automation
+              </Link>
+            </Button>
+            
             <Button asChild className="bg-emerald-600 hover:bg-emerald-700">
               <Link href="/admin/blogs/create">
                 <Plus className="w-4 h-4 mr-2" />
