@@ -19,7 +19,8 @@ import {
   Tag,
   Globe,
   TrendingUp,
-  BookOpen
+  BookOpen,
+  Send
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -40,6 +41,8 @@ interface BlogPost {
   readTime: number
   isPublished: boolean
   isActive: boolean
+  aiGenerated?: boolean
+  sourceUrl?: string
 }
 
 export default function AdminBlogsPage() {
@@ -82,6 +85,20 @@ export default function AdminBlogsPage() {
       }
     } catch (error) {
       console.error('Error deleting blog:', error)
+    }
+  }
+
+  const handlePublish = async (id: string) => {
+    try {
+      const response = await fetch(`/api/blogs/${id}/publish`, {
+        method: 'POST'
+      })
+      
+      if (response.ok) {
+        fetchBlogs() // Refresh the list
+      }
+    } catch (error) {
+      console.error('Error publishing blog:', error)
     }
   }
 
@@ -267,6 +284,11 @@ export default function AdminBlogsPage() {
                         Featured
                       </Badge>
                     )}
+                    {blog.aiGenerated && (
+                      <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">
+                        AI Generated
+                      </Badge>
+                    )}
                     <Badge className={blog.isPublished ? 
                       "bg-green-500/20 text-green-400 border-green-500/30" : 
                       "bg-orange-500/20 text-orange-400 border-orange-500/30"
@@ -310,6 +332,17 @@ export default function AdminBlogsPage() {
                   >
                     <Eye className="w-4 h-4" />
                   </Button>
+                  {!blog.isPublished && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handlePublish(blog.id)}
+                      className="text-green-400 hover:text-green-300"
+                      title="Publish post"
+                    >
+                      <Send className="w-4 h-4" />
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"

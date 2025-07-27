@@ -6,10 +6,10 @@ import { authOptions } from '@/lib/auth'
 // GET /api/blogs/[id] - Get a specific blog post
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params
+    const { id } = await params
 
     const blogPost = await prisma.blogPost.findUnique({
       where: { id },
@@ -49,7 +49,7 @@ export async function GET(
     if (blogPost.isPublished && blogPost.isActive) {
       await prisma.blogPost.update({
         where: { id },
-        data: { viewCount: { increment: 1 } }
+        data: { viewCount: { increment: 1 } } 
       })
     }
 
@@ -70,7 +70,7 @@ export async function GET(
 // PUT /api/blogs/[id] - Update a blog post (admin only)
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -82,7 +82,7 @@ export async function PUT(
       )
     }
 
-    const { id } = params
+    const { id } = await params
     const body = await request.json()
 
     // Check if blog post exists
@@ -150,7 +150,7 @@ export async function PUT(
 // DELETE /api/blogs/[id] - Delete a blog post (admin only)
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -162,7 +162,7 @@ export async function DELETE(
       )
     }
 
-    const { id } = params
+    const { id } = await params
 
     // Check if blog post exists
     const existingPost = await prisma.blogPost.findUnique({

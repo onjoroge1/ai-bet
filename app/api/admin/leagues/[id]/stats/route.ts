@@ -7,7 +7,7 @@ import { logger } from '@/lib/logger'
 // GET /api/admin/leagues/[id]/stats - Get sync and prediction stats for a league
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -15,7 +15,7 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { id } = params
+    const { id } = await params
 
     // Find the league with related data
     const league = await prisma.league.findUnique({

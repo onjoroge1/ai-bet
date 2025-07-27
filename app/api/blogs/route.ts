@@ -11,13 +11,17 @@ export async function GET(request: NextRequest) {
     const limitParam = searchParams.get('limit')
     const limit = limitParam ? parseInt(limitParam, 10) : undefined
 
+    // Check if user is admin
+    const session = await getServerSession(authOptions)
+    const isAdmin = session?.user?.role === 'admin'
+
     if (slug) {
+      const whereClause = isAdmin 
+        ? { slug } 
+        : { slug, isPublished: true, isActive: true }
+      
       const blog = await prisma.blogPost.findFirst({
-        where: {
-          slug,
-          isPublished: true,
-          isActive: true
-        }
+        where: whereClause
       })
       if (!blog) {
         return NextResponse.json({ success: false, error: 'Blog post not found' }, { status: 404 })
@@ -25,11 +29,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, data: blog })
     }
 
+    // For admin users, return all posts (published and drafts)
+    // For public users, only return published posts
+    const whereClause = isAdmin 
+      ? { isActive: true } 
+      : { isPublished: true, isActive: true }
+
     const blogs = await prisma.blogPost.findMany({
-      where: {
-        isPublished: true,
-        isActive: true
-      },
+      where: whereClause,
       orderBy: {
         createdAt: 'desc'
       },

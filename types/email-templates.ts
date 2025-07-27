@@ -485,9 +485,9 @@ export const DEFAULT_EMAIL_TEMPLATES: CreateTemplateData[] = [
           <div class="banner">WELCOME TO THE BIG LEAGUE! 🏆</div>
 
           <div class="main">
-            <h1>💥 PAYMENT CONFIRMED – YOU’RE IN!</h1>
+            <h1>💥 PAYMENT CONFIRMED – YOU'RE IN!</h1>
             <p>Hey {{userName}},</p>
-            <p>You’ve officially unlocked <span class="highlight">{{packageName}}</span> on SnapBet! Your game just leveled up—betting strategies and insider insights are now at your fingertips.</p>
+            <p>You've officially unlocked <span class="highlight">{{packageName}}</span> on SnapBet! Your game just leveled up—betting strategies and insider insights are now at your fingertips.</p>
 
             <h3>PAYMENT SUMMARY</h3>
             <table class="payment-summary">

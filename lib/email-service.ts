@@ -16,6 +16,7 @@ export interface PaymentConfirmationData {
   transactionId: string
   userName: string
   tipsCount: number
+  currencySymbol?: string
 }
 
 export interface PredictionAlertData {
@@ -157,6 +158,41 @@ export class EmailService {
    * Send payment confirmation email
    */
   static async sendPaymentConfirmation(data: PaymentConfirmationData) {
+    try {
+      // Try to use the email template system first
+      const { EmailTemplateService } = await import('@/lib/email-template-service')
+      
+      // Check if payment confirmation template exists
+      const template = await EmailTemplateService.getTemplateBySlug('payment-successful')
+      
+      if (template && template.isActive) {
+        // Use the template system
+        const renderedEmail = await EmailTemplateService.renderTemplate('payment-successful', {
+          userName: data.userName,
+          packageName: data.packageName,
+          amount: data.amount,
+          currencySymbol: data.currencySymbol || '$',
+          transactionId: data.transactionId,
+          tipsCount: data.tipsCount,
+          appUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        })
+        
+        return this.sendEmail({
+          to: data.userName,
+          subject: renderedEmail.subject,
+          template: 'payment-confirmation',
+          data,
+        }, renderedEmail.html)
+      }
+    } catch (error) {
+      // Fall back to hardcoded template if template system fails
+      logger.warn('Failed to use email template system, falling back to hardcoded template', {
+        error: error as Error,
+        data: { email: data.userName }
+      })
+    }
+
+    // Fallback hardcoded template
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: linear-gradient(135deg, #10b981, #059669); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
@@ -180,7 +216,7 @@ export class EmailService {
               </div>
               <div>
                 <strong style="color: #6b7280;">Amount:</strong><br>
-                <span style="color: #374151;">$${data.amount.toFixed(2)}</span>
+                <span style="color: #374151;">${data.currencySymbol || '$'}${data.amount.toFixed(2)}</span>
               </div>
               <div>
                 <strong style="color: #6b7280;">Tips Included:</strong><br>
@@ -214,12 +250,20 @@ export class EmailService {
       </div>
     `
 
-    return this.sendEmail({
-      to: data.userName, // This should be the email address
-      subject: `Payment Confirmed - ${data.packageName}`,
-      template: 'payment-confirmation',
-      data,
-    }, html)
+    logger.info('[EmailService] Attempting to send payment confirmation email', { to: data.userName, packageName: data.packageName, transactionId: data.transactionId });
+    try {
+      const result = await this.sendEmail({
+        to: data.userName, // This should be the email address
+        subject: `Payment Confirmed - ${data.packageName}`,
+        template: 'payment-confirmation',
+        data,
+      }, html);
+      logger.info('[EmailService] Payment confirmation email sent successfully', { to: data.userName, result });
+      return result;
+    } catch (error) {
+      logger.error('[EmailService] Failed to send payment confirmation email', { to: data.userName, error });
+      throw error;
+    }
   }
 
   /**
@@ -495,24 +539,42 @@ export class EmailService {
         return { success: false, error: 'Email service not configured' }
       }
 
+      logger.info('[EmailService] Attempting to send email', { template: emailData.template, to: emailData.to });
       const result = await resend.emails.send({
-        from: process.env.FROM_EMAIL || 'notifications@snapbet.com',
+        from: process.env.FROM_EMAIL || 'notifications@notifications.snapbet.bet',
         to: emailData.to,
         subject: emailData.subject,
         html,
       })
-
-      logger.info('Email sent successfully', {
-        data: {
-          template: emailData.template,
-          to: emailData.to,
-          messageId: result.data?.id,
-        }
-      })
+      
+      // Log the full response structure
+      logger.info('[EmailService] Full Resend response:', { 
+        result: JSON.stringify(result, null, 2),
+        resultType: typeof result,
+        hasData: !!result.data,
+        dataType: typeof result.data,
+        dataKeys: result.data ? Object.keys(result.data) : 'no data',
+        messageId: result.data?.id,
+        messageIdType: typeof result.data?.id
+      });
+      
+      // Check if there's an error in the response
+      if (result.error) {
+        logger.error('[EmailService] Resend API returned an error:', { error: result.error });
+        return { success: false, error: result.error }
+      }
+      
+      // Check if data is null (indicates error)
+      if (!result.data) {
+        logger.error('[EmailService] Resend API returned null data, likely an error');
+        return { success: false, error: 'Resend API returned null data' }
+      }
+      
+      logger.info('[EmailService] Email sent successfully', { template: emailData.template, to: emailData.to, messageId: result.data?.id });
 
       return { success: true, messageId: result.data?.id }
     } catch (error) {
-      logger.error('Failed to send email', {
+      logger.error('[EmailService] Failed to send email', {
         error: error as Error,
         data: { template: emailData.template, to: emailData.to }
       })

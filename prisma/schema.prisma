@@ -762,6 +762,9 @@ model BlogPost {
   seoKeywords     String[]
   isPublished     Boolean  @default(true)
   isActive        Boolean  @default(true)
+  aiGenerated     Boolean  @default(false) // Flag for AI-generated content
+  sourceUrl       String?  // Original RSS source URL
+  scheduledPublishAt DateTime? // For scheduled publishing
 
   @@index([category, isPublished, isActive])
   @@index([geoTarget, isPublished, isActive])
@@ -769,4 +772,6 @@ model BlogPost {
   @@index([publishedAt, isPublished, isActive])
   @@index([viewCount, isPublished, isActive])
   @@index([slug, isPublished, isActive])
+  @@index([aiGenerated, isPublished]) // New index for AI-generated posts
+  @@index([sourceUrl]) // Index for source URL lookups
 }
