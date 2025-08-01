@@ -3,15 +3,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import {
-  NavigationMenu,
-  NavigationMenuContent,
-  NavigationMenuItem,
-  NavigationMenuLink,
-  NavigationMenuList,
-  NavigationMenuTrigger,
-} from "@/components/ui/navigation-menu"
-import { Menu, X, TrendingUp, Users, Crown, HelpCircle, CreditCard, Globe, Moon, Sun, User, LogOut, MapPin, BookOpen } from "lucide-react"
+import { Menu, X, TrendingUp, User, LogOut, MapPin, BookOpen, Target, Crown, Radio, HelpCircle, BarChart3 } from "lucide-react"
 import { useUserCountry } from "@/contexts/user-country-context"
 import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
@@ -19,7 +11,6 @@ import Link from "next/link"
 
 export function Navigation() {
   const [isOpen, setIsOpen] = useState(false)
-  const [isDark, setIsDark] = useState(true)
   const { countryData, isLoading } = useUserCountry()
   const { user, isAuthenticated, logout } = useAuth()
   const router = useRouter()
@@ -29,18 +20,17 @@ export function Navigation() {
     router.push("/")
   }
 
+  // Navigation links based on actual pages that exist
   const navLinks = [
-    { href: "/daily-tips", text: "Daily Tips" },
-    { href: "/weekly-specials", text: "Weekly Specials" },
-    { href: "/live-predictions", text: "Live Predictions" },
-    { href: "/support", text: "Support" },
+    { href: "/dashboard/predictions", text: "Matches", icon: Target },
+    { href: "/blog", text: "Blog", icon: BookOpen },
+    { href: "/tips-history", text: "Predictions History", icon: Target },
+    { href: "/dashboard/support", text: "Support", icon: HelpCircle },
   ]
 
+  // Additional links for authenticated users (removed Dashboard since it's in auth section)
   const authenticatedNavLinks = [
-    { href: "/dashboard", text: "Dashboard" },
-    { href: "/tips-history", text: "Tips History" },
-    { href: "/daily-tips", text: "Daily Tips" },
-    { href: "/weekly-specials", text: "Weekly Specials" },
+    // Tips History moved to public navLinks since it's now a public page
   ]
 
   if (isLoading) {
@@ -62,69 +52,30 @@ export function Navigation() {
             </Badge>
           </div>
 
-          {/* Desktop Navigation */}
-          <div className="hidden md:block">
-            <NavigationMenu>
-              <NavigationMenuList className="space-x-1">
-                <NavigationMenuItem>
-                  <NavigationMenuTrigger className="text-slate-300 hover:text-white">Predictions</NavigationMenuTrigger>
-                  <NavigationMenuContent>
-                    <div className="w-64 p-4 space-y-2">
-                      {isAuthenticated ? authenticatedNavLinks.map((link) => (
-                        <NavigationMenuLink key={link.href} href={link.href} className="block p-2 hover:bg-slate-800 rounded">
-                          {link.text}
-                        </NavigationMenuLink>
-                      )) : navLinks.map((link) => (
-                        <NavigationMenuLink key={link.href} href={link.href} className="block p-2 hover:bg-slate-800 rounded">
-                          {link.text}
-                        </NavigationMenuLink>
-                      ))}
-                    </div>
-                  </NavigationMenuContent>
-                </NavigationMenuItem>
-
-                <NavigationMenuItem>
-                  <NavigationMenuLink
-                    href="/weekly-specials"
-                    className="text-slate-300 hover:text-white px-3 py-2 rounded-md"
-                  >
-                    <Crown className="w-4 h-4 inline mr-1" />
-                    VIP Zone
-                  </NavigationMenuLink>
-                </NavigationMenuItem>
-
-                <NavigationMenuItem>
-                  <NavigationMenuLink className="text-slate-300 hover:text-white px-3 py-2 rounded-md">
-                    <Users className="w-4 h-4 inline mr-1" />
-                    Community
-                  </NavigationMenuLink>
-                </NavigationMenuItem>
-
-                <NavigationMenuItem>
-                  <NavigationMenuTrigger className="text-slate-300 hover:text-white">More</NavigationMenuTrigger>
-                  <NavigationMenuContent>
-                    <div className="w-48 p-4 space-y-2">
-                      <NavigationMenuLink href="/blog" className="block p-2 hover:bg-slate-800 rounded">
-                        <BookOpen className="w-4 h-4 inline mr-2" />
-                        Blog
-                      </NavigationMenuLink>
-                      <NavigationMenuLink href="/faq" className="block p-2 hover:bg-slate-800 rounded">
-                        <HelpCircle className="w-4 h-4 inline mr-2" />
-                        FAQ
-                      </NavigationMenuLink>
-                      <NavigationMenuLink className="block p-2 hover:bg-slate-800 rounded">
-                        <CreditCard className="w-4 h-4 inline mr-2" />
-                        Pricing
-                      </NavigationMenuLink>
-                      <NavigationMenuLink className="block p-2 hover:bg-slate-800 rounded">
-                        <Globe className="w-4 h-4 inline mr-2" />
-                        Languages
-                      </NavigationMenuLink>
-                    </div>
-                  </NavigationMenuContent>
-                </NavigationMenuItem>
-              </NavigationMenuList>
-            </NavigationMenu>
+          {/* Desktop Navigation - Based on actual pages */}
+          <div className="hidden md:flex items-center space-x-1">
+            {navLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="flex items-center space-x-1 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-md transition-colors"
+              >
+                <link.icon className="w-4 h-4" />
+                <span>{link.text}</span>
+              </Link>
+            ))}
+            
+            {/* Show additional links for authenticated users */}
+            {isAuthenticated && authenticatedNavLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="flex items-center space-x-1 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-md transition-colors"
+              >
+                <link.icon className="w-4 h-4" />
+                <span>{link.text}</span>
+              </Link>
+            ))}
           </div>
 
           {/* Right Side Actions */}
@@ -178,7 +129,7 @@ export function Navigation() {
           </div>
         </div>
 
-        {/* Mobile Menu */}
+        {/* Mobile Menu - Based on actual pages */}
         {isOpen && (
           <div className="md:hidden py-4 border-t border-slate-800">
             <div className="space-y-2">
@@ -193,22 +144,31 @@ export function Navigation() {
                 </div>
               )}
 
+              {/* Mobile Navigation Links */}
               {navLinks.map((link) => (
-                <a key={link.href} href={link.href} className="block px-3 py-2 text-slate-300 hover:text-white">
-                  {link.text}
-                </a>
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="flex items-center space-x-2 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-md"
+                  onClick={() => setIsOpen(false)}
+                >
+                  <link.icon className="w-4 h-4" />
+                  <span>{link.text}</span>
+                </Link>
               ))}
 
-              <a href="/blog" className="block px-3 py-2 text-slate-300 hover:text-white">
-                <BookOpen className="w-4 h-4 inline mr-2" />
-                Blog
-              </a>
-              <a href="/faq" className="block px-3 py-2 text-slate-300 hover:text-white">
-                FAQ
-              </a>
-              <a href="#" className="block px-3 py-2 text-slate-300 hover:text-white">
-                Pricing
-              </a>
+              {/* Show additional links for authenticated users on mobile */}
+              {isAuthenticated && authenticatedNavLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="flex items-center space-x-2 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-md"
+                  onClick={() => setIsOpen(false)}
+                >
+                  <link.icon className="w-4 h-4" />
+                  <span>{link.text}</span>
+                </Link>
+              ))}
 
               {/* Mobile Auth Buttons */}
               <div className="pt-4 border-t border-slate-800">

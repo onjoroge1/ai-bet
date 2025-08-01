@@ -22,6 +22,9 @@ const publicPaths = [
   '/api/auth/error',
   '/api/countries',
   '/api/health',
+  '/api/predictions/history', // Public predictions history
+  '/api/predictions/history/stats', // Public predictions history stats
+  '/api/predictions/history/export', // Public predictions history export
 ]
 
 // Paths that require admin role
@@ -50,8 +53,13 @@ const rateLimitConfig = {
   api: { maxRequests: 1000, windowMs: 60000 }, // 1000 API calls per minute
 }
 
-// Helper function to check if path is admin-only (excluding authenticated paths)
+// Helper function to check if path is admin-only (excluding authenticated paths and public history endpoints)
 const isAdminOnlyPath = (pathname: string) => {
+  // Exclude predictions history endpoints from admin-only access
+  if (pathname.startsWith('/api/predictions/history')) {
+    return false
+  }
+  
   return adminPaths.some(p => pathname.startsWith(p)) && 
          !authenticatedPaths.some(p => pathname.startsWith(p))
 }

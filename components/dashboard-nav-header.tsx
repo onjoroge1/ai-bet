@@ -19,7 +19,7 @@ export function DashboardNavHeader() {
     { href: "/dashboard/weekend-special", label: "Weekend Special", icon: Gift },
     { href: "/dashboard/vip", label: "VIP Zone", icon: Crown },
     { href: "/dashboard/my-tips", label: "My Tips", icon: Target },
-    { href: "/tips-history", label: "Tips History", icon: History },
+    { href: "/tips-history", label: "Predictions History", icon: History },
     { href: "/dashboard/predictions", label: "All Predictions", icon: Target },
     { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
     { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },

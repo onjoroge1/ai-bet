@@ -681,6 +681,10 @@ model UserPackageTip {
   notes         String?
   status        String      @default("claimed")
   usedAt        DateTime?
+  result        String?     // 'won', 'lost', 'pending', 'cancelled'
+  resultUpdatedAt DateTime?
+  performance   Json?       // Detailed performance metrics
+  auditLog      Json?       // Status change history
   tipUsage      TipUsage?
   prediction    Prediction  @relation(fields: [predictionId], references: [id])
   userPackage   UserPackage @relation(fields: [userPackageId], references: [id])
@@ -688,6 +692,9 @@ model UserPackageTip {
   @@unique([userPackageId, predictionId])
   @@index([status])
   @@index([expiresAt])
+  @@index([userPackageId, status, claimedAt])
+  @@index([result, claimedAt])
+  @@index([predictionId, status])
 }
 
 model TipUsage {
