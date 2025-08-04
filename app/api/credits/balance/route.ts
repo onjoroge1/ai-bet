@@ -88,7 +88,16 @@ export async function GET(request: NextRequest) {
     }
 
     // Calculate quiz credits
+    // Quiz points are stored as individual points, convert to credits (50 points = 1 credit)
     const quizCreditsCount = userPoints ? Math.floor(userPoints.points / 50) : 0;
+    
+    // For debugging: log the calculation
+    console.log(`Credit balance calculation for user ${userId}:`, {
+      quizPoints: userPoints?.points || 0,
+      quizCreditsCalculated: quizCreditsCount,
+      packageCredits: packageCreditsCount,
+      hasUnlimited
+    });
 
     // Calculate total unified credits (same logic as other APIs)
     const totalUnifiedCredits = hasUnlimited ? "∞" : (packageCreditsCount + quizCreditsCount);

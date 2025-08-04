@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import prisma from '@/lib/db';
 import { Prisma } from '@prisma/client';
-import { EmailService } from '@/lib/email-service';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-05-28.basil',
@@ -91,11 +90,11 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
         updatedAt: new Date(),
       };
       
-      // Parse the itemId to determine if it's a PackageOffer ID or countryId_packageType
+      // Parse the itemId to determine if it's a PackageOfferCountryPrice ID or countryId_packageType
       const firstUnderscoreIndex = itemId.indexOf('_');
       if (firstUnderscoreIndex === -1) {
-        // It's a PackageOffer ID
-        packagePurchaseData.packageOfferId = itemId;
+        // It's a PackageOfferCountryPrice ID
+        packagePurchaseData.packageOfferCountryPriceId = itemId;
         packagePurchaseData.packageType = metadata.packageType || 'unknown';
       } else {
         // It's a countryId_packageType format
@@ -171,33 +170,8 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
         }
       }
       
-      // After notification logic, send payment confirmation email
-      try {
-        const user = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { email: true, fullName: true }
-        });
-        if (user && user.email) {
-          // Get package name, amount, currency symbol, transactionId
-          const packageName = metadata.packageName || 'Premium Package';
-          const amount = paymentIntent.amount / 100;
-          const currencySymbol = metadata.currencySymbol || '$';
-          const transactionId = paymentIntent.id;
-          await EmailService.sendPaymentConfirmation({
-            userName: user.email, // Pass email as userName for PaymentConfirmationData
-            packageName,
-            amount,
-            currencySymbol,
-            transactionId,
-            tipsCount: metadata.tipsCount ? Number(metadata.tipsCount) : 1
-          });
-          console.log('Payment confirmation email sent.');
-        } else {
-          console.error('User not found or missing email for payment confirmation email.');
-        }
-      } catch (emailError) {
-        console.error('Failed to send payment confirmation email:', emailError);
-      }
+      // Note: Email is now sent by the NotificationService.createPaymentSuccessNotification method
+      // No need for duplicate email sending here
     } else if (itemType === 'tip') {
       console.log('Processing tip purchase...');
       
@@ -239,19 +213,61 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
         await addCreditsToUser(userId, { totalTips: 1 }); // Single tip = 1 credit
       }
       
-      // Send notification for tip purchase
+      // Send notification for tip purchase with detailed tip information
       try {
-        console.log('Sending payment success notification...');
+        console.log('Sending tip purchase notification...');
         const { NotificationService } = await import('@/lib/notification-service');
-        await NotificationService.createPaymentSuccessNotification(
-          userId,
-          paymentIntent.amount / 100,
-          'Tip'
-        );
-        console.log('Notification sent.');
+        
+        // Get tip details for the notification
+        const quickPurchase = await prisma.quickPurchase.findUnique({
+          where: { id: itemId },
+          include: {
+            match: {
+              include: {
+                homeTeam: true,
+                awayTeam: true,
+                league: true
+              }
+            }
+          }
+        });
+        
+        if (quickPurchase && quickPurchase.match) {
+          const match = quickPurchase.match;
+          const tipName = `Premium Tip - ${match.homeTeam.name} vs ${match.awayTeam.name}`;
+          const matchDetails = `${match.homeTeam.name} vs ${match.awayTeam.name} - ${match.league.name}`;
+          const prediction = quickPurchase.prediction || 'Match prediction';
+          const confidence = quickPurchase.confidence || 85;
+          const expiresAt = match.startTime ? new Date(match.startTime).toISOString() : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+          const transactionId = paymentIntent.id;
+          const currencySymbol = paymentIntent.currency === 'usd' ? '$' : '€';
+          
+          await NotificationService.createTipPurchaseNotification(
+            userId,
+            paymentIntent.amount / 100,
+            tipName,
+            matchDetails,
+            prediction,
+            confidence,
+            expiresAt,
+            transactionId,
+            currencySymbol
+          );
+        } else {
+          // Fallback to generic notification if tip details not available
+          await NotificationService.createPaymentSuccessNotification(
+            userId,
+            paymentIntent.amount / 100,
+            'Premium Tip'
+          );
+        }
+        console.log('Tip purchase notification sent.');
       } catch (error) {
-        console.error('Failed to send payment notification:', error);
+        console.error('Failed to send tip purchase notification:', error);
       }
+      
+      // Note: Email is now sent by the NotificationService.createPaymentSuccessNotification method
+      // No need for duplicate email sending here
     }
   } catch (error) {
     console.error('Error handling payment success:', error);
@@ -263,14 +279,17 @@ async function handlePaymentFailure(paymentIntent: Stripe.PaymentIntent) {
   // Optionally notify user
 }
 
-async function createUserPackage(userId: string, packageOfferId: string, paymentIntent: Stripe.PaymentIntent) {
+async function createUserPackage(userId: string, packageOfferCountryPriceId: string, paymentIntent: Stripe.PaymentIntent) {
   try {
-    console.log(`[createUserPackage] Starting for userId: ${userId}, packageOfferId: ${packageOfferId}`);
+    console.log(`[createUserPackage] Starting for userId: ${userId}, packageOfferCountryPriceId: ${packageOfferCountryPriceId}`);
     
-    // First try to find a PackageOffer with this ID
-    console.log(`[createUserPackage] Looking for PackageOffer with ID: ${packageOfferId}`);
-    const packageOffer = await prisma.packageOffer.findUnique({
-      where: { id: packageOfferId }
+    // First try to find a PackageOfferCountryPrice with this ID
+    console.log(`[createUserPackage] Looking for PackageOfferCountryPrice with ID: ${packageOfferCountryPriceId}`);
+    const packageOfferCountryPrice = await prisma.packageOfferCountryPrice.findUnique({
+      where: { id: packageOfferCountryPriceId },
+      include: {
+        packageOffer: true
+      }
     })
 
     let tipCount: number
@@ -279,9 +298,9 @@ async function createUserPackage(userId: string, packageOfferId: string, payment
     let packageType: string
 
     // If not found, try to parse as PackageCountryPrice ID (format: countryId_packageType)
-    if (!packageOffer) {
-      console.log(`[createUserPackage] PackageOffer not found, trying to parse as countryId_packageType: ${packageOfferId}`);
-      const parts = packageOfferId.split('_')
+    if (!packageOfferCountryPrice) {
+      console.log(`[createUserPackage] PackageOfferCountryPrice not found, trying to parse as countryId_packageType: ${packageOfferCountryPriceId}`);
+      const parts = packageOfferCountryPriceId.split('_')
       if (parts.length === 2) {
         const [countryId, pkgType] = parts
         console.log(`[createUserPackage] Parsed countryId: ${countryId}, packageType: ${pkgType}`);
@@ -350,7 +369,7 @@ async function createUserPackage(userId: string, packageOfferId: string, payment
         })
 
         if (!countryPrice) {
-          console.error(`[createUserPackage] Country price not found for package: ${packageOfferId}`)
+          console.error(`[createUserPackage] Country price not found for package: ${packageOfferCountryPriceId}`)
           return null
         }
         console.log(`[createUserPackage] Found country price: ${countryPrice.id}, price: ${countryPrice.price}`);
@@ -365,7 +384,7 @@ async function createUserPackage(userId: string, packageOfferId: string, payment
         const userPackage = await prisma.userPackage.create({
           data: {
             userId,
-            packageOfferId: packageOfferId, // Use the original ID as reference
+            packageOfferCountryPriceId: packageOfferCountryPriceId, // Use the original ID as reference
             expiresAt,
             tipsRemaining: tipCount === -1 ? 0 : tipCount,
             totalTips: tipCount, // Keep -1 for unlimited packages
@@ -379,18 +398,18 @@ async function createUserPackage(userId: string, packageOfferId: string, payment
         console.log(`[createUserPackage] SUCCESS: Created user package: ${userPackage.id} for user: ${userId} (PackageCountryPrice)`)
         return userPackage
       } else {
-        console.error(`[createUserPackage] Invalid package ID format: ${packageOfferId}`)
+        console.error(`[createUserPackage] Invalid package ID format: ${packageOfferCountryPriceId}`)
         return null
       }
     }
 
-    // Found PackageOffer record - proceed with original logic
-    console.log(`[createUserPackage] Found PackageOffer: ${packageOffer.id}, name: ${packageOffer.name}`);
-    tipCount = packageOffer.tipCount
-    validityDays = packageOffer.validityDays
-    packageName = packageOffer.name
-    packageType = packageOffer.packageType
-    console.log(`[createUserPackage] PackageOffer details - tipCount: ${tipCount}, validityDays: ${validityDays}, packageType: ${packageType}`);
+    // Found PackageOfferCountryPrice record - proceed with original logic
+    console.log(`[createUserPackage] Found PackageOfferCountryPrice: ${packageOfferCountryPrice.id}, name: ${packageOfferCountryPrice.packageOffer.name}`);
+    tipCount = packageOfferCountryPrice.packageOffer.tipCount
+    validityDays = packageOfferCountryPrice.packageOffer.validityDays
+    packageName = packageOfferCountryPrice.packageOffer.name
+    packageType = packageOfferCountryPrice.packageOffer.packageType
+    console.log(`[createUserPackage] PackageOfferCountryPrice details - tipCount: ${tipCount}, validityDays: ${validityDays}, packageType: ${packageType}`);
 
     // Get user's country pricing
     console.log(`[createUserPackage] Getting user country for userId: ${userId}`);
@@ -405,10 +424,10 @@ async function createUserPackage(userId: string, packageOfferId: string, payment
     }
     console.log(`[createUserPackage] User countryId: ${user.countryId}`);
 
-    console.log(`[createUserPackage] Looking for PackageOfferCountryPrice - packageOfferId: ${packageOfferId}, countryId: ${user.countryId}`);
+    console.log(`[createUserPackage] Looking for PackageOfferCountryPrice - packageOfferCountryPriceId: ${packageOfferCountryPriceId}, countryId: ${user.countryId}`);
     let countryPrice = await prisma.packageOfferCountryPrice.findFirst({
       where: {
-        packageOfferId,
+        packageOfferCountryPriceId,
         countryId: user.countryId,
         isActive: true
       }
@@ -416,12 +435,12 @@ async function createUserPackage(userId: string, packageOfferId: string, payment
 
     // If PackageOfferCountryPrice not found, try to create it from PackageCountryPrice
     if (!countryPrice) {
-      console.log(`[createUserPackage] PackageOfferCountryPrice not found, trying to create from PackageCountryPrice for package: ${packageOfferId}`)
+      console.log(`[createUserPackage] PackageOfferCountryPrice not found, trying to create from PackageCountryPrice for package: ${packageOfferCountryPriceId}`)
       
       const packageCountryPrice = await prisma.packageCountryPrice.findFirst({
         where: {
           countryId: user.countryId,
-          packageType: packageOffer.packageType
+          packageType: packageOfferCountryPrice.packageOffer.packageType
         },
         include: {
           country: {
@@ -438,7 +457,7 @@ async function createUserPackage(userId: string, packageOfferId: string, payment
         console.log(`[createUserPackage] Creating PackageOfferCountryPrice from PackageCountryPrice...`);
         countryPrice = await prisma.packageOfferCountryPrice.create({
           data: {
-            packageOfferId,
+            packageOfferCountryPriceId,
             countryId: user.countryId,
             price: packageCountryPrice.price,
             originalPrice: packageCountryPrice.originalPrice,
@@ -449,7 +468,7 @@ async function createUserPackage(userId: string, packageOfferId: string, payment
         })
         console.log(`[createUserPackage] Created PackageOfferCountryPrice record: ${countryPrice.id}`)
       } else {
-        console.error(`[createUserPackage] Neither PackageOfferCountryPrice nor PackageCountryPrice found for package: ${packageOfferId}`)
+        console.error(`[createUserPackage] Neither PackageOfferCountryPrice nor PackageCountryPrice found for package: ${packageOfferCountryPriceId}`)
         return null
       }
     } else {
@@ -458,7 +477,7 @@ async function createUserPackage(userId: string, packageOfferId: string, payment
 
     // Calculate expiration date
     const expiresAt = new Date()
-    expiresAt.setDate(expiresAt.getDate() + packageOffer.validityDays)
+    expiresAt.setDate(expiresAt.getDate() + packageOfferCountryPrice.packageOffer.validityDays)
     console.log(`[createUserPackage] Calculated expiresAt: ${expiresAt.toISOString()}`);
 
     // Create user package
@@ -466,10 +485,10 @@ async function createUserPackage(userId: string, packageOfferId: string, payment
     const userPackage = await prisma.userPackage.create({
       data: {
         userId,
-        packageOfferId,
+        packageOfferCountryPriceId,
         expiresAt,
-        tipsRemaining: packageOffer.tipCount === -1 ? 0 : packageOffer.tipCount,
-        totalTips: packageOffer.tipCount, // Keep -1 for unlimited packages
+        tipsRemaining: packageOfferCountryPrice.packageOffer.tipCount === -1 ? 0 : packageOfferCountryPrice.packageOffer.tipCount,
+        totalTips: packageOfferCountryPrice.packageOffer.tipCount, // Keep -1 for unlimited packages
         pricePaid: countryPrice.price,
         currencyCode: countryPrice.currencyCode,
         currencySymbol: countryPrice.currencySymbol,
@@ -477,7 +496,7 @@ async function createUserPackage(userId: string, packageOfferId: string, payment
       }
     })
 
-    console.log(`[createUserPackage] SUCCESS: Created user package: ${userPackage.id} for user: ${userId} (PackageOffer)`)
+    console.log(`[createUserPackage] SUCCESS: Created user package: ${userPackage.id} for user: ${userId} (PackageOfferCountryPrice)`)
     return userPackage
   } catch (error) {
     console.error("[createUserPackage] Error creating user package:", error)

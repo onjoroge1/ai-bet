@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Brain, Crown, Target, Star, Clock, CheckCircle, XCircle, ArrowDownLeft, ArrowUpRight, Sparkles, Zap } from "lucide-react"
+import { Brain, Crown, Target, Star, Clock, CheckCircle, XCircle, ArrowDownLeft, ArrowUpRight, Sparkles, Zap, RefreshCw } from "lucide-react"
 import { useUserCountry } from "@/contexts/user-country-context"
 
 interface PredictionCreditsData {
@@ -29,10 +29,17 @@ interface PredictionCreditsData {
 export function PredictionCredits() {
   const [creditsData, setCreditsData] = useState<PredictionCreditsData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const { convertPrice, countryData } = useUserCountry()
 
-  const fetchCreditsData = async () => {
+  const fetchCreditsData = async (isRefresh = false) => {
     try {
+      if (isRefresh) {
+        setRefreshing(true)
+      } else {
+        setLoading(true)
+      }
+      
       // Fetch real credit balance from API
       const response = await fetch('/api/credits/balance')
       if (response.ok) {
@@ -103,6 +110,7 @@ export function PredictionCredits() {
       })
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }
 
@@ -200,10 +208,22 @@ export function PredictionCredits() {
             <Brain className="w-5 h-5 text-emerald-400" />
             <h3 className="text-lg font-semibold text-white">Prediction Credits</h3>
           </div>
-          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700">
-            <Zap className="w-4 h-4 mr-1" />
-            Get More
-          </Button>
+          <div className="flex items-center space-x-2">
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={() => fetchCreditsData(true)}
+              disabled={refreshing}
+              className="border-slate-600 text-slate-300 hover:bg-slate-700"
+            >
+              <RefreshCw className={`w-4 h-4 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
+              {refreshing ? 'Refreshing...' : 'Refresh'}
+            </Button>
+            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700">
+              <Zap className="w-4 h-4 mr-1" />
+              Get More
+            </Button>
+          </div>
         </div>
 
         {/* Credits Display */}

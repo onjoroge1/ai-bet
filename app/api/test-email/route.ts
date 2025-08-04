@@ -27,18 +27,142 @@ export async function POST(req: NextRequest) {
         })
         break
         
-      case 'welcome-email':
-        logger.info('[TestEmailAPI] Sending welcome email test')
-        result = await EmailService.sendWelcomeEmail({
-          to: email,
+      case 'tip-purchase-confirmation':
+        logger.info('[TestEmailAPI] Sending tip purchase confirmation test email')
+        result = await EmailService.sendTipPurchaseConfirmation({
+          amount: 4.99,
+          tipName: 'Premium Tip - Manchester United vs Liverpool',
+          matchDetails: 'Manchester United vs Liverpool - Premier League',
+          prediction: 'Manchester United to win',
+          confidence: 85,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          transactionId: 'test_txn_' + Date.now(),
+          currencySymbol: '$',
           userName: 'Test User',
-          appUrl: 'https://snapbet.com',
-          supportEmail: 'support@snapbet.com'
+          userEmail: email,
+          currency: 'USD',
+          appUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
         })
         break
         
+      case 'credit-claim-confirmation':
+        logger.info('[TestEmailAPI] Sending credit claim confirmation test email')
+        result = await EmailService.sendCreditClaimConfirmation({
+          tipName: 'Premium Tip - Arsenal vs Chelsea',
+          matchDetails: 'Arsenal vs Chelsea - Premier League',
+          prediction: 'Arsenal to win',
+          confidence: 80,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          creditsUsed: 1,
+          creditsRemaining: 5,
+          userName: 'Test User',
+          userEmail: email,
+          appUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        })
+        break
+        
+      case 'password-reset':
+        logger.info('[TestEmailAPI] Sending password reset test email')
+        result = await EmailService.sendPasswordResetEmail({
+          to: email,
+          userName: 'Test User',
+          resetToken: 'test_reset_token_' + Date.now(),
+          appUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        })
+        break
+        
+      case 'email-verification':
+        logger.info('[TestEmailAPI] Sending email verification test email')
+        result = await EmailService.sendEmailVerification({
+          to: email,
+          userName: 'Test User',
+          verificationToken: 'test_verification_token_' + Date.now(),
+          appUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        })
+        break
+        
+      case 'prediction-alert':
+        logger.info('[TestEmailAPI] Sending prediction alert test email')
+        result = await EmailService.sendPredictionAlert({
+          userName: email,
+          predictions: [
+            {
+              match: 'Manchester United vs Liverpool',
+              prediction: 'Manchester United to win',
+              confidence: 85,
+              odds: 2.10,
+              matchTime: 'Today 3:00 PM'
+            },
+            {
+              match: 'Arsenal vs Chelsea',
+              prediction: 'Arsenal to win',
+              confidence: 82,
+              odds: 1.95,
+              matchTime: 'Tomorrow 2:00 PM'
+            }
+          ]
+        })
+        break
+        
+      case 'daily-digest':
+        logger.info('[TestEmailAPI] Sending daily digest test email')
+        result = await EmailService.sendDailyDigest({
+          userName: email,
+          newPredictions: 5,
+          topPredictions: [
+            {
+              match: 'Manchester United vs Liverpool',
+              prediction: 'Manchester United to win',
+              confidence: 85
+            },
+            {
+              match: 'Arsenal vs Chelsea',
+              prediction: 'Arsenal to win',
+              confidence: 82
+            }
+          ],
+          recentResults: [
+            {
+              match: 'Barcelona vs Real Madrid',
+              result: 'Won',
+              isWin: true
+            },
+            {
+              match: 'Bayern Munich vs Dortmund',
+              result: 'Lost',
+              isWin: false
+            }
+          ],
+          unreadNotifications: 3
+        })
+        break
+        
+      case 'achievement-notification':
+        logger.info('[TestEmailAPI] Sending achievement notification test email')
+        result = await EmailService.sendAchievementNotification({
+          userName: email,
+          achievementName: 'First Win',
+          description: 'You won your first prediction!',
+          points: 100
+        })
+        break
+        
+      case 'referral-bonus':
+        logger.info('[TestEmailAPI] Sending referral bonus test email')
+        // For referral bonus, we'll use a generic notification since it's not implemented yet
+        result = await EmailService.sendSecurityNotification(
+          email,
+          'Test User',
+          'Referral Bonus Earned!',
+          'Jane Smith joined using your referral code! You\'ve earned $10.00 bonus!'
+        )
+        break
+        
       default:
-        return NextResponse.json({ error: 'Invalid email type' }, { status: 400 })
+        return NextResponse.json(
+          { error: 'Invalid email type' },
+          { status: 400 }
+        )
     }
 
     logger.info('[TestEmailAPI] Test email sent successfully', { result })

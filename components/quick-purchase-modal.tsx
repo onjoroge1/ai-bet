@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { CreditCard, Smartphone, CheckCircle, Clock, Shield, Zap, Star, Crown, Gift, Brain, TrendingUp, Target, Loader2 } from "lucide-react"
+import { CreditCard, Smartphone, CheckCircle, Clock, Shield, Zap, Star, Crown, Gift, Brain, TrendingUp, Target, Loader2, Info } from "lucide-react"
 import { useUserCountry } from "@/contexts/user-country-context"
 import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
@@ -142,13 +142,20 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
   // New: Unified payment method selection (refactored)
   const handleSelectPayment = async (method: string) => {
     setSelectedPaymentMethod(method);
-    setClientSecret('');
-    setPaymentStep('select');
+    // Just select the payment method - don't create payment intent yet
+    // The "Pay $19.99" button will become active, and payment intent will be created when user clicks it
+  };
+
+  // New: Handle pay button click
+  const handlePayClick = async () => {
+    if (!selectedPaymentMethod) return;
+    
     // Local payments (not implemented): show toast and do not transition
-    if (isKenya && (method === 'mpesa' || method === 'airtel_money')) {
-      toast('Coming soon: Local payment integration for ' + (method === 'mpesa' ? 'M-Pesa' : 'Airtel Money'));
+    if (isKenya && (selectedPaymentMethod === 'mpesa' || selectedPaymentMethod === 'airtel_money')) {
+      toast('Coming soon: Local payment integration for ' + (selectedPaymentMethod === 'mpesa' ? 'M-Pesa' : 'Airtel Money'));
       return;
     }
+    
     // Global payments: proceed to payment form
     setIsLoading(true);
     try {
@@ -158,7 +165,7 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
         body: JSON.stringify({
           itemId: item?.id,
           itemType: item?.type === 'package' ? 'package' : 'tip',
-          paymentMethod: method,
+          paymentMethod: selectedPaymentMethod,
         }),
       });
       if (!response.ok) throw new Error('Failed to create payment intent');
@@ -384,6 +391,27 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
           <div id="quick-purchase-description" className="sr-only">
             Purchase dialog for {item?.name || 'selected item'}
           </div>
+          
+          {/* Step Indicator */}
+          <div className="flex items-center space-x-4 mt-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center font-medium">
+                1
+              </div>
+              <span className="text-sm text-slate-300">Select Payment Method</span>
+            </div>
+            <div className="flex-1 h-px bg-slate-600"></div>
+            <div className="flex items-center space-x-2">
+              <div className={`w-6 h-6 rounded-full text-xs flex items-center justify-center font-medium ${
+                selectedPaymentMethod ? 'bg-emerald-600 text-white' : 'bg-slate-600 text-slate-400'
+              }`}>
+                2
+              </div>
+              <span className={`text-sm ${selectedPaymentMethod ? 'text-slate-300' : 'text-slate-500'}`}>
+                Pay
+              </span>
+            </div>
+          </div>
         </DialogHeader>
         {paymentStep === 'select' ? (
           <div className="space-y-6">
@@ -474,6 +502,37 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
                   Global Payments
                 </TabsTrigger>
               </TabsList>
+              
+              {/* Selected Payment Method Indicator */}
+              {selectedPaymentMethod && (
+                <div className="mb-4 p-3 bg-emerald-900/20 border border-emerald-700/50 rounded-lg">
+                  <div className="flex items-center space-x-2">
+                    <CheckCircle className="w-5 h-5 text-emerald-400" />
+                    <span className="text-emerald-300 font-medium">
+                      Payment method selected: {
+                        [...globalPayments, ...localPaymentsKE].find(m => m.key === selectedPaymentMethod)?.label || selectedPaymentMethod
+                      }
+                    </span>
+                  </div>
+                  <p className="text-slate-400 text-sm mt-1">
+                    Click "Pay {convertPrice(item.price.toString())}" below to proceed to payment
+                  </p>
+                </div>
+              )}
+              
+              {/* Instruction Text */}
+              {!selectedPaymentMethod && (
+                <div className="mb-4 p-3 bg-slate-800/50 border border-slate-600 rounded-lg">
+                  <div className="flex items-center space-x-2">
+                    <Info className="w-5 h-5 text-blue-400" />
+                    <span className="text-slate-300 font-medium">Choose your payment method</span>
+                  </div>
+                  <p className="text-slate-400 text-sm mt-1">
+                    Select a payment method above, then click "Pay {convertPrice(item.price.toString())}" to proceed
+                  </p>
+                </div>
+              )}
+              
               {isKenya && (
                 <TabsContent value="local">
                   <div className="grid grid-cols-2 gap-4">
@@ -514,12 +573,21 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
             <div className="flex space-x-3 mt-4">
               <Button variant="outline" onClick={onClose} className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700">Cancel</Button>
               <Button
-                onClick={() => selectedPaymentMethod && handleSelectPayment(selectedPaymentMethod)}
+                onClick={handlePayClick}
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center justify-center gap-2"
                 disabled={!selectedPaymentMethod || isLoading}
               >
-                <CreditCard className="w-5 h-5 mr-2" />
-                {`Pay ${convertPrice(item.price.toString())}`}
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="w-5 h-5 mr-2" />
+                    Pay {convertPrice(item.price.toString())}
+                  </>
+                )}
               </Button>
             </div>
           </div>

@@ -603,21 +603,25 @@ export async function POST(request: NextRequest) {
     try {
       const { NotificationService } = await import('@/lib/notification-service');
       
-      await NotificationService.createNotification({
+      // Get tip details for the notification
+      const tipName = `Premium Tip - ${prediction.match.homeTeam.name} vs ${prediction.match.awayTeam.name}`;
+      const matchDetails = `${prediction.match.homeTeam.name} vs ${prediction.match.awayTeam.name} - ${prediction.match.league.name}`;
+      const predictionText = purchaseWithQuickPurchase?.quickPurchase.predictionType || 'Match prediction';
+      const confidence = purchaseWithQuickPurchase?.quickPurchase.confidenceScore || 85;
+      const expiresAt = prediction.match.matchDate ? new Date(prediction.match.matchDate).toISOString() : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const creditsUsed = 1;
+      const creditsRemaining = remainingCredits;
+      
+      await NotificationService.createCreditClaimNotification(
         userId,
-        title: 'Tip Claimed Successfully',
-        message: `You've claimed a tip for ${prediction.match.homeTeam.name} vs ${prediction.match.awayTeam.name} using 1 credit.`,
-        type: 'success',
-        category: 'prediction',
-        metadata: {
-          predictionId,
-          purchaseId: result.purchase.id,
-          creditsSpent: 1,
-          remainingCredits: remainingCredits,
-          creditDeductionSource: result.creditDeductionSource,
-          creditBreakdown
-        }
-      });
+        tipName,
+        matchDetails,
+        predictionText,
+        confidence,
+        expiresAt,
+        creditsUsed,
+        creditsRemaining
+      );
     } catch (error) {
       console.error('Failed to send notification:', error);
     }

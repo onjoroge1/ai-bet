@@ -6,6 +6,7 @@ import { z } from "zod"
 import { generateToken } from "@/lib/auth"
 import { getCountryByCode, isValidCountryCode } from "@/lib/countries"
 import { EmailService } from "@/lib/email-service"
+import crypto from "crypto"
 
 const signupSchema = z.object({
   name: z.string().min(1, "Full name is required"),
@@ -89,6 +90,10 @@ export async function POST(request: NextRequest) {
     const saltRounds = 10 // Reduced from 12 for better performance
     const hashedPassword = await bcrypt.hash(password, saltRounds)
 
+    // Generate email verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex')
+    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+
     const user = await prisma.user.create({
       data: {
         fullName: name,
@@ -98,6 +103,9 @@ export async function POST(request: NextRequest) {
         role: "user",
         subscriptionPlan: "free",
         isActive: true,
+        emailVerified: false,
+        emailVerificationToken: verificationToken,
+        emailVerificationExpires: verificationExpires,
       },
       select: {
         id: true,
@@ -141,6 +149,28 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // Send email verification email
+    try {
+      await EmailService.sendEmailVerification({
+        to: user.email,
+        userName: user.fullName || user.email,
+        verificationToken,
+        appUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      })
+      
+      logger.info('Email verification email sent successfully', {
+        tags: ["auth", "signup", "email-verification"],
+        data: { email: user.email, userId: user.id },
+      })
+    } catch (emailError) {
+      // Don't fail signup if email fails, just log it
+      logger.error('Failed to send email verification email', {
+        tags: ["auth", "signup", "email-verification"],
+        error: emailError instanceof Error ? emailError : undefined,
+        data: { email: user.email, userId: user.id },
+      })
+    }
+
     if (!user.countryId) {
         logger.error("User created without a countryId", { data: { userId: user.id } });
         return NextResponse.json({ error: "Internal server error during user creation." }, { status: 500 });
@@ -168,6 +198,7 @@ export async function POST(request: NextRequest) {
         role: user.role,
         country: user.country,
       },
+      message: "Account created successfully! Please check your email to verify your account.",
     })
 
     response.cookies.set("auth_token", token, {

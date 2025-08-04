@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { EmailTemplateService } from '@/lib/email-template-service'
+import { EmailService } from '@/lib/email-service'
 import { logger } from '@/lib/logger'
 
 export async function POST(request: NextRequest) {
@@ -29,38 +30,97 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Render the template with variables
-    const renderedEmail = await EmailTemplateService.renderTemplate(template.slug, variables || {})
+    // Prepare variables for this recipient
+    const recipientVariables = {
+      ...variables,
+      userName: variables?.userName || email.split('@')[0],
+      userEmail: email
+    }
 
-    // Log the email (in a real implementation, you would send the actual email)
-    await EmailTemplateService.logEmail({
-      templateId,
-      recipient: email,
+    // Send email based on template type
+    let emailResult
+    
+    // For all templates, use the database template content
+    const renderedEmail = await EmailTemplateService.renderTemplate(
+      template.slug, 
+      recipientVariables
+    )
+    
+    // Use the public sendGenericEmail method with the database template
+    emailResult = await EmailService.sendGenericEmail({
+      to: email,
       subject: renderedEmail.subject,
-      status: 'sent',
-      metadata: {
-        testEmail: true,
-        variables: variables || {},
-        renderedAt: new Date().toISOString()
-      }
+      html: renderedEmail.html
     })
 
-    logger.info('Test email logged', { 
-      templateId, 
-      recipient: email, 
-      subject: renderedEmail.subject 
-    })
-
-    return NextResponse.json({
-      success: true,
-      message: 'Test email sent successfully',
-      data: {
+    if (emailResult.success) {
+      // Log the email
+      await EmailTemplateService.logEmail({
         templateId,
         recipient: email,
-        subject: renderedEmail.subject,
-        renderedAt: new Date().toISOString()
-      }
-    })
+        subject: template.subject,
+        status: 'sent',
+        metadata: {
+          testEmail: true,
+          variables: recipientVariables,
+          renderedAt: new Date().toISOString(),
+          messageId: emailResult.messageId
+        }
+      })
+
+      logger.info('Test email sent successfully', { 
+        templateId, 
+        templateSlug: template.slug,
+        recipient: email, 
+        subject: template.subject,
+        messageId: emailResult.messageId
+      })
+
+      return NextResponse.json({
+        success: true,
+        message: 'Test email sent successfully',
+        data: {
+          templateId,
+          templateSlug: template.slug,
+          recipient: email,
+          subject: template.subject,
+          messageId: emailResult.messageId,
+          renderedAt: new Date().toISOString()
+        }
+      })
+    } else {
+      // Log the failure
+      await EmailTemplateService.logEmail({
+        templateId,
+        recipient: email,
+        subject: template.subject,
+        status: 'failed',
+        errorMessage: emailResult.error?.toString(),
+        metadata: {
+          testEmail: true,
+          variables: recipientVariables,
+          renderedAt: new Date().toISOString()
+        }
+      })
+
+      logger.error('Test email failed', { 
+        templateId, 
+        templateSlug: template.slug,
+        recipient: email, 
+        error: emailResult.error
+      })
+
+      return NextResponse.json({
+        success: false,
+        error: `Failed to send test email: ${emailResult.error}`,
+        data: {
+          templateId,
+          templateSlug: template.slug,
+          recipient: email,
+          error: emailResult.error
+        }
+      })
+    }
 
   } catch (error) {
     logger.error('Failed to send test email', { error })

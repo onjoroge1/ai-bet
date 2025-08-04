@@ -209,6 +209,7 @@ export class NotificationService {
     if (user?.email) {
       try {
         await EmailService.sendPaymentConfirmation({
+          to: user.email, // Add the email address
           amount,
           packageName,
           transactionId: `TXN-${Date.now()}`,
@@ -265,6 +266,7 @@ export class NotificationService {
     if (user?.email) {
       try {
         await EmailService.sendAchievementNotification({
+          to: user.email, // Add the email address
           userName: user.email, // Email address
           achievementName,
           description,
@@ -506,6 +508,7 @@ export class NotificationService {
         if (user?.email) {
           try {
             await EmailService.sendPredictionAlert({
+              to: user.email, // Add the email address
               userName: user.email, // Email address
               predictions: highConfidencePredictions,
             })
@@ -636,7 +639,10 @@ export class NotificationService {
           }
 
           // Send daily digest email
-          await EmailService.sendDailyDigest(digestData)
+          await EmailService.sendDailyDigest({
+            to: user.email, // Add the email address
+            ...digestData
+          })
           
           logger.info('Daily digest email sent', {
             data: { userId: user.id, email: user.email }
@@ -653,5 +659,141 @@ export class NotificationService {
         error: error as Error,
       })
     }
+  }
+
+  /**
+   * Create a tip purchase confirmation notification
+   */
+  static async createTipPurchaseNotification(
+    userId: string,
+    amount: number,
+    tipName: string,
+    matchDetails: string,
+    prediction: string,
+    confidence: number,
+    expiresAt: string,
+    transactionId: string,
+    currencySymbol: string = '$'
+  ) {
+    // Get user email for email notification
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, fullName: true },
+    })
+
+    const notification = await this.createNotification({
+      userId,
+      title: '🎯 Tip Purchase Confirmed',
+      message: `Your tip "${tipName}" has been purchased for ${currencySymbol}${amount.toFixed(2)}. Check your dashboard to view the prediction details.`,
+      type: 'success',
+      category: 'payment',
+      actionUrl: `/dashboard/predictions`,
+      metadata: {
+        amount,
+        tipName,
+        matchDetails,
+        prediction,
+        confidence,
+        expiresAt,
+        transactionId,
+        currencySymbol
+      },
+    })
+
+    // Send email notification for tip purchase confirmation
+    if (user?.email) {
+      try {
+        await EmailService.sendTipPurchaseConfirmation({
+          amount,
+          tipName,
+          matchDetails,
+          prediction,
+          confidence,
+          expiresAt,
+          transactionId,
+          currencySymbol,
+          userName: user.fullName || user.email,
+          userEmail: user.email,
+          currency: currencySymbol === '$' ? 'USD' : 'EUR',
+          appUrl: process.env.NEXT_PUBLIC_APP_URL || 'https://snapbet.com'
+        })
+        logger.info('Tip purchase confirmation email sent', {
+          data: { userId, email: user.email, amount, tipName }
+        })
+      } catch (error) {
+        logger.error('Failed to send tip purchase confirmation email', {
+          error: error as Error,
+          data: { userId, email: user.email }
+        })
+      }
+    }
+
+    return notification
+  }
+
+  /**
+   * Create a credit claim confirmation notification
+   */
+  static async createCreditClaimNotification(
+    userId: string,
+    tipName: string,
+    matchDetails: string,
+    prediction: string,
+    confidence: number,
+    expiresAt: string,
+    creditsUsed: number,
+    creditsRemaining: number
+  ) {
+    // Get user email for email notification
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, fullName: true },
+    })
+
+    const notification = await this.createNotification({
+      userId,
+      title: '💳 Tip Claimed with Credits',
+      message: `You've successfully claimed "${tipName}" using ${creditsUsed} credit${creditsUsed > 1 ? 's' : ''}. You have ${creditsRemaining} credit${creditsRemaining !== 1 ? 's' : ''} remaining.`,
+      type: 'success',
+      category: 'payment',
+      actionUrl: `/dashboard/predictions`,
+      metadata: {
+        tipName,
+        matchDetails,
+        prediction,
+        confidence,
+        expiresAt,
+        creditsUsed,
+        creditsRemaining
+      },
+    })
+
+    // Send email notification for credit claim confirmation
+    if (user?.email) {
+      try {
+        await EmailService.sendCreditClaimConfirmation({
+          tipName,
+          matchDetails,
+          prediction,
+          confidence,
+          expiresAt,
+          creditsUsed,
+          creditsRemaining,
+          userName: user.fullName || user.email,
+          userEmail: user.email,
+          appUrl: process.env.NEXT_PUBLIC_APP_URL || 'https://snapbet.com'
+        })
+        logger.info('Credit claim confirmation email sent', {
+          data: { userId, email: user.email, tipName, creditsUsed }
+        })
+      } catch (error) {
+        logger.error('Failed to send credit claim confirmation email', {
+          error: error as Error,
+          data: { userId, email: user.email }
+        })
+      }
+    }
+
+    return notification
   }
 } 

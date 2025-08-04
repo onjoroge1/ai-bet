@@ -72,57 +72,16 @@ export async function POST(request: Request) {
     if (itemType === 'package') {
       console.log("🔍 DEBUG: Processing PACKAGE item")
       
-      // First try to find a PackageOffer with this ID
-      console.log("🔍 DEBUG: Looking for PackageOffer with ID:", itemId)
-      const packageOffer = await prisma.packageOffer.findUnique({
-        where: { id: itemId },
-        include: {
-          countryPrices: {
-            where: {
-              countryId: user.countryId!,
-              isActive: true
-            }
-          }
-        }
-      })
-
-      console.log("🔍 DEBUG: PackageOffer query result:", {
-        found: !!packageOffer,
-        name: packageOffer?.name,
-        packageType: packageOffer?.packageType,
-        countryPricesCount: packageOffer?.countryPrices?.length || 0,
-        userCountryId: user.countryId,
-        packageCountryPrices: packageOffer?.countryPrices?.map(cp => ({
-          countryId: cp.countryId,
-          price: cp.price,
-          isActive: cp.isActive
-        }))
-      })
-
-      // If not found, try to parse as PackageCountryPrice ID (format: countryId_packageType)
-      if (!packageOffer) {
-        console.log("🔍 DEBUG: PackageOffer not found, trying to parse as countryId_packageType")
+      // Parse the itemId to determine if it's a PackageOfferCountryPrice ID or countryId_packageType
+      const firstUnderscoreIndex = itemId.indexOf('_')
+      if (firstUnderscoreIndex === -1) {
+        // It's a direct PackageOfferCountryPrice ID
+        console.log("🔍 DEBUG: Treating as direct PackageOfferCountryPrice ID")
         
-        // Handle package types with underscores (e.g., "weekend_pass", "weekly_pass", "monthly_sub")
-        // The format is: countryId_packageType where packageType can contain underscores
-        const firstUnderscoreIndex = itemId.indexOf('_')
-        if (firstUnderscoreIndex === -1) {
-          console.log("❌ DEBUG: No underscore found in package ID")
-          return NextResponse.json({ error: "Invalid package ID format" }, { status: 400 })
-        }
-        
-        const countryId = itemId.substring(0, firstUnderscoreIndex)
-        const packageType = itemId.substring(firstUnderscoreIndex + 1)
-        
-        console.log("🔍 DEBUG: Parsed as countryId_packageType:", { countryId, packageType })
-        
-        // Find the PackageCountryPrice record
-        const countryPrice = await prisma.packageCountryPrice.findFirst({
-          where: {
-            countryId,
-            packageType
-          },
+        const packageOfferCountryPrice = await prisma.packageOfferCountryPrice.findUnique({
+          where: { id: itemId },
           include: {
+            packageOffer: true,
             country: {
               select: {
                 currencyCode: true,
@@ -132,63 +91,79 @@ export async function POST(request: Request) {
           }
         })
 
-        if (countryPrice) {
-          console.log("🔍 DEBUG: Found PackageCountryPrice:", { price: countryPrice.price, packageType })
-          // Create a virtual package offer structure for payment
-          amount = Number(countryPrice.price)
-          currency = countryPrice.country.currencyCode || 'USD'
-          description = `Purchase: ${packageType} Package`
-          
-          metadata.packageName = packageType
-          metadata.packageType = packageType
-          metadata.tipCount = 1 // Default, will be updated based on package type
-          metadata.validityDays = 1 // Default, will be updated based on package type
-          
-          // Set tip count and validity based on package type
-          switch (packageType) {
-            case 'prediction':
-              metadata.tipCount = 1
-              metadata.validityDays = 1
-              break
-            case 'weekend_pass':
-              metadata.tipCount = 5
-              metadata.validityDays = 3
-              break
-            case 'weekly_pass':
-              metadata.tipCount = 8
-              metadata.validityDays = 7
-              break
-            case 'monthly_sub':
-              metadata.tipCount = -1 // Unlimited
-              metadata.validityDays = 30
-              break
-            default:
-              metadata.tipCount = 1
-              metadata.validityDays = 1
-          }
-        } else {
-          console.log("❌ DEBUG: PackageCountryPrice not found for:", { countryId, packageType })
-          return NextResponse.json({ error: "Package not found or not available in your country" }, { status: 404 })
-        }
-      } else {
-        console.log("🔍 DEBUG: Found PackageOffer record")
-        
-        if (packageOffer.countryPrices.length === 0) {
-          console.log("❌ DEBUG: PackageOffer found but no country prices for user's country")
-          return NextResponse.json({ error: "Package not found or not available in your country" }, { status: 404 })
+        if (!packageOfferCountryPrice) {
+          console.log("❌ DEBUG: PackageOfferCountryPrice not found with ID:", itemId)
+          return NextResponse.json({ error: "Package not found" }, { status: 404 })
         }
 
-        const countryPrice = packageOffer.countryPrices[0]
-        console.log("🔍 DEBUG: Using country price:", { price: countryPrice.price, currency: countryPrice.currencyCode })
+        console.log("🔍 DEBUG: Found PackageOfferCountryPrice:", {
+          id: packageOfferCountryPrice.id,
+          packageType: packageOfferCountryPrice.packageOffer.packageType,
+          price: packageOfferCountryPrice.price,
+          country: packageOfferCountryPrice.country.name
+        })
+
+        amount = Number(packageOfferCountryPrice.price)
+        currency = packageOfferCountryPrice.country.currencyCode || 'USD'
+        description = `Purchase: ${packageOfferCountryPrice.packageOffer.name}`
         
-        amount = Number(countryPrice.price)
-        currency = countryPrice.currencyCode
-        description = `Purchase: ${packageOffer.name}`
+        metadata.packageName = packageOfferCountryPrice.packageOffer.name
+        metadata.packageType = packageOfferCountryPrice.packageOffer.packageType
+        metadata.tipCount = packageOfferCountryPrice.packageOffer.tipCount
+        metadata.validityDays = packageOfferCountryPrice.packageOffer.validityDays
+        metadata.packageOfferCountryPriceId = packageOfferCountryPrice.id
         
-        metadata.packageName = packageOffer.name
-        metadata.packageType = packageOffer.packageType
-        metadata.tipCount = packageOffer.tipCount
-        metadata.validityDays = packageOffer.validityDays
+      } else {
+        // It's a countryId_packageType format
+        console.log("🔍 DEBUG: Parsing as countryId_packageType format")
+        
+        const countryId = itemId.substring(0, firstUnderscoreIndex)
+        const packageType = itemId.substring(firstUnderscoreIndex + 1)
+        
+        console.log("🔍 DEBUG: Parsed as countryId_packageType:", { countryId, packageType })
+        
+        // Find the PackageOfferCountryPrice record directly
+        const packageOfferCountryPrice = await prisma.packageOfferCountryPrice.findFirst({
+          where: {
+            countryId,
+            packageOffer: {
+              packageType
+            },
+            isActive: true
+          },
+          include: {
+            packageOffer: true,
+            country: {
+              select: {
+                currencyCode: true,
+                currencySymbol: true
+              }
+            }
+          }
+        })
+
+        if (packageOfferCountryPrice) {
+          console.log("🔍 DEBUG: Found PackageOfferCountryPrice:", {
+            id: packageOfferCountryPrice.id,
+            packageType: packageOfferCountryPrice.packageOffer.packageType,
+            price: packageOfferCountryPrice.price,
+            country: packageOfferCountryPrice.country.name
+          })
+
+          amount = Number(packageOfferCountryPrice.price)
+          currency = packageOfferCountryPrice.country.currencyCode || 'USD'
+          description = `Purchase: ${packageOfferCountryPrice.packageOffer.name}`
+          
+          metadata.packageName = packageOfferCountryPrice.packageOffer.name
+          metadata.packageType = packageOfferCountryPrice.packageOffer.packageType
+          metadata.tipCount = packageOfferCountryPrice.packageOffer.tipCount
+          metadata.validityDays = packageOfferCountryPrice.packageOffer.validityDays
+          metadata.packageOfferCountryPriceId = packageOfferCountryPrice.id
+          
+        } else {
+          console.log("❌ DEBUG: PackageOfferCountryPrice not found for:", { countryId, packageType })
+          return NextResponse.json({ error: "Package not found or not available in your country" }, { status: 404 })
+        }
       }
     } else if (itemType === 'tip') {
       console.log("🔍 DEBUG: Processing TIP item")

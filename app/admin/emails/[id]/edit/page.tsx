@@ -18,11 +18,13 @@ import {
   Copy, 
   Trash2,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Send
 } from 'lucide-react'
 import { EmailTemplate, EmailTemplateCategory, EMAIL_VARIABLES } from '@/types/email-templates'
 import { EmailTemplateEditor } from '@/components/admin/email-template-editor'
 import { EmailPreview } from '@/components/admin/email-preview'
+import { BulkEmailSender } from '@/components/admin/bulk-email-sender'
 
 export default function EditEmailTemplatePage() {
   const params = useParams()
@@ -113,19 +115,8 @@ export default function EditEmailTemplatePage() {
 
   const handleDuplicate = async () => {
     try {
-      setSaving(true)
-      const duplicateData = {
-        ...formData,
-        name: `${formData.name} (Copy)`,
-        slug: `${formData.slug}-copy`,
-      }
-
-      const response = await fetch('/api/admin/email-templates', {
+      const response = await fetch(`/api/admin/email-templates/${templateId}/duplicate`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(duplicateData),
       })
 
       const data = await response.json()
@@ -137,8 +128,6 @@ export default function EditEmailTemplatePage() {
       }
     } catch (err) {
       setError('Failed to duplicate template')
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -148,7 +137,6 @@ export default function EditEmailTemplatePage() {
     }
 
     try {
-      setSaving(true)
       const response = await fetch(`/api/admin/email-templates/${templateId}`, {
         method: 'DELETE',
       })
@@ -162,8 +150,6 @@ export default function EditEmailTemplatePage() {
       }
     } catch (err) {
       setError('Failed to delete template')
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -401,7 +387,7 @@ export default function EditEmailTemplatePage() {
 
           <div className="lg:col-span-2">
             <Tabs defaultValue="editor" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="editor" className="flex items-center gap-2">
                   <Edit className="w-4 h-4" />
                   Editor
@@ -409,6 +395,10 @@ export default function EditEmailTemplatePage() {
                 <TabsTrigger value="preview" className="flex items-center gap-2">
                   <Eye className="w-4 h-4" />
                   Preview
+                </TabsTrigger>
+                <TabsTrigger value="bulk-send" className="flex items-center gap-2">
+                  <Send className="w-4 h-4" />
+                  Bulk Send
                 </TabsTrigger>
               </TabsList>
 
@@ -457,6 +447,16 @@ export default function EditEmailTemplatePage() {
                   variables={variables}
                   onSendTest={handleSendTest}
                 />
+              </TabsContent>
+
+              <TabsContent value="bulk-send" className="mt-6">
+                {template && (
+                  <BulkEmailSender
+                    templateId={template.id}
+                    templateSlug={template.slug}
+                    variables={variables}
+                  />
+                )}
               </TabsContent>
             </Tabs>
           </div>

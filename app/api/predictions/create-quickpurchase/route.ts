@@ -268,13 +268,14 @@ export async function POST(request: Request) {
 
 // GET /api/predictions/create-quickpurchase - Get available matches for creating QuickPurchases
 export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url)
+  
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.role || session.user.role.toLowerCase() !== 'admin') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { searchParams } = new URL(request.url)
     const leagueId = searchParams.get('league_id') || '39'
     const limit = searchParams.get('limit') || '10'
 
@@ -330,7 +331,7 @@ export async function GET(request: Request) {
 
     // Check if we have matches to process
     if (!Array.isArray(matches) || matches.length === 0) {
-      logger.error('No matches found in API response', {
+      logger.info('No matches found in API response', {
         tags: ['api', 'predictions', 'create-quickpurchase'],
         data: {
           leagueId,
@@ -339,7 +340,16 @@ export async function GET(request: Request) {
           originalResponse: responseData
         }
       })
-      throw new Error('No matches found in API response')
+      
+      // Return empty matches array instead of throwing error
+      return NextResponse.json({
+        matches: [],
+        filters: {
+          league_id: leagueId,
+          limit: parseInt(limit)
+        },
+        message: 'No upcoming matches found for this league'
+      })
     }
 
     // Filter out matches that already have QuickPurchases
@@ -371,12 +381,50 @@ export async function GET(request: Request) {
   } catch (error) {
     logger.error('GET /api/predictions/create-quickpurchase - Error', {
       tags: ['api', 'predictions', 'create-quickpurchase'],
-      error: error instanceof Error ? error : undefined
+      error: error instanceof Error ? error : undefined,
+      data: {
+        leagueId: searchParams.get('league_id') || '39',
+        limit: searchParams.get('limit') || '10',
+        backendUrl: process.env.BACKEND_URL,
+        hasApiKey: !!process.env.BACKEND_API_KEY
+      }
     })
 
+    // Provide more specific error messages
+    let errorMessage = 'Failed to fetch matches'
+    let statusCode = 500
+
+    if (error instanceof Error) {
+      if (error.message.includes('Failed to fetch matches:')) {
+        const statusMatch = error.message.match(/Failed to fetch matches: (\d+)/)
+        if (statusMatch) {
+          const status = parseInt(statusMatch[1])
+          if (status === 401) {
+            errorMessage = 'Authentication failed with external API'
+            statusCode = 401
+          } else if (status === 403) {
+            errorMessage = 'Access denied to external API'
+            statusCode = 403
+          } else if (status === 404) {
+            errorMessage = 'External API endpoint not found'
+            statusCode = 404
+          } else if (status >= 500) {
+            errorMessage = 'External API server error'
+            statusCode = 502
+          }
+        }
+      } else if (error.message.includes('fetch')) {
+        errorMessage = 'Network error connecting to external API'
+        statusCode = 503
+      }
+    }
+
     return NextResponse.json(
-      { error: 'Failed to fetch matches' },
-      { status: 500 }
+      { 
+        error: errorMessage,
+        details: process.env.NODE_ENV === 'development' ? error instanceof Error ? error.message : 'Unknown error' : undefined
+      },
+      { status: statusCode }
     )
   }
 } 

@@ -213,6 +213,18 @@ async function completeQuiz(data: { participationId: string }) {
       }
     })
     
+    // If user is authenticated, invalidate their credit balance cache
+    if (participation.userId) {
+      try {
+        const { cacheManager } = await import('@/lib/cache-manager')
+        await cacheManager.delete(`credit-balance:${participation.userId}`, { prefix: 'credits' })
+        console.log(`Cache invalidated for user ${participation.userId} after quiz completion`)
+      } catch (error) {
+        console.error('Failed to invalidate credit balance cache after quiz completion:', error)
+        // Don't fail the request if cache invalidation fails
+      }
+    }
+    
     return NextResponse.json({
       participation: { ...participation, totalScore: finalScore },
       stats: {
@@ -303,6 +315,11 @@ async function claimQuizCredits(data: { participationId: string }) {
       return NextResponse.json({ error: "Quiz must be completed before claiming credits" }, { status: 400 })
     }
     
+    // Check if credits have already been claimed for this participation
+    if (participation.creditsClaimed) {
+      return NextResponse.json({ error: "Credits have already been claimed for this quiz completion" }, { status: 400 })
+    }
+    
     // Convert quiz points to dashboard credits (50 points = 1 credit)
     const creditsToAdd = Math.floor(participation.totalScore / 50)
     
@@ -313,15 +330,16 @@ async function claimQuizCredits(data: { participationId: string }) {
       }, { status: 400 })
     }
     
-    // Add credits to user's account
+    // Add the ORIGINAL quiz points to user's account (not the calculated credits)
+    // This allows the credit calculation to work correctly: Math.floor(points / 50)
     const userPointsUpdate = await prisma.userPoints.upsert({
       where: { userId: session.user.id },
       update: {
-        points: { increment: creditsToAdd }
+        points: { increment: participation.totalScore } // Store original points, not calculated credits
       },
       create: {
         userId: session.user.id,
-        points: creditsToAdd
+        points: participation.totalScore // Store original points, not calculated credits
       }
     })
     
@@ -330,12 +348,28 @@ async function claimQuizCredits(data: { participationId: string }) {
       data: {
         userPointsId: userPointsUpdate.id,
         userId: session.user.id,
-        amount: creditsToAdd,
+        amount: participation.totalScore, // Store original points in transaction
         type: "QUIZ_COMPLETION",
-        description: `Quiz completion bonus - ${participation.totalScore} points`,
+        description: `Quiz completion bonus - ${participation.totalScore} points (${creditsToAdd} credits)`,
         reference: `quiz_${participation.id}`
       }
     })
+    
+    // Mark the participation as claimed to prevent duplicate claims
+    await prisma.quizParticipation.update({
+      where: { id: data.participationId },
+      data: { creditsClaimed: true }
+    })
+    
+    // Invalidate credit balance cache to ensure fresh data
+    try {
+      const { cacheManager } = await import('@/lib/cache-manager')
+      await cacheManager.delete(`credit-balance:${session.user.id}`, { prefix: 'credits' })
+      console.log(`Cache invalidated for user ${session.user.id} after quiz credit claim`)
+    } catch (error) {
+      console.error('Failed to invalidate credit balance cache:', error)
+      // Don't fail the request if cache invalidation fails
+    }
     
     return NextResponse.json({
       success: true,

@@ -6,11 +6,12 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 export interface EmailNotificationData {
   to: string
   subject: string
-  template: 'payment-confirmation' | 'prediction-alert' | 'daily-digest' | 'achievement' | 'security' | 'welcome-email'
+  template: 'payment-confirmation' | 'prediction-alert' | 'daily-digest' | 'achievement' | 'security' | 'welcome-email' | 'password-reset' | 'email-verification' | 'generic'
   data: Record<string, any>
 }
 
 export interface PaymentConfirmationData {
+  to: string // Add email address field
   amount: number
   packageName: string
   transactionId: string
@@ -19,7 +20,36 @@ export interface PaymentConfirmationData {
   currencySymbol?: string
 }
 
+export interface TipPurchaseConfirmationData {
+  amount: number
+  tipName: string
+  matchDetails: string
+  prediction: string
+  confidence: number
+  expiresAt: string
+  transactionId: string
+  currencySymbol: string
+  userName: string
+  userEmail: string
+  currency: string
+  appUrl: string
+}
+
+export interface CreditClaimConfirmationData {
+  tipName: string
+  matchDetails: string
+  prediction: string
+  confidence: number
+  expiresAt: string
+  creditsUsed: number
+  creditsRemaining: number
+  userName: string
+  userEmail: string
+  appUrl: string
+}
+
 export interface PredictionAlertData {
+  to: string // Add email address field
   userName: string
   predictions: Array<{
     match: string
@@ -31,6 +61,7 @@ export interface PredictionAlertData {
 }
 
 export interface DailyDigestData {
+  to: string // Add email address field
   userName: string
   newPredictions: number
   topPredictions: Array<{
@@ -47,6 +78,7 @@ export interface DailyDigestData {
 }
 
 export interface AchievementData {
+  to: string // Add email address field
   userName: string
   achievementName: string
   description: string
@@ -178,7 +210,7 @@ export class EmailService {
         })
         
         return this.sendEmail({
-          to: data.userName,
+          to: data.to,
           subject: renderedEmail.subject,
           template: 'payment-confirmation',
           data,
@@ -253,7 +285,7 @@ export class EmailService {
     logger.info('[EmailService] Attempting to send payment confirmation email', { to: data.userName, packageName: data.packageName, transactionId: data.transactionId });
     try {
       const result = await this.sendEmail({
-        to: data.userName, // This should be the email address
+        to: data.to, // This should be the email address
         subject: `Payment Confirmed - ${data.packageName}`,
         template: 'payment-confirmation',
         data,
@@ -331,7 +363,7 @@ export class EmailService {
     `
 
     return this.sendEmail({
-      to: data.userName, // This should be the email address
+      to: data.to, // This should be the email address
       subject: `⚽ ${data.predictions.length} High-Confidence Prediction${data.predictions.length > 1 ? 's' : ''} Available`,
       template: 'prediction-alert',
       data,
@@ -418,7 +450,7 @@ export class EmailService {
     `
 
     return this.sendEmail({
-      to: data.userName, // This should be the email address
+      to: data.to, // This should be the email address
       subject: `📊 Your Daily SnapBet Digest - ${data.newPredictions} New Predictions`,
       template: 'daily-digest',
       data,
@@ -472,7 +504,7 @@ export class EmailService {
     `
 
     return this.sendEmail({
-      to: data.userName, // This should be the email address
+      to: data.to, // This should be the email address
       subject: `🏆 Achievement Unlocked: ${data.achievementName}`,
       template: 'achievement',
       data,
@@ -525,6 +557,405 @@ export class EmailService {
       template: 'security',
       data: { userName, event, details },
     }, html)
+  }
+
+  /**
+   * Send tip purchase confirmation email
+   */
+  static async sendTipPurchaseConfirmation(data: TipPurchaseConfirmationData) {
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #10b981, #059669); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+          <h1 style="margin: 0; font-size: 28px;">Tip Purchase Confirmed! 🎉</h1>
+          <p style="margin: 10px 0 0 0; opacity: 0.9;">Your premium tip purchase was successful</p>
+        </div>
+        
+        <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+          <h2 style="color: #374151; margin-top: 0;">Hi ${data.userName},</h2>
+          
+          <p style="color: #6b7280; line-height: 1.6;">
+            Thank you for your purchase! Your premium tip "${data.tipName}" for "${data.matchDetails}" has been successfully added to your account.
+          </p>
+          
+          <div style="background: #f9fafb; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="color: #374151; margin-top: 0;">Purchase Details</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+              <div>
+                <strong style="color: #6b7280;">Tip:</strong><br>
+                <span style="color: #374151;">${data.tipName}</span>
+              </div>
+              <div>
+                <strong style="color: #6b7280;">Match:</strong><br>
+                <span style="color: #374151;">${data.matchDetails}</span>
+              </div>
+              <div>
+                <strong style="color: #6b7280;">Prediction:</strong><br>
+                <span style="color: #374151;">${data.prediction}</span>
+              </div>
+              <div>
+                <strong style="color: #6b7280;">Confidence:</strong><br>
+                <span style="color: #10b981; font-weight: bold;">${data.confidence}%</span>
+              </div>
+              <div>
+                <strong style="color: #6b7280;">Expires:</strong><br>
+                <span style="color: #374151;">${new Date(data.expiresAt).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' })}</span>
+              </div>
+              <div>
+                <strong style="color: #6b7280;">Amount:</strong><br>
+                <span style="color: #374151;">${data.currencySymbol}${data.amount.toFixed(2)}</span>
+              </div>
+              <div>
+                <strong style="color: #6b7280;">Transaction ID:</strong><br>
+                <span style="color: #374151; font-family: monospace;">${data.transactionId}</span>
+              </div>
+            </div>
+          </div>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${data.appUrl}/dashboard/my-tips" 
+               style="background: #10b981; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+              View Your Tips
+            </a>
+          </div>
+          
+          <p style="color: #6b7280; line-height: 1.6;">
+            Your premium tip is now available in your dashboard. Start making informed predictions and maximize your winning potential!
+          </p>
+          
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+          
+          <p style="color: #9ca3af; font-size: 14px; text-align: center;">
+            If you have any questions, please contact our support team.<br>
+            © 2024 SnapBet. All rights reserved.
+          </p>
+        </div>
+      </div>
+    `
+
+    return this.sendEmail({
+      to: data.userEmail, // This should be the email address
+      subject: `Tip Purchase Confirmed: ${data.tipName}`,
+      template: 'payment-confirmation', // Reusing payment confirmation template for tip purchase
+      data,
+    }, html)
+  }
+
+  /**
+   * Send credit claim confirmation email
+   */
+  static async sendCreditClaimConfirmation(data: CreditClaimConfirmationData) {
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+          <h1 style="margin: 0; font-size: 28px;">Credit Claim Confirmed! 🎉</h1>
+          <p style="margin: 10px 0 0 0; opacity: 0.9;">Your credit claim was successful</p>
+        </div>
+        
+        <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+          <h2 style="color: #374151; margin-top: 0;">Hi ${data.userName},</h2>
+          
+          <p style="color: #6b7280; line-height: 1.6;">
+            Thank you for your credit claim! Your ${data.creditsUsed} credit${data.creditsUsed !== 1 ? 's' : ''} for "${data.tipName}" for "${data.matchDetails}" has been successfully added to your account.
+          </p>
+          
+          <div style="background: #f9fafb; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="color: #374151; margin-top: 0;">Claim Details</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+              <div>
+                <strong style="color: #6b7280;">Tip:</strong><br>
+                <span style="color: #374151;">${data.tipName}</span>
+              </div>
+              <div>
+                <strong style="color: #6b7280;">Match:</strong><br>
+                <span style="color: #374151;">${data.matchDetails}</span>
+              </div>
+              <div>
+                <strong style="color: #6b7280;">Prediction:</strong><br>
+                <span style="color: #374151;">${data.prediction}</span>
+              </div>
+              <div>
+                <strong style="color: #6b7280;">Confidence:</strong><br>
+                <span style="color: #f59e0b; font-weight: bold;">${data.confidence}%</span>
+              </div>
+              <div>
+                <strong style="color: #6b7280;">Expires:</strong><br>
+                <span style="color: #374151;">${new Date(data.expiresAt).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' })}</span>
+              </div>
+              <div>
+                <strong style="color: #6b7280;">Credits Added:</strong><br>
+                <span style="color: #f59e0b; font-weight: bold;">${data.creditsUsed} credit${data.creditsUsed !== 1 ? 's' : ''}</span>
+              </div>
+              <div>
+                <strong style="color: #6b7280;">Credits Remaining:</strong><br>
+                <span style="color: #374151;">${data.creditsRemaining} credit${data.creditsRemaining !== 1 ? 's' : ''}</span>
+              </div>
+            </div>
+          </div>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${data.appUrl}/dashboard/my-credits" 
+               style="background: #f59e0b; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+              View Your Credits
+            </a>
+          </div>
+          
+          <p style="color: #6b7280; line-height: 1.6;">
+            Your credits are now available in your dashboard. Start making informed predictions and maximize your winning potential!
+          </p>
+          
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+          
+          <p style="color: #9ca3af; font-size: 14px; text-align: center;">
+            If you have any questions, please contact our support team.<br>
+            © 2024 SnapBet. All rights reserved.
+          </p>
+        </div>
+      </div>
+    `
+
+    return this.sendEmail({
+      to: data.userEmail, // This should be the email address
+      subject: `Credit Claim Confirmed: ${data.tipName}`,
+      template: 'payment-confirmation', // Reusing payment confirmation template for credit claim
+      data,
+    }, html)
+  }
+
+  /**
+   * Send password reset email
+   */
+  static async sendPasswordResetEmail(data: {
+    to: string
+    userName: string
+    resetToken: string
+    appUrl?: string
+  }) {
+    try {
+      // Try to use the email template system first
+      const { EmailTemplateService } = await import('@/lib/email-template-service')
+      
+      // Check if password reset template exists
+      const template = await EmailTemplateService.getTemplateBySlug('password-reset')
+      
+      if (template && template.isActive) {
+        // Use the template system
+        const renderedEmail = await EmailTemplateService.renderTemplate('password-reset', {
+          userName: data.userName,
+          resetToken: data.resetToken,
+          appUrl: data.appUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        })
+        
+        return this.sendEmail({
+          to: data.to,
+          subject: renderedEmail.subject,
+          template: 'password-reset',
+          data: {
+            userName: data.userName,
+            resetToken: data.resetToken,
+            appUrl: data.appUrl
+          },
+        }, renderedEmail.html)
+      }
+    } catch (error) {
+      // Fall back to hardcoded template if template system fails
+      logger.warn('Failed to use email template system, falling back to hardcoded template', {
+        error: error as Error,
+        data: { email: data.to }
+      })
+    }
+
+    // Fallback hardcoded template
+    const resetUrl = `${data.appUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/reset-password?token=${data.resetToken}`
+    
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #ef4444, #dc2626); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+          <h1 style="margin: 0; font-size: 28px;">🔒 Password Reset Request</h1>
+          <p style="margin: 10px 0 0 0; opacity: 0.9;">Secure your account</p>
+        </div>
+        
+        <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+          <h2 style="color: #374151; margin-top: 0;">Hi ${data.userName},</h2>
+          
+          <p style="color: #6b7280; line-height: 1.6;">
+            We received a request to reset your password for your SnapBet account. If you didn't make this request, you can safely ignore this email.
+          </p>
+          
+          <div style="background: #fef2f2; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ef4444;">
+            <h3 style="color: #374151; margin-top: 0;">Reset Your Password</h3>
+            <p style="color: #6b7280; line-height: 1.6;">
+              Click the button below to reset your password. This link will expire in 1 hour for security reasons.
+            </p>
+          </div>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${resetUrl}" 
+               style="background: #ef4444; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+              Reset Password
+            </a>
+          </div>
+          
+          <p style="color: #6b7280; line-height: 1.6;">
+            If the button doesn't work, you can copy and paste this link into your browser:
+          </p>
+          
+          <p style="color: #6b7280; line-height: 1.6; word-break: break-all; font-family: monospace; background: #f9fafb; padding: 10px; border-radius: 4px;">
+            ${resetUrl}
+          </p>
+          
+          <div style="background: #f0f9ff; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #0ea5e9;">
+            <h3 style="color: #374151; margin-top: 0;">🔒 Security Tips</h3>
+            <ul style="color: #6b7280; line-height: 1.8;">
+              <li>Never share your password with anyone</li>
+              <li>Use a strong, unique password</li>
+              <li>Enable two-factor authentication if available</li>
+              <li>Keep your account information up to date</li>
+            </ul>
+          </div>
+          
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+          
+          <p style="color: #9ca3af; font-size: 14px; text-align: center;">
+            This is a security notification and cannot be disabled.<br>
+            If you didn't request this reset, please contact our support team immediately.<br>
+            © 2024 SnapBet. All rights reserved.
+          </p>
+        </div>
+      </div>
+    `
+
+    return this.sendEmail({
+      to: data.to,
+      subject: '🔒 Reset Your SnapBet Password',
+      template: 'password-reset',
+      data,
+    }, html)
+  }
+
+  /**
+   * Send email verification email
+   */
+  static async sendEmailVerification(data: {
+    to: string
+    userName: string
+    verificationToken: string
+    appUrl?: string
+  }) {
+    try {
+      // Try to use the email template system first
+      const { EmailTemplateService } = await import('@/lib/email-template-service')
+      
+      // Check if email verification template exists
+      const template = await EmailTemplateService.getTemplateBySlug('email-verification')
+      
+      if (template && template.isActive) {
+        // Use the template system
+        const renderedEmail = await EmailTemplateService.renderTemplate('email-verification', {
+          userName: data.userName,
+          verificationToken: data.verificationToken,
+          appUrl: data.appUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        })
+        
+        return this.sendEmail({
+          to: data.to,
+          subject: renderedEmail.subject,
+          template: 'email-verification',
+          data: {
+            userName: data.userName,
+            verificationToken: data.verificationToken,
+            appUrl: data.appUrl
+          },
+        }, renderedEmail.html)
+      }
+    } catch (error) {
+      // Fall back to hardcoded template if template system fails
+      logger.warn('Failed to use email template system, falling back to hardcoded template', {
+        error: error as Error,
+        data: { email: data.to }
+      })
+    }
+
+    // Fallback hardcoded template
+    const verifyUrl = `${data.appUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/verify-email?token=${data.verificationToken}`
+    
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #10b981, #059669); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+          <h1 style="margin: 0; font-size: 28px;">✅ Verify Your Email</h1>
+          <p style="margin: 10px 0 0 0; opacity: 0.9;">Complete your SnapBet registration</p>
+        </div>
+        
+        <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+          <h2 style="color: #374151; margin-top: 0;">Hi ${data.userName},</h2>
+          
+          <p style="color: #6b7280; line-height: 1.6;">
+            Welcome to SnapBet! To complete your registration and access all features, please verify your email address.
+          </p>
+          
+          <div style="background: #f0f9ff; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #0ea5e9;">
+            <h3 style="color: #374151; margin-top: 0;">Verify Your Email</h3>
+            <p style="color: #6b7280; line-height: 1.6;">
+              Click the button below to verify your email address. This link will expire in 24 hours.
+            </p>
+          </div>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${verifyUrl}" 
+               style="background: #10b981; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+              Verify Email
+            </a>
+          </div>
+          
+          <p style="color: #6b7280; line-height: 1.6;">
+            If the button doesn't work, you can copy and paste this link into your browser:
+          </p>
+          
+          <p style="color: #6b7280; line-height: 1.6; word-break: break-all; font-family: monospace; background: #f9fafb; padding: 10px; border-radius: 4px;">
+            ${verifyUrl}
+          </p>
+          
+          <div style="background: #f0f9ff; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #0ea5e9;">
+            <h3 style="color: #374151; margin-top: 0;">🚀 What's Next?</h3>
+            <ul style="color: #6b7280; line-height: 1.8;">
+              <li>Access premium predictions and tips</li>
+              <li>Earn credits through our quiz system</li>
+              <li>Join our community of sports enthusiasts</li>
+              <li>Get personalized betting insights</li>
+            </ul>
+          </div>
+          
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+          
+          <p style="color: #9ca3af; font-size: 14px; text-align: center;">
+            Need help? Contact us at support@snapbet.com<br>
+            © 2024 SnapBet. All rights reserved.
+          </p>
+        </div>
+      </div>
+    `
+
+    return this.sendEmail({
+      to: data.to,
+      subject: '✅ Verify Your SnapBet Email Address',
+      template: 'email-verification',
+      data,
+    }, html)
+  }
+
+  /**
+   * Send a generic email with custom HTML content
+   */
+  static async sendGenericEmail(data: {
+    to: string
+    subject: string
+    html: string
+  }) {
+    return this.sendEmail({
+      to: data.to,
+      subject: data.subject,
+      template: 'generic' as any,
+      data: {}
+    }, data.html)
   }
 
   /**
