@@ -1,6 +1,6 @@
 import { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { 
@@ -14,7 +14,9 @@ import {
   Zap,
   Target,
   TrendingUp,
-  CheckCircle
+  CheckCircle,
+  BarChart3,
+  Sparkles
 } from 'lucide-react'
 import Link from 'next/link'
 import { generateBlogMetadata } from '@/lib/seo-helpers'
@@ -42,6 +44,18 @@ interface BlogPost {
   seoKeywords?: string[]
   isPublished: boolean
   isActive: boolean
+}
+
+interface Prediction {
+  id: string
+  homeTeam: string
+  awayTeam: string
+  league: string
+  prediction: string
+  confidence: number
+  odds: number
+  matchTime: string
+  status: string
 }
 
 // Generate metadata for each blog post
@@ -86,15 +100,15 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       ...metadata,
       other: {
         ...metadata.other,
-        'news_keywords': (post.tags?.join(', ') || 'sports betting, AI predictions, football tips') as string,
-        'article:tag': (post.tags?.join(', ') || '') as string,
-        'article:published_time': post.publishedAt as string,
-        'article:modified_time': (post.updatedAt || post.publishedAt) as string,
-        'article:author': post.author as string,
+        'news_keywords': (post.tags?.join(', ') || 'sports betting, AI predictions, football tips'),
+        'article:tag': (post.tags?.join(', ') || ''),
+        'article:published_time': post.publishedAt,
+        'article:modified_time': (post.updatedAt || post.publishedAt),
+        'article:author': post.author,
         'article:publisher': 'SnapBet AI',
-        'article:section': post.category as string,
+        'article:section': post.category,
         'robots': 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'
-      }
+      } as unknown as Record<string, string | number | (string | number)[]>
     }
   } catch (error) {
     return {
@@ -107,7 +121,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 // Generate static params for all blog posts
 export async function generateStaticParams() {
   try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'https://snapbet.bet'}/api/blogs?limit=50`, {
+    const response = await fetch(`${process.env.NEXTAUTH_URL || 'https://snapbet.bet'}/api/blogs?limit=100`, {
       next: { revalidate: 3600 }
     })
     
@@ -139,8 +153,46 @@ async function getBlogPost(slug: string): Promise<BlogPost | null> {
     const data = await response.json()
     return data.success ? data.data : null
   } catch (error) {
-    console.error('Error fetching blog post:', error)
     return null
+  }
+}
+
+async function getUpcomingPredictions(): Promise<Prediction[]> {
+  try {
+    const response = await fetch(`${process.env.NEXTAUTH_URL || 'https://snapbet.bet'}/api/predictions/upcoming?limit=6`, {
+      next: { revalidate: 300 } // 5 minutes cache
+    })
+    
+    if (!response.ok) {
+      return []
+    }
+    
+    const data = await response.json()
+    return data.success ? data.data : []
+  } catch (error) {
+    return []
+  }
+}
+
+async function getRelatedArticles(category: string, currentSlug: string): Promise<BlogPost[]> {
+  try {
+    const response = await fetch(`${process.env.NEXTAUTH_URL || 'https://snapbet.bet'}/api/blogs?limit=3`, {
+      next: { revalidate: 3600 }
+    })
+    
+    if (!response.ok) {
+      return []
+    }
+    
+    const data = await response.json()
+    const posts = data.success ? data.data : []
+    
+    // Filter out current post and get related by category
+    return posts
+      .filter((post: BlogPost) => post.slug !== currentSlug && post.isPublished)
+      .slice(0, 3)
+  } catch (error) {
+    return []
   }
 }
 
@@ -151,6 +203,12 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   if (!post || !post.isPublished || !post.isActive) {
     notFound()
   }
+
+  // Fetch additional data
+  const [upcomingPredictions, relatedArticles] = await Promise.all([
+    getUpcomingPredictions(),
+    getRelatedArticles(post.category, slug)
+  ])
 
   const baseUrl = process.env.NEXTAUTH_URL || 'https://snapbet.ai'
   const currentUrl = `${baseUrl}/blog/${slug}`
@@ -235,16 +293,17 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
         {/* Article Content */}
         <Card className="bg-slate-800/50 border-slate-700 p-8 mb-8">
           <div 
-            className="prose prose-invert prose-lg max-w-none
-              prose-headings:text-white prose-headings:font-bold prose-headings:tracking-tight
-              prose-h2:text-3xl prose-h2:mt-12 prose-h2:mb-6 prose-h2:border-b prose-h2:border-slate-700 prose-h2:pb-2
-              prose-h3:text-2xl prose-h3:mt-10 prose-h3:mb-4 prose-h3:text-emerald-400
-              prose-h4:text-xl prose-h4:mt-8 prose-h4:mb-3 prose-h4:text-slate-200
-              prose-p:text-slate-300 prose-p:leading-relaxed prose-p:mb-6 prose-p:text-lg
-              prose-ul:text-slate-300 prose-ol:text-slate-300 prose-ul:mb-6 prose-ol:mb-6
-              prose-li:mb-2 prose-li:leading-relaxed prose-li:text-lg
+            className="prose prose-invert max-w-none
+              prose-headings:text-white prose-headings:font-semibold prose-headings:tracking-tight
+              prose-h1:text-3xl prose-h1:mt-6 prose-h1:mb-3 prose-h1:border-b prose-h1:border-slate-700 prose-h1:pb-2
+              prose-h2:text-2xl prose-h2:mt-5 prose-h2:mb-3 prose-h2:border-b prose-h2:border-slate-700 prose-h2:pb-1
+              prose-h3:text-xl prose-h3:mt-4 prose-h3:mb-2 prose-h3:text-emerald-400
+              prose-h4:text-lg prose-h4:mt-3 prose-h4:mb-2 prose-h4:text-slate-200
+              prose-p:text-slate-300 prose-p:leading-relaxed prose-p:mb-3 prose-p:mt-3 prose-p:text-base
+              prose-ul:text-slate-300 prose-ol:text-slate-300 prose-ul:mb-3 prose-ol:mb-3
+              prose-li:mb-1 prose-li:leading-relaxed prose-li:text-base
               prose-strong:text-emerald-400 prose-strong:font-semibold
-              prose-blockquote:border-l-emerald-500 prose-blockquote:bg-slate-700/30 prose-blockquote:p-4 prose-blockquote:rounded-r-lg
+              prose-blockquote:border-l-emerald-500 prose-blockquote:bg-slate-700/30 prose-blockquote:p-3 prose-blockquote:rounded-r-lg prose-blockquote:my-4
               prose-code:bg-slate-700 prose-code:text-emerald-400 prose-code:px-2 prose-code:py-1 prose-code:rounded prose-code:text-sm
               prose-pre:bg-slate-900 prose-pre:border prose-pre:border-slate-700
               prose-a:text-emerald-400 prose-a:no-underline hover:prose-a:text-emerald-300
@@ -252,66 +311,126 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
             dangerouslySetInnerHTML={{ __html: post.content }}
           />
 
-          {/* Key Takeaways */}
-          <div className="mt-12 p-6 bg-gradient-to-r from-emerald-600/20 to-blue-600/20 border border-emerald-500/30 rounded-lg">
-            <h3 className="text-xl font-bold text-white mb-4 flex items-center">
-              <Zap className="w-5 h-5 mr-2 text-emerald-400" />
-              Key Takeaways
-            </h3>
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <div className="flex items-start gap-2">
-                  <div className="w-2 h-2 bg-emerald-400 rounded-full mt-2 flex-shrink-0"></div>
-                  <p className="text-slate-300 text-sm">Confidence scores range from 0-100% and indicate AI certainty</p>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-2 h-2 bg-emerald-400 rounded-full mt-2 flex-shrink-0"></div>
-                  <p className="text-slate-300 text-sm">Higher confidence doesn't guarantee wins, but indicates stronger historical support</p>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-2 h-2 bg-emerald-400 rounded-full mt-2 flex-shrink-0"></div>
-                  <p className="text-slate-300 text-sm">Use confidence scores to adjust bet sizes and manage risk</p>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-start gap-2">
-                  <div className="w-2 h-2 bg-emerald-400 rounded-full mt-2 flex-shrink-0"></div>
-                  <p className="text-slate-300 text-sm">Combine AI insights with proper bankroll management</p>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-2 h-2 bg-emerald-400 rounded-full mt-2 flex-shrink-0"></div>
-                  <p className="text-slate-300 text-sm">Track performance across different confidence levels</p>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-2 h-2 bg-emerald-400 rounded-full mt-2 flex-shrink-0"></div>
-                  <p className="text-slate-300 text-sm">Start with high-confidence predictions and expand gradually</p>
-                </div>
-              </div>
+          {/* Enhanced Call to Action */}
+          <div className="mt-12 p-8 bg-gradient-to-r from-emerald-600/20 via-blue-600/20 to-purple-600/20 border border-emerald-500/30 rounded-lg text-center">
+            <div className="flex items-center justify-center mb-4">
+              <Sparkles className="w-6 h-6 text-emerald-400 mr-2" />
+              <h3 className="text-2xl font-bold text-white">Ready to Start Winning?</h3>
+              <Sparkles className="w-6 h-6 text-emerald-400 ml-2" />
             </div>
-          </div>
-
-          {/* Call to Action */}
-          <div className="mt-12 p-6 bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-lg text-center">
-            <h3 className="text-xl font-bold text-white mb-4">Ready to Start Winning?</h3>
-            <p className="text-slate-300 mb-6">
+            <p className="text-slate-300 mb-6 text-lg">
               Join thousands of successful bettors who trust SnapBet AI for their predictions.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button asChild className="bg-emerald-600 hover:bg-emerald-700">
+              <Button asChild className="bg-emerald-600 hover:bg-emerald-700 text-lg px-8 py-3">
                 <Link href="/">
-                  <Target className="w-4 h-4 mr-2" />
+                  <Target className="w-5 h-5 mr-2" />
                   View Today's Predictions
                 </Link>
               </Button>
-              <Button asChild variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700">
+              <Button asChild variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700 text-lg px-8 py-3">
                 <Link href="/blog">
-                  <TrendingUp className="w-4 h-4 mr-2" />
+                  <TrendingUp className="w-5 h-5 mr-2" />
                   More Articles
                 </Link>
               </Button>
             </div>
           </div>
         </Card>
+
+        {/* Upcoming Predictions Section */}
+        {upcomingPredictions.length > 0 && (
+          <Card className="bg-slate-800/50 border-slate-700 p-8 mb-8">
+            <CardHeader className="pb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-500/20 rounded-lg">
+                  <Target className="w-6 h-6 text-emerald-400" />
+                </div>
+                <div>
+                  <CardTitle className="text-2xl font-bold text-white">Upcoming Predictions</CardTitle>
+                  <p className="text-slate-400">Get ahead with our AI-powered predictions</p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {upcomingPredictions.slice(0, 6).map((prediction) => (
+                  <div key={prediction.id} className="p-4 bg-slate-700/50 rounded-lg border border-slate-600 hover:border-emerald-500/50 transition-colors">
+                    <div className="flex items-center justify-between mb-3">
+                      <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">
+                        {prediction.league}
+                      </Badge>
+                      <div className="flex items-center gap-1">
+                        <BarChart3 className="w-3 h-3 text-emerald-400" />
+                        <span className="text-xs text-emerald-400 font-semibold">
+                          {prediction.confidence}%
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-sm text-white font-semibold mb-2">
+                      {prediction.homeTeam} vs {prediction.awayTeam}
+                    </div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-emerald-400 font-bold">{prediction.prediction}</span>
+                      <span className="text-slate-400 text-xs">@{prediction.odds}</span>
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      {new Date(prediction.matchTime).toLocaleDateString()} • {new Date(prediction.matchTime).toLocaleTimeString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-6 text-center">
+                <Button asChild className="bg-emerald-600 hover:bg-emerald-700">
+                  <Link href="/">
+                    <Target className="w-4 h-4 mr-2" />
+                    View All Predictions
+                  </Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Related Articles */}
+        {relatedArticles.length > 0 && (
+          <Card className="bg-slate-800/50 border-slate-700 p-8 mb-8">
+            <CardHeader className="pb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-500/20 rounded-lg">
+                  <BookOpen className="w-6 h-6 text-blue-400" />
+                </div>
+                <div>
+                  <CardTitle className="text-2xl font-bold text-white">Related Articles</CardTitle>
+                  <p className="text-slate-400">Continue your learning journey</p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid md:grid-cols-3 gap-6">
+                {relatedArticles.map((article) => (
+                  <Link key={article.id} href={`/blog/${article.slug}`} className="group">
+                    <div className="p-4 bg-slate-700/50 rounded-lg border border-slate-600 group-hover:border-emerald-500/50 transition-all duration-300 hover:bg-slate-700/70">
+                      <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 mb-3">
+                        {article.category}
+                      </Badge>
+                      <h4 className="text-lg font-semibold text-white mb-2 group-hover:text-emerald-400 transition-colors">
+                        {article.title}
+                      </h4>
+                      <p className="text-slate-400 text-sm mb-3 line-clamp-2">
+                        {article.excerpt}
+                      </p>
+                      <div className="flex items-center justify-between text-xs text-slate-500">
+                        <span>{article.readTime} min read</span>
+                        <span>{new Date(article.publishedAt).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Reading Progress Bar */}
         <div className="fixed bottom-0 left-0 w-full h-1 bg-slate-800 z-50">

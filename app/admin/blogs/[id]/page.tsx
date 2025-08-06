@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { RichTextEditor } from '@/components/ui/rich-text-editor'
 import { 
   ArrowLeft, 
   Save, 
@@ -414,13 +415,11 @@ export default function EditBlogPage() {
 
             <div>
               <Label htmlFor="content" className="text-slate-300">Content</Label>
-              <Textarea
-                id="content"
+              <RichTextEditor
                 value={formData.content}
-                onChange={(e) => setFormData(prev => ({ ...prev, content: e.target.value }))}
-                className="bg-slate-700 border-slate-600 text-white"
-                rows={15}
-                required
+                onChange={(value) => setFormData(prev => ({ ...prev, content: value }))}
+                placeholder="Start writing your blog post content..."
+                className="mt-2"
               />
             </div>
 

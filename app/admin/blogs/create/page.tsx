@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
+import { RichTextEditor } from '@/components/ui/rich-text-editor'
 import { 
   ArrowLeft, 
   Save, 
@@ -217,14 +218,11 @@ export default function CreateBlogPage() {
 
                 <div>
                   <Label htmlFor="content" className="text-white">Content *</Label>
-                  <Textarea
-                    id="content"
+                  <RichTextEditor
                     value={formData.content}
-                    onChange={(e) => setFormData(prev => ({ ...prev, content: e.target.value }))}
+                    onChange={(value) => setFormData(prev => ({ ...prev, content: value }))}
                     placeholder="Write your blog post content here..."
-                    className="bg-slate-700 border-slate-600 text-white"
-                    rows={15}
-                    required
+                    className="mt-2"
                   />
                 </div>
               </CardContent>
