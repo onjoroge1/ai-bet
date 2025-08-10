@@ -5,7 +5,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CreditCard, Smartphone, CheckCircle, Clock, Shield, Zap, Star, Crown, Gift, Brain, TrendingUp, Target, Loader2, Info } from "lucide-react"
 import { useUserCountry } from "@/contexts/user-country-context"
 import { useAuth } from "@/components/auth-provider"
@@ -113,7 +112,6 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
   const [clientSecret, setClientSecret] = useState<string>('')
   const [isLoading, setIsLoading] = useState(false)
   const [userCountryCode, setUserCountryCode] = useState(userCountry || 'US')
-  const [activeTab, setActiveTab] = useState<string>("");
 
   useEffect(() => {
     if (isOpen) {
@@ -123,7 +121,6 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
       setClientSecret('');
       setUserCountryCode(userCountry || 'US');
       // Default tab: always global first
-      setActiveTab('global');
     }
   }, [isOpen, userCountry]);
 
@@ -354,7 +351,6 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
     { key: 'card', label: 'Credit Card', icon: <CreditCard className="w-8 h-8 mx-auto mb-2 text-emerald-400" />, desc: 'Visa, Mastercard, Amex' },
     { key: 'apple_pay', label: 'Apple Pay', icon: <div className="w-8 h-8 mx-auto mb-2 text-blue-400">📱</div>, desc: 'Quick & Secure' },
     { key: 'google_pay', label: 'Google Pay', icon: <div className="w-8 h-8 mx-auto mb-2 text-green-400">📱</div>, desc: 'Quick & Secure' },
-    { key: 'paypal', label: 'PayPal', icon: <div className="w-8 h-8 mx-auto mb-2 text-blue-500 font-bold text-lg">P</div>, desc: 'Pay with PayPal' },
   ];
   const localPaymentsKE = [
     { key: 'mpesa', label: 'M-Pesa', icon: <Smartphone className="w-8 h-8 mx-auto mb-2 text-green-500" />, desc: 'Pay with M-Pesa' },
@@ -408,7 +404,7 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
                 2
               </div>
               <span className={`text-sm ${selectedPaymentMethod ? 'text-slate-300' : 'text-slate-500'}`}>
-                Pay
+                Payment
               </span>
             </div>
           </div>
@@ -490,52 +486,16 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
                 </div>
               </CardContent>
             </Card>
-            {/* Payment Tabs */}
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="mb-4 flex bg-transparent p-0 border-0">
-                {isKenya && (
-                  <TabsTrigger value="local" className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:bg-emerald-600">
-                    Local Payments (Kenya)
-                  </TabsTrigger>
-                )}
-                <TabsTrigger value="global" className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:bg-emerald-600">
-                  Global Payments
-                </TabsTrigger>
-              </TabsList>
-              
-              {/* Selected Payment Method Indicator */}
-              {selectedPaymentMethod && (
-                <div className="mb-4 p-3 bg-emerald-900/20 border border-emerald-700/50 rounded-lg">
-                  <div className="flex items-center space-x-2">
-                    <CheckCircle className="w-5 h-5 text-emerald-400" />
-                    <span className="text-emerald-300 font-medium">
-                      Payment method selected: {
-                        [...globalPayments, ...localPaymentsKE].find(m => m.key === selectedPaymentMethod)?.label || selectedPaymentMethod
-                      }
-                    </span>
-                  </div>
-                  <p className="text-slate-400 text-sm mt-1">
-                    Click "Pay {convertPrice(item.price.toString())}" below to proceed to payment
-                  </p>
-                </div>
-              )}
-              
-              {/* Instruction Text */}
-              {!selectedPaymentMethod && (
-                <div className="mb-4 p-3 bg-slate-800/50 border border-slate-600 rounded-lg">
-                  <div className="flex items-center space-x-2">
-                    <Info className="w-5 h-5 text-blue-400" />
-                    <span className="text-slate-300 font-medium">Choose your payment method</span>
-                  </div>
-                  <p className="text-slate-400 text-sm mt-1">
-                    Select a payment method above, then click "Pay {convertPrice(item.price.toString())}" to proceed
-                  </p>
-                </div>
-              )}
-              
+            {/* Payment Methods */}
+            <div className="space-y-4">
+              {/* Local Payments for Kenya */}
               {isKenya && (
-                <TabsContent value="local">
-                  <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <h4 className="text-white font-medium text-sm mb-3 flex items-center">
+                    <Smartphone className="w-4 h-4 mr-2 text-green-400" />
+                    Local Payment Methods (Kenya)
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4 mb-6">
                     {localPaymentsKE.map(method => (
                       <PaymentMethodCard
                         key={method.key}
@@ -546,9 +506,15 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
                       />
                     ))}
                   </div>
-                </TabsContent>
+                </div>
               )}
-              <TabsContent value="global">
+              
+              {/* Global Payment Methods */}
+              <div>
+                <h4 className="text-white font-medium text-sm mb-3 flex items-center">
+                  <CreditCard className="w-4 h-4 mr-2 text-emerald-400" />
+                  Payment Methods
+                </h4>
                 <div className="grid grid-cols-2 gap-4">
                   {globalPayments.map(method => (
                     <PaymentMethodCard
@@ -559,8 +525,39 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
                     />
                   ))}
                 </div>
-              </TabsContent>
-            </Tabs>
+              </div>
+            </div>
+            
+            {/* Selected Payment Method Indicator */}
+            {selectedPaymentMethod && (
+              <div className="mb-4 p-3 bg-emerald-900/20 border border-emerald-700/50 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <CheckCircle className="w-5 h-5 text-emerald-400" />
+                  <span className="text-emerald-300 font-medium">
+                    Payment method selected: {
+                      [...globalPayments, ...localPaymentsKE].find(m => m.key === selectedPaymentMethod)?.label || selectedPaymentMethod
+                    }
+                  </span>
+                </div>
+                <p className="text-slate-400 text-sm mt-1">
+                  Click "Continue to Payment" below to proceed to payment
+                </p>
+              </div>
+            )}
+            
+            {/* Instruction Text */}
+            {!selectedPaymentMethod && (
+              <div className="mb-4 p-3 bg-slate-800/50 border border-slate-600 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <Info className="w-5 h-5 text-blue-400" />
+                  <span className="text-slate-300 font-medium">Choose your payment method</span>
+                </div>
+                <p className="text-slate-400 text-sm mt-1">
+                  Select a payment method above, then click "Continue to Payment" to proceed
+                </p>
+              </div>
+            )}
+            
             {/* Secure Payment Info */}
             <div className="bg-emerald-900/10 border border-emerald-700 rounded-lg p-4 flex items-center space-x-3">
               <Shield className="w-5 h-5 text-emerald-400" />
@@ -585,7 +582,7 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
                 ) : (
                   <>
                     <CreditCard className="w-5 h-5 mr-2" />
-                    Pay {convertPrice(item.price.toString())}
+                    Continue to Payment
                   </>
                 )}
               </Button>

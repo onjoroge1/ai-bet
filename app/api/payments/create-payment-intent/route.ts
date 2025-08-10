@@ -72,16 +72,15 @@ export async function POST(request: Request) {
     if (itemType === 'package') {
       console.log("🔍 DEBUG: Processing PACKAGE item")
       
-      // Parse the itemId to determine if it's a PackageOfferCountryPrice ID or countryId_packageType
+      // Parse the itemId to determine if it's a PackageCountryPrice ID or countryId_packageType
       const firstUnderscoreIndex = itemId.indexOf('_')
       if (firstUnderscoreIndex === -1) {
-        // It's a direct PackageOfferCountryPrice ID
-        console.log("🔍 DEBUG: Treating as direct PackageOfferCountryPrice ID")
+        // It's a direct PackageCountryPrice ID
+        console.log("🔍 DEBUG: Treating as direct PackageCountryPrice ID")
         
-        const packageOfferCountryPrice = await prisma.packageOfferCountryPrice.findUnique({
+        const packageCountryPrice = await prisma.packageCountryPrice.findUnique({
           where: { id: itemId },
           include: {
-            packageOffer: true,
             country: {
               select: {
                 currencyCode: true,
@@ -91,27 +90,24 @@ export async function POST(request: Request) {
           }
         })
 
-        if (!packageOfferCountryPrice) {
-          console.log("❌ DEBUG: PackageOfferCountryPrice not found with ID:", itemId)
+        if (!packageCountryPrice) {
+          console.log("❌ DEBUG: PackageCountryPrice not found with ID:", itemId)
           return NextResponse.json({ error: "Package not found" }, { status: 404 })
         }
 
-        console.log("🔍 DEBUG: Found PackageOfferCountryPrice:", {
-          id: packageOfferCountryPrice.id,
-          packageType: packageOfferCountryPrice.packageOffer.packageType,
-          price: packageOfferCountryPrice.price,
-          country: packageOfferCountryPrice.country.name
+        console.log("🔍 DEBUG: Found PackageCountryPrice:", {
+          id: packageCountryPrice.id,
+          packageType: packageCountryPrice.packageType,
+          price: packageCountryPrice.price,
+          countryId: packageCountryPrice.countryId
         })
 
-        amount = Number(packageOfferCountryPrice.price)
-        currency = packageOfferCountryPrice.country.currencyCode || 'USD'
-        description = `Purchase: ${packageOfferCountryPrice.packageOffer.name}`
+        amount = Number(packageCountryPrice.price)
+        currency = packageCountryPrice.country.currencyCode || 'USD'
+        description = `Purchase: ${packageCountryPrice.packageType} package`
         
-        metadata.packageName = packageOfferCountryPrice.packageOffer.name
-        metadata.packageType = packageOfferCountryPrice.packageOffer.packageType
-        metadata.tipCount = packageOfferCountryPrice.packageOffer.tipCount
-        metadata.validityDays = packageOfferCountryPrice.packageOffer.validityDays
-        metadata.packageOfferCountryPriceId = packageOfferCountryPrice.id
+        metadata.packageType = packageCountryPrice.packageType
+        metadata.packageCountryPriceId = packageCountryPrice.id
         
       } else {
         // It's a countryId_packageType format
@@ -122,46 +118,31 @@ export async function POST(request: Request) {
         
         console.log("🔍 DEBUG: Parsed as countryId_packageType:", { countryId, packageType })
         
-        // Find the PackageOfferCountryPrice record directly
-        const packageOfferCountryPrice = await prisma.packageOfferCountryPrice.findFirst({
+        // Find the PackageCountryPrice record directly
+        const packageCountryPrice = await prisma.packageCountryPrice.findFirst({
           where: {
             countryId,
-            packageOffer: {
-              packageType
-            },
-            isActive: true
-          },
-          include: {
-            packageOffer: true,
-            country: {
-              select: {
-                currencyCode: true,
-                currencySymbol: true
-              }
-            }
+            packageType
           }
         })
 
-        if (packageOfferCountryPrice) {
-          console.log("🔍 DEBUG: Found PackageOfferCountryPrice:", {
-            id: packageOfferCountryPrice.id,
-            packageType: packageOfferCountryPrice.packageOffer.packageType,
-            price: packageOfferCountryPrice.price,
-            country: packageOfferCountryPrice.country.name
+        if (packageCountryPrice) {
+          console.log("🔍 DEBUG: Found PackageCountryPrice:", {
+            id: packageCountryPrice.id,
+            packageType: packageCountryPrice.packageType,
+            price: packageCountryPrice.price,
+            countryId: packageCountryPrice.countryId
           })
 
-          amount = Number(packageOfferCountryPrice.price)
-          currency = packageOfferCountryPrice.country.currencyCode || 'USD'
-          description = `Purchase: ${packageOfferCountryPrice.packageOffer.name}`
+          amount = Number(packageCountryPrice.price)
+          currency = user.country.currencyCode || 'USD'
+          description = `Purchase: ${packageCountryPrice.packageType} package`
           
-          metadata.packageName = packageOfferCountryPrice.packageOffer.name
-          metadata.packageType = packageOfferCountryPrice.packageOffer.packageType
-          metadata.tipCount = packageOfferCountryPrice.packageOffer.tipCount
-          metadata.validityDays = packageOfferCountryPrice.packageOffer.validityDays
-          metadata.packageOfferCountryPriceId = packageOfferCountryPrice.id
+          metadata.packageType = packageCountryPrice.packageType
+          metadata.packageCountryPriceId = packageCountryPrice.id
           
         } else {
-          console.log("❌ DEBUG: PackageOfferCountryPrice not found for:", { countryId, packageType })
+          console.log("❌ DEBUG: PackageCountryPrice not found for:", { countryId, packageType })
           return NextResponse.json({ error: "Package not found or not available in your country" }, { status: 404 })
         }
       }

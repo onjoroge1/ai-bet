@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
       case 'payment-confirmation':
         logger.info('[TestEmailAPI] Sending payment confirmation test email')
         result = await EmailService.sendPaymentConfirmation({
+          to: email, // Add the missing 'to' field
           userName: email,
           packageName: 'Test Premium Package',
           amount: 29.99,
@@ -84,6 +85,7 @@ export async function POST(req: NextRequest) {
       case 'prediction-alert':
         logger.info('[TestEmailAPI] Sending prediction alert test email')
         result = await EmailService.sendPredictionAlert({
+          to: email, // Add the missing 'to' field
           userName: email,
           predictions: [
             {
@@ -107,6 +109,7 @@ export async function POST(req: NextRequest) {
       case 'daily-digest':
         logger.info('[TestEmailAPI] Sending daily digest test email')
         result = await EmailService.sendDailyDigest({
+          to: email, // Add the missing 'to' field
           userName: email,
           newPredictions: 5,
           topPredictions: [
@@ -122,24 +125,17 @@ export async function POST(req: NextRequest) {
             }
           ],
           recentResults: [
-            {
-              match: 'Barcelona vs Real Madrid',
-              result: 'Won',
-              isWin: true
-            },
-            {
-              match: 'Bayern Munich vs Dortmund',
-              result: 'Lost',
-              isWin: false
-            }
+            { match: 'Liverpool vs Everton', result: 'Liverpool won', isWin: true },
+            { match: 'Chelsea vs Tottenham', result: 'Chelsea lost', isWin: false }
           ],
           unreadNotifications: 3
         })
         break
         
-      case 'achievement-notification':
-        logger.info('[TestEmailAPI] Sending achievement notification test email')
+      case 'achievement':
+        logger.info('[TestEmailAPI] Sending achievement test email')
         result = await EmailService.sendAchievementNotification({
+          to: email, // Add the missing 'to' field
           userName: email,
           achievementName: 'First Win',
           description: 'You won your first prediction!',

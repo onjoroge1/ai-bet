@@ -170,6 +170,39 @@ export function PaymentForm({
           </div>
         </div>
 
+        {/* Selected Payment Method Display */}
+        {selectedPaymentMethod && (
+          <div className="bg-slate-800/50 border border-slate-600 rounded-xl p-4">
+            <h4 className="text-white font-medium text-sm mb-3 flex items-center">
+              <CheckCircle className="w-4 h-4 mr-2 text-emerald-400" />
+              Selected Payment Method
+            </h4>
+            <div className="flex items-center space-x-3">
+              {selectedPaymentMethod === 'card' && (
+                <div className="flex items-center space-x-2">
+                  <CreditCard className="w-5 h-5 text-emerald-400" />
+                  <span className="text-emerald-300 font-medium">Credit Card</span>
+                  <span className="text-slate-400 text-sm">(Visa, Mastercard, Amex)</span>
+                </div>
+              )}
+              {selectedPaymentMethod === 'apple_pay' && (
+                <div className="flex items-center space-x-2">
+                  <div className="w-5 h-5 text-blue-400">📱</div>
+                  <span className="text-blue-300 font-medium">Apple Pay</span>
+                  <span className="text-slate-400 text-sm">(Quick & Secure)</span>
+                </div>
+              )}
+              {selectedPaymentMethod === 'google_pay' && (
+                <div className="flex items-center space-x-2">
+                  <div className="w-5 h-5 text-green-400">📱</div>
+                  <span className="text-green-300 font-medium">Google Pay</span>
+                  <span className="text-slate-400 text-sm">(Quick & Secure)</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Payment Status */}
         {paymentStatus !== 'pending' && (
           <div className={`flex items-center space-x-3 p-4 rounded-xl border ${
