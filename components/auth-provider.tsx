@@ -23,7 +23,6 @@ interface User {
   }
 }
 
-// Define the AuthContext type
 interface AuthContextType {
   user: User | null
   isLoading: boolean
@@ -32,14 +31,12 @@ interface AuthContextType {
   logout: () => Promise<void>
 }
 
-// Create the AuthContext
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-// Create a hook to use the AuthContext
 export function useAuth() {
   const context = useContext(AuthContext)
   if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider")
+    throw new Error('useAuth must be used within an AuthProvider')
   }
   return context
 }
@@ -90,7 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     retryDelay: 1000,
   })
 
-  // Sync with NextAuth session
+  // Sync with NextAuth session - Fixed to prevent infinite loops
   useEffect(() => {
     console.log('AuthProvider useEffect - status:', status, 'session user:', session?.user?.id)
     
@@ -132,7 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           profileLoading
         }
       })
-    } else {
+    } else if (status === 'unauthenticated') {
       console.log('AuthProvider - status is not authenticated, setting user to null')
       setUser(null)
       setIsLoading(false)
@@ -144,7 +141,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       })
     }
-  }, [status, session, userProfile, profileLoading])
+  }, [status, session]) // Removed userProfile and profileLoading from dependencies to prevent infinite loops
+
+  // Separate effect to handle profile data updates
+  useEffect(() => {
+    if (status === 'authenticated' && session?.user && userProfile) {
+      console.log('AuthProvider - updating user with profile data:', userProfile.id)
+      setUser(userProfile)
+    }
+  }, [userProfile, status, session])
 
   const login = (userData: User) => {
     setUser(userData)
@@ -159,33 +164,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
+      console.log('AuthProvider - starting logout process')
+      
       // Clear local state immediately to prevent further API calls
       setUser(null)
       setIsLoading(false)
       
-      // First, clear the custom token
-      const response = await fetch('/api/auth/signout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+      // Sign out from NextAuth first - this is the proper way
+      await signOut({ 
+        redirect: false,
+        callbackUrl: '/'
       })
-
-      if (!response.ok) {
-        logger.warn('Failed to clear custom token', {
-          tags: ['auth', 'provider'],
-          data: { status: response.status }
-        })
-      }
-
-      // Then, sign out from NextAuth
-      await signOut({ redirect: false })
       
-      logger.debug('User logged out', {
+      logger.debug('User logged out via NextAuth', {
         tags: ['auth', 'provider']
       })
 
-      // Force a hard refresh to clear all state
+      // Force a hard refresh to clear all state and cookies
       window.location.href = '/'
     } catch (error: unknown) {
       logger.error('Logout error', {
