@@ -1,473 +1,437 @@
-"use client"
+'use client'
 
-import { useState, useEffect } from "react"
-import { QuizRegistration } from "@/components/quiz/QuizRegistration"
-import QuizExperience from "@/components/quiz/QuizExperience"
-import { QuizQuestions } from "@/components/quiz/QuizQuestions"
-import QuizReferral from "@/components/quiz/QuizReferral"
-import QuizResults from "@/components/quiz/QuizResults"
-import { Users, Award, Target, Trophy } from "lucide-react"
+import { useState, useEffect, Suspense } from 'react'
+import { useSession } from 'next-auth/react'
+import { useSearchParams, useRouter } from 'next/navigation'
+import { motion, AnimatePresence } from 'framer-motion'
+import { CheckCircle, XCircle, ArrowRight, ArrowLeft, Trophy, Users, Gift } from 'lucide-react'
 
-interface RegistrationData {
-  name: string
-  email: string
-  phone: string
-  consent: boolean
-}
-
-interface QuizAnswer {
-  questionId: string
-  selectedAnswer: string
-  isCorrect: boolean
-  pointsEarned: number
-}
-
-interface ReferralInfo {
-  referralCode?: string
-  friendsInvited: string[]
-  pointsEarned: number
-}
-
-interface QuizQuestion {
+interface Question {
   id: string
   question: string
   options: string[]
   correctAnswer: string
   points: number
-  category: string
+  order: number
 }
 
-export default function SnapBetQuizPage() {
-  const [step, setStep] = useState(0)
-  const [registration, setRegistration] = useState<RegistrationData | null>(null)
-  const [experience, setExperience] = useState<string>("")
-  const [answers, setAnswers] = useState<QuizAnswer[]>([])
-  const [referral, setReferral] = useState<ReferralInfo | null>(null)
-  const [questions, setQuestions] = useState<QuizQuestion[]>([])
-  const [participationId, setParticipationId] = useState<string>("")
-  const [isLoading, setIsLoading] = useState(false)
+interface QuizSession {
+  id: string
+  questions: Question[]
+  skipIntro: boolean
+  referralId?: string
+  referrerName?: string
+}
+
+function QuizContent() {
+  const { data: session, status } = useSession()
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  
+  const [currentStep, setCurrentStep] = useState(0)
+  const [quizSession, setQuizSession] = useState<QuizSession | null>(null)
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>({})
+  const [quizCompleted, setQuizCompleted] = useState(false)
+  const [totalScore, setTotalScore] = useState(0)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Load questions from API
+  // Get referral code from URL
+  const referralCode = searchParams.get('ref')
+
   useEffect(() => {
-    const loadQuestions = async () => {
-      try {
-        setIsLoading(true)
-        setError(null)
-        const response = await fetch("/api/quiz?action=questions")
-        if (!response.ok) {
-          throw new Error("Failed to load questions")
-        }
-        const data = await response.json()
-        if (data.questions) {
-          setQuestions(data.questions)
-        }
-      } catch (error) {
-        console.error("Failed to load questions:", error)
-        setError("Failed to load quiz questions. Please refresh the page.")
-      } finally {
-        setIsLoading(false)
-      }
+    // If user is logged in and has a quiz session, skip to quiz
+    if (status === 'authenticated' && quizSession?.skipIntro) {
+      setCurrentStep(2) // Skip to quiz questions
     }
-    loadQuestions()
-  }, [])
+  }, [status, quizSession])
 
-  // Calculate score from answers
-  const score = answers.reduce((acc, a) => acc + a.pointsEarned, 0)
+  const startQuiz = async (userData?: { email: string; fullName?: string; phone?: string }) => {
+    try {
+      setLoading(true)
+      setError(null)
 
-  // Show loading state
-  if (isLoading && questions.length === 0) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-400 mx-auto mb-4"></div>
-          <p className="text-white text-lg">Loading quiz questions...</p>
-        </div>
-      </div>
-    )
+      const response = await fetch('/api/quiz', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'startQuiz',
+          referralCode,
+          ...userData
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to start quiz')
+      }
+
+      const data = await response.json()
+      setQuizSession(data.data)
+      
+      // If user is logged in, skip intro pages
+      if (data.data.skipIntro) {
+        setCurrentStep(2)
+      } else {
+        setCurrentStep(1)
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to start quiz')
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // Show error state
-  if (error && questions.length === 0) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
-        <div className="text-center max-w-md mx-auto p-6">
-          <div className="text-red-400 text-4xl mb-4">⚠️</div>
-          <h2 className="text-white text-xl font-semibold mb-2">Something went wrong</h2>
-          <p className="text-slate-300 mb-4">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-6 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
-          >
-            Try Again
-          </button>
-        </div>
-      </div>
-    )
+  const submitQuiz = async () => {
+    if (!quizSession) return
+
+    try {
+      setLoading(true)
+      setError(null)
+
+      const answers = Object.entries(selectedAnswers).map(([questionId, selectedAnswer]) => {
+        const question = quizSession.questions.find(q => q.id === questionId)
+        return {
+          questionId,
+          selectedAnswer,
+          question
+        }
+      })
+
+      const response = await fetch('/api/quiz', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'submitQuiz',
+          quizSessionId: quizSession.id,
+          answers,
+          totalTime: Date.now() - Date.now() // You can implement actual time tracking
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to submit quiz')
+      }
+
+      const data = await response.json()
+      setTotalScore(data.data.totalScore)
+      setQuizCompleted(true)
+      setCurrentStep(3)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to submit quiz')
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // Landing/Intro Step
-  if (step === 0) {
+  const handleAnswerSelect = (questionId: string, answer: string) => {
+    setSelectedAnswers(prev => ({
+      ...prev,
+      [questionId]: answer
+    }))
+  }
+
+  const resetQuiz = () => {
+    setCurrentStep(0)
+    setQuizSession(null)
+    setCurrentQuestionIndex(0)
+    setSelectedAnswers({})
+    setQuizCompleted(false)
+    setTotalScore(0)
+    setError(null)
+  }
+
+  const nextQuestion = () => {
+    if (currentQuestionIndex < quizSession!.questions.length - 1) {
+      setCurrentQuestionIndex(prev => prev + 1)
+    }
+  }
+
+  const previousQuestion = () => {
+    if (currentQuestionIndex > 0) {
+      setCurrentQuestionIndex(prev => prev - 1)
+    }
+  }
+
+  const currentQuestion = quizSession?.questions[currentQuestionIndex]
+
+  // Intro page for non-logged-in users
+  if (currentStep === 0) {
     return (
-      <div className="min-h-screen quiz-gradient-bg flex flex-col items-center justify-center px-4 py-8">
-        <div className="mb-4 flex items-center justify-center">
-          <span className="bg-emerald-900/80 text-emerald-300 px-4 py-1 rounded-full text-sm font-medium flex items-center gap-2 shadow quiz-glass animate-fadeIn">
-            <Trophy className="w-4 h-4 text-amber-400" />
-            Weekly Football Quiz Challenge
-          </span>
-        </div>
-        <h1 className="text-5xl md:text-6xl font-extrabold text-center text-white mb-2 animate-fadeIn">
-          SnapBet Football <span className="quiz-text-gradient">Quiz Challenge</span>
-        </h1>
-        <p className="text-lg md:text-xl text-slate-300 text-center mb-8 animate-fadeIn">
-          Test your football knowledge, win free tips, and invite friends for bonus rewards!
-        </p>
-        <div className="flex flex-col md:flex-row items-center justify-center gap-8 mb-10 animate-fadeIn">
-          <div className="flex flex-col items-center">
-            <span className="text-2xl md:text-3xl font-bold text-emerald-400">60+</span>
-            <span className="text-slate-300 text-sm">Questions Available</span>
-          </div>
-          <div className="flex flex-col items-center">
-            <span className="text-2xl md:text-3xl font-bold text-cyan-300">Free</span>
-            <span className="text-slate-300 text-sm">Expert Tips</span>
-          </div>
-          <div className="flex flex-col items-center">
-            <span className="text-2xl md:text-3xl font-bold text-amber-300">10</span>
-            <span className="text-slate-300 text-sm">Points Per Question</span>
-          </div>
-          <div className="flex flex-col items-center">
-            <span className="text-2xl md:text-3xl font-bold text-purple-400">5</span>
-            <span className="text-slate-300 text-sm">Questions</span>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-5xl mb-10 animate-fadeIn">
-          <div className="quiz-glass rounded-xl p-6 flex flex-col items-center shadow-lg">
-            <Target className="w-10 h-10 text-emerald-400 mb-2" />
-            <span className="font-semibold text-white text-lg mb-1">Answer Questions</span>
-            <span className="text-slate-300 text-center text-sm">5 football questions, 10 points each for correct answers</span>
-          </div>
-          <div className="quiz-glass rounded-xl p-6 flex flex-col items-center shadow-lg">
-            <Users className="w-10 h-10 text-cyan-400 mb-2" />
-            <span className="font-semibold text-white text-lg mb-1">Invite Friends</span>
-            <span className="text-slate-300 text-center text-sm">Get 10 points per friend who completes the quiz</span>
-          </div>
-          <div className="quiz-glass rounded-xl p-6 flex flex-col items-center shadow-lg">
-            <Award className="w-10 h-10 text-amber-400 mb-2" />
-            <span className="font-semibold text-white text-lg mb-1">Win Prizes</span>
-            <span className="text-slate-300 text-center text-sm">Top scorers get free tips and exclusive offers</span>
-          </div>
-        </div>
-        <button
-          className="mt-2 px-8 py-3 rounded-lg bg-gradient-to-r from-emerald-400 to-cyan-400 text-white font-bold text-lg shadow-lg hover:scale-105 transition-transform duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-400 animate-fadeIn"
-          onClick={() => setStep(1)}
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center"
         >
-          <span className="flex items-center gap-2">
-            <span className="text-xl">⚡</span> Start Quiz Challenge
-          </span>
-        </button>
+          <div className="mb-6">
+            <Trophy className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
+            <h1 className="text-3xl font-bold text-gray-800 mb-2">SnapBet Quiz</h1>
+            <p className="text-gray-600">Test your sports knowledge and win rewards!</p>
+          </div>
+
+          {referralCode && (
+            <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <Gift className="w-6 h-6 text-blue-500 mx-auto mb-2" />
+              <p className="text-sm text-blue-700">
+                You were invited with referral code: <span className="font-semibold">{referralCode}</span>
+              </p>
+            </div>
+          )}
+
+          <button
+            onClick={() => setCurrentStep(1)}
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-200 transform hover:scale-105"
+          >
+            Start Quiz
+          </button>
+        </motion.div>
       </div>
     )
   }
 
-  // Registration Step
-  if (step === 1) {
+  // User info collection page
+  if (currentStep === 1) {
     return (
-      <QuizRegistration
-        onComplete={async (data) => {
-          setRegistration({
-            name: data.name,
-            email: data.email,
-            phone: data.phone,
-            consent: true,
-          })
-          setStep(2)
-        }}
-        countryData={null}
-      />
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full"
+        >
+          <div className="text-center mb-6">
+            <Users className="w-16 h-16 text-blue-500 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Enter Your Details</h2>
+            <p className="text-gray-600">We'll use this to track your quiz results</p>
+          </div>
+
+          <form onSubmit={(e) => {
+            e.preventDefault()
+            const formData = new FormData(e.currentTarget)
+            startQuiz({
+              email: formData.get('email') as string,
+              fullName: formData.get('fullName') as string,
+              phone: formData.get('phone') as string
+            })
+          }}>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email *
+                </label>
+                <input
+                  type="email"
+                  name="email"
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="your@email.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  name="fullName"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Your Full Name"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Phone Number
+                </label>
+                <input
+                  type="tel"
+                  name="phone"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="+1234567890"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Starting Quiz...' : 'Continue to Quiz'}
+              </button>
+            </div>
+          </form>
+
+          <button
+            onClick={() => setCurrentStep(0)}
+            className="w-full mt-4 text-gray-600 hover:text-gray-800 transition-colors"
+          >
+            ← Back
+          </button>
+        </motion.div>
+      </div>
     )
   }
 
-  // Experience Step
-  if (step === 2) {
+  // Quiz questions
+  if (currentStep === 2 && quizSession && currentQuestion) {
     return (
-      <QuizExperience
-        onNext={async (exp: string) => {
-          setExperience(exp)
-          
-          // Start quiz in database
-          if (registration) {
-            setIsLoading(true)
-            try {
-              const response = await fetch("/api/quiz", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  action: "start",
-                  email: registration.email,
-                  phone: registration.phone,
-                  fullName: registration.name,
-                  bettingExperience: exp
-                })
-              })
-              
-              if (!response.ok) {
-                const errorData = await response.json()
-                if (response.status === 429) {
-                  // Weekly limit reached
-                  setError(`Weekly limit reached: ${errorData.error}`)
-                  return
-                }
-                throw new Error("Failed to start quiz")
-              }
-              
-              const data = await response.json()
-              if (data.participationId) {
-                setParticipationId(data.participationId)
-              }
-            } catch (error) {
-              console.error("Failed to start quiz:", error)
-              setError("Failed to start quiz. Please try again.")
-            } finally {
-              setIsLoading(false)
-            }
-          }
-          
-          setStep(3)
-        }}
-        onBack={() => setStep(1)}
-      />
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 flex items-center justify-center p-4">
+        <motion.div
+          key={currentQuestionIndex}
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -20 }}
+          className="bg-white rounded-2xl shadow-2xl p-8 max-w-2xl w-full"
+        >
+          {/* Progress bar */}
+          <div className="mb-6">
+            <div className="flex justify-between text-sm text-gray-600 mb-2">
+              <span>Question {currentQuestionIndex + 1} of {quizSession.questions.length}</span>
+              <span>{Math.round(((currentQuestionIndex + 1) / quizSession.questions.length) * 100)}%</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div
+                className="bg-gradient-to-r from-blue-600 to-purple-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${((currentQuestionIndex + 1) / quizSession.questions.length) * 100}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Question */}
+          <div className="mb-8">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">
+              {currentQuestion.question}
+            </h2>
+
+            <div className="space-y-3">
+              {currentQuestion.options.map((option, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleAnswerSelect(currentQuestion.id, option)}
+                  className={`w-full text-left p-4 rounded-lg border-2 transition-all duration-200 ${
+                    selectedAnswers[currentQuestion.id] === option
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <span className="font-medium text-gray-800">{option}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Navigation */}
+          <div className="flex justify-between items-center">
+            <button
+              onClick={previousQuestion}
+              disabled={currentQuestionIndex === 0}
+              className="flex items-center px-4 py-2 text-gray-600 hover:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Previous
+            </button>
+
+            {currentQuestionIndex === quizSession.questions.length - 1 ? (
+              <button
+                onClick={submitQuiz}
+                disabled={loading || Object.keys(selectedAnswers).length < quizSession.questions.length}
+                className="bg-gradient-to-r from-green-600 to-blue-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-green-700 hover:to-blue-700 transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Submitting...' : 'Submit Quiz'}
+              </button>
+            ) : (
+              <button
+                onClick={nextQuestion}
+                disabled={!selectedAnswers[currentQuestion.id]}
+                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Next
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </button>
+            )}
+          </div>
+
+          {error && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              {error}
+            </div>
+          )}
+        </motion.div>
+      </div>
     )
   }
 
-  // Quiz Questions Step
-  if (step === 3) {
+  // Results page
+  if (currentStep === 3) {
     return (
-      <QuizQuestions
-        questions={questions}
-        currentQuestionIndex={answers.length}
-        onAnswerSubmit={async (answerIndex: number) => {
-          const q = questions[answers.length]
-          
-          // Handle timer running out (no answer selected)
-          if (answerIndex === -1) {
-            setAnswers([
-              ...answers,
-              {
-                questionId: q.id,
-                selectedAnswer: "No answer selected",
-                isCorrect: false,
-                pointsEarned: 0,
-              },
-            ])
-            
-            // Timer ran out - complete quiz immediately
-            try {
-              const completeResponse = await fetch("/api/quiz", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  action: "complete",
-                  participationId
-                })
-              })
-              
-              if (!completeResponse.ok) {
-                console.error("Failed to complete quiz")
-              }
-            } catch (error) {
-              console.error("Failed to complete quiz:", error)
-            }
-            
-            setTimeout(() => setStep(4), 500)
-            return
-          }
-          
-          const selectedAnswer = q.options[answerIndex]
-          
-          // Submit answer to API
-          if (participationId) {
-            try {
-              const response = await fetch("/api/quiz", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  action: "submit-answer",
-                  participationId,
-                  questionId: q.id,
-                  selectedAnswer
-                })
-              })
-              
-              if (!response.ok) {
-                throw new Error("Failed to submit answer")
-              }
-              
-              const data = await response.json()
-              setAnswers([
-                ...answers,
-                {
-                  questionId: q.id,
-                  selectedAnswer,
-                  isCorrect: data.isCorrect,
-                  pointsEarned: data.pointsEarned,
-                },
-              ])
-              
-              // Check if this was the last question
-              if (answers.length + 1 === questions.length) {
-                // Complete quiz
-                try {
-                  const completeResponse = await fetch("/api/quiz", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      action: "complete",
-                      participationId
-                    })
-                  })
-                  
-                  if (!completeResponse.ok) {
-                    console.error("Failed to complete quiz")
-                  }
-                } catch (error) {
-                  console.error("Failed to complete quiz:", error)
-                }
-                
-                setTimeout(() => setStep(4), 500)
-              }
-            } catch (error) {
-              console.error("Failed to submit answer:", error)
-              setError("Failed to submit answer. Please try again.")
-            }
-          }
-        }}
-        onTimeUp={async () => {
-          // Handle quiz ending due to timer running out
-          if (participationId) {
-            try {
-              const completeResponse = await fetch("/api/quiz", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  action: "complete",
-                  participationId
-                })
-              })
-              
-              if (!completeResponse.ok) {
-                console.error("Failed to complete quiz")
-              }
-            } catch (error) {
-              console.error("Failed to complete quiz:", error)
-            }
-          }
-          
-          setTimeout(() => setStep(4), 500)
-        }}
-        totalScore={score}
-        user={{
-          id: "1",
-          name: registration?.name || "User",
-          email: registration?.email || "",
-          phone: registration?.phone || "",
-          bettingExperience: experience,
-          score,
-          referralCode: "",
-          referralCount: 0,
-          totalCredits: 0,
-        }}
-      />
-    )
-  }
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center"
+        >
+          <div className="mb-6">
+            {totalScore >= 70 ? (
+              <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+            ) : (
+              <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+            )}
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">
+              {totalScore >= 70 ? 'Congratulations!' : 'Quiz Completed'}
+            </h2>
+            <p className="text-gray-600 mb-4">
+              Your total score: <span className="font-bold text-xl text-blue-600">{totalScore}</span>
+            </p>
+          </div>
 
-  // Referral Step
-  if (step === 4) {
-    return (
-      <QuizReferral
-        registrationData={registration}
-        score={score}
-        onNext={async (refInfo: ReferralInfo) => {
-          setReferral(refInfo)
-          
-          // Process referrals in API
-          if (participationId) {
-            try {
-              const response = await fetch("/api/quiz", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  action: "referral",
-                  participationId,
-                  friendsInvited: refInfo.friendsInvited,
-                  referralCode: refInfo.referralCode || ""
-                })
-              })
-              
-              if (!response.ok) {
-                console.error("Failed to process referrals")
-              }
-            } catch (error) {
-              console.error("Failed to process referrals:", error)
-            }
-          }
-          
-          setStep(5)
-        }}
-        onBack={() => setStep(3)}
-      />
-    )
-  }
+          {quizSession?.referralId && (
+            <div className="mb-6 p-4 bg-green-50 rounded-lg border border-green-200">
+              <Gift className="w-6 h-6 text-green-500 mx-auto mb-2" />
+              <p className="text-sm text-green-700">
+                Referral bonus applied! You'll receive extra rewards.
+              </p>
+            </div>
+          )}
 
-  // Results Step
-  if (step === 5) {
-    // Calculate stats
-    const totalQuestions = questions.length;
-    const correctAnswers = answers.filter(a => a.isCorrect).length;
-    const accuracy = totalQuestions > 0 ? Math.round((correctAnswers / totalQuestions) * 100) : 0;
-    const totalCredits = (referral?.pointsEarned || 0);
-    const stats = {
-      totalPoints: score,
-      correctAnswers,
-      totalQuestions,
-      accuracy,
-      totalCredits,
-    };
-    // Performance (dummy values for local/international)
-    const performance = {
-      scorePercent: totalQuestions > 0 ? Math.round((score / (totalQuestions * 10)) * 100) : 0,
-      local: "Strong",
-      international: "Good",
-    };
-    // Rewards (dummy logic)
-    const rewards = [
-      { label: "Quiz Completion Bonus", credits: 50 },
-      { label: "Performance Bonus", credits: Math.max(0, score - 50) },
-    ];
-    return (
-      <QuizResults
-        registrationData={registration}
-        experience={experience}
-        score={score}
-        referralInfo={referral}
-        onRestart={() => {
-          setStep(0)
-          setRegistration(null)
-          setExperience("")
-          setAnswers([])
-          setReferral(null)
-          setParticipationId("")
-          setError(null)
-        }}
-        stats={stats}
-        performance={performance}
-        rewards={rewards}
-        onImprove={() => window.open("/dashboard", "_blank")}
-        onJoinWhatsApp={() => window.open("https://wa.me/1234567890?text=I%20want%20to%20join%20SnapBet%20community", "_blank")}
-        onJoinTelegram={() => window.open("https://t.me/snapbetcommunity", "_blank")}
-        userName={registration?.name || "User"}
-      />
+          <div className="space-y-3">
+            <button
+              onClick={resetQuiz}
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-200 transform hover:scale-105"
+            >
+              Try Again
+            </button>
+
+            {!session && (
+              <button
+                onClick={() => router.push('/auth/signin')}
+                className="w-full bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-gray-700 transition-all duration-200"
+              >
+                Sign In to Save Progress
+              </button>
+            )}
+
+            <button
+              onClick={() => router.push('/')}
+              className="w-full text-gray-600 hover:text-gray-800 transition-colors"
+            >
+              Back to Home
+            </button>
+          </div>
+        </motion.div>
+      </div>
     )
   }
 
   return null
+}
+
+export default function SnapbetQuiz() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <QuizContent />
+    </Suspense>
+  )
 } 

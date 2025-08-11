@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Menu, X, TrendingUp, User, LogOut, MapPin, BookOpen, Target, Crown, Radio, HelpCircle, BarChart3 } from "lucide-react"
+import { Menu, X, TrendingUp, User, LogOut, MapPin, BookOpen, Target, Crown, Radio, HelpCircle, BarChart3, Gift } from "lucide-react"
 import { useUserCountry } from "@/contexts/user-country-context"
 import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
@@ -30,6 +30,7 @@ export function Navigation() {
 
   // Additional links for authenticated users (removed Dashboard since it's in auth section)
   const authenticatedNavLinks = [
+    { href: "/referral", text: "Referrals", icon: Gift },
     // Tips History moved to public navLinks since it's now a public page
   ]
 

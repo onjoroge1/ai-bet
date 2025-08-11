@@ -207,7 +207,6 @@ model User {
   subscriptionPlan      String?
   totalWinnings         Decimal             @default(0)
   winStreak             Int                 @default(0)
-  referralCode          String?             @unique
   totalReferralEarnings Decimal             @default(0)
   totalReferrals        Int                 @default(0)
   predictionCredits     Int                 @default(0)
@@ -237,12 +236,14 @@ model User {
   quizParticipations    QuizParticipation[]
   referralsReceived     Referral[]          @relation("Referred")
   referralsGiven        Referral[]          @relation("Referrer")
+  referralCodes         ReferralCode[]
   tipUsages             TipUsage[]
   country               Country?            @relation(fields: [countryId], references: [id])
   notifications         UserNotification[]
   userPackages          UserPackage[]
   userPoints            UserPoints?
   userPredictions       UserPrediction[]
+  quizSessions          QuizSession[]
 }
 
 model UserPrediction {
@@ -266,23 +267,49 @@ model UserPrediction {
 model Referral {
   id                  String             @id @default(cuid())
   referrerId          String
-  referredId          String
+  referredId          String?
   referralCode        String
-  commissionAmount    Decimal
-  status              String             @default("pending")
+  commissionAmount    Decimal            @default(0)
+  status              String             @default("pending") // pending, completed, expired
   createdAt           DateTime           @default(now())
+  completedAt         DateTime?
+  expiresAt           DateTime           @default(dbgenerated("(NOW() + INTERVAL '30 days')"))
   packageRewardId     String?
   pointsEarned        Int                @default(0)
+  creditsEarned       Int                @default(0)
   quizParticipationId String?
   referralType        String             @default("quiz")
+  metadata            Json?              // Store additional referral data
   packageReward       PackageOffer?      @relation(fields: [packageRewardId], references: [id])
   quizParticipation   QuizParticipation? @relation(fields: [quizParticipationId], references: [id])
-  referred            User               @relation("Referred", fields: [referredId], references: [id])
+  referred            User?              @relation("Referred", fields: [referredId], references: [id])
   referrer            User               @relation("Referrer", fields: [referrerId], references: [id])
+  referralCodeRef     ReferralCode       @relation(fields: [referralCode], references: [code])
+  quizSessions        QuizSession[]
 
   @@index([referrerId, status])
   @@index([referralType])
   @@index([createdAt])
+  @@index([referralCode])
+  @@index([expiresAt])
+}
+
+model ReferralCode {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  code        String   @unique // e.g., "IADPRM50"
+  isActive    Boolean  @default(true)
+  usageCount  Int      @default(0)
+  maxUsage    Int?     // null for unlimited
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id])
+  referrals   Referral[]
+
+  @@index([code])
+  @@index([isActive])
+  @@index([expiresAt])
 }
 
 model QuizParticipation {
@@ -786,4 +813,31 @@ model BlogPost {
   @@index([slug, isPublished, isActive])
   @@index([aiGenerated, isPublished])
   @@index([sourceUrl])
+}
+
+model QuizSession {
+  id                    String    @id @default(cuid())
+  userId                String?
+  email                 String?
+  fullName              String?
+  phone                 String?
+  status                String    @default("in_progress") // in_progress, completed, abandoned
+  startTime             DateTime  @default(now())
+  endTime               DateTime?
+  currentQuestionIndex  Int       @default(0)
+  totalScore            Int       @default(0)
+  answers               Json      @default("[]") // Array of answer objects
+  referralCode          String?
+  referralId            String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  user                  User?     @relation(fields: [userId], references: [id])
+  referral              Referral? @relation(fields: [referralId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([referralCode])
+  @@index([referralId])
+  @@index([createdAt])
 }

@@ -1,383 +1,376 @@
-import { NextRequest, NextResponse } from "next/server"
-import { PrismaClient } from "@prisma/client"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import prisma from '@/lib/db'
+import { validateReferralCode, createReferralRecord } from '@/lib/referral-service'
+import { logger } from '@/lib/logger'
 
-const prisma = new PrismaClient()
-
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const action = searchParams.get("action")
-    
-    switch (action) {
-      case "questions":
-        return await getQuizQuestions()
-      case "leaderboard":
-        return await getLeaderboard()
-      default:
-        return NextResponse.json({ error: "Invalid action" }, { status: 400 })
-    }
-  } catch (error) {
-    console.error("Quiz API error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
-  }
-}
-
+/**
+ * POST /api/quiz
+ * Start a new quiz session
+ */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { action, ...data } = body
-    
-    switch (action) {
-      case "start":
-        return await startQuiz(data)
-      case "submit-answer":
-        return await submitAnswer(data)
-      case "complete":
-        return await completeQuiz(data)
-      case "referral":
-        return await processReferral(data)
-      case "claim-credits":
-        return await claimQuizCredits(data)
-      default:
-        return NextResponse.json({ error: "Invalid action" }, { status: 400 })
+    const { action, referralCode, email, fullName, phone } = body
+
+    if (action === 'startQuiz') {
+      return await startQuiz(request, { referralCode, email, fullName, phone })
+    } else if (action === 'submitQuiz') {
+      return await submitQuiz(request, body)
+    } else {
+      return NextResponse.json(
+        { error: 'Invalid action' },
+        { status: 400 }
+      )
     }
   } catch (error) {
-    console.error("Quiz API error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    logger.error('Error in quiz API', {
+      tags: ['quiz', 'api'],
+      error: error instanceof Error ? error : undefined
+    })
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
   }
 }
 
-async function getQuizQuestions() {
+/**
+ * Start a new quiz session
+ */
+async function startQuiz(
+  request: NextRequest,
+  data: { referralCode?: string; email?: string; fullName?: string; phone?: string }
+) {
   try {
-    // Get all active questions
-    const allQuestions = await prisma.quizQuestion.findMany({
+    const session = await getServerSession(authOptions)
+    const isLoggedIn = !!session?.user?.id
+
+    // If user is logged in, skip the first two pages and go directly to quiz
+    if (isLoggedIn) {
+      // Create a new quiz session for logged-in user
+      const quizSession = await prisma.quizSession.create({
+        data: {
+          userId: session.user.id,
+          status: 'in_progress',
+          startTime: new Date(),
+          currentQuestionIndex: 0,
+          totalScore: 0,
+          answers: [],
+          referralCode: data.referralCode || null
+        }
+      })
+
+      // Get questions for the quiz
+      const questions = await prisma.quizQuestion.findMany({
+        where: { isActive: true },
+        orderBy: { createdAt: 'asc' },
+        select: {
+          id: true,
+          question: true,
+          options: true,
+          correctAnswer: true,
+          points: true
+        }
+      })
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          quizSessionId: quizSession.id,
+          questions,
+          skipIntro: true, // This tells the frontend to skip intro pages
+          message: 'Quiz started successfully'
+        }
+      })
+    }
+
+    // For non-logged-in users, handle referral code and create session
+    let referralId: string | null = null
+    let referrerName: string | null = null
+
+    if (data.referralCode) {
+      // Validate referral code
+      const validation = await validateReferralCode(data.referralCode)
+      if (!validation.valid) {
+        return NextResponse.json(
+          { error: validation.error },
+          { status: 400 }
+        )
+      }
+
+      // Create referral record
+      try {
+        referralId = await createReferralRecord({
+          referrerId: validation.referrerId!,
+          referralCode: data.referralCode,
+          email: data.email!,
+          fullName: data.fullName,
+          phone: data.phone
+        })
+        referrerName = validation.referrerName || null
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('already been referred')) {
+          return NextResponse.json(
+            { error: error.message },
+            { status: 409 }
+          )
+        }
+        throw error
+      }
+    }
+
+    // Create quiz session for non-logged-in user
+    const quizSession = await prisma.quizSession.create({
+      data: {
+        email: data.email,
+        fullName: data.fullName,
+        phone: data.phone,
+        status: 'in_progress',
+        startTime: new Date(),
+        currentQuestionIndex: 0,
+        totalScore: 0,
+        answers: [],
+        referralCode: data.referralCode || null,
+        referralId: referralId
+      }
+    })
+
+    // Get questions for the quiz
+    const questions = await prisma.quizQuestion.findMany({
       where: { isActive: true },
+      orderBy: { createdAt: 'asc' },
       select: {
         id: true,
         question: true,
-        correctAnswer: true,
         options: true,
-        category: true,
-        difficulty: true,
+        correctAnswer: true,
         points: true
       }
     })
-    
-    // Shuffle the questions array
-    const shuffledQuestions = allQuestions.sort(() => Math.random() - 0.5)
-    
-    // Take the first 5 questions from the shuffled array
-    const selectedQuestions = shuffledQuestions.slice(0, 5)
-    
-    return NextResponse.json({ questions: selectedQuestions })
-  } catch (error) {
-    console.error("Error fetching quiz questions:", error)
-    return NextResponse.json({ error: "Failed to fetch questions" }, { status: 500 })
-  }
-}
 
-async function getLeaderboard() {
-  try {
-    const leaderboard = await prisma.quizParticipation.findMany({
-      where: { isCompleted: true },
-      orderBy: { totalScore: "desc" },
-      take: 10,
-      select: {
-        fullName: true,
-        totalScore: true,
-        correctAnswers: true,
-        participatedAt: true
-      }
-    })
-    
-    return NextResponse.json({ leaderboard })
-  } catch (error) {
-    console.error("Error fetching leaderboard:", error)
-    return NextResponse.json({ error: "Failed to fetch leaderboard" }, { status: 500 })
-  }
-}
-
-async function startQuiz(data: {
-  email: string
-  phone: string
-  fullName: string
-  bettingExperience: string
-  referralCode?: string
-}) {
-  try {
-    const session = await getServerSession(authOptions)
-    
-    const participation = await prisma.quizParticipation.create({
-      data: {
-        userId: session?.user?.id,
-        email: data.email,
-        phone: data.phone,
-        fullName: data.fullName,
-        bettingExperience: data.bettingExperience,
-        referralCode: data.referralCode,
-        isCompleted: false
-      }
-    })
-    
-    return NextResponse.json({ 
-      participationId: participation.id,
-      message: "Quiz started successfully" 
-    })
-  } catch (error) {
-    console.error("Error starting quiz:", error)
-    return NextResponse.json({ error: "Failed to start quiz" }, { status: 500 })
-  }
-}
-
-async function submitAnswer(data: {
-  participationId: string
-  questionId: string
-  selectedAnswer: string
-}) {
-  try {
-    const question = await prisma.quizQuestion.findUnique({
-      where: { id: data.questionId }
-    })
-    
-    if (!question) {
-      return NextResponse.json({ error: "Question not found" }, { status: 404 })
-    }
-    
-    const isCorrect = data.selectedAnswer === question.correctAnswer
-    const pointsEarned = isCorrect ? question.points : 0
-    
-    const answer = await prisma.quizAnswer.create({
-      data: {
-        quizParticipationId: data.participationId,
-        quizQuestionId: data.questionId,
-        selectedAnswer: data.selectedAnswer,
-        isCorrect,
-        pointsEarned
-      }
-    })
-    
-    // Update participation stats
-    await prisma.quizParticipation.update({
-      where: { id: data.participationId },
-      data: {
-        questionsAnswered: { increment: 1 },
-        correctAnswers: { increment: isCorrect ? 1 : 0 },
-        totalScore: { increment: pointsEarned }
-      }
-    })
-    
-    return NextResponse.json({ 
-      answer,
-      isCorrect,
-      pointsEarned,
-      correctAnswer: question.correctAnswer
-    })
-  } catch (error) {
-    console.error("Error submitting answer:", error)
-    return NextResponse.json({ error: "Failed to submit answer" }, { status: 500 })
-  }
-}
-
-async function completeQuiz(data: { participationId: string }) {
-  try {
-    const participation = await prisma.quizParticipation.update({
-      where: { id: data.participationId },
-      data: { isCompleted: true },
-      include: {
-        quizAnswers: {
-          include: { quizQuestion: true }
-        }
-      }
-    })
-    
-    // Calculate final stats
-    const totalQuestions = participation.quizAnswers.length
-    const correctAnswers = participation.quizAnswers.filter((a: { isCorrect: boolean }) => a.isCorrect).length
-    const accuracy = totalQuestions > 0 ? Math.round((correctAnswers / totalQuestions) * 100) : 0
-    
-    // Calculate bonus points based on performance
-    let bonusPoints = 0
-    if (accuracy >= 90) bonusPoints = 50
-    else if (accuracy >= 80) bonusPoints = 30
-    else if (accuracy >= 70) bonusPoints = 20
-    else if (accuracy >= 60) bonusPoints = 10
-    
-    // Update total score with bonus
-    const finalScore = participation.totalScore + bonusPoints
-    await prisma.quizParticipation.update({
-      where: { id: data.participationId },
-      data: { 
-        totalScore: finalScore
-      }
-    })
-    
-    // If user is authenticated, invalidate their credit balance cache
-    if (participation.userId) {
-      try {
-        const { cacheManager } = await import('@/lib/cache-manager')
-        await cacheManager.delete(`credit-balance:${participation.userId}`, { prefix: 'credits' })
-        console.log(`Cache invalidated for user ${participation.userId} after quiz completion`)
-      } catch (error) {
-        console.error('Failed to invalidate credit balance cache after quiz completion:', error)
-        // Don't fail the request if cache invalidation fails
-      }
-    }
-    
     return NextResponse.json({
-      participation: { ...participation, totalScore: finalScore },
-      stats: {
-        totalPoints: finalScore,
-        correctAnswers,
-        totalQuestions,
-        accuracy,
-        bonusPoints
+      success: true,
+      data: {
+        quizSessionId: quizSession.id,
+        questions,
+        skipIntro: false, // Non-logged-in users go through intro
+        referralId,
+        referrerName,
+        message: 'Quiz started successfully'
       }
     })
   } catch (error) {
-    console.error("Error completing quiz:", error)
-    return NextResponse.json({ error: "Failed to complete quiz" }, { status: 500 })
+    logger.error('Error starting quiz', {
+      tags: ['quiz', 'start'],
+      error: error instanceof Error ? error : undefined
+    })
+    return NextResponse.json(
+      { error: 'Failed to start quiz' },
+      { status: 500 }
+    )
   }
 }
 
-async function processReferral(data: {
-  participationId: string
-  friendsInvited: string[]
-  referralCode: string
-}) {
+/**
+ * Submit quiz answers and calculate score
+ */
+async function submitQuiz(request: NextRequest, data: any) {
   try {
-    // Update participation with referral info
-    await prisma.quizParticipation.update({
-      where: { id: data.participationId },
-      data: {
-        referralCode: data.referralCode
+    const { quizSessionId, answers } = data
+
+    if (!quizSessionId || !answers || !Array.isArray(answers)) {
+      return NextResponse.json(
+        { error: 'Quiz session ID and answers are required' },
+        { status: 400 }
+      )
+    }
+
+    // Get quiz session
+    const quizSession = await prisma.quizSession.findUnique({
+      where: { id: quizSessionId },
+      include: { referral: true }
+    })
+
+    if (!quizSession) {
+      return NextResponse.json(
+        { error: 'Quiz session not found' },
+        { status: 404 }
+      )
+    }
+
+    if (quizSession.status !== 'in_progress') {
+      return NextResponse.json(
+        { error: 'Quiz session is not in progress' },
+        { status: 400 }
+      )
+    }
+
+    // Calculate score
+    let totalScore = 0
+    const scoredAnswers = answers.map((answer: any) => {
+      const question = answer.question
+      const isCorrect = answer.selectedAnswer === question.correctAnswer
+      const points = isCorrect ? question.points : 0
+      totalScore += points
+
+      return {
+        questionId: question.id,
+        selectedAnswer: answer.selectedAnswer,
+        correctAnswer: question.correctAnswer,
+        isCorrect,
+        points
       }
     })
-    
-    // Calculate referral bonus points (5 points per friend invited)
-    const referralBonus = data.friendsInvited.length * 5
-    
-    // Update participation with referral bonus
-    await prisma.quizParticipation.update({
-      where: { id: data.participationId },
+
+    // Update quiz session
+    await prisma.quizSession.update({
+      where: { id: quizSessionId },
       data: {
-        totalScore: { increment: referralBonus }
+        status: 'completed',
+        endTime: new Date(),
+        totalScore,
+        answers: scoredAnswers
       }
     })
-    
-    // Create referral records for invited friends
-    const referrals = await Promise.all(
-      data.friendsInvited.map(() =>
-        prisma.referral.create({
+
+    // Create quiz participation record if user is logged in
+    let quizParticipationId: string | null = null
+    if (quizSession.userId) {
+      const participation = await prisma.quizParticipation.create({
+        data: {
+          userId: quizSession.userId,
+          email: quizSession.email || '',
+          fullName: quizSession.fullName || '',
+          bettingExperience: 'beginner', // Default value
+          totalScore,
+          questionsAnswered: answers.length,
+          correctAnswers: scoredAnswers.filter(a => a.isCorrect).length,
+          isCompleted: true,
+          referralCode: quizSession.referralCode
+        }
+      })
+      quizParticipationId = participation.id
+    }
+
+    // Process referral if exists
+    if (quizSession.referralId && quizSession.referral) {
+      try {
+        // Update referral with quiz participation
+        await prisma.referral.update({
+          where: { id: quizSession.referralId },
           data: {
-            referrerId: data.participationId,
-            referredId: data.participationId, // Using same ID as placeholder
-            referralCode: data.referralCode,
-            referralType: "quiz",
-            quizParticipationId: data.participationId,
-            status: "pending",
-            commissionAmount: 0, // Will be calculated when friend completes quiz
-            pointsEarned: 0
+            quizParticipationId,
+            status: 'completed',
+            completedAt: new Date()
           }
         })
-      )
-    )
-    
+
+        // Award points to referrer (basic reward for quiz completion)
+        const pointsToAward = 10
+        await prisma.user.update({
+          where: { id: quizSession.referral.referrerId },
+          data: {
+            totalReferrals: { increment: 1 },
+            totalReferralEarnings: { increment: pointsToAward }
+          }
+        })
+
+        // Add points to referrer's UserPoints
+        await prisma.userPoints.upsert({
+          where: { userId: quizSession.referral.referrerId },
+          update: {
+            points: { increment: pointsToAward },
+            totalEarned: { increment: pointsToAward }
+          },
+          create: {
+            userId: quizSession.referral.referrerId,
+            points: pointsToAward,
+            totalEarned: pointsToAward
+          }
+        })
+
+        logger.info('Referral completed via quiz', {
+          tags: ['quiz', 'referral'],
+          data: {
+            referralId: quizSession.referralId,
+            referrerId: quizSession.referral.referrerId,
+            pointsAwarded: pointsToAward
+          }
+        })
+      } catch (error) {
+        logger.error('Error processing referral completion', {
+          tags: ['quiz', 'referral'],
+          error: error instanceof Error ? error : undefined,
+          data: { referralId: quizSession.referralId }
+        })
+      }
+    }
+
     return NextResponse.json({
-      referrals,
-      referralBonus,
-      message: "Referrals processed successfully"
+      success: true,
+      data: {
+        totalScore,
+        correctAnswers: scoredAnswers.filter(a => a.isCorrect).length,
+        totalQuestions: answers.length,
+        message: 'Quiz completed successfully'
+      }
     })
   } catch (error) {
-    console.error("Error processing referrals:", error)
-    return NextResponse.json({ error: "Failed to process referrals" }, { status: 500 })
+    logger.error('Error submitting quiz', {
+      tags: ['quiz', 'submit'],
+      error: error instanceof Error ? error : undefined
+    })
+    return NextResponse.json(
+      { error: 'Failed to submit quiz' },
+      { status: 500 }
+    )
   }
 }
 
-async function claimQuizCredits(data: { participationId: string }) {
+/**
+ * GET /api/quiz
+ * Get quiz questions (for logged-in users who want to retry)
+ */
+export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 })
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
     }
-    
-    // Get the quiz participation
-    const participation = await prisma.quizParticipation.findUnique({
-      where: { id: data.participationId }
-    })
-    
-    if (!participation) {
-      return NextResponse.json({ error: "Quiz participation not found" }, { status: 404 })
-    }
-    
-    if (!participation.isCompleted) {
-      return NextResponse.json({ error: "Quiz must be completed before claiming credits" }, { status: 400 })
-    }
-    
-    // Check if credits have already been claimed for this participation
-    if (participation.creditsClaimed) {
-      return NextResponse.json({ error: "Credits have already been claimed for this quiz completion" }, { status: 400 })
-    }
-    
-    // Convert quiz points to dashboard credits (50 points = 1 credit)
-    const creditsToAdd = Math.floor(participation.totalScore / 50)
-    
-    if (creditsToAdd === 0) {
-      return NextResponse.json({ 
-        error: "You need at least 50 quiz points to claim credits. Complete more questions correctly or invite friends to earn more points.",
-        pointsNeeded: 50 - participation.totalScore
-      }, { status: 400 })
-    }
-    
-    // Add the ORIGINAL quiz points to user's account (not the calculated credits)
-    // This allows the credit calculation to work correctly: Math.floor(points / 50)
-    const userPointsUpdate = await prisma.userPoints.upsert({
-      where: { userId: session.user.id },
-      update: {
-        points: { increment: participation.totalScore } // Store original points, not calculated credits
-      },
-      create: {
-        userId: session.user.id,
-        points: participation.totalScore // Store original points, not calculated credits
+
+    // Get questions for the quiz
+    const questions = await prisma.quizQuestion.findMany({
+      where: { isActive: true },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        question: true,
+        options: true,
+        correctAnswer: true,
+        points: true
       }
     })
-    
-    // Create point transaction record
-    await prisma.pointTransaction.create({
-      data: {
-        userPointsId: userPointsUpdate.id,
-        userId: session.user.id,
-        amount: participation.totalScore, // Store original points in transaction
-        type: "QUIZ_COMPLETION",
-        description: `Quiz completion bonus - ${participation.totalScore} points (${creditsToAdd} credits)`,
-        reference: `quiz_${participation.id}`
-      }
-    })
-    
-    // Mark the participation as claimed to prevent duplicate claims
-    await prisma.quizParticipation.update({
-      where: { id: data.participationId },
-      data: { creditsClaimed: true }
-    })
-    
-    // Invalidate credit balance cache to ensure fresh data
-    try {
-      const { cacheManager } = await import('@/lib/cache-manager')
-      await cacheManager.delete(`credit-balance:${session.user.id}`, { prefix: 'credits' })
-      console.log(`Cache invalidated for user ${session.user.id} after quiz credit claim`)
-    } catch (error) {
-      console.error('Failed to invalidate credit balance cache:', error)
-      // Don't fail the request if cache invalidation fails
-    }
-    
+
     return NextResponse.json({
       success: true,
-      creditsAdded: creditsToAdd,
-      message: "Quiz credits claimed successfully"
+      data: {
+        questions,
+        skipIntro: true
+      }
     })
   } catch (error) {
-    console.error("Error claiming quiz credits:", error)
-    return NextResponse.json({ error: "Failed to claim credits" }, { status: 500 })
+    logger.error('Error fetching quiz questions', {
+      tags: ['quiz', 'api'],
+      error: error instanceof Error ? error : undefined
+    })
+    return NextResponse.json(
+      { error: 'Failed to fetch quiz questions' },
+      { status: 500 }
+    )
   }
 } 

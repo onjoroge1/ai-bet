@@ -4,9 +4,10 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Brain, Trophy, Gift, ArrowDownLeft, ArrowUpRight, Sparkles, Zap, Target, Copy, Share2, Users } from "lucide-react"
+import { Brain, Trophy, Gift, ArrowDownLeft, ArrowUpRight, Sparkles, Zap, Target, Copy, Share2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
+import Link from "next/link"
 
 interface UserPointsData {
   points: number
@@ -23,19 +24,33 @@ interface UserPointsData {
   }>
 }
 
+interface ReferralData {
+  referralCode: string
+  isActive: boolean
+  usageCount: number
+  stats: {
+    totalReferrals: number
+    completedReferrals: number
+    totalEarned: number
+    completionRate: number
+  }
+}
+
 export function QuizCredits() {
   const [pointsData, setPointsData] = useState<UserPointsData | null>(null)
+  const [referralData, setReferralData] = useState<ReferralData | null>(null)
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
   const router = useRouter()
   const { user } = useAuth()
 
-  // Generate referral link based on user's referral code or ID
-  const referralCode = user?.referralCode || user?.id?.slice(-8).toUpperCase() || "SNAP"
-  const referralLink = `https://snapbet.bet/snapbet-quiz?ref=${referralCode}`
+  // Generate referral link based on user's actual referral code
+  const referralCode = referralData?.referralCode || user?.referralCode || user?.id?.slice(-8).toUpperCase() || "SNAP"
+  const referralLink = `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}/snapbet-quiz?ref=${referralCode}`
 
   useEffect(() => {
     fetchPointsData()
+    fetchReferralData()
   }, [])
 
   const fetchPointsData = async () => {
@@ -50,6 +65,18 @@ export function QuizCredits() {
       console.error("Error fetching points data:", error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchReferralData = async () => {
+    try {
+      const response = await fetch("/api/referrals")
+      if (response.ok) {
+        const data = await response.json()
+        setReferralData(data.data)
+      }
+    } catch (error) {
+      console.error("Error fetching referral data:", error)
     }
   }
 
@@ -123,7 +150,6 @@ export function QuizCredits() {
   }
 
   const creditsCount = pointsData ? Math.floor(pointsData.points / 50) : 0
-  const referralCount = pointsData?.recentTransactions.filter(t => t.type === "REFERRAL").length || 0
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -175,15 +201,6 @@ export function QuizCredits() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Referral Stats */}
-            <div className="bg-slate-900/50 rounded-lg p-3">
-              <div className="flex items-center space-x-2 mb-2">
-                <Users className="w-4 h-4 text-blue-400" />
-                <span className="text-slate-400 text-sm">Friends Referred</span>
-              </div>
-              <div className="text-lg font-bold text-white">{referralCount}</div>
-            </div>
-
             {/* Referral Link */}
             <div>
               <div className="text-slate-400 text-sm mb-2">Your Referral Link</div>
@@ -202,14 +219,26 @@ export function QuizCredits() {
               </div>
             </div>
 
-            {/* Share Button */}
-            <Button 
-              onClick={handleShare}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              <Share2 className="w-4 h-4 mr-2" />
-              Share Link
-            </Button>
+            {/* Action Buttons - Side by Side */}
+            <div className="grid grid-cols-2 gap-3">
+              <Button 
+                onClick={handleShare}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <Share2 className="w-4 h-4 mr-2" />
+                Share
+              </Button>
+
+              <Link href="/referral">
+                <Button 
+                  variant="outline"
+                  className="w-full border-slate-600 text-slate-300 hover:bg-slate-800"
+                >
+                  <Gift className="w-4 h-4 mr-2" />
+                  Manage
+                </Button>
+              </Link>
+            </div>
           </CardContent>
         </Card>
       </div>

@@ -137,7 +137,11 @@ export const authOptions = {
             password: true,
             fullName: true,
             role: true,
-            referralCode: true,
+            referralCodes: {
+              where: { isActive: true },
+              select: { code: true },
+              take: 1
+            },
           },
         })
 
@@ -156,7 +160,7 @@ export const authOptions = {
             email: user.email,
             name: user.fullName,
             role: user.role,
-            referralCode: user.referralCode,
+            referralCode: user.referralCodes[0]?.code || null,
           }
         } catch (error) {
           console.error('Error comparing passwords:', error)

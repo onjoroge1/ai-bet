@@ -54,6 +54,10 @@ const LiveMatchesWidget = dynamic(() => import('@/components/live-matches-widget
   loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
 })
 
+const ReferralBanner = dynamic(() => import('@/components/referral-banner'), {
+  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
+})
+
 export default function DashboardPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
@@ -84,6 +88,13 @@ export default function DashboardPage() {
       <div className="mb-8" data-section="personalized-offers">
         <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
           <PersonalizedOffers />
+        </Suspense>
+      </div>
+
+      {/* Referral Banner - Full Width */}
+      <div className="mb-8">
+        <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
+          <ReferralBanner />
         </Suspense>
       </div>
 
