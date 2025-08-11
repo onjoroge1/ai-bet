@@ -4,6 +4,7 @@ import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import dynamic from 'next/dynamic'
 import { Suspense } from 'react'
 import { Loader2 } from 'lucide-react'
+import { useAuth } from "@/components/auth-provider"
 
 // Dynamically import heavy components
 const StatsOverview = dynamic(() => import('@/components/dashboard/stats-overview').then(mod => mod.StatsOverview), {
@@ -59,6 +60,34 @@ const ReferralBanner = dynamic(() => import('@/components/referral-banner'), {
 })
 
 export default function DashboardPage() {
+  const { isLoading: authLoading, isAuthenticated } = useAuth()
+
+  // Show loading state while auth is initializing
+  if (authLoading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="flex items-center justify-center h-96">
+          <div className="text-center">
+            <Loader2 className="h-12 w-12 animate-spin text-emerald-500 mx-auto mb-4" />
+            <p className="text-slate-300 text-lg">Loading dashboard...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Show error state if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-8 text-center">
+          <h2 className="text-xl font-semibold text-red-400 mb-2">Authentication Required</h2>
+          <p className="text-slate-300">Please sign in to access the dashboard.</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       <DashboardHeader />

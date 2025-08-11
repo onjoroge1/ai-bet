@@ -47,8 +47,12 @@ async function startQuiz(
     const session = await getServerSession(authOptions)
     const isLoggedIn = !!session?.user?.id
 
+    console.log('startQuiz called with:', { isLoggedIn, data, sessionUserId: session?.user?.id })
+
     // If user is logged in, skip the first two pages and go directly to quiz
     if (isLoggedIn) {
+      console.log('Creating quiz session for logged-in user:', session.user.id)
+      
       // Create a new quiz session for logged-in user
       const quizSession = await prisma.quizSession.create({
         data: {
@@ -62,8 +66,10 @@ async function startQuiz(
         }
       })
 
-      // Get questions for the quiz
-      const questions = await prisma.quizQuestion.findMany({
+      console.log('Created quiz session:', quizSession.id)
+
+      // Get questions for the quiz - limit to 5 questions for better user experience
+      const allQuestions = await prisma.quizQuestion.findMany({
         where: { isActive: true },
         orderBy: { createdAt: 'asc' },
         select: {
@@ -75,7 +81,12 @@ async function startQuiz(
         }
       })
 
-      return NextResponse.json({
+      // Randomly select 5 questions from the available pool
+      const questions = allQuestions
+        .sort(() => Math.random() - 0.5) // Shuffle questions
+        .slice(0, 5) // Take first 5
+
+      const responseData = {
         success: true,
         data: {
           quizSessionId: quizSession.id,
@@ -83,7 +94,10 @@ async function startQuiz(
           skipIntro: true, // This tells the frontend to skip intro pages
           message: 'Quiz started successfully'
         }
-      })
+      }
+
+      console.log('Sending response for logged-in user:', responseData)
+      return NextResponse.json(responseData)
     }
 
     // For non-logged-in users, handle referral code and create session
@@ -137,8 +151,8 @@ async function startQuiz(
       }
     })
 
-    // Get questions for the quiz
-    const questions = await prisma.quizQuestion.findMany({
+    // Get questions for the quiz - limit to 5 questions for better user experience
+    const allQuestions = await prisma.quizQuestion.findMany({
       where: { isActive: true },
       orderBy: { createdAt: 'asc' },
       select: {
@@ -149,6 +163,11 @@ async function startQuiz(
         points: true
       }
     })
+
+    // Randomly select 5 questions from the available pool
+    const questions = allQuestions
+      .sort(() => Math.random() - 0.5) // Shuffle questions
+      .slice(0, 5) // Take first 5
 
     return NextResponse.json({
       success: true,
@@ -180,7 +199,21 @@ async function submitQuiz(request: NextRequest, data: any) {
   try {
     const { quizSessionId, answers } = data
 
+    // Debug logging
+    console.log('submitQuiz received data:', {
+      quizSessionId,
+      answersType: typeof answers,
+      answersIsArray: Array.isArray(answers),
+      answersLength: answers?.length,
+      dataKeys: Object.keys(data)
+    })
+
     if (!quizSessionId || !answers || !Array.isArray(answers)) {
+      console.error('Validation failed:', {
+        hasQuizSessionId: !!quizSessionId,
+        hasAnswers: !!answers,
+        answersIsArray: Array.isArray(answers)
+      })
       return NextResponse.json(
         { error: 'Quiz session ID and answers are required' },
         { status: 400 }
@@ -343,8 +376,8 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get questions for the quiz
-    const questions = await prisma.quizQuestion.findMany({
+    // Get questions for the quiz - limit to 5 questions for better user experience
+    const allQuestions = await prisma.quizQuestion.findMany({
       where: { isActive: true },
       orderBy: { createdAt: 'asc' },
       select: {
@@ -355,6 +388,11 @@ export async function GET(request: NextRequest) {
         points: true
       }
     })
+
+    // Randomly select 5 questions from the available pool
+    const questions = allQuestions
+      .sort(() => Math.random() - 0.5) // Shuffle questions
+      .slice(0, 5) // Take first 5
 
     return NextResponse.json({
       success: true,

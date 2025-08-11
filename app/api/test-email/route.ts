@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { EmailService } from '@/lib/email-service'
 import { logger } from '@/lib/logger'
 
+// Define proper types for email service results
+interface EmailServiceResult {
+  success: boolean
+  messageId?: string
+  error?: string | Error
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { email, type } = await req.json()
@@ -12,7 +19,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 })
     }
 
-    let result: any
+    let result: EmailServiceResult
 
     switch (type) {
       case 'payment-confirmation':

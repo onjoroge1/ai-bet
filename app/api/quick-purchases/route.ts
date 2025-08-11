@@ -4,6 +4,16 @@ import { authOptions } from '@/lib/auth'
 import { PrismaClient } from "@prisma/client"
 import { getDbCountryPricing } from '@/lib/server-pricing-service'
 
+/**
+ * Quick Purchases API
+ * 
+ * Features:
+ * - Country-specific pricing from PackageCountryPrice table
+ * - Filters out predictions already purchased by the user via Purchase table
+ * - Only shows unpurchased tips in the "Top Predictions" section
+ * - Maintains all other package types (VIP, packages, etc.)
+ */
+
 const prismaClient = new PrismaClient()
 
 interface QuickPurchaseWithRelations {
@@ -74,7 +84,7 @@ function generatePackageId(countryId: string, packageType: string, quickPurchase
 }
 
 // GET /api/quick-purchases
-export async function GET(request: Request) {
+export async function GET() {
   try {
     const session = await getServerSession(authOptions)
     
@@ -105,6 +115,35 @@ export async function GET(request: Request) {
     if (!userCountry) {
       return NextResponse.json({ error: "Country not found" }, { status: 404 })
     }
+
+    // Get all predictions that the user has already purchased or claimed
+    // CORRECTED: Use Purchase table instead of wrong tables
+    const userPurchasedPredictions = await prismaClient.purchase.findMany({
+      where: {
+        userId: session.user.id,
+        status: 'completed',
+        quickPurchase: {
+          type: { in: ['prediction', 'tip'] }
+        }
+      },
+      select: {
+        quickPurchase: {
+          select: {
+            matchId: true
+          }
+        }
+      }
+    })
+
+    // Extract match IDs from completed purchases
+    const purchasedMatchIds = new Set(
+      userPurchasedPredictions
+        .map(p => p.quickPurchase?.matchId)
+        .filter((matchId): matchId is string => matchId !== null)
+    )
+
+    // Log the purchased match IDs for debugging
+    console.log(`Purchased match IDs for user ${session.user.id}:`, Array.from(purchasedMatchIds))
 
     // Fetch active quick purchases from ALL countries (not just user's country)
     const quickPurchases = await prismaClient.quickPurchase.findMany({
@@ -178,7 +217,51 @@ export async function GET(request: Request) {
       })
     )).filter((item): item is QuickPurchaseWithRelations => item !== null)
 
-    return NextResponse.json(transformedPurchases)
+    // Filter out predictions that the user has already purchased or claimed
+    const availablePurchases = transformedPurchases.filter(purchase => {
+      // If it's not a prediction type, always show it (packages, VIP, etc.)
+      if (purchase.type !== 'prediction' && purchase.type !== 'tip') {
+        return true
+      }
+      
+      // If it has a matchId, check if the user has already purchased that match
+      if (purchase.matchId) {
+        const isAlreadyPurchased = purchasedMatchIds.has(purchase.matchId)
+        
+        if (isAlreadyPurchased) {
+          console.log(`Filtering out already purchased prediction: ${purchase.name} (Match: ${purchase.matchId})`)
+        }
+        
+        return !isAlreadyPurchased
+      }
+      
+      // If no matchId, show it (fallback)
+      return true
+    })
+
+    // Log filtering results for debugging
+    console.log(`Quick purchases filtering results for user ${session.user.id}:`)
+    console.log(`- Total available: ${transformedPurchases.length}`)
+    console.log(`- Total predictions purchased/claimed: ${purchasedMatchIds.size}`) // Changed from purchasedPredictionIds to purchasedMatchIds
+    console.log(`- Available after filtering: ${availablePurchases.length}`)
+    console.log(`- Filtered out: ${transformedPurchases.length - availablePurchases.length}`)
+    
+    // Log what was filtered out for debugging
+    const filteredOut = transformedPurchases.filter(purchase => {
+      if (purchase.type !== 'prediction' && purchase.type !== 'tip') return false
+      if (!purchase.matchId) return false
+      
+      return purchasedMatchIds.has(purchase.matchId!)
+    })
+    
+    if (filteredOut.length > 0) {
+      console.log(`Filtered out items:`)
+      filteredOut.forEach(item => {
+        console.log(`  - ${item.name} (Match: ${item.matchId})`)
+      })
+    }
+
+    return NextResponse.json(availablePurchases)
   } catch (error) {
     console.error("Error fetching quick purchases:", error)
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })

@@ -71,27 +71,27 @@ export function Footer() {
             <h3 className="text-white font-semibold mb-4">Support</h3>
             <ul className="space-y-2">
               <li>
-                <a href="#" className="text-slate-400 hover:text-white text-sm">
+                <a href="/faq" className="text-slate-400 hover:text-white text-sm">
                   FAQ
                 </a>
               </li>
               <li>
-                <a href="#" className="text-slate-400 hover:text-white text-sm">
+                <a href="/dashboard/support" className="text-slate-400 hover:text-white text-sm">
                   Contact Us
                 </a>
               </li>
               <li>
-                <a href="#" className="text-slate-400 hover:text-white text-sm">
+                <a href="/faq" className="text-slate-400 hover:text-white text-sm">
                   Terms of Service
                 </a>
               </li>
               <li>
-                <a href="#" className="text-slate-400 hover:text-white text-sm">
+                <a href="/faq" className="text-slate-400 hover:text-white text-sm">
                   Privacy Policy
                 </a>
               </li>
               <li>
-                <a href="#" className="text-slate-400 hover:text-white text-sm">
+                <a href="/blog/top-betting-strategies-football" className="text-slate-400 hover:text-white text-sm">
                   Responsible Gambling
                 </a>
               </li>
@@ -110,20 +110,7 @@ export function Footer() {
                 <CreditCard className="w-4 h-4 mr-2" />
                 Local Payments
               </div>
-              <div className="space-y-1">
-                <Badge variant="secondary" className="bg-slate-800 text-slate-300 text-xs mr-1">
-                  English
-                </Badge>
-                <Badge variant="secondary" className="bg-slate-800 text-slate-300 text-xs mr-1">
-                  Swahili
-                </Badge>
-                <Badge variant="secondary" className="bg-slate-800 text-slate-300 text-xs mr-1">
-                  Hindi
-                </Badge>
-                <Badge variant="secondary" className="bg-slate-800 text-slate-300 text-xs mr-1">
-                  Tagalog
-                </Badge>
-              </div>
+             
             </div>
           </div>
         </div>

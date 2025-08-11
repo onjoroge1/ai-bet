@@ -38,34 +38,110 @@ interface Tip {
   currencySymbol: string
   currencyCode: string
   // Raw prediction data from database
-  predictionData: any | null
+  predictionData: PredictionData | null
   // Formatted prediction data for frontend components
   prediction: {
-    match: any
+    match: MatchData
     prediction: string
     odds: string
     confidence: number
     analysis: string
     valueRating: string
     detailedReasoning: string[]
-    extraMarkets: any[]
+    extraMarkets: ExtraMarket[]
     thingsToAvoid: string[]
     riskLevel: string
     confidenceStars: number
-    probabilitySnapshot: any
-    aiVerdict: any
-    mlPrediction: any
-    riskAnalysis: any
-    bettingIntelligence: any
+    probabilitySnapshot: ProbabilitySnapshot
+    aiVerdict: AIVerdict
+    mlPrediction: MLPrediction
+    riskAnalysis: RiskAnalysis
+    bettingIntelligence: BettingIntelligence
     confidenceBreakdown: string
-    additionalMarkets: any
-    analysisMetadata: any
+    additionalMarkets: AdditionalMarkets
+    analysisMetadata: AnalysisMetadata
     processingTime: number
     timestamp: string
   } | null
   // Additional credit claim info
   expiresAt?: string | null
   status?: string | null
+}
+
+// Define proper types for prediction data structures
+interface PredictionData {
+  [key: string]: unknown
+}
+
+interface MatchData {
+  homeTeam: string
+  awayTeam: string
+  date: string
+  venue?: string
+  league?: string
+  [key: string]: unknown
+}
+
+interface ExtraMarket {
+  name: string
+  odds: number
+  prediction?: string
+  reasoning?: string
+  [key: string]: unknown
+}
+
+interface ProbabilitySnapshot {
+  homeWin: number
+  awayWin: number
+  draw: number
+  home?: number
+  away?: number
+  [key: string]: unknown
+}
+
+interface AIVerdict {
+  confidence: number
+  reasoning: string
+  recommended_outcome?: string
+  confidence_level?: string
+  probability_assessment?: string
+  [key: string]: unknown
+}
+
+interface MLPrediction {
+  model: string
+  prediction: string
+  confidence: number
+  home_win?: number
+  draw?: number
+  away_win?: number
+  [key: string]: unknown
+}
+
+interface RiskAnalysis {
+  level: string
+  factors: string[]
+  overall_risk?: string
+  key_risks?: string[]
+  [key: string]: unknown
+}
+
+interface BettingIntelligence {
+  value: string
+  reasoning: string
+  primary_bet?: string
+  [key: string]: unknown
+}
+
+interface AdditionalMarkets {
+  [key: string]: unknown
+}
+
+interface AnalysisMetadata {
+  version: string
+  timestamp: string
+  analysis_timestamp?: string
+  [key: string]: unknown
 }
 
 export default function MyTipsPage() {
@@ -360,16 +436,18 @@ export default function MyTipsPage() {
                     {selectedTip.prediction?.extraMarkets.map((market, index) => (
                       <div key={index} className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-white font-medium text-sm">{market.market}</span>
+                          <span className="text-white font-medium text-sm">{market.name}</span>
                           <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
-                            {market.probability != null ? market.probability : 0}%
+                            {market.odds != null ? market.odds.toFixed(2) : 0}%
                           </Badge>
                         </div>
                         <div className="text-emerald-400 font-semibold text-sm mb-1">
-                          {market.prediction}
+                          {/* Assuming market.prediction is a string or number */}
+                          {typeof market.prediction === 'string' ? market.prediction : 'N/A'}
                         </div>
                         <div className="text-slate-400 text-xs">
-                          {market.reasoning}
+                          {/* Assuming market.reasoning is a string or number */}
+                          {typeof market.reasoning === 'string' ? market.reasoning : 'N/A'}
                         </div>
                       </div>
                     ))}
@@ -480,16 +558,16 @@ export default function MyTipsPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-slate-400">Overall Risk:</span>
                     <Badge className={`${getValueRatingColor(selectedTip.valueRating)} text-white`}>
-                      {selectedTip.prediction?.riskAnalysis?.overall_risk || selectedTip.valueRating || 'Unknown'}
+                      {selectedTip.prediction?.riskAnalysis?.level || selectedTip.valueRating || 'Unknown'}
                     </Badge>
                   </div>
                   
                   {/* Key Risks */}
-                  {selectedTip.prediction?.riskAnalysis?.key_risks && (
+                  {selectedTip.prediction?.riskAnalysis?.factors && (
                     <div>
                       <div className="text-sm text-slate-400 mb-2">Key Risks:</div>
                       <ul className="space-y-1">
-                        {selectedTip.prediction.riskAnalysis.key_risks.map((risk: string, index: number) => (
+                        {selectedTip.prediction.riskAnalysis.factors.map((risk: string, index: number) => (
                           <li key={index} className="text-slate-300 text-sm flex items-start">
                             <span className="text-orange-400 mr-2">•</span>
                             {risk}
@@ -523,11 +601,11 @@ export default function MyTipsPage() {
                       <div className="space-y-2">
                         <div className="flex justify-between">
                           <span className="text-slate-400">Recommended Outcome:</span>
-                          <span className="text-emerald-400 font-medium">{selectedTip.prediction.aiVerdict.recommended_outcome}</span>
+                          <span className="text-emerald-400 font-medium">{selectedTip.prediction.aiVerdict.reasoning}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-slate-400">Confidence Level:</span>
-                          <span className="text-blue-400">{selectedTip.prediction.aiVerdict.confidence_level}</span>
+                          <span className="text-blue-400">{selectedTip.prediction.aiVerdict.confidence}%</span>
                         </div>
                         {selectedTip.prediction.aiVerdict.probability_assessment && (
                           <div className="space-y-1">
@@ -558,7 +636,7 @@ export default function MyTipsPage() {
                         <div className="space-y-2">
                           <div className="flex justify-between">
                             <span className="text-slate-400">Model Type:</span>
-                            <span className="text-purple-400">{selectedTip.prediction.mlPrediction.model_type}</span>
+                            <span className="text-purple-400">{selectedTip.prediction.mlPrediction.model}</span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-slate-400">Confidence:</span>
@@ -597,11 +675,11 @@ export default function MyTipsPage() {
                   </h4>
                   <div className="space-y-4">
                     {/* Primary Bet */}
-                    {selectedTip.prediction.bettingIntelligence.primary_bet && (
+                    {selectedTip.prediction.bettingIntelligence.value && (
                       <div className="space-y-2">
                         <div className="text-sm text-slate-400 font-medium">Primary Bet:</div>
                         <div className="text-emerald-400 text-sm">
-                          {selectedTip.prediction.bettingIntelligence.primary_bet}
+                          {selectedTip.prediction.bettingIntelligence.value}
                         </div>
                       </div>
                     )}
@@ -657,8 +735,8 @@ export default function MyTipsPage() {
                   <div>
                     <span className="text-slate-400">Analysis timestamp:</span>
                     <div className="text-slate-300">
-                      {selectedTip.prediction?.analysisMetadata?.analysis_timestamp ? 
-                        new Date(selectedTip.prediction.analysisMetadata.analysis_timestamp).toLocaleDateString('en-US', {
+                      {selectedTip.prediction?.analysisMetadata?.timestamp ? 
+                        new Date(selectedTip.prediction.analysisMetadata.timestamp).toLocaleDateString('en-US', {
                           year: 'numeric',
                           month: 'short',
                           day: 'numeric',

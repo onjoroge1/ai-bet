@@ -21,6 +21,7 @@ interface QuizSession {
   skipIntro: boolean
   referralId?: string
   referrerName?: string
+  message?: string
 }
 
 function QuizContent() {
@@ -36,9 +37,20 @@ function QuizContent() {
   const [totalScore, setTotalScore] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [timeLeft, setTimeLeft] = useState(30) // 30 second timer
+  const [timerActive, setTimerActive] = useState(false)
 
   // Get referral code from URL
   const referralCode = searchParams.get('ref')
+
+  // Debug: Monitor quizSession state changes
+  useEffect(() => {
+    console.log('Quiz session state changed:', quizSession)
+    if (quizSession) {
+      console.log('Quiz session ID:', quizSession.id)
+      console.log('Quiz session questions count:', quizSession.questions?.length)
+    }
+  }, [quizSession])
 
   useEffect(() => {
     // If user is logged in and has a quiz session, skip to quiz
@@ -46,6 +58,46 @@ function QuizContent() {
       setCurrentStep(2) // Skip to quiz questions
     }
   }, [status, quizSession])
+
+  // Auto-start quiz for logged-in users
+  useEffect(() => {
+    if (status === 'authenticated' && !quizSession && currentStep === 0) {
+      console.log('Auto-starting quiz for logged-in user')
+      startQuiz() // Start quiz without user data for logged-in users
+    }
+  }, [status, currentStep, quizSession])
+
+  // Timer effect for quiz questions
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null
+    
+    if (timerActive && timeLeft > 0 && currentStep === 2) {
+      interval = setInterval(() => {
+        setTimeLeft((prev) => {
+          if (prev <= 1) {
+            // Time's up - auto-submit quiz
+            submitQuiz()
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [timerActive, timeLeft, currentStep])
+
+  // Start timer when quiz begins
+  useEffect(() => {
+    if (currentStep === 2 && quizSession) {
+      setTimerActive(true)
+      setTimeLeft(30)
+    } else {
+      setTimerActive(false)
+    }
+  }, [currentStep, quizSession])
 
   const startQuiz = async (userData?: { email: string; fullName?: string; phone?: string }) => {
     try {
@@ -68,7 +120,26 @@ function QuizContent() {
       }
 
       const data = await response.json()
-      setQuizSession(data.data)
+      console.log('Quiz start response:', data)
+      
+      // Construct the quiz session object with the correct structure
+      const quizSessionData = {
+        id: data.data.quizSessionId, // This is the key field we need
+        questions: data.data.questions,
+        skipIntro: data.data.skipIntro,
+        referralId: data.data.referralId,
+        referrerName: data.data.referrerName
+      }
+      
+      console.log('Constructed quiz session:', quizSessionData)
+      console.log('Quiz session ID:', quizSessionData.id)
+      
+      // Verify we have the required data
+      if (!quizSessionData.id) {
+        throw new Error('Quiz session ID not received from server')
+      }
+      
+      setQuizSession(quizSessionData)
       
       // If user is logged in, skip intro pages
       if (data.data.skipIntro) {
@@ -84,19 +155,47 @@ function QuizContent() {
   }
 
   const submitQuiz = async () => {
-    if (!quizSession) return
+    if (!quizSession) {
+      console.error('No quiz session available')
+      setError('No quiz session available')
+      return
+    }
+
+    console.log('Current quiz session state:', quizSession)
+    console.log('Quiz session ID:', quizSession.id)
 
     try {
       setLoading(true)
       setError(null)
 
+      // Format answers properly for the API
       const answers = Object.entries(selectedAnswers).map(([questionId, selectedAnswer]) => {
         const question = quizSession.questions.find(q => q.id === questionId)
+        if (!question) {
+          throw new Error(`Question not found: ${questionId}`)
+        }
         return {
           questionId,
           selectedAnswer,
-          question
+          question: {
+            id: question.id,
+            correctAnswer: question.correctAnswer,
+            points: question.points
+          }
         }
+      })
+
+      // Ensure we have exactly 5 answers
+      if (answers.length !== 5) {
+        throw new Error(`Expected 5 answers, got ${answers.length}`)
+      }
+
+      // Debug logging
+      console.log('Submitting quiz with data:', {
+        action: 'submitQuiz',
+        quizSessionId: quizSession.id,
+        answersCount: answers.length,
+        answers: answers
       })
 
       const response = await fetch('/api/quiz', {
@@ -112,14 +211,20 @@ function QuizContent() {
 
       if (!response.ok) {
         const errorData = await response.json()
+        console.error('Quiz submission failed:', errorData)
         throw new Error(errorData.error || 'Failed to submit quiz')
       }
 
       const data = await response.json()
-      setTotalScore(data.data.totalScore)
+      console.log('Quiz submission successful:', data)
+      
+      // Calculate percentage score (each question is worth 20 points, so total is 100)
+      const percentageScore = Math.round((data.data.totalScore / 100) * 100)
+      setTotalScore(percentageScore)
       setQuizCompleted(true)
       setCurrentStep(3)
     } catch (error) {
+      console.error('Quiz submission error:', error)
       setError(error instanceof Error ? error.message : 'Failed to submit quiz')
     } finally {
       setLoading(false)
@@ -127,10 +232,23 @@ function QuizContent() {
   }
 
   const handleAnswerSelect = (questionId: string, answer: string) => {
+    // Prevent changing answers once selected
+    if (selectedAnswers[questionId]) return
+    
     setSelectedAnswers(prev => ({
       ...prev,
       [questionId]: answer
     }))
+    
+    // Auto-advance to next question after a short delay
+    setTimeout(() => {
+      if (currentQuestionIndex < 4) {
+        setCurrentQuestionIndex(prev => prev + 1)
+      } else {
+        // Last question - submit quiz
+        submitQuiz()
+      }
+    }, 1000) // 1 second delay to show the answer feedback
   }
 
   const resetQuiz = () => {
@@ -141,10 +259,12 @@ function QuizContent() {
     setQuizCompleted(false)
     setTotalScore(0)
     setError(null)
+    setTimeLeft(30)
+    setTimerActive(false)
   }
 
   const nextQuestion = () => {
-    if (currentQuestionIndex < quizSession!.questions.length - 1) {
+    if (currentQuestionIndex < 4) {
       setCurrentQuestionIndex(prev => prev + 1)
     }
   }
@@ -160,33 +280,69 @@ function QuizContent() {
   // Intro page for non-logged-in users
   if (currentStep === 0) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
+        {/* Background SVG Silhouette */}
+        <div className="absolute inset-0 opacity-5 pointer-events-none">
+          <svg viewBox="0 0 400 400" className="w-full h-full">
+            {/* Soccer Player Silhouette */}
+            <g fill="currentColor" className="text-slate-400">
+              {/* Head */}
+              <circle cx="200" cy="80" r="15"/>
+              {/* Body */}
+              <rect x="190" y="95" width="20" height="40" rx="10"/>
+              {/* Arms */}
+              <rect x="170" y="100" width="8" height="25" rx="4" transform="rotate(-20 170 100)"/>
+              <rect x="222" y="105" width="8" height="25" rx="4" transform="rotate(15 222 105)"/>
+              {/* Legs */}
+              <rect x="185" y="135" width="8" height="35" rx="4" transform="rotate(-15 185 135)"/>
+              <rect x="207" y="135" width="8" height="35" rx="4" transform="rotate(25 207 135)"/>
+              {/* Soccer Ball */}
+              <circle cx="280" cy="200" r="12" fill="none" stroke="currentColor" strokeWidth="2"/>
+              <path d="M 275 195 L 285 205 M 275 205 L 285 195" stroke="currentColor" strokeWidth="1"/>
+            </g>
+          </svg>
+        </div>
+        
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center"
+          className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-700 backdrop-blur-sm rounded-2xl shadow-2xl p-8 max-w-md w-full text-center border relative z-10"
         >
           <div className="mb-6">
-            <Trophy className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
-            <h1 className="text-3xl font-bold text-gray-800 mb-2">SnapBet Quiz</h1>
-            <p className="text-gray-600">Test your sports knowledge and win rewards!</p>
+            <Trophy className="w-16 h-16 text-emerald-400 mx-auto mb-4" />
+            <h1 className="text-3xl font-bold text-white mb-2">SnapBet Quiz</h1>
+            {status === 'authenticated' ? (
+              <>
+                <p className="text-slate-300">Welcome back! Starting your quiz...</p>
+                <div className="mt-4">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-400 mx-auto"></div>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-slate-300">Test your sports knowledge in just 5 questions!</p>
+                <p className="text-sm text-slate-400 mt-2">30 seconds per question - quick and engaging!</p>
+              </>
+            )}
           </div>
 
-          {referralCode && (
-            <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <Gift className="w-6 h-6 text-blue-500 mx-auto mb-2" />
-              <p className="text-sm text-blue-700">
+          {status !== 'authenticated' && referralCode && (
+            <div className="mb-6 p-4 bg-emerald-900/30 rounded-lg border border-emerald-700/50">
+              <Gift className="w-6 h-6 text-emerald-400 mx-auto mb-2" />
+              <p className="text-sm text-emerald-300">
                 You were invited with referral code: <span className="font-semibold">{referralCode}</span>
               </p>
             </div>
           )}
 
-          <button
-            onClick={() => setCurrentStep(1)}
-            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-200 transform hover:scale-105"
-          >
-            Start Quiz
-          </button>
+          {status !== 'authenticated' && (
+            <button
+              onClick={() => setCurrentStep(1)}
+              className="w-full bg-gradient-to-r from-emerald-600 to-cyan-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-emerald-700 hover:to-cyan-700 transition-all duration-200 transform hover:scale-105"
+            >
+              Start Quiz
+            </button>
+          )}
         </motion.div>
       </div>
     )
@@ -195,16 +351,33 @@ function QuizContent() {
   // User info collection page
   if (currentStep === 1) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
+        {/* Background SVG Silhouette */}
+        <div className="absolute inset-0 opacity-5 pointer-events-none">
+          <svg viewBox="0 0 400 400" className="w-full h-full">
+            <g fill="currentColor" className="text-slate-400">
+              <circle cx="200" cy="80" r="15"/>
+              <rect x="190" y="95" width="20" height="40" rx="10"/>
+              <rect x="170" y="100" width="8" height="25" rx="4" transform="rotate(-20 170 100)"/>
+              <rect x="222" y="105" width="8" height="25" rx="4" transform="rotate(15 222 105)"/>
+              <rect x="185" y="135" width="8" height="35" rx="4" transform="rotate(-15 185 135)"/>
+              <rect x="207" y="135" width="8" height="35" rx="4" transform="rotate(25 207 135)"/>
+              <circle cx="280" cy="200" r="12" fill="none" stroke="currentColor" strokeWidth="2"/>
+              <path d="M 275 195 L 285 205 M 275 205 L 285 195" stroke="currentColor" strokeWidth="1"/>
+            </g>
+          </svg>
+        </div>
+        
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full"
+          className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-700 backdrop-blur-sm rounded-2xl shadow-2xl p-8 max-w-md w-full border relative z-10"
         >
           <div className="text-center mb-6">
-            <Users className="w-16 h-16 text-blue-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Enter Your Details</h2>
-            <p className="text-gray-600">We'll use this to track your quiz results</p>
+            <Users className="w-16 h-16 text-emerald-400 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-white mb-2">Enter Your Details</h2>
+            <p className="text-slate-300">We'll use this to track your quiz results</p>
+            <p className="text-sm text-slate-400 mt-2">Only 5 questions - 30 seconds each!</p>
           </div>
 
           <form onSubmit={(e) => {
@@ -218,38 +391,38 @@ function QuizContent() {
           }}>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-slate-300 mb-1">
                   Email *
                 </label>
                 <input
                   type="email"
                   name="email"
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-white placeholder-slate-400"
                   placeholder="your@email.com"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-slate-300 mb-1">
                   Full Name
                 </label>
                 <input
                   type="text"
                   name="fullName"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-white placeholder-slate-400"
                   placeholder="Your Full Name"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-slate-300 mb-1">
                   Phone Number
                 </label>
                 <input
                   type="tel"
                   name="phone"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-white placeholder-slate-400"
                   placeholder="+1234567890"
                 />
               </div>
@@ -257,7 +430,7 @@ function QuizContent() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-gradient-to-r from-emerald-600 to-cyan-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-emerald-700 hover:to-cyan-700 transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? 'Starting Quiz...' : 'Continue to Quiz'}
               </button>
@@ -266,7 +439,7 @@ function QuizContent() {
 
           <button
             onClick={() => setCurrentStep(0)}
-            className="w-full mt-4 text-gray-600 hover:text-gray-800 transition-colors"
+            className="w-full mt-4 text-slate-400 hover:text-slate-200 transition-colors"
           >
             ← Back
           </button>
@@ -278,84 +451,119 @@ function QuizContent() {
   // Quiz questions
   if (currentStep === 2 && quizSession && currentQuestion) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
+        {/* Background SVG Silhouette */}
+        <div className="absolute inset-0 opacity-5 pointer-events-none">
+          <svg viewBox="0 0 400 400" className="w-full h-full">
+            <g fill="currentColor" className="text-slate-400">
+              <circle cx="200" cy="80" r="15"/>
+              <rect x="190" y="95" width="20" height="40" rx="10"/>
+              <rect x="170" y="100" width="8" height="25" rx="4" transform="rotate(-20 170 100)"/>
+              <rect x="222" y="105" width="8" height="25" rx="4" transform="rotate(15 222 105)"/>
+              <rect x="185" y="135" width="8" height="35" rx="4" transform="rotate(-15 185 135)"/>
+              <rect x="207" y="135" width="8" height="35" rx="4" transform="rotate(25 207 135)"/>
+              <circle cx="280" cy="200" r="12" fill="none" stroke="currentColor" strokeWidth="2"/>
+              <path d="M 275 195 L 285 205 M 275 205 L 285 195" stroke="currentColor" strokeWidth="1"/>
+            </g>
+          </svg>
+        </div>
+        
         <motion.div
           key={currentQuestionIndex}
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -20 }}
-          className="bg-white rounded-2xl shadow-2xl p-8 max-w-2xl w-full"
+          className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-700 backdrop-blur-sm rounded-2xl shadow-2xl p-8 max-w-2xl w-full border relative z-10"
         >
+          {/* Timer */}
+          <div className="mb-6 text-center">
+            <div className="text-2xl font-bold text-emerald-400 mb-2">
+              {timeLeft}s
+            </div>
+            <div className="w-full bg-slate-700 rounded-full h-3">
+              <div
+                className={`h-3 rounded-full transition-all duration-1000 ${
+                  timeLeft > 20 ? 'bg-emerald-500' : timeLeft > 10 ? 'bg-yellow-500' : 'bg-red-500'
+                }`}
+                style={{ width: `${(timeLeft / 30) * 100}%` }}
+              />
+            </div>
+          </div>
+
           {/* Progress bar */}
           <div className="mb-6">
-            <div className="flex justify-between text-sm text-gray-600 mb-2">
-              <span>Question {currentQuestionIndex + 1} of {quizSession.questions.length}</span>
-              <span>{Math.round(((currentQuestionIndex + 1) / quizSession.questions.length) * 100)}%</span>
+            <div className="flex justify-between text-sm text-slate-400 mb-2">
+              <span>Question {currentQuestionIndex + 1} of 5</span>
+              <span>{Math.round(((currentQuestionIndex + 1) / 5) * 100)}%</span>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className="w-full bg-slate-700 rounded-full h-2">
               <div
-                className="bg-gradient-to-r from-blue-600 to-purple-600 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${((currentQuestionIndex + 1) / quizSession.questions.length) * 100}%` }}
+                className="bg-gradient-to-r from-emerald-600 to-cyan-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${((currentQuestionIndex + 1) / 5) * 100}%` }}
               />
             </div>
           </div>
 
           {/* Question */}
           <div className="mb-8">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">
+            <h2 className="text-xl font-semibold text-white mb-4">
               {currentQuestion.question}
             </h2>
 
             <div className="space-y-3">
-              {currentQuestion.options.map((option, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleAnswerSelect(currentQuestion.id, option)}
-                  className={`w-full text-left p-4 rounded-lg border-2 transition-all duration-200 ${
-                    selectedAnswers[currentQuestion.id] === option
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <span className="font-medium text-gray-800">{option}</span>
-                </button>
-              ))}
+              {currentQuestion.options.map((option, index) => {
+                const isSelected = selectedAnswers[currentQuestion.id] === option
+                const isCorrect = option === currentQuestion.correctAnswer
+                const showFeedback = isSelected
+                
+                return (
+                  <button
+                    key={index}
+                    onClick={() => handleAnswerSelect(currentQuestion.id, option)}
+                    disabled={isSelected} // Disable button once selected
+                    className={`w-full text-left p-4 rounded-lg border-2 transition-all duration-200 ${
+                      isSelected
+                        ? isCorrect
+                          ? 'border-emerald-500 bg-emerald-900/30 text-emerald-100'
+                          : 'border-red-500 bg-red-900/30 text-red-100'
+                        : 'border-slate-600 hover:border-slate-500 bg-slate-700/50 text-slate-200'
+                    } ${isSelected ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{option}</span>
+                      {showFeedback && (
+                        <div className="flex items-center space-x-2">
+                          {isCorrect ? (
+                            <CheckCircle className="w-5 h-5 text-emerald-400" />
+                          ) : (
+                            <XCircle className="w-5 h-5 text-red-400" />
+                          )}
+                          <span className="text-sm font-medium">
+                            {isCorrect ? 'Correct!' : 'Incorrect'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           </div>
 
-          {/* Navigation */}
-          <div className="flex justify-between items-center">
-            <button
-              onClick={previousQuestion}
-              disabled={currentQuestionIndex === 0}
-              className="flex items-center px-4 py-2 text-gray-600 hover:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Previous
-            </button>
-
-            {currentQuestionIndex === quizSession.questions.length - 1 ? (
-              <button
-                onClick={submitQuiz}
-                disabled={loading || Object.keys(selectedAnswers).length < quizSession.questions.length}
-                className="bg-gradient-to-r from-green-600 to-blue-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-green-700 hover:to-blue-700 transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? 'Submitting...' : 'Submit Quiz'}
-              </button>
+          {/* Auto-advance message */}
+          <div className="text-center text-slate-400 text-sm">
+            {selectedAnswers[currentQuestion.id] ? (
+              <div className="flex items-center justify-center space-x-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-emerald-400"></div>
+                <span>Moving to next question...</span>
+              </div>
             ) : (
-              <button
-                onClick={nextQuestion}
-                disabled={!selectedAnswers[currentQuestion.id]}
-                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                Next
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </button>
+              <span>Select an answer to continue</span>
             )}
           </div>
 
           {error && (
-            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+            <div className="mt-4 p-3 bg-red-900/30 border border-red-700/50 rounded-lg text-red-300 text-sm">
               {error}
             </div>
           )}
@@ -367,30 +575,51 @@ function QuizContent() {
   // Results page
   if (currentStep === 3) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
+        {/* Background SVG Silhouette */}
+        <div className="absolute inset-0 opacity-5 pointer-events-none">
+          <svg viewBox="0 0 400 400" className="w-full h-full">
+            <g fill="currentColor" className="text-slate-400">
+              <circle cx="200" cy="80" r="15"/>
+              <rect x="190" y="95" width="20" height="40" rx="10"/>
+              <rect x="170" y="100" width="8" height="25" rx="4" transform="rotate(-20 170 100)"/>
+              <rect x="222" y="105" width="8" height="25" rx="4" transform="rotate(15 222 105)"/>
+              <rect x="185" y="135" width="8" height="35" rx="4" transform="rotate(-15 185 135)"/>
+              <rect x="207" y="135" width="8" height="35" rx="4" transform="rotate(25 207 135)"/>
+              <circle cx="280" cy="200" r="12" fill="none" stroke="currentColor" strokeWidth="2"/>
+              <path d="M 275 195 L 285 205 M 275 205 L 285 195" stroke="currentColor" strokeWidth="1"/>
+            </g>
+          </svg>
+        </div>
+        
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center"
+          className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-700 backdrop-blur-sm rounded-2xl shadow-2xl p-8 max-w-md w-full text-center border relative z-10"
         >
           <div className="mb-6">
             {totalScore >= 70 ? (
-              <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+              <CheckCircle className="w-16 h-16 text-emerald-400 mx-auto mb-4" />
             ) : (
-              <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+              <XCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
             )}
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">
+            <h2 className="text-2xl font-bold text-white mb-2">
               {totalScore >= 70 ? 'Congratulations!' : 'Quiz Completed'}
             </h2>
-            <p className="text-gray-600 mb-4">
-              Your total score: <span className="font-bold text-xl text-blue-600">{totalScore}</span>
+            <p className="text-slate-300 mb-4">
+              Your score: <span className="font-bold text-xl text-emerald-400">{totalScore}%</span> ({Math.round(totalScore / 20)}/5 correct)
+            </p>
+            <p className="text-sm text-slate-400">
+              {totalScore >= 80 ? 'Excellent! You really know your sports!' :
+               totalScore >= 60 ? 'Good job! You have solid sports knowledge!' :
+               'Keep learning! Sports knowledge takes time to build!'}
             </p>
           </div>
 
           {quizSession?.referralId && (
-            <div className="mb-6 p-4 bg-green-50 rounded-lg border border-green-200">
-              <Gift className="w-6 h-6 text-green-500 mx-auto mb-2" />
-              <p className="text-sm text-green-700">
+            <div className="mb-6 p-4 bg-emerald-900/30 rounded-lg border border-emerald-700/50">
+              <Gift className="w-6 h-6 text-emerald-400 mx-auto mb-2" />
+              <p className="text-sm text-emerald-300">
                 Referral bonus applied! You'll receive extra rewards.
               </p>
             </div>
@@ -399,15 +628,15 @@ function QuizContent() {
           <div className="space-y-3">
             <button
               onClick={resetQuiz}
-              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-200 transform hover:scale-105"
+              className="w-full bg-gradient-to-r from-emerald-600 to-cyan-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-emerald-700 hover:to-cyan-700 transition-all duration-200 transform hover:scale-105"
             >
               Try Again
             </button>
 
             {!session && (
               <button
-                onClick={() => router.push('/auth/signin')}
-                className="w-full bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-gray-700 transition-all duration-200"
+                onClick={() => router.push('/signin')}
+                className="w-full bg-slate-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-slate-700 transition-all duration-200"
               >
                 Sign In to Save Progress
               </button>
@@ -415,7 +644,7 @@ function QuizContent() {
 
             <button
               onClick={() => router.push('/')}
-              className="w-full text-gray-600 hover:text-gray-800 transition-colors"
+              className="w-full text-slate-400 hover:text-slate-200 transition-colors"
             >
               Back to Home
             </button>

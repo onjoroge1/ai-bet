@@ -40,6 +40,203 @@
 - No integration tests
 - No end-to-end tests
 
+## **Database Schema & Table Definitions**
+
+### **Core User & Authentication Tables**
+
+#### **User Table**
+- **Purpose**: Stores user account information and preferences
+- **Key Fields**: `id`, `email`, `password`, `role`, `countryId`, `fullName`
+- **Relationships**: 
+  - `countryId` → `Country.id`
+  - `purchases` → `Purchase[]`
+  - `userPackages` → `UserPackage[]`
+- **Usage**: Authentication, user profile, dashboard data
+
+#### **Country Table**
+- **Purpose**: Geographic and currency information for users
+- **Key Fields**: `id`, `code`, `name`, `flagEmoji`, `currencyCode`, `currencySymbol`
+- **Relationships**: 
+  - `users` → `User[]`
+  - `quickPurchases` → `QuickPurchase[]`
+- **Usage**: Localization, pricing, user experience customization
+
+### **Prediction & Match Tables**
+
+#### **Match Table**
+- **Purpose**: Stores football match information
+- **Key Fields**: `id`, `homeTeamId`, `awayTeamId`, `leagueId`, `matchDate`, `status`
+- **Relationships**: 
+  - `homeTeamId` → `Team.id`
+  - `awayTeamId` → `Team.id`
+  - `leagueId` → `League.id`
+  - `predictions` → `Prediction[]`
+- **Usage**: Match data, prediction creation, live updates
+
+#### **Prediction Table**
+- **Purpose**: AI-generated predictions for matches
+- **Key Fields**: `id`, `matchId`, `predictionType`, `confidenceScore`, `odds`, `valueRating`
+- **Relationships**: 
+  - `matchId` → `Match.id`
+  - `userPredictions` → `UserPrediction[]`
+  - `creditTipClaims` → `CreditTipClaim[]`
+  - `userPackageTips` → `UserPackageTip[]`
+- **Usage**: Tip generation, user betting, analysis
+
+#### **Team Table**
+- **Purpose**: Football team information
+- **Key Fields**: `id`, `name`, `leagueId`, `logoUrl`, `isActive`
+- **Relationships**: 
+  - `leagueId` → `League.id`
+  - `homeMatches` → `Match[]`
+  - `awayMatches` → `Match[]`
+- **Usage**: Team selection, match creation, statistics
+
+#### **League Table**
+- **Purpose**: Football league information
+- **Key Fields**: `id`, `name`, `countryCode`, `sport`, `isActive`
+- **Relationships**: 
+  - `teams` → `Team[]`
+  - `matches` → `Match[]`
+- **Usage**: League management, match organization
+
+### **Purchase & Transaction Tables**
+
+#### **Purchase Table** ⭐ **CRITICAL FOR QUICK PURCHASES**
+- **Purpose**: Tracks user purchases of QuickPurchase items
+- **Key Fields**: `id`, `userId`, `amount`, `paymentMethod`, `status`, `quickPurchaseId`
+- **Relationships**: 
+  - `userId` → `User.id`
+  - `quickPurchaseId` → `QuickPurchase.id`
+- **Usage**: **This is the main table for filtering purchased predictions**
+- **Data Flow**: User buys tip → Purchase record created → QuickPurchase.matchId used for filtering
+
+#### **QuickPurchase Table**
+- **Purpose**: Available predictions and packages for purchase
+- **Key Fields**: `id`, `name`, `type`, `matchId`, `price`, `confidenceScore`, `isActive`
+- **Relationships**: 
+  - `countryId` → `Country.id`
+  - `matchId` → `Match.id` (for prediction types)
+  - `purchases` → `Purchase[]`
+- **Usage**: Dashboard display, purchase filtering, tip availability
+
+#### **PackageCountryPrice Table**
+- **Purpose**: Country-specific pricing for different package types
+- **Key Fields**: `id`, `countryId`, `packageType`, `price`, `originalPrice`
+- **Relationships**: 
+  - `countryId` → `Country.id`
+- **Usage**: Dynamic pricing, localization, revenue optimization
+
+### **Package & Tip Management Tables**
+
+#### **UserPackage Table**
+- **Purpose**: User's purchased tip packages
+- **Key Fields**: `id`, `userId`, `packageOfferId`, `expiresAt`, `tipsRemaining`, `status`
+- **Relationships**: 
+  - `userId` → `User.id`
+  - `packageOfferId` → `PackageOffer.id`
+  - `claimedTips` → `UserPackageTip[]`
+- **Usage**: Package management, tip claiming, expiration tracking
+
+#### **UserPackageTip Table**
+- **Purpose**: Individual tips claimed from user packages
+- **Key Fields**: `id`, `userPackageId`, `predictionId`, `status`, `claimedAt`, `expiresAt`
+- **Relationships**: 
+  - `userPackageId` → `UserPackage.id`
+  - `predictionId` → `Prediction.id`
+- **Usage**: **NOT used for QuickPurchase filtering** - only for package tips
+- **Note**: This table is separate from the main purchase system
+
+#### **CreditTipClaim Table**
+- **Purpose**: Tips claimed using user credits
+- **Key Fields**: `id`, `userId`, `predictionId`, `creditsSpent`, `status`, `claimedAt`
+- **Relationships**: 
+  - `userId` → `User.id`
+  - `predictionId` → `Prediction.id`
+- **Usage**: **NOT used for QuickPurchase filtering** - only for credit-based tips
+- **Note**: This table is separate from the main purchase system
+
+### **Legacy Tables (Not Used for QuickPurchase Filtering)**
+
+#### **UserPrediction Table**
+- **Purpose**: Direct user betting on predictions
+- **Key Fields**: `id`, `userId`, `predictionId`, `stakeAmount`, `status`
+- **Relationships**: 
+  - `userId` → `User.id`
+  - `predictionId` → `Prediction.id`
+- **Usage**: **NOT used for QuickPurchase filtering** - legacy betting system
+- **Note**: This table is separate from the main purchase system
+
+### **Data Flow for QuickPurchase Filtering**
+
+```mermaid
+graph TD
+    A[User visits dashboard] --> B[Call /api/quick-purchases]
+    B --> C[Get user's completed purchases]
+    C --> D[Query Purchase table WHERE userId = X AND status = 'completed']
+    D --> E[Extract QuickPurchase.matchId from each purchase]
+    E --> F[Create Set of purchased matchIds]
+    F --> G[Filter QuickPurchase items]
+    G --> H[If matchId exists in purchasedMatchIds → Filter out]
+    G --> I[If matchId doesn't exist → Show to user]
+```
+
+### **Key Relationships for Developers**
+
+#### **For QuickPurchase Filtering (Use These Tables)**
+1. **`Purchase`** → Main table for user purchases
+2. **`QuickPurchase`** → Available items with matchId
+3. **`User`** → User identification
+4. **`Country`** → Pricing and localization
+
+#### **For Package Tip Management (Separate System)**
+1. **`UserPackage`** → User's tip packages
+2. **`UserPackageTip`** → Claimed tips from packages
+3. **`PackageOffer`** → Available package types
+
+#### **For Credit-Based Tips (Separate System)**
+1. **`CreditTipClaim`** → Tips claimed with credits
+2. **`CreditTransaction`** → Credit balance management
+
+### **Common Pitfalls to Avoid**
+
+#### **❌ Don't Use These Tables for QuickPurchase Filtering**
+- `UserPrediction` - Legacy betting system
+- `CreditTipClaim` - Credit-based tip system  
+- `UserPackageTip` - Package tip system
+
+#### **✅ Always Use These Tables for QuickPurchase Filtering**
+- `Purchase` - User purchase records
+- `QuickPurchase` - Available items
+- Direct `matchId` comparison
+
+### **Performance Considerations**
+
+#### **Indexes for QuickPurchase Filtering**
+```sql
+-- Ensure these indexes exist for optimal performance
+CREATE INDEX idx_purchase_user_status ON Purchase(userId, status);
+CREATE INDEX idx_purchase_quickpurchase ON Purchase(quickPurchaseId);
+CREATE INDEX idx_quickpurchase_match ON QuickPurchase(matchId);
+CREATE INDEX idx_quickpurchase_active ON QuickPurchase(isActive);
+```
+
+#### **Query Optimization**
+```typescript
+// ✅ Good: Single query with proper joins
+const purchases = await prisma.purchase.findMany({
+  where: { userId, status: 'completed' },
+  include: { quickPurchase: { select: { matchId: true } } }
+})
+
+// ❌ Bad: Multiple separate queries
+const userPredictions = await prisma.userPrediction.findMany({...})
+const creditClaims = await prisma.creditTipClaim.findMany({...})
+const packageTips = await prisma.userPackageTip.findMany({...})
+```
+
+---
+
 ## **Immediate Action Plan (Next Session)**
 
 ### **Phase 1: Code Quality Cleanup (Priority: High)**

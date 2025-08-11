@@ -4,6 +4,17 @@ import prisma from '@/lib/db'
 // Prevent pre-rendering during build
 export const dynamic = 'force-dynamic'
 
+// Define proper types for blog post articles
+interface BlogPostArticle {
+  title: string
+  slug: string
+  publishedAt: Date
+  updatedAt: Date
+  category: string
+  tags: string[]
+  author: string
+}
+
 export async function GET(request: NextRequest) {
   const baseUrl = process.env.NEXTAUTH_URL || 'https://snapbet.ai'
   const currentDate = new Date().toISOString()
@@ -39,7 +50,7 @@ export async function GET(request: NextRequest) {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">
-${newsArticles.map((article: any) => `  <url>
+${newsArticles.map((article: BlogPostArticle) => `  <url>
     <loc>${baseUrl}/blog/${article.slug}</loc>
     <news:news>
       <news:publication>

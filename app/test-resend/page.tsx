@@ -1,12 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { Resend } from 'resend'
+import { Resend, CreateEmailResponse } from 'resend'
 
 export default function TestResendPage() {
   const [email, setEmail] = useState('kim.njo@gmail.com')
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<any>(null)
+  const [result, setResult] = useState<CreateEmailResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const testResendDirect = async () => {

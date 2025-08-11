@@ -1,27 +1,29 @@
-import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import prisma from "@/lib/db"
-import { authOptions } from "@/lib/auth"
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { PrismaClient, Prisma } from '@prisma/client'
 
-// GET /api/user-packages/tips-history - Get user's claimed tips with filtering
-export async function GET(request: Request) {
+const prisma = new PrismaClient()
+
+export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const { searchParams } = new URL(request.url)
+    const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 10
     const status = searchParams.get('status')
     const packageId = searchParams.get('packageId')
     const dateFrom = searchParams.get('dateFrom')
     const dateTo = searchParams.get('dateTo')
-    const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 50
     const page = searchParams.get('page') ? parseInt(searchParams.get('page')!) : 1
     const search = searchParams.get('search')
 
     // Build where clause
-    const where: any = {
+    const where: Prisma.UserPackageTipWhereInput = {
       userPackage: {
         userId: session.user.id
       }

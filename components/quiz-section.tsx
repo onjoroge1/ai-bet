@@ -35,7 +35,7 @@ export function QuizSection() {
                   <div className="space-y-4">
                     <div className="flex items-center space-x-3">
                       <Clock className="w-5 h-5 text-emerald-400" />
-                      <span className="text-slate-300">Takes 2 minutes</span>
+                      <span className="text-slate-300">30 seconds per question</span>
                     </div>
                     <div className="flex items-center space-x-3">
                       <Target className="w-5 h-5 text-emerald-400" />
@@ -72,7 +72,7 @@ export function QuizSection() {
                   >
                     <Link href="/snapbet-quiz">
                       <Zap className="w-5 h-5 mr-2 group-hover:animate-bounce" />
-                      Start Quiz - Takes 2 minutes
+                      Start Quiz - 30 seconds per question
                     </Link>
                   </Button>
                 </div>

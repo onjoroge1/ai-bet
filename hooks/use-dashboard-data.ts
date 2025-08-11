@@ -34,10 +34,12 @@ export function useDashboardData(): UseDashboardDataReturn {
       return response.json()
     },
     enabled: isAuthenticated && !!user?.id,
-    staleTime: 30000, // Consider data fresh for 30 seconds
-    gcTime: 5 * 60 * 1000, // Cache for 5 minutes
-    retry: 2,
-    retryDelay: 1000,
+    staleTime: 5 * 60 * 1000, // Consider data fresh for 5 minutes (increased from 30s)
+    gcTime: 10 * 60 * 1000, // Cache for 10 minutes (increased from 5 minutes)
+    retry: 1, // Reduced retries to prevent excessive calls
+    retryDelay: 2000, // Increased delay between retries
+    refetchOnWindowFocus: false, // Prevent refetch on window focus
+    refetchOnMount: false, // Prevent refetch on component mount if data exists
   })
 
   return {

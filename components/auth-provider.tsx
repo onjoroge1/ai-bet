@@ -81,66 +81,73 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     },
     enabled: status === 'authenticated' && !!session?.user?.id,
-    staleTime: 60000, // Consider data fresh for 1 minute
-    gcTime: 10 * 60 * 1000, // Cache for 10 minutes
-    retry: 1,
-    retryDelay: 1000,
+    staleTime: 5 * 60 * 1000, // Consider data fresh for 5 minutes (increased from 1 minute)
+    gcTime: 15 * 60 * 1000, // Cache for 15 minutes (increased from 10 minutes)
+    retry: 1, // Reduced retries to prevent excessive calls
+    retryDelay: 2000, // Increased delay between retries
+    refetchOnWindowFocus: false, // Prevent refetch on window focus
+    refetchOnMount: false, // Prevent refetch on component mount if data exists
   })
 
   // Sync with NextAuth session - Fixed to prevent infinite loops
   useEffect(() => {
-    console.log('AuthProvider useEffect - status:', status, 'session user:', session?.user?.id)
-    
-    if (status === 'loading') {
-      console.log('AuthProvider - status is loading, setting isLoading to true')
-      setIsLoading(true)
-      return
-    }
+    // Debounce session checks to prevent excessive API calls
+    const timeoutId = setTimeout(() => {
+      console.log('AuthProvider useEffect - status:', status, 'session user:', session?.user?.id)
+      
+      if (status === 'loading') {
+        console.log('AuthProvider - status is loading, setting isLoading to true')
+        setIsLoading(true)
+        return
+      }
 
-    if (status === 'authenticated' && session?.user) {
-      console.log('AuthProvider - status is authenticated')
-      // Set basic user data immediately to ensure isAuthenticated is true
-      const basicUser = {
-        id: session.user.id,
-        email: session.user.email || '',
-        name: session.user.name || undefined,
-        role: session.user.role || undefined,
-        referralCode: session.user.referralCode || undefined
-      }
-      
-      // If we have profile data, use it; otherwise use basic session data
-      if (userProfile) {
-        console.log('AuthProvider - using profile data:', userProfile.id)
-        setUser(userProfile)
-      } else {
-        console.log('AuthProvider - using basic session data')
-        setUser(basicUser)
-      }
-      
-      setIsLoading(false)
-      
-      logger.debug('Auth state updated', {
-        tags: ['auth', 'provider'],
-        data: { 
-          status,
-          hasUser: true,
-          role: session.user.role,
-          hasProfile: !!userProfile,
-          profileLoading
+      if (status === 'authenticated' && session?.user) {
+        console.log('AuthProvider - status is authenticated')
+        // Set basic user data immediately to ensure isAuthenticated is true
+        const basicUser = {
+          id: session.user.id,
+          email: session.user.email || '',
+          name: session.user.name || undefined,
+          role: session.user.role || undefined,
+          referralCode: session.user.referralCode || undefined
         }
-      })
-    } else if (status === 'unauthenticated') {
-      console.log('AuthProvider - status is not authenticated, setting user to null')
-      setUser(null)
-      setIsLoading(false)
-      logger.debug('Auth state updated', {
-        tags: ['auth', 'provider'],
-        data: { 
-          status,
-          hasUser: false
+        
+        // If we have profile data, use it; otherwise use basic session data
+        if (userProfile) {
+          console.log('AuthProvider - using profile data:', userProfile.id)
+          setUser(userProfile)
+        } else {
+          console.log('AuthProvider - using basic session data')
+          setUser(basicUser)
         }
-      })
-    }
+        
+        setIsLoading(false)
+        
+        logger.debug('Auth state updated', {
+          tags: ['auth', 'provider'],
+          data: { 
+            status,
+            hasUser: true,
+            role: session.user.role,
+            hasProfile: !!userProfile,
+            profileLoading
+          }
+        })
+      } else if (status === 'unauthenticated') {
+        console.log('AuthProvider - status is not authenticated, setting user to null')
+        setUser(null)
+        setIsLoading(false)
+        logger.debug('Auth state updated', {
+          tags: ['auth', 'provider'],
+          data: { 
+            status,
+            hasUser: false
+          }
+        })
+      }
+    }, 100) // 100ms debounce to prevent excessive calls
+
+    return () => clearTimeout(timeoutId)
   }, [status, session]) // Removed userProfile and profileLoading from dependencies to prevent infinite loops
 
   // Separate effect to handle profile data updates

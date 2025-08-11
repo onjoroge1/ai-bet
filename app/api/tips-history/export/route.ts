@@ -1,7 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import prisma from '@/lib/db'
+import { PrismaClient, Prisma } from '@prisma/client'
+
+const prisma = new PrismaClient()
+
+// Define proper types for tip results
+interface TipWithResult {
+  id: string
+  claimedAt: Date
+  status: string
+  package: string
+  match: string
+  league: string
+  predictionType: string
+  confidenceScore: number
+  odds: number
+  valueRating: string
+  stakeAmount?: number
+  actualReturn?: number
+  result?: string
+  notes?: string
+}
+
+// Define proper types for filters
+interface ExportFilters {
+  status?: string
+  package?: string
+  dateFrom?: string
+  dateTo?: string
+  search?: string
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,11 +40,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { format = 'csv', filters = {} } = await request.json()
+    const { format = 'csv', filters = {} }: { format?: string; filters?: ExportFilters } = await request.json()
     const userId = session.user.id
 
     // Build where clause based on filters
-    const where: any = {
+    const where: Prisma.UserPackageTipWhereInput = {
       userPackage: {
         userId: userId
       }
@@ -141,7 +170,7 @@ export async function POST(request: NextRequest) {
         tip.prediction.valueRating,
         tip.tipUsage?.stakeAmount?.toString() || '',
         tip.tipUsage?.actualReturn?.toString() || '',
-        (tip as any).result || 'pending',
+        (tip as TipWithResult).result || 'pending',
         tip.notes || ''
       ])
 
@@ -174,7 +203,7 @@ export async function POST(request: NextRequest) {
         valueRating: tip.prediction.valueRating,
         stakeAmount: tip.tipUsage?.stakeAmount,
         actualReturn: tip.tipUsage?.actualReturn,
-        result: (tip as any).result,
+        result: (tip as TipWithResult).result,
         notes: tip.notes
       }))
     })
