@@ -91,13 +91,6 @@ export default function DashboardPage() {
         </Suspense>
       </div>
 
-      {/* Referral Banner - Full Width */}
-      <div className="mb-8">
-        <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
-          <ReferralBanner />
-        </Suspense>
-      </div>
-
       {/* Middle Row: Notifications, Live Matches, Achievements */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         <div>
@@ -131,6 +124,13 @@ export default function DashboardPage() {
       <div className="mb-8">
         <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
           <ClaimedTipsSection />
+        </Suspense>
+      </div>
+
+      {/* Referral Banner - Full Width */}
+      <div className="mb-8">
+        <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
+          <ReferralBanner />
         </Suspense>
       </div>
 
