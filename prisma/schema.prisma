@@ -244,6 +244,8 @@ model User {
   userPoints            UserPoints?
   userPredictions       UserPrediction[]
   quizSessions          QuizSession[]
+  supportTickets        SupportTicket[]
+  supportTicketResponses SupportTicketResponse[]
 }
 
 model UserPrediction {
@@ -840,4 +842,44 @@ model QuizSession {
   @@index([referralCode])
   @@index([referralId])
   @@index([createdAt])
+}
+
+model SupportTicket {
+  id          String   @id @default(cuid())
+  userId      String
+  subject     String
+  description String
+  category    String   // technical, billing, account, general
+  priority    String   // low, medium, high, urgent
+  status      String   // open, in_progress, resolved, closed
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  resolvedAt  DateTime?
+  assignedTo  String?  // admin user ID
+  tags        String[] // for categorization
+  attachments String[] // file URLs
+  
+  // Relations
+  user        User     @relation(fields: [userId], references: [id])
+  responses   SupportTicketResponse[]
+  
+  // Indexes for performance
+  @@index([userId, status])
+  @@index([category, priority])
+  @@index([assignedTo, status])
+}
+
+model SupportTicketResponse {
+  id        String   @id @default(cuid())
+  ticketId  String
+  userId    String
+  message   String
+  isStaff   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  
+  // Relations
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id])
+  user      User         @relation(fields: [userId], references: [id])
+  
+  @@index([ticketId, createdAt])
 }

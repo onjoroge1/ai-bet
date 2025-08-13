@@ -47,6 +47,7 @@ export type EmailTemplateCategory =
   | 'security' 
   | 'marketing' 
   | 'system'
+  | 'support'
 
 // Email Status
 export type EmailStatus = 'sent' | 'failed' | 'pending'
@@ -152,6 +153,12 @@ export const EMAIL_TEMPLATE_CATEGORIES = {
     icon: '⚙️',
     description: 'System and administrative emails',
     color: 'text-gray-600'
+  },
+  support: {
+    name: 'Support',
+    icon: '🆘',
+    description: 'Customer support and help emails',
+    color: 'text-purple-600'
   }
 } as const
 
@@ -350,6 +357,36 @@ export const EMAIL_VARIABLES: Record<EmailTemplateCategory, EmailVariable[]> = {
       description: 'Maintenance duration',
       required: false,
       defaultValue: '2 hours'
+    }
+  ],
+  support: [
+    {
+      name: 'userName',
+      type: 'string',
+      description: 'User\'s display name',
+      required: true,
+      defaultValue: 'John Doe'
+    },
+    {
+      name: 'userEmail',
+      type: 'string',
+      description: 'User\'s email address',
+      required: true,
+      defaultValue: 'john@example.com'
+    },
+    {
+      name: 'issueDescription',
+      type: 'string',
+      description: 'Description of the support issue',
+      required: true,
+      defaultValue: 'I need help with my account'
+    },
+    {
+      name: 'screenshotUrl',
+      type: 'string',
+      description: 'URL of a screenshot for technical issues',
+      required: false,
+      defaultValue: ''
     }
   ]
 }

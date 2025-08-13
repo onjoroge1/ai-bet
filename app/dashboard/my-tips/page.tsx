@@ -426,31 +426,81 @@ export default function MyTipsPage() {
               )}
 
               {/* 3. Additional Markets */}
-              {selectedTip.prediction?.extraMarkets && selectedTip.prediction.extraMarkets.length > 0 && (
+              {selectedTip.predictionData?.additional_markets && (
                 <Card className="bg-slate-800/50 border-slate-600 p-6">
                   <div className="flex items-center space-x-2 mb-4">
                     <Target className="w-5 h-5 text-blue-400" />
                     <h3 className="text-lg font-semibold text-white">Additional Markets</h3>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {selectedTip.prediction?.extraMarkets.map((market, index) => (
-                      <div key={index} className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
+                    {/* Total Goals Market */}
+                    {selectedTip.predictionData.additional_markets.total_goals && (
+                      <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-white font-medium text-sm">{market.name}</span>
-                          <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
-                            {market.odds != null ? market.odds.toFixed(2) : 0}%
-                          </Badge>
+                          <span className="text-white font-medium text-sm">Total Goals</span>
                         </div>
-                        <div className="text-emerald-400 font-semibold text-sm mb-1">
-                          {/* Assuming market.prediction is a string or number */}
-                          {typeof market.prediction === 'string' ? market.prediction : 'N/A'}
-                        </div>
-                        <div className="text-slate-400 text-xs">
-                          {/* Assuming market.reasoning is a string or number */}
-                          {typeof market.reasoning === 'string' ? market.reasoning : 'N/A'}
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-400 text-sm">Over 2.5</span>
+                            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
+                              {(selectedTip.predictionData.additional_markets.total_goals.over_2_5 * 100).toFixed(1)}%
+                            </Badge>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-400 text-sm">Under 2.5</span>
+                            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
+                              {(selectedTip.predictionData.additional_markets.total_goals.under_2_5 * 100).toFixed(1)}%
+                            </Badge>
+                          </div>
                         </div>
                       </div>
-                    ))}
+                    )}
+                    
+                    {/* Both Teams Score Market */}
+                    {selectedTip.predictionData.additional_markets.both_teams_score && (
+                      <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-white font-medium text-sm">Both Teams Score</span>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-400 text-sm">Yes</span>
+                            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
+                              {(selectedTip.predictionData.additional_markets.both_teams_score.yes * 100).toFixed(1)}%
+                            </Badge>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-400 text-sm">No</span>
+                            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
+                              {(selectedTip.predictionData.additional_markets.both_teams_score.no * 100).toFixed(1)}%
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Asian Handicap Market */}
+                    {selectedTip.predictionData.additional_markets.asian_handicap && (
+                      <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-white font-medium text-sm">Asian Handicap</span>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-400 text-sm">Home</span>
+                            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
+                              {selectedTip.predictionData.additional_markets.asian_handicap.home_handicap}
+                            </Badge>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-400 text-sm">Away</span>
+                            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
+                              {selectedTip.predictionData.additional_markets.asian_handicap.away_handicap}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </Card>
               )}
@@ -558,16 +608,16 @@ export default function MyTipsPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-slate-400">Overall Risk:</span>
                     <Badge className={`${getValueRatingColor(selectedTip.valueRating)} text-white`}>
-                      {selectedTip.prediction?.riskAnalysis?.level || selectedTip.valueRating || 'Unknown'}
+                      {selectedTip.predictionData?.comprehensive_analysis?.risk_analysis?.overall_risk || selectedTip.valueRating || 'Unknown'}
                     </Badge>
                   </div>
                   
                   {/* Key Risks */}
-                  {selectedTip.prediction?.riskAnalysis?.factors && (
+                  {selectedTip.predictionData?.comprehensive_analysis?.risk_analysis?.key_risks && (
                     <div>
                       <div className="text-sm text-slate-400 mb-2">Key Risks:</div>
                       <ul className="space-y-1">
-                        {selectedTip.prediction.riskAnalysis.factors.map((risk: string, index: number) => (
+                        {selectedTip.predictionData.comprehensive_analysis.risk_analysis.key_risks.map((risk: string, index: number) => (
                           <li key={index} className="text-slate-300 text-sm flex items-start">
                             <span className="text-orange-400 mr-2">•</span>
                             {risk}
@@ -578,96 +628,76 @@ export default function MyTipsPage() {
                   )}
                   
                   {/* Upset Potential */}
-                  {selectedTip.prediction?.riskAnalysis?.upset_potential && (
+                  {selectedTip.predictionData?.comprehensive_analysis?.risk_analysis?.upset_potential && (
                     <div>
                       <span className="text-slate-400 text-sm">Upset Potential: </span>
-                      <span className="text-slate-300 text-sm">{selectedTip.prediction.riskAnalysis.upset_potential}</span>
+                      <span className="text-slate-300 text-sm">{selectedTip.predictionData.comprehensive_analysis.risk_analysis.upset_potential}</span>
                     </div>
                   )}
                 </div>
               </Card>
 
-              {/* 8. AI Verdict & ML Prediction */}
-              {selectedTip.prediction?.aiVerdict && (
+              {/* 8. Prediction Analysis - Simplified & User-Friendly */}
+              {selectedTip.predictionData?.comprehensive_analysis && (
                 <Card className="bg-slate-800 border-slate-700 p-6">
                   <h4 className="text-lg font-semibold text-white mb-4 flex items-center">
                     <Target className="w-5 h-5 mr-2 text-blue-400" />
-                    AI Verdict & ML Prediction
+                    Prediction Analysis
                   </h4>
+                  
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* AI Verdict */}
-                    <div className="space-y-3">
-                      <h5 className="text-md font-medium text-white">AI Verdict</h5>
-                      <div className="space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Recommended Outcome:</span>
-                          <span className="text-emerald-400 font-medium">{selectedTip.prediction.aiVerdict.reasoning}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Confidence Level:</span>
-                          <span className="text-blue-400">{selectedTip.prediction.aiVerdict.confidence}%</span>
-                        </div>
-                        {selectedTip.prediction.aiVerdict.probability_assessment && (
-                          <div className="space-y-1">
-                            <div className="text-sm text-slate-400">Probability Assessment:</div>
-                            <div className="grid grid-cols-3 gap-2 text-xs">
-                              <div className="text-center">
-                                <div className="text-slate-300">Home</div>
-                                <div className="text-emerald-400">{(selectedTip.prediction.aiVerdict.probability_assessment.home * 100).toFixed(0)}%</div>
-                              </div>
-                              <div className="text-center">
-                                <div className="text-slate-300">Draw</div>
-                                <div className="text-yellow-400">{(selectedTip.prediction.aiVerdict.probability_assessment.draw * 100).toFixed(0)}%</div>
-                              </div>
-                              <div className="text-center">
-                                <div className="text-slate-300">Away</div>
-                                <div className="text-red-400">{(selectedTip.prediction.aiVerdict.probability_assessment.away * 100).toFixed(0)}%</div>
-                              </div>
-                            </div>
+                    {/* Left: What to Bet On */}
+                    <div className="space-y-4">
+                      <h5 className="text-md font-medium text-white">Our Recommendation</h5>
+                      
+                      {/* Main Prediction */}
+                      <div className="bg-emerald-600/20 border border-emerald-500/30 rounded-lg p-4">
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-emerald-400 mb-2">
+                            {selectedTip.predictionData.comprehensive_analysis.ai_verdict?.recommended_outcome}
                           </div>
-                        )}
+                          <div className="text-slate-300 text-sm">
+                            AI Recommended Bet
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Confidence Level */}
+                      <div className="text-center">
+                        <div className="text-sm text-slate-400 mb-2">Confidence Level</div>
+                        <div className="text-2xl font-bold text-blue-400">
+                          {selectedTip.predictionData.comprehensive_analysis.ai_verdict?.confidence_level}
+                        </div>
                       </div>
                     </div>
-
-                    {/* ML Prediction */}
-                    {selectedTip.prediction?.mlPrediction && (
+                    
+                    {/* Right: Why This Bet */}
+                    <div className="space-y-4">
+                      <h5 className="text-md font-medium text-white">Why This Bet?</h5>
+                      
+                      {/* Key Factors */}
                       <div className="space-y-3">
-                        <h5 className="text-md font-medium text-white">ML Prediction</h5>
+                        <div className="text-sm text-slate-400">Key Factors:</div>
                         <div className="space-y-2">
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Model Type:</span>
-                            <span className="text-purple-400">{selectedTip.prediction.mlPrediction.model}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Confidence:</span>
-                            <span className="text-emerald-400">{selectedTip.prediction.mlPrediction.confidence.toFixed(1)}%</span>
-                          </div>
-                          <div className="space-y-1">
-                            <div className="text-sm text-slate-400">Predictions:</div>
-                            <div className="grid grid-cols-3 gap-2 text-xs">
-                              <div className="text-center">
-                                <div className="text-slate-300">Home Win</div>
-                                <div className="text-emerald-400">{(selectedTip.prediction.mlPrediction.home_win * 100).toFixed(0)}%</div>
+                          {selectedTip.predictionData.comprehensive_analysis.detailed_reasoning && 
+                            Object.entries(selectedTip.predictionData.comprehensive_analysis.detailed_reasoning).map(([key, value]) => (
+                              <div key={key} className="bg-slate-700/30 rounded p-3">
+                                <div className="text-emerald-400 text-xs font-medium mb-1">
+                                  {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                </div>
+                                <div className="text-slate-300 text-sm">{String(value)}</div>
                               </div>
-                              <div className="text-center">
-                                <div className="text-slate-300">Draw</div>
-                                <div className="text-yellow-400">{(selectedTip.prediction.mlPrediction.draw * 100).toFixed(0)}%</div>
-                              </div>
-                              <div className="text-center">
-                                <div className="text-slate-300">Away Win</div>
-                                <div className="text-red-400">{(selectedTip.prediction.mlPrediction.away_win * 100).toFixed(0)}%</div>
-                              </div>
-                            </div>
-                          </div>
+                            ))
+                          }
                         </div>
                       </div>
-                    )}
+                    </div>
                   </div>
                 </Card>
               )}
 
               {/* 9. Betting Intelligence */}
-              {selectedTip.prediction?.bettingIntelligence && (
+              {selectedTip.predictionData?.comprehensive_analysis?.betting_intelligence && (
                 <Card className="bg-slate-800 border-slate-700 p-6">
                   <h4 className="text-lg font-semibold text-white mb-4 flex items-center">
                     <span className="text-2xl mr-2">💎</span>
@@ -675,24 +705,37 @@ export default function MyTipsPage() {
                   </h4>
                   <div className="space-y-4">
                     {/* Primary Bet */}
-                    {selectedTip.prediction.bettingIntelligence.value && (
+                    {selectedTip.predictionData.comprehensive_analysis.betting_intelligence.primary_bet && (
                       <div className="space-y-2">
                         <div className="text-sm text-slate-400 font-medium">Primary Bet:</div>
                         <div className="text-emerald-400 text-sm">
-                          {selectedTip.prediction.bettingIntelligence.value}
+                          {selectedTip.predictionData.comprehensive_analysis.betting_intelligence.primary_bet}
                         </div>
                       </div>
                     )}
                     
                     {/* Value Bets */}
-                    {selectedTip.prediction.bettingIntelligence.value_bets && selectedTip.prediction.bettingIntelligence.value_bets.length > 0 && (
+                    {selectedTip.predictionData.comprehensive_analysis.betting_intelligence.value_bets && selectedTip.predictionData.comprehensive_analysis.betting_intelligence.value_bets.length > 0 && (
                       <div className="space-y-2">
                         <div className="text-sm text-slate-400 font-medium">Value Bets:</div>
                         <div className="space-y-1">
-                          {selectedTip.prediction.bettingIntelligence.value_bets.map((bet: string, index: number) => (
-                            <div key={index} className="text-slate-300 text-sm flex items-center">
-                              <span className="text-emerald-400 mr-2">•</span>
-                              {bet}
+                          {selectedTip.predictionData.comprehensive_analysis.betting_intelligence.value_bets.map((bet: string, index: number) => (
+                            <div key={index} className="text-emerald-400 text-sm">
+                              • {bet}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Avoid Bets */}
+                    {selectedTip.predictionData.comprehensive_analysis.betting_intelligence.avoid_bets && selectedTip.predictionData.comprehensive_analysis.betting_intelligence.avoid_bets.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-sm text-slate-400 font-medium">Avoid These Bets:</div>
+                        <div className="space-y-1">
+                          {selectedTip.predictionData.comprehensive_analysis.betting_intelligence.avoid_bets.map((bet: string, index: number) => (
+                            <div key={index} className="text-red-400 text-sm">
+                              • {bet}
                             </div>
                           ))}
                         </div>
@@ -771,12 +814,6 @@ export default function MyTipsPage() {
                       <div className="text-slate-300">{selectedTip.prediction.processingTime}s</div>
                     </div>
                   )}
-                  {selectedTip.prediction?.analysisMetadata?.ai_model && (
-                    <div>
-                      <span className="text-slate-400">AI Model:</span>
-                      <div className="text-slate-300">{selectedTip.prediction.analysisMetadata.ai_model}</div>
-                    </div>
-                  )}
                   {selectedTip.prediction?.analysisMetadata?.analysis_type && (
                     <div>
                       <span className="text-slate-400">Analysis Type:</span>
@@ -789,12 +826,6 @@ export default function MyTipsPage() {
               {/* 10. Transaction Footer */}
               <Card className="bg-slate-800 border-slate-700 p-6">
                 <div className="space-y-3 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">You paid:</span>
-                    <span className="text-emerald-400 font-medium">
-                      {selectedTip.currencySymbol}{selectedTip.amount} (Premium Tip)
-                    </span>
-                  </div>
                   <div className="flex justify-between">
                     <span className="text-slate-400">Payment method:</span>
                     <span className="text-slate-300">**** 1234 • {selectedTip.paymentMethod}</span>

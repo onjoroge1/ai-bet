@@ -53,6 +53,10 @@ export async function POST(req: NextRequest) {
 async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
   const { metadata } = paymentIntent;
   console.log('PaymentIntent metadata:', metadata);
+  console.log('PaymentIntent amount (cents):', paymentIntent.amount);
+  console.log('PaymentIntent amount (dollars):', paymentIntent.amount / 100);
+  console.log('PaymentIntent currency:', paymentIntent.currency);
+  
   if (!metadata.userId || !metadata.itemType || !metadata.itemId) {
     console.error('Missing required metadata in payment intent');
     return;
@@ -78,12 +82,40 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
         console.log(`Package purchase already exists for user ${userId}`);
         return;
       }
+
+      // Fetch the actual price from the quick-purchases API to ensure consistency
+      let actualPrice = paymentIntent.amount / 100; // Fallback to payment intent amount
+      try {
+        console.log('Fetching package price from quick-purchases API for consistency...');
+        const quickPurchasesResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/quick-purchases`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (quickPurchasesResponse.ok) {
+          const quickPurchasesData = await quickPurchasesResponse.json();
+          // Find the specific package by ID to get the correct price
+          const matchingPackage = quickPurchasesData.find((item: any) => item.id === itemId);
+          if (matchingPackage && matchingPackage.price) {
+            actualPrice = typeof matchingPackage.price === 'number' ? matchingPackage.price : parseFloat(matchingPackage.price);
+            console.log(`Package price fetched from API: $${actualPrice} (was: $${paymentIntent.amount / 100})`);
+          } else {
+            console.log('Package not found in quick-purchases API, using payment intent amount');
+          }
+        } else {
+          console.log('Failed to fetch quick-purchases for package, using payment intent amount');
+        }
+      } catch (error) {
+        console.error('Error fetching package price from API, using payment intent amount:', error);
+      }
       
       // Create package purchase record
       console.log('Creating package purchase record...');
       let packagePurchaseData: any = {
         userId,
-        amount: new Prisma.Decimal(paymentIntent.amount / 100),
+        amount: new Prisma.Decimal(actualPrice), // Use the API price instead of payment intent amount
         paymentMethod: 'stripe',
         status: 'completed',
         createdAt: new Date(),
@@ -159,7 +191,7 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
           const { NotificationService } = await import('@/lib/notification-service');
           await NotificationService.createPaymentSuccessNotification(
             userId,
-            paymentIntent.amount / 100,
+            actualPrice, // Use the consistent API price instead of payment intent amount
             itemType === 'package' ? 'Premium Package' : 'Tip',
             packagePurchase.packageType,
             creditsGained
@@ -190,20 +222,49 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
         console.log(`Purchase already exists for user ${userId} and item ${itemId}`);
         return;
       }
-      // Create purchase record
+
+      // Fetch the actual price from the quick-purchases API to ensure consistency
+      let actualPrice = paymentIntent.amount / 100; // Fallback to payment intent amount
+      try {
+        console.log('Fetching price from quick-purchases API for consistency...');
+        const quickPurchasesResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/quick-purchases`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (quickPurchasesResponse.ok) {
+          const quickPurchasesData = await quickPurchasesResponse.json();
+          // Find the specific item by ID to get the correct price
+          const matchingItem = quickPurchasesData.find((item: any) => item.id === itemId);
+          if (matchingItem && matchingItem.price) {
+            actualPrice = typeof matchingItem.price === 'number' ? matchingItem.price : parseFloat(matchingItem.price);
+            console.log(`Price fetched from API: $${actualPrice} (was: $${paymentIntent.amount / 100})`);
+          } else {
+            console.log('Item not found in quick-purchases API, using payment intent amount');
+          }
+        } else {
+          console.log('Failed to fetch quick-purchases, using payment intent amount');
+        }
+      } catch (error) {
+        console.error('Error fetching price from API, using payment intent amount:', error);
+      }
+      
+      // Create purchase record with the consistent price
       console.log('Creating purchase record...');
       const purchase = await prisma.purchase.create({
         data: {
           userId,
           quickPurchaseId: itemId,
-          amount: new Prisma.Decimal(paymentIntent.amount / 100),
+          amount: new Prisma.Decimal(actualPrice), // Use the API price instead of payment intent amount
           paymentMethod: 'stripe',
           status: 'completed',
           createdAt: new Date(),
           updatedAt: new Date(),
         },
       });
-      console.log(`Created purchase record: ${purchase.id} for intent: ${paymentIntent.id}`);
+      console.log(`Created purchase record: ${purchase.id} for intent: ${paymentIntent.id} with amount: $${actualPrice}`);
       
       const tipResult = await processTipPurchase(userId, itemId, paymentIntent);
       
@@ -244,7 +305,7 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
           
           await NotificationService.createTipPurchaseNotification(
             userId,
-            paymentIntent.amount / 100,
+            actualPrice, // Use the consistent API price instead of payment intent amount
             tipName,
             matchDetails,
             prediction,
@@ -257,7 +318,7 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
           // Fallback to generic notification if tip details not available
           await NotificationService.createPaymentSuccessNotification(
             userId,
-            paymentIntent.amount / 100,
+            actualPrice, // Use the consistent API price instead of payment intent amount
             'Premium Tip'
           );
         }

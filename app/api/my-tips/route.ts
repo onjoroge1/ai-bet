@@ -383,7 +383,7 @@ export async function GET(request: Request) {
         id: purchase.id,
         purchaseId: purchase.id, // For receipt display
         purchaseDate: purchase.createdAt,
-        amount: purchase.amount,
+        amount: qp.price, // Use the current price from QuickPurchase instead of stored purchase amount
         paymentMethod: purchase.paymentMethod,
         // Add tip type to distinguish between monetary and credit purchases
         tipType: purchase.paymentMethod === 'credits' ? 'credit' : 'monetary',
