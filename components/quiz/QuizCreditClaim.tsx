@@ -85,12 +85,13 @@ export default function QuizCreditClaim() {
       setClaiming(participationId)
       setError(null)
       
-      const response = await fetch("/api/quiz", {
+      // Call the credits API to claim quiz credits
+      const response = await fetch("/api/credits/claim-quiz", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "claim-credits",
-          participationId
+          participationId,
+          userId: user?.id
         })
       })
       
@@ -111,7 +112,7 @@ export default function QuizCreditClaim() {
       )
       
       // Show success message with toast instead of alert
-      toast.success(`Successfully claimed ${result.creditsAdded} credits!`, {
+      toast.success(`Successfully claimed ${result.creditsAdded || result.credits} credits!`, {
         description: "Your prediction credits have been added to your account.",
         duration: 5000,
       })

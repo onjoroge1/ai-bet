@@ -332,6 +332,7 @@ model QuizParticipation {
   userAgent         String?
   bonusPoints       Int          @default(0)
   creditsClaimed    Boolean      @default(false)
+  claimedAt         DateTime?
   quizReferralCode  String?
   referralBonus     Int          @default(0)
   quizAnswers       QuizAnswer[]
