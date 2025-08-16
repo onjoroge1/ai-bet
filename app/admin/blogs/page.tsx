@@ -21,7 +21,11 @@ import {
   TrendingUp,
   BookOpen,
   Send,
-  Bot
+  Bot,
+  AlertTriangle,
+  Megaphone,
+  Settings,
+  Clock
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -46,16 +50,38 @@ interface BlogPost {
   sourceUrl?: string
 }
 
+interface BreakingNews {
+  id: string
+  title: string
+  message: string
+  priority: number
+  isActive: boolean
+  expiresAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
 export default function AdminBlogsPage() {
   const [blogs, setBlogs] = useState<BlogPost[]>([])
+  const [breakingNews, setBreakingNews] = useState<BreakingNews[]>([])
   const [loading, setLoading] = useState(true)
+  const [breakingNewsLoading, setBreakingNewsLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [showBreakingNewsForm, setShowBreakingNewsForm] = useState(false)
+  const [breakingNewsForm, setBreakingNewsForm] = useState({
+    title: '',
+    message: '',
+    priority: 1,
+    isActive: true,
+    expiresAt: ''
+  })
   const router = useRouter()
 
   useEffect(() => {
     fetchBlogs()
+    fetchBreakingNews()
   }, [])
 
   const fetchBlogs = async () => {
@@ -70,6 +96,19 @@ export default function AdminBlogsPage() {
       console.error('Error fetching blogs:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchBreakingNews = async () => {
+    try {
+      const response = await fetch('/api/admin/breaking-news')
+      const data = await response.json()
+      
+      if (data.success) {
+        setBreakingNews(data.data)
+      }
+    } catch (error) {
+      console.error('Error fetching breaking news:', error)
     }
   }
 
@@ -100,6 +139,64 @@ export default function AdminBlogsPage() {
       }
     } catch (error) {
       console.error('Error publishing blog:', error)
+    }
+  }
+
+  const handleBreakingNewsSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setBreakingNewsLoading(true)
+    
+    try {
+      const response = await fetch('/api/admin/breaking-news', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(breakingNewsForm)
+      })
+      
+      if (response.ok) {
+        setBreakingNewsForm({ title: '', message: '', priority: 1, isActive: true, expiresAt: '' })
+        setShowBreakingNewsForm(false)
+        fetchBreakingNews()
+      }
+    } catch (error) {
+      console.error('Error creating breaking news:', error)
+    } finally {
+      setBreakingNewsLoading(false)
+    }
+  }
+
+  const handleBreakingNewsToggle = async (id: string, isActive: boolean) => {
+    try {
+      const newsItem = breakingNews.find(item => item.id === id)
+      if (!newsItem) return
+      
+      const response = await fetch('/api/admin/breaking-news', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...newsItem, isActive: !isActive })
+      })
+      
+      if (response.ok) {
+        fetchBreakingNews()
+      }
+    } catch (error) {
+      console.error('Error updating breaking news:', error)
+    }
+  }
+
+  const handleBreakingNewsDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this breaking news item?')) return
+    
+    try {
+      const response = await fetch(`/api/admin/breaking-news?id=${id}`, {
+        method: 'DELETE'
+      })
+      
+      if (response.ok) {
+        fetchBreakingNews()
+      }
+    } catch (error) {
+      console.error('Error deleting breaking news:', error)
     }
   }
 
@@ -232,6 +329,165 @@ export default function AdminBlogsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Breaking News Management */}
+      <Card className="bg-slate-800 border-slate-700 mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-white">
+            <AlertTriangle className="w-5 h-5 text-red-400" />
+            Breaking News Management
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-slate-300 text-sm">
+              Manage breaking news items that appear in the blog ticker
+            </p>
+            <Button 
+              onClick={() => setShowBreakingNewsForm(!showBreakingNewsForm)}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              <Megaphone className="w-4 h-4 mr-2" />
+              {showBreakingNewsForm ? 'Cancel' : 'Add Breaking News'}
+            </Button>
+          </div>
+
+          {/* Breaking News Form */}
+          {showBreakingNewsForm && (
+            <form onSubmit={handleBreakingNewsSubmit} className="bg-slate-700/50 rounded-lg p-4 mb-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm text-slate-300 mb-2 block">Title</label>
+                  <Input
+                    placeholder="Breaking news title"
+                    value={breakingNewsForm.title}
+                    onChange={(e) => setBreakingNewsForm(prev => ({ ...prev, title: e.target.value }))}
+                    className="bg-slate-600 border-slate-500 text-white"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-sm text-slate-300 mb-2 block">Priority</label>
+                  <Select 
+                    value={breakingNewsForm.priority.toString()} 
+                    onValueChange={(value) => setBreakingNewsForm(prev => ({ ...prev, priority: parseInt(value) }))}
+                  >
+                    <SelectTrigger className="bg-slate-600 border-slate-500 text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">Low Priority</SelectItem>
+                      <SelectItem value="2">Medium Priority</SelectItem>
+                      <SelectItem value="3">High Priority</SelectItem>
+                      <SelectItem value="4">Critical</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="text-sm text-slate-300 mb-2 block">Message</label>
+                  <Input
+                    placeholder="Full breaking news message"
+                    value={breakingNewsForm.message}
+                    onChange={(e) => setBreakingNewsForm(prev => ({ ...prev, message: e.target.value }))}
+                    className="bg-slate-600 border-slate-500 text-white"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-sm text-slate-300 mb-2 block">Expires At (Optional)</label>
+                  <Input
+                    type="datetime-local"
+                    value={breakingNewsForm.expiresAt}
+                    onChange={(e) => setBreakingNewsForm(prev => ({ ...prev, expiresAt: e.target.value }))}
+                    className="bg-slate-600 border-slate-500 text-white"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="isActive"
+                    checked={breakingNewsForm.isActive}
+                    onChange={(e) => setBreakingNewsForm(prev => ({ ...prev, isActive: e.target.checked }))}
+                    className="rounded border-slate-500 bg-slate-600 text-red-500 focus:ring-red-500"
+                  />
+                  <label htmlFor="isActive" className="text-sm text-slate-300">Active immediately</label>
+                </div>
+              </div>
+              <div className="mt-4">
+                <Button 
+                  type="submit" 
+                  className="bg-red-600 hover:bg-red-700"
+                  disabled={breakingNewsLoading}
+                >
+                  {breakingNewsLoading ? 'Creating...' : 'Create Breaking News'}
+                </Button>
+              </div>
+            </form>
+          )}
+
+          {/* Breaking News List */}
+          <div className="space-y-3">
+            {breakingNews.map((news) => (
+              <div key={news.id} className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg border border-slate-600">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h4 className="font-semibold text-white">{news.title}</h4>
+                    <Badge className={`${
+                      news.priority === 4 ? 'bg-red-500/20 text-red-400 border-red-500/30' :
+                      news.priority === 3 ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' :
+                      news.priority === 2 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' :
+                      'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                    }`}>
+                      Priority {news.priority}
+                    </Badge>
+                    {news.isActive ? (
+                      <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Active</Badge>
+                    ) : (
+                      <Badge className="bg-slate-500/20 text-slate-400 border-slate-500/30">Inactive</Badge>
+                    )}
+                  </div>
+                  <p className="text-slate-300 text-sm mb-2">{news.message}</p>
+                  <div className="flex items-center gap-4 text-xs text-slate-400">
+                    <span>Created: {new Date(news.createdAt).toLocaleDateString()}</span>
+                    {news.expiresAt && (
+                      <span>Expires: {new Date(news.expiresAt).toLocaleDateString()}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleBreakingNewsToggle(news.id, news.isActive)}
+                    className={`${
+                      news.isActive 
+                        ? 'border-orange-500 text-orange-400 hover:bg-orange-500/20' 
+                        : 'border-green-500 text-green-400 hover:bg-green-500/20'
+                    }`}
+                  >
+                    {news.isActive ? 'Deactivate' : 'Activate'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleBreakingNewsDelete(news.id)}
+                    className="border-red-500 text-red-400 hover:bg-red-500/20"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {breakingNews.length === 0 && (
+              <div className="text-center py-8 text-slate-400">
+                <Megaphone className="w-12 h-12 mx-auto mb-4 text-slate-600" />
+                <p>No breaking news items yet</p>
+                <p className="text-sm">Create your first breaking news item to get started</p>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Filters */}
       <Card className="bg-slate-800 border-slate-700 mb-6">

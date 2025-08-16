@@ -246,6 +246,7 @@ model User {
   quizSessions          QuizSession[]
   supportTickets        SupportTicket[]
   supportTicketResponses SupportTicketResponse[]
+  breakingNews          BreakingNews[]
 }
 
 model UserPrediction {
@@ -883,4 +884,35 @@ model SupportTicketResponse {
   user      User         @relation(fields: [userId], references: [id])
   
   @@index([ticketId, createdAt])
+}
+
+model BreakingNews {
+  id        String    @id @default(cuid())
+  title     String
+  message   String
+  priority  Int       @default(1) // 1=Low, 2=Medium, 3=High, 4=Critical
+  isActive  Boolean   @default(true)
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String
+  
+  // Relations
+  user      User      @relation(fields: [createdBy], references: [id])
+  
+  @@index([isActive, priority])
+  @@index([expiresAt])
+  @@index([createdAt])
+}
+
+model NewsletterSubscription {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  isActive     Boolean  @default(true)
+  subscribedAt DateTime @default(now())
+  unsubscribedAt DateTime?
+  
+  @@index([email])
+  @@index([isActive])
+  @@index([subscribedAt])
 }
