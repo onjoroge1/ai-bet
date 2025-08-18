@@ -99,6 +99,10 @@ model QuickPurchase {
   predictionData     Json?
   predictionType     String?
   valueRating        String?
+  enrichmentCount    Int        @default(0)
+  lastEnrichmentAt   DateTime?
+  nextRefetchAt      DateTime?
+  refetchPriority    String?
   purchases          Purchase[]
   country            Country    @relation(fields: [countryId], references: [id])
 }

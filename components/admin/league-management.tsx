@@ -189,6 +189,9 @@ export function AdminLeagueManagement() {
   const [editingLeague, setEditingLeague] = useState<League | null>(null)
   const [currentTab, setCurrentTab] = useState("all")
   const [syncStatus, setSyncStatus] = useState<Record<string, SyncStatus>>({})
+  const [selectedLeagueForMatches, setSelectedLeagueForMatches] = useState("all")
+  const [upcomingMatches, setUpcomingMatches] = useState<any[]>([])
+  const [upcomingMatchesStatus, setUpcomingMatchesStatus] = useState<any>(null)
 
   // Queries
   const { data: leagues = [], isLoading, error } = useQuery({
@@ -273,6 +276,43 @@ export function AdminLeagueManagement() {
     }
   })
 
+  const syncMatchesMutation = useMutation({
+    mutationFn: async () => {
+      console.log('🌐 Making API call to upcoming matches')
+      const leagueId = selectedLeagueForMatches === 'all' ? undefined : selectedLeagueForMatches
+      const params = new URLSearchParams()
+      if (leagueId) params.append('leagueId', leagueId)
+      params.append('timeWindow', '72h')
+      const url = `/api/admin/predictions/upcoming-matches?${params.toString()}`
+      console.log('📡 API URL:', url)
+      const response = await fetch(url)
+      console.log('📡 API Response status:', response.status)
+      if (!response.ok) {
+        throw new Error('Failed to fetch upcoming matches')
+      }
+      return response.json()
+    },
+    onSuccess: (data) => {
+      console.log('Sync matches success:', data)
+      console.log('Matches data:', data.data.matches)
+      console.log('Counts data:', data.data.counts)
+      
+      setUpcomingMatches(data.data.matches || [])
+      setUpcomingMatchesStatus({
+        data: {
+          totalMatches: data.data.counts.total || 0,
+          newMatches: data.data.counts['72h'] || 0,
+          lastSync: new Date().toISOString(),
+          counts: data.data.counts
+        }
+      })
+      toast.success(`Found ${data.data.counts.total || 0} upcoming matches`)
+    },
+    onError: (error) => {
+      toast.error(error.message)
+    }
+  })
+
   // Filtered leagues
   const filteredLeagues = useMemo(() => {
     return leagues
@@ -321,6 +361,20 @@ export function AdminLeagueManagement() {
 
   const handleEnrichPredictions = (limit: number = 10) => {
     enrichMutation.mutate({ limit })
+  }
+
+  const handleSyncUpcomingMatches = () => {
+    console.log('🔄 Sync upcoming matches button clicked')
+    syncMatchesMutation.mutate()
+  }
+
+  const handleRefetchPredictions = (timeWindow: string) => {
+    // Use the existing enrichment API but with time window filtering
+    enrichMutation.mutate({ 
+      limit: 50, 
+      timeWindow,
+      leagueId: selectedLeagueForMatches === 'all' ? undefined : selectedLeagueForMatches
+    })
   }
 
   const handleSave = (formData: LeagueFormData) => {
@@ -504,6 +558,189 @@ export function AdminLeagueManagement() {
           </CardContent>
         </Card>
       )}
+
+      {/* Upcoming Matches Section */}
+      <Card className="bg-slate-800/50 border-slate-700">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center justify-between">
+            <div className="flex items-center">
+              <Calendar className="w-5 h-5 mr-2 text-purple-400" />
+              Upcoming Matches
+            </div>
+            <div className="flex items-center space-x-2">
+              <Select value={selectedLeagueForMatches} onValueChange={setSelectedLeagueForMatches}>
+                <SelectTrigger className="w-40 bg-slate-700 border-slate-600 text-white">
+                  <SelectValue placeholder="Select League" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-700 border-slate-600">
+                  <SelectItem value="all">All Leagues</SelectItem>
+                  {leagues.map((league) => (
+                    <SelectItem key={league.id} value={league.id}>
+                      {league.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                onClick={handleSyncUpcomingMatches}
+                disabled={syncMatchesMutation.isPending}
+                className="bg-purple-600 hover:bg-purple-700"
+              >
+                {syncMatchesMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4" />
+                )}
+                <span className="ml-2">Sync Matches</span>
+              </Button>
+            </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {upcomingMatchesStatus ? (
+            <div className="space-y-4">
+              {/* Debug info */}
+              <div className="text-xs text-slate-500 mb-2">
+                Debug: upcomingMatches.length = {upcomingMatches.length}, 
+                upcomingMatchesStatus.data.totalMatches = {upcomingMatchesStatus.data?.totalMatches}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+                <div className="text-center">
+                  <p className="text-slate-400 text-sm">Total Matches</p>
+                  <p className="text-2xl font-bold text-white">{upcomingMatchesStatus.data?.totalMatches || 0}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-slate-400 text-sm">72h Window</p>
+                  <p className="text-2xl font-bold text-blue-400">{upcomingMatchesStatus.data?.counts?.['72h'] || 0}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-slate-400 text-sm">48h Window</p>
+                  <p className="text-2xl font-bold text-yellow-400">{upcomingMatchesStatus.data?.counts?.['48h'] || 0}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-slate-400 text-sm">24h Window</p>
+                  <p className="text-2xl font-bold text-orange-400">{upcomingMatchesStatus.data?.counts?.['24h'] || 0}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-slate-400 text-sm">Urgent (≤6h)</p>
+                  <p className="text-2xl font-bold text-red-400">{upcomingMatchesStatus.data?.counts?.['urgent'] || 0}</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center justify-center space-x-2 mb-4">
+                <Button
+                  onClick={() => handleRefetchPredictions('72h')}
+                  disabled={enrichMutation.isPending}
+                  className="bg-blue-600 hover:bg-blue-700"
+                  size="sm"
+                >
+                  Refetch 72h
+                </Button>
+                <Button
+                  onClick={() => handleRefetchPredictions('48h')}
+                  disabled={enrichMutation.isPending}
+                  className="bg-yellow-600 hover:bg-yellow-700"
+                  size="sm"
+                >
+                  Refetch 48h
+                </Button>
+                <Button
+                  onClick={() => handleRefetchPredictions('24h')}
+                  disabled={enrichMutation.isPending}
+                  className="bg-orange-600 hover:bg-orange-700"
+                  size="sm"
+                >
+                  Refetch 24h
+                </Button>
+                <Button
+                  onClick={() => handleRefetchPredictions('urgent')}
+                  disabled={enrichMutation.isPending}
+                  className="bg-red-600 hover:bg-red-700"
+                  size="sm"
+                >
+                  Refetch Urgent
+                </Button>
+              </div>
+              
+              {upcomingMatches.length > 0 && (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader className="bg-slate-900/50">
+                      <TableRow className="border-slate-700">
+                        <TableHead className="text-white">Match</TableHead>
+                        <TableHead className="text-white">League</TableHead>
+                        <TableHead className="text-white">Date & Time</TableHead>
+                        <TableHead className="text-white">Prediction Status</TableHead>
+                        <TableHead className="text-white">Enrichment History</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {upcomingMatches.slice(0, 10).map((match) => (
+                        <TableRow key={match.id} className="border-slate-700">
+                          <TableCell className="text-white">
+                            <div>
+                              <p className="font-medium">{match.homeTeam} vs {match.awayTeam}</p>
+                              <p className="text-sm text-slate-400">{match.venue || 'TBD'}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-white">
+                            <Badge variant="outline" className="border-slate-600 text-slate-300">
+                              {match.league || 'Unknown'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-white">
+                            <div>
+                              <p>{match.matchDate ? new Date(match.matchDate).toLocaleDateString() : 'TBD'}</p>
+                              <p className="text-sm text-slate-400">
+                                {match.hoursUntilMatch !== null ? `${match.hoursUntilMatch}h until match` : 'Unknown'}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-white">
+                            {match.hasPrediction ? (
+                              <Badge variant="outline" className="border-green-600 text-green-400">
+                                <CheckCircle className="w-3 h-3 mr-1" />
+                                {match.predictionType} ({match.confidenceScore}%)
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="border-yellow-600 text-yellow-400">
+                                <Clock className="w-3 h-3 mr-1" />
+                                No Prediction
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-white">
+                            <div className="text-sm">
+                              <p>Enriched: {match.enrichmentCount || 0}x</p>
+                              <p className="text-slate-400">
+                                {match.lastEnrichmentAt ? 
+                                  new Date(match.lastEnrichmentAt).toLocaleString() : 
+                                  'Never'
+                                }
+                              </p>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {upcomingMatches.length > 10 && (
+                    <p className="text-center text-slate-400 text-sm mt-2">
+                      Showing first 10 matches. Total: {upcomingMatches.length}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <Calendar className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+              <p className="text-slate-400">No upcoming matches data available</p>
+              <p className="text-slate-500 text-sm">Click "Sync Matches" to fetch the latest data</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Filters and Search */}
       <div className="flex items-center justify-between">
