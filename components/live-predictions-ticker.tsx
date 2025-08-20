@@ -111,10 +111,10 @@ export function LivePredictionsTicker({ compact = false }: LivePredictionsTicker
 
         <div className={`grid gap-4 ${
           compact 
-            ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' 
+            ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4' 
             : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
         }`}>
-          {predictions.slice(0, compact ? 3 : 4).map((prediction) => (
+          {predictions.map((prediction) => (
             <Card 
               key={prediction.id} 
               className="bg-slate-700/50 border-slate-600 hover:border-emerald-500/50 transition-all duration-300 cursor-pointer transform hover:scale-105 hover:shadow-lg hover:shadow-emerald-500/20"
@@ -158,7 +158,7 @@ export function LivePredictionsTicker({ compact = false }: LivePredictionsTicker
             <div className="inline-flex items-center gap-3 p-4 bg-gradient-to-r from-emerald-500/20 to-blue-500/20 border border-emerald-500/30 rounded-lg">
               <Target className="w-5 h-5 text-emerald-400" />
               <span className="text-slate-300 text-sm">
-                Get access to <span className="text-emerald-400 font-semibold">all predictions</span> and start winning today!
+                <span className="text-emerald-400 font-semibold">All 8 predictions</span> are now live! Get access to premium features and start winning today!
               </span>
               <Link 
                 href="/dashboard/predictions" 

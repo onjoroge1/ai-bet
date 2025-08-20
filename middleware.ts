@@ -22,6 +22,7 @@ const publicPaths = [
   '/api/auth/error',
   '/api/countries',
   '/api/health',
+  '/api/predictions/live-ticker', // Public live predictions for homepage
   '/api/predictions/history', // Public predictions history
   '/api/predictions/history/stats', // Public predictions history stats
   '/api/predictions/history/export', // Public predictions history export
@@ -57,6 +58,11 @@ const rateLimitConfig = {
 const isAdminOnlyPath = (pathname: string) => {
   // Exclude predictions history endpoints from admin-only access
   if (pathname.startsWith('/api/predictions/history')) {
+    return false
+  }
+  
+  // Exclude live-ticker endpoint from admin-only access
+  if (pathname === '/api/predictions/live-ticker') {
     return false
   }
   

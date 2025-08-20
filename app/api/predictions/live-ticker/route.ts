@@ -39,31 +39,28 @@ export async function GET() {
       data: { cutoffDate: cutoffDate.toISOString() }
     })
 
-    // Query QuickPurchase table for active predictions within 48 hours
-    const quickPurchases = await prisma.quickPurchase.findMany({
-      where: {
-        isActive: true,
-        isPredictionActive: true,
-        predictionData: {
-          not: null
-        },
-        // Filter by match date within last 48 hours
-        // We'll need to parse the JSON to filter by date
-      },
-      select: {
-        id: true,
-        predictionData: true,
-        matchData: true,
-        predictionType: true,
-        confidenceScore: true,
-        odds: true,
-        valueRating: true,
-        createdAt: true
-      },
-      orderBy: {
-        createdAt: 'desc'
-      }
-    })
+         // Query QuickPurchase table for active predictions within 48 hours
+     // Only get records that have been enriched with prediction data
+     const quickPurchases = await prisma.quickPurchase.findMany({
+       where: {
+         isActive: true,
+         isPredictionActive: true,
+         predictionData: { not: null } // Only get enriched records
+       },
+       select: {
+         id: true,
+         predictionData: true,
+         matchData: true,
+         predictionType: true,
+         confidenceScore: true,
+         odds: true,
+         valueRating: true,
+         createdAt: true
+       },
+       orderBy: {
+         createdAt: 'desc'
+       }
+     })
 
     // Process and filter the data
     const livePredictions = quickPurchases
@@ -72,11 +69,12 @@ export async function GET() {
           const predictionData = qp.predictionData as any
           const matchData = qp.matchData as any
           
-          if (!predictionData?.prediction?.match_info?.date) {
+          // If no matchData, skip this record
+          if (!matchData?.date) {
             return null
           }
 
-          const matchDate = new Date(predictionData.prediction.match_info.date)
+          const matchDate = new Date(matchData.date)
           
           // Filter for matches within last 48 hours
           if (matchDate < cutoffDate) {
@@ -100,17 +98,59 @@ export async function GET() {
             return null
           }
 
+                     // Determine prediction type and confidence
+           let predictionType = 'unknown'
+           let confidence = 75
+           let odds = 2.0
+           let valueRating = 'Medium'
+
+           // Extract from the enriched prediction data structure
+           if (predictionData?.prediction?.predictions) {
+             const predictions = predictionData.prediction.predictions
+             
+             // Use the recommended bet from the AI analysis
+             if (predictionData.prediction.analysis?.betting_recommendations?.primary_bet) {
+               const primaryBet = predictionData.prediction.analysis.betting_recommendations.primary_bet
+               if (primaryBet.toLowerCase().includes('home')) {
+                 predictionType = 'home_win'
+               } else if (primaryBet.toLowerCase().includes('away')) {
+                 predictionType = 'away_win'
+               } else if (primaryBet.toLowerCase().includes('draw')) {
+                 predictionType = 'draw'
+               }
+             }
+             
+             // Extract confidence from the predictions
+             if (predictions.confidence) {
+               confidence = Math.round(predictions.confidence * 100)
+             }
+             
+             // Calculate odds from probabilities
+             if (predictions.home_win && predictions.away_win && predictions.draw) {
+               const maxProb = Math.max(predictions.home_win, predictions.away_win, predictions.draw)
+               odds = maxProb > 0 ? parseFloat((1 / maxProb).toFixed(2)) : 2.0
+             }
+             
+             // Extract value rating from risk assessment
+             if (predictionData.prediction.analysis?.risk_assessment) {
+               const risk = predictionData.prediction.analysis.risk_assessment
+               if (risk === 'Low') valueRating = 'High'
+               else if (risk === 'Medium') valueRating = 'Medium'
+               else if (risk === 'High') valueRating = 'Low'
+             }
+           }
+
           return {
             id: qp.id,
-            homeTeam: matchData?.home_team?.name || predictionData?.prediction?.match_info?.home_team || 'TBD',
-            awayTeam: matchData?.away_team?.name || predictionData?.prediction?.match_info?.away_team || 'TBD',
-            league: matchData?.league?.name || predictionData?.prediction?.match_info?.league || 'Unknown League',
-            prediction: qp.predictionType || predictionData?.prediction?.type || 'Match Prediction',
-            confidence: qp.confidenceScore || predictionData?.prediction?.confidence || 75,
-            odds: parseFloat((qp.odds || predictionData?.prediction?.odds || 2.0).toString()),
-            matchTime: predictionData.prediction.match_info.date,
+            homeTeam: matchData?.home_team || 'TBD',
+            awayTeam: matchData?.away_team || 'TBD',
+            league: matchData?.league || 'Unknown League',
+            prediction: predictionType,
+            confidence: confidence,
+            odds: parseFloat(odds.toString()),
+            matchTime: matchData.date,
             status,
-            valueRating: qp.valueRating || predictionData?.prediction?.value_rating || 'Medium'
+            valueRating: valueRating
           }
         } catch (error) {
           logger.warn('Error processing QuickPurchase prediction data', {

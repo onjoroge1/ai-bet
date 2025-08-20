@@ -184,11 +184,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { limit = 10, leagueId } = await req.json()
+    const { limit = 10, leagueId, timeWindow } = await req.json()
 
     logger.info('Starting QuickPurchase prediction enrichment', {
       tags: ['api', 'admin', 'predictions', 'enrich'],
-      data: { limit, leagueId, startTime: new Date(startTime).toISOString() }
+      data: { limit, leagueId, timeWindow, startTime: new Date(startTime).toISOString() }
     })
 
     // Find QuickPurchase records that need prediction data
@@ -198,17 +198,70 @@ export async function POST(req: NextRequest) {
       isPredictionActive: true
     }
 
+    // Add timeWindow filtering if provided
+    let now: Date
+    let cutoffDate: Date
+    
+    if (timeWindow) {
+      now = new Date()
+      
+      switch (timeWindow) {
+        case '72h':
+          cutoffDate = new Date(now.getTime() + 72 * 60 * 60 * 1000)
+          break
+        case '48h':
+          cutoffDate = new Date(now.getTime() + 48 * 60 * 60 * 1000)
+          break
+        case '24h':
+          cutoffDate = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+          break
+        case 'urgent':
+          cutoffDate = new Date(now.getTime() + 6 * 60 * 60 * 1000)
+          break
+        default:
+          cutoffDate = new Date(now.getTime() + 72 * 60 * 60 * 1000) // Default to 72h
+      }
+      
+      logger.info('Applying timeWindow filter', {
+        tags: ['api', 'admin', 'predictions', 'enrich'],
+        data: { timeWindow, cutoffDate: cutoffDate.toISOString() }
+      })
+    }
+
     let quickPurchases: any[] = []
 
-    if (leagueId) {
-      // If leagueId is provided, we need to join with matches to filter by league
-      quickPurchases = await prisma.quickPurchase.findMany({
-        where: whereClause,
-        include: {
-          // We'll need to join with matches to filter by league
-        },
-        take: limit
-      })
+    if (leagueId || timeWindow) {
+      // If leagueId or timeWindow is provided, we need to join with matches
+      // For now, we'll use a raw query approach to handle the time filtering
+      const timeFilter = timeWindow ? `
+        AND m."matchDate" <= '${cutoffDate.toISOString()}'
+        AND m."matchDate" >= '${now.toISOString()}'
+      ` : ''
+      
+      const leagueFilter = leagueId ? `AND m."leagueId" = '${leagueId}'` : ''
+      
+      const rawQuery = `
+        SELECT qp.* FROM "QuickPurchase" qp
+        INNER JOIN "Match" m ON qp."matchId" = m.id
+        WHERE qp."matchId" IS NOT NULL 
+        AND qp."predictionData" IS NULL
+        AND qp."isPredictionActive" = true
+        AND qp."name" NOT LIKE '%Team A%'
+        AND qp."name" NOT LIKE '%Team B%'
+        AND qp."name" NOT LIKE '%Team C%'
+        AND qp."name" NOT LIKE '%Team D%'
+        AND qp."name" NOT LIKE '%Team E%'
+        AND qp."name" NOT LIKE '%Team F%'
+        AND qp."name" NOT LIKE '%Team G%'
+        AND qp."name" NOT LIKE '%Team H%'
+        AND qp."name" NOT LIKE '%Test League%'
+        ${timeFilter}
+        ${leagueFilter}
+        ORDER BY qp."createdAt" DESC
+        LIMIT ${limit}
+      `
+      
+      quickPurchases = await prisma.$queryRawUnsafe(rawQuery)
     } else {
       // Get all QuickPurchase records without prediction data
       quickPurchases = await prisma.quickPurchase.findMany({

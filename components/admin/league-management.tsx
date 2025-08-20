@@ -160,7 +160,7 @@ const testConnection = async (id: string): Promise<SyncStatus> => {
   return response.json()
 }
 
-const enrichPredictions = async (params: { limit?: number; leagueId?: string }): Promise<any> => {
+const enrichPredictions = async (params: { limit?: number; leagueId?: string; timeWindow?: string }): Promise<any> => {
   const response = await fetch('/api/admin/predictions/enrich-quickpurchases', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
