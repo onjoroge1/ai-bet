@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query"
 import { Card } from "@/components/ui/card"
-import { TrendingUp, Users, Trophy, Globe, Loader2, RefreshCw } from "lucide-react"
+import { TrendingUp, Users, Trophy, Globe, Loader2, RefreshCw, Target, Brain, BarChart3 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 // Type for the stats data
@@ -49,43 +49,43 @@ export function StatsSection() {
   // Default stats for loading/error states
   const defaultStats = [
     {
-      icon: TrendingUp,
-      value: "87%",
-      label: "Win Rate",
-      description: "Average success rate across all predictions",
+      icon: Brain,
+      value: "AI-Powered",
+      label: "Predictions",
+      description: "Advanced algorithms that find value the sportsbooks hide",
     },
     {
-      icon: Trophy,
-      value: "Community Success",
-      label: "Winnings Generated",
-      description: "Our community celebrates wins together",
+      icon: Target,
+      value: "Margin-Free",
+      label: "Probabilities",
+      description: "True probabilities, not inflated odds with hidden margins",
     },
     {
-      icon: Globe,
-      value: "25+",
-      label: "Countries",
-      description: "Global reach with local payment methods",
+      icon: BarChart3,
+      value: "Market",
+      label: "Consensus",
+      description: "Multi-book aggregation with dispersion analysis",
     },
   ]
 
   // Dynamic stats from API
   const dynamicStats = stats ? [
     {
-      icon: TrendingUp,
+      icon: Brain,
       value: stats.winRate.value,
-      label: "Win Rate",
+      label: "AI Accuracy",
       description: stats.winRate.description,
     },
     {
-      icon: Trophy,
+      icon: Target,
       value: stats.totalWinnings.value,
-      label: "Winnings Generated",
+      label: "Community Success",
       description: stats.totalWinnings.description,
     },
     {
-      icon: Globe,
+      icon: BarChart3,
       value: stats.countries.value,
-      label: "Countries",
+      label: "Global Reach",
       description: stats.countries.description,
     },
   ] : defaultStats
@@ -97,7 +97,7 @@ export function StatsSection() {
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-12">
           <div className="flex items-center justify-center space-x-4 mb-4">
-            <h2 className="text-3xl md:text-4xl font-bold text-white">Trusted by Bettors Worldwide</h2>
+            <h2 className="text-3xl md:text-4xl font-bold text-white">The Edge That Regular Odds Sites Can't Provide</h2>
             {!isLoading && (
               <Button
                 variant="ghost"
@@ -110,7 +110,7 @@ export function StatsSection() {
             )}
           </div>
           <p className="text-slate-300 text-lg">
-            Our AI-powered predictions deliver consistent results across global markets
+            While other sites just show odds, SnapBet gives you the intelligence to make smarter betting decisions
           </p>
           {isLoading && (
             <div className="flex items-center justify-center mt-4">

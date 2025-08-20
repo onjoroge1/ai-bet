@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
-import { TrendingUp, Zap, Globe, Trophy, Target, Brain, Bell, Play, Loader2 } from "lucide-react"
+import { TrendingUp, Zap, Globe, Trophy, Target, Brain, Bell, Play, Loader2, CheckCircle, ArrowRight, Crown, BarChart3, Shield } from "lucide-react"
 
 // Type for free tip data
 type FreeTip = {
@@ -57,8 +57,6 @@ const formatPrediction = (prediction: string, homeTeam: string, awayTeam: string
 }
 
 export function ResponsiveHero() {
-  const [winCount, setWinCount] = useState(1247)
-  const [activeUsers, setActiveUsers] = useState(2834)
   const [showNotification, setShowNotification] = useState(false)
   const [freeTip, setFreeTip] = useState<FreeTip | null>(null)
   const [isLoadingTip, setIsLoadingTip] = useState(true)
@@ -94,12 +92,8 @@ export function ResponsiveHero() {
   useEffect(() => {
     const interval = setInterval(() => {
       if (Math.random() > 0.7) {
-        setWinCount((prev) => prev + 1)
         setShowNotification(true)
         setTimeout(() => setShowNotification(false), 3000)
-      }
-      if (Math.random() > 0.8) {
-        setActiveUsers((prev) => prev + Math.floor(Math.random() * 3))
       }
     }, 4000)
 
@@ -214,41 +208,48 @@ export function ResponsiveHero() {
           variant="secondary"
           className="mb-4 md:mb-6 bg-emerald-500/20 text-emerald-400 border-emerald-500/30 animate-pulse"
         >
-          <Zap className="w-3 h-3 md:w-4 md:h-4 mr-2" />
+          <Crown className="w-3 h-3 md:w-4 md:h-4 mr-2" />
           AI-Powered Predictions • Live Now
         </Badge>
 
         <h1 className="text-3xl md:text-5xl lg:text-7xl font-bold text-white mb-4 md:mb-6">
-          AI Sports
-          <span className="text-emerald-400"> Tipster</span>
+          Smarter Bets.
+          <span className="text-emerald-400"> Sharper Insights.</span>
         </h1>
 
-        <p className="text-base md:text-xl text-slate-300 mb-6 md:mb-8 max-w-3xl mx-auto leading-relaxed">
-          Get winning predictions powered by advanced AI algorithms. Join thousands of successful bettors worldwide with
-          our data-driven insights.
+        <p className="text-base md:text-xl text-slate-300 mb-6 md:mb-8 max-w-4xl mx-auto leading-relaxed">
+          SnapBet is your AI-powered betting edge — we don't take bets, we make bettors smarter. 
+          Get <span className="text-emerald-400 font-semibold">calibrated probabilities, transparent edges, and clear explanations</span> that regular odds sites can't provide.
         </p>
 
-        {/* Live Stats Bar - Responsive */}
-        <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-4 mb-6 md:mb-8 max-w-2xl mx-auto">
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div>
-              <div className="text-xl md:text-2xl font-bold text-emerald-400 animate-pulse">
-                {winCount.toLocaleString()}
-              </div>
-              <div className="text-xs text-slate-400">Wins Today</div>
+        {/* Key Value Propositions */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 md:mb-8 max-w-4xl mx-auto">
+          <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-4">
+            <div className="flex items-center justify-center mb-2">
+              <Brain className="w-5 h-5 text-emerald-400 mr-2" />
+              <span className="text-sm font-semibold text-emerald-400">AI-Driven Predictions</span>
             </div>
-            <div>
-              <div className="text-xl md:text-2xl font-bold text-cyan-400 animate-pulse">
-                {activeUsers.toLocaleString()}
-              </div>
-              <div className="text-xs text-slate-400">Active Users</div>
+            <p className="text-xs text-slate-400">We crunch the numbers across leagues, players, and odds to find value the sportsbooks don't want you to see.</p>
+          </div>
+          
+          <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-4">
+            <div className="flex items-center justify-center mb-2">
+              <Shield className="w-5 h-5 text-blue-400 mr-2" />
+              <span className="text-sm font-semibold text-blue-400">Confidence Before You Bet</span>
             </div>
-            <div>
-              <div className="text-xl md:text-2xl font-bold text-yellow-400">AI Powered</div>
-              <div className="text-xs text-slate-400">Advanced Analytics</div>
+            <p className="text-xs text-slate-400">Unlike FanDuel or DraftKings, we don't profit from your losses. Our only goal is to help you place smarter, informed bets.</p>
+          </div>
+          
+          <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-4">
+            <div className="flex items-center justify-center mb-2">
+              <CheckCircle className="w-5 h-5 text-purple-400 mr-2" />
+              <span className="text-sm font-semibold text-purple-400">No Bets, No Risk</span>
             </div>
+            <p className="text-xs text-slate-400">SnapBet is not a sportsbook. We don't take bets — we make your bets better.</p>
           </div>
         </div>
+
+        
 
         {/* CTA Buttons - Responsive */}
         <div className="flex flex-col sm:flex-row gap-3 md:gap-4 justify-center mb-8 md:mb-12">
@@ -258,8 +259,9 @@ export function ResponsiveHero() {
             asChild
           >
             <a href="/daily-tips">
-              <TrendingUp className="w-4 h-4 md:w-5 md:h-5 mr-2 group-hover:animate-bounce" />
+              <Target className="w-4 h-4 md:w-5 md:h-5 mr-2 group-hover:animate-bounce" />
               Get Free Predictions
+              <ArrowRight className="w-4 h-4 md:w-5 md:h-5 ml-2 group-hover:translate-x-1 transition-transform" />
             </a>
           </Button>
           <Button
@@ -269,7 +271,7 @@ export function ResponsiveHero() {
             asChild
           >
             <a href="/weekly-specials">
-              <Globe className="w-4 h-4 md:w-5 md:h-5 mr-2 group-hover:animate-spin" />
+              <BarChart3 className="w-4 h-4 md:w-5 md:h-5 mr-2 group-hover:animate-spin" />
               Join VIP Zone
             </a>
           </Button>

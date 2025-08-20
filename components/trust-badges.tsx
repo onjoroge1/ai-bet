@@ -1,37 +1,37 @@
 import { Card } from "@/components/ui/card"
-import { Shield, Zap, Globe, CreditCard, Users, Award } from "lucide-react"
+import { Shield, Zap, Globe, CreditCard, Users, Award, Brain, Target, BarChart3, CheckCircle } from "lucide-react"
 
 export function TrustBadges() {
   const badges = [
     {
-      icon: Zap,
-      title: "AI Powered",
-      description: "Advanced machine learning algorithms",
+      icon: Brain,
+      title: "AI-Powered Analysis",
+      description: "Advanced machine learning algorithms that find value the sportsbooks hide",
+    },
+    {
+      icon: Target,
+      title: "Margin-Free Probabilities",
+      description: "True probabilities, not inflated odds with hidden margins",
+    },
+    {
+      icon: BarChart3,
+      title: "Market Consensus",
+      description: "Multi-book aggregation with market dispersion analysis",
     },
     {
       icon: Shield,
-      title: "Secure & Licensed",
-      description: "Fully regulated and encrypted",
+      title: "Transparent & Trusted",
+      description: "Full method disclosure and verification reports",
     },
     {
       icon: Globe,
       title: "Global Coverage",
-      description: "25+ countries, 15+ languages",
+      description: "25+ countries, 15+ languages, local payment methods",
     },
     {
-      icon: CreditCard,
-      title: "Local Payments",
-      description: "M-Pesa, Paytm, Stripe & more",
-    },
-    {
-      icon: Users,
-      title: "50K+ Users",
-      description: "Trusted by bettors worldwide",
-    },
-    {
-      icon: Award,
-      title: "Data Driven",
-      description: "Comprehensive analysis & insights",
+      icon: CheckCircle,
+      title: "No Betting Risk",
+      description: "We don't take bets, we make your bets better",
     },
   ]
 
@@ -39,8 +39,8 @@ export function TrustBadges() {
     <section className="py-16 px-4">
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-12">
-          <h2 className="text-2xl md:text-3xl font-bold text-white mb-4">Why Choose Our SnapBet Platform?</h2>
-          <p className="text-slate-300">Built for global bettors with cutting-edge technology and local expertise</p>
+          <h2 className="text-2xl md:text-3xl font-bold text-white mb-4">Why SnapBet Beats Regular Odds Sites</h2>
+          <p className="text-slate-300">Built for smart bettors who want more than just odds listings</p>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
