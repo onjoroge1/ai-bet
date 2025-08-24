@@ -108,7 +108,7 @@ export function QuizSection() {
     const isTop3 = entry.rank <= 3
     const isCurrentUser = entry.isCurrentUser
     
-    return (
+  return (
       <div 
         key={entry.id} 
         className={`flex items-center justify-between p-3 rounded-lg transition-all duration-200 ${
@@ -132,19 +132,19 @@ export function QuizSection() {
             <div className={`font-medium ${isCurrentUser ? 'text-emerald-400' : 'text-white'}`}>
               {entry.name}
               {isCurrentUser && <span className="ml-2 text-xs text-emerald-400">(You)</span>}
-            </div>
+          </div>
             <div className="text-xs text-slate-400">
               {entry.score} • {entry.time}
-            </div>
-          </div>
         </div>
+                    </div>
+                    </div>
         <div className="text-right">
           <div className="text-sm font-semibold text-emerald-400">{entry.credits} credits</div>
           {isCurrentUser && (
             <Badge className="bg-emerald-500/20 text-emerald-400 text-xs">You</Badge>
           )}
-        </div>
-      </div>
+                    </div>
+                  </div>
     )
   }
 
@@ -184,33 +184,33 @@ export function QuizSection() {
               <div className="text-center">
                 <div className="text-2xl font-bold text-red-400">{timeUntilReset.hours.toString().padStart(2, '0')}</div>
                 <div className="text-xs text-slate-400">Hours</div>
-              </div>
+                      </div>
               <div className="text-2xl text-slate-400">:</div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-red-400">{timeUntilReset.minutes.toString().padStart(2, '0')}</div>
                 <div className="text-xs text-slate-400">Minutes</div>
-              </div>
+                      </div>
               <div className="text-2xl text-slate-400">:</div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-red-400">{timeUntilReset.seconds.toString().padStart(2, '0')}</div>
                 <div className="text-xs text-slate-400">Seconds</div>
-              </div>
-            </div>
-          </div>
+                      </div>
+                    </div>
+                  </div>
 
           {/* CTA Button */}
-          <Button 
-            size="lg" 
+                  <Button 
+                    size="lg" 
             className="bg-gradient-to-r from-yellow-500 to-orange-600 hover:from-yellow-600 hover:to-orange-700 text-white px-12 py-6 text-xl group transform hover:scale-105 transition-all duration-300"
-            asChild
-          >
-            <Link href="/snapbet-quiz">
+                    asChild
+                  >
+                    <Link href="/snapbet-quiz">
               <Play className="w-6 h-6 mr-3 group-hover:animate-bounce" />
               Start Quiz Now - It's Free!
               <ArrowRight className="w-6 h-6 ml-3 group-hover:translate-x-1 transition-transform" />
-            </Link>
-          </Button>
-        </div>
+                    </Link>
+                  </Button>
+                </div>
 
         {/* Features Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
@@ -230,19 +230,19 @@ export function QuizSection() {
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-16">
           {/* Left Side - Quiz Experience */}
-          <div className="space-y-6">
+                <div className="space-y-6">
             <Card className="bg-slate-800/50 border-slate-700">
               <CardContent className="p-6">
                 <div className="flex items-center justify-center space-x-3 mb-4">
                   <div className="w-12 h-12 bg-gradient-to-r from-emerald-500 to-cyan-600 rounded-xl flex items-center justify-center">
                     <Brain className="w-6 h-6 text-white" />
-                  </div>
+                      </div>
                   <div>
                     <h3 className="text-xl font-semibold text-white">Quiz Experience</h3>
                     <p className="text-slate-400 text-sm">Fast, fun, and rewarding</p>
+                    </div>
                   </div>
-                </div>
-                
+
                 <div className="space-y-4">
                   <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
                     <div className="flex items-center space-x-3">
@@ -259,23 +259,23 @@ export function QuizSection() {
                     </div>
                     <Badge variant="secondary" className="bg-blue-500/20 text-blue-400">5 questions</Badge>
                   </div>
-                  
+
                   <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
                     <div className="flex items-center space-x-3">
                       <Trophy className="w-5 h-5 text-yellow-400" />
                       <span className="text-slate-300">Total Time</span>
-                    </div>
+                      </div>
                     <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-400">2.5 minutes</Badge>
-                  </div>
+                      </div>
                   
                   <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
                     <div className="flex items-center space-x-3">
                       <Gift className="w-5 h-5 text-purple-400" />
                       <span className="text-slate-300">Registration</span>
-                    </div>
+                      </div>
                     <Badge variant="secondary" className="bg-purple-500/20 text-purple-400">Not required</Badge>
-                  </div>
-                </div>
+                      </div>
+                    </div>
               </CardContent>
             </Card>
 
@@ -302,11 +302,11 @@ export function QuizSection() {
                   <div className="flex items-center space-x-3">
                     <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0" />
                     <span className="text-slate-300 text-sm">Bankroll management and disciplined betting</span>
-                  </div>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
           {/* Right Side - Leaderboard & Rewards */}
           <div className="space-y-6">
@@ -318,7 +318,7 @@ export function QuizSection() {
                     <Crown className="w-5 h-5 text-yellow-400 mr-2" />
                     Today's Leaderboard
                   </h3>
-                  <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2">
                     <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-400">Live</Badge>
                     <Button
                       variant="ghost"
@@ -439,14 +439,14 @@ export function QuizSection() {
                 <span className="text-3xl font-bold text-purple-400">
                   {leaderboardLoading ? '...' : (totalParticipants * 15).toLocaleString()}
                 </span>
-              </div>
+            </div>
               <p className="text-slate-300">Credits awarded today</p>
               <p className="text-xs text-slate-400 mt-1">
                 {leaderboardLoading ? 'Loading...' : 'Estimated total'}
               </p>
             </CardContent>
           </Card>
-        </div>
+            </div>
 
         {/* Bottom CTA */}
         <div className="text-center">

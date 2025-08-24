@@ -76,7 +76,7 @@ export function LivePredictionsTicker({ compact = false }: LivePredictionsTicker
                 Our AI is analyzing upcoming matches. Check back soon for live predictions and betting opportunities.
               </p>
               <Link 
-                href="/dashboard/predictions" 
+                href="/dashboard/matches" 
                 className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
               >
                 Explore Predictions
@@ -103,7 +103,7 @@ export function LivePredictionsTicker({ compact = false }: LivePredictionsTicker
               <span className="text-sm text-red-400 font-semibold animate-pulse">LIVE</span>
             </div>
           </div>
-          <Link href="/dashboard/predictions" className="text-emerald-400 hover:text-emerald-300 text-sm font-medium transition-colors duration-200 hover:scale-105 transform">
+          <Link href="/dashboard/matches" className="text-emerald-400 hover:text-emerald-300 text-sm font-medium transition-colors duration-200 hover:scale-105 transform">
             View All Predictions
             <ArrowRight className="w-4 h-4 inline ml-1" />
           </Link>
@@ -161,7 +161,7 @@ export function LivePredictionsTicker({ compact = false }: LivePredictionsTicker
                 <span className="text-emerald-400 font-semibold">All 8 predictions</span> are now live! Get access to premium features and start winning today!
               </span>
               <Link 
-                href="/dashboard/predictions" 
+                href="/dashboard/matches" 
                 className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
               >
                 View All Predictions

@@ -15,6 +15,15 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 
+interface BlogPost {
+  id: string
+  title: string
+  slug: string
+  category: string
+  viewCount: number
+  tags: string[]
+}
+
 interface TrendingTopic {
   id: string
   title: string
@@ -23,6 +32,11 @@ interface TrendingTopic {
   views: number
   change: number
   tags: string[]
+  slug?: string // Add slug for navigation
+}
+
+interface TrendingTopicsProps {
+  blogPosts?: BlogPost[]
 }
 
 const mockTrendingTopics: TrendingTopic[] = [
@@ -100,16 +114,38 @@ const mockTrendingTopics: TrendingTopic[] = [
   }
 ]
 
-export function TrendingTopics() {
+export function TrendingTopics({ blogPosts }: TrendingTopicsProps) {
   const [topics, setTopics] = useState<TrendingTopic[]>(mockTrendingTopics)
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
 
-  // Fetch real trending data from API
+  // Fetch real trending data from API or use provided blogPosts
   useEffect(() => {
+    if (blogPosts && blogPosts.length > 0) {
+      // Transform blog data to trending topics
+      const realTopics = blogPosts.slice(0, 8).map((blog, index) => ({
+        id: blog.id,
+        title: blog.title,
+        category: blog.category,
+        trend: 'up' as const, // Default trend
+        views: blog.viewCount || 0,
+        change: 0, // No simulated change - only real data
+        tags: blog.tags || [],
+        slug: blog.slug // Include slug for navigation
+      }))
+      setTopics(realTopics)
+    } else {
+      // Fallback to mock data if no blog posts provided
+      fetchTrendingData()
+    }
+    
+    const interval = setInterval(() => {
+      if (!blogPosts || blogPosts.length === 0) {
     fetchTrendingData()
-    const interval = setInterval(fetchTrendingData, 300000) // Update every 5 minutes
+      }
+    }, 300000) // Update every 5 minutes only if not using blog posts
+    
     return () => clearInterval(interval)
-  }, [])
+  }, [blogPosts])
 
   const fetchTrendingData = async () => {
     try {
@@ -126,7 +162,8 @@ export function TrendingTopics() {
           trend: 'up' as const, // Default trend
           views: blog.viewCount || 0,
           change: 0, // No simulated change - only real data
-          tags: blog.tags || []
+          tags: blog.tags || [],
+          slug: blog.slug // Include slug for navigation
         }))
         setTopics(realTopics)
       } else {
@@ -245,6 +282,53 @@ export function TrendingTopics() {
               key={topic.id} 
               className="bg-slate-700/50 border-slate-600 hover:border-orange-500/50 transition-all duration-300 cursor-pointer group"
             >
+              {topic.slug ? (
+                <Link href={`/blog/${topic.slug}`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between mb-3">
+                      <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">
+                        #{index + 1}
+                      </Badge>
+                      <div className="flex items-center gap-1">
+                        {getTrendIcon(topic.trend)}
+                        <span className={`text-xs font-semibold ${getTrendColor(topic.trend)}`}>
+                          {topic.change > 0 ? '+' : ''}{topic.change}%
+                        </span>
+                      </div>
+                    </div>
+
+                    <h3 className="text-sm font-semibold text-white mb-2 group-hover:text-orange-400 transition-colors overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                      {topic.title}
+                    </h3>
+
+                    <div className="flex items-center justify-between mb-3">
+                      <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
+                        {topic.category}
+                      </Badge>
+                      <div className="flex items-center gap-1 text-xs text-slate-400">
+                        <Eye className="w-3 h-3" />
+                        {formatViews(topic.views)}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1">
+                      {topic.tags.slice(0, 3).map((tag) => (
+                        <span 
+                          key={tag} 
+                          className="text-xs text-slate-400 bg-slate-600/50 px-2 py-1 rounded"
+                        >
+                          #{tag}
+                        </span>
+                      ))}
+                      {topic.tags.length > 3 && (
+                        <span className="text-xs text-slate-500">
+                          +{topic.tags.length - 3} more
+                        </span>
+                      )}
+                    </div>
+                  </CardContent>
+                </Link>
+              ) : (
               <CardContent className="p-4">
                 <div className="flex items-start justify-between mb-3">
                   <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">
@@ -288,6 +372,7 @@ export function TrendingTopics() {
                   )}
                 </div>
               </CardContent>
+              )}
             </Card>
           ))}
         </div>

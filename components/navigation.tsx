@@ -22,7 +22,7 @@ export function Navigation() {
 
   // Core navigation links - simplified and focused
   const navLinks = [
-    { href: "/dashboard/predictions", text: "Matches", icon: Target },
+    { href: "/dashboard/matches", text: "Matches", icon: Target },
     { href: "/blog", text: "Blog", icon: BookOpen },
     { href: "/tips-history", text: "History", icon: BarChart3 },
     { href: "/dashboard/support", text: "Support", icon: HelpCircle },

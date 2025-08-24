@@ -21,7 +21,24 @@ export async function GET(request: NextRequest) {
         : { slug, isPublished: true, isActive: true }
       
       const blog = await prisma.blogPost.findFirst({
-        where: whereClause
+        where: whereClause,
+        include: {
+          media: {
+            select: {
+              id: true,
+              type: true,
+              url: true,
+              filename: true,
+              size: true,
+              alt: true,
+              caption: true,
+              uploadedAt: true
+            },
+            orderBy: {
+              uploadedAt: 'asc'
+            }
+          }
+        }
       })
       if (!blog) {
         return NextResponse.json({ success: false, error: 'Blog post not found' }, { status: 404 })
@@ -37,6 +54,23 @@ export async function GET(request: NextRequest) {
 
     const blogs = await prisma.blogPost.findMany({
       where: whereClause,
+      include: {
+        media: {
+          select: {
+            id: true,
+            type: true,
+            url: true,
+            filename: true,
+            size: true,
+            alt: true,
+            caption: true,
+            uploadedAt: true
+          },
+          orderBy: {
+            uploadedAt: 'asc'
+          }
+        }
+      },
       orderBy: {
         createdAt: 'desc'
       },
@@ -64,30 +98,53 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Title and content are required" }, { status: 400 })
     }
 
-    // Create blog post
-    const blogPost = await prisma.blogPost.create({
-      data: {
-        title: data.title,
-        content: data.content,
-        slug: data.slug || data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-        excerpt: data.excerpt || data.content.substring(0, 150) + '...',
-        author: session.user.name || session.user.email || 'SnapBet AI Team',
-        category: data.category || 'predictions',
-        tags: Array.isArray(data.tags) ? data.tags : [],
-        geoTarget: Array.isArray(data.geoTarget) ? data.geoTarget : ['worldwide'],
-        featured: !!data.featured,
-        readTime: typeof data.readTime === 'number' ? data.readTime : 5,
-        seoTitle: data.seoTitle || '',
-        seoDescription: data.seoDescription || '',
-        seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords : [],
-        isPublished: data.isPublished ?? false,
-        isActive: true,
-        createdAt: new Date(),
-        updatedAt: new Date()
+    // Start a transaction to create blog post and media
+    const result = await prisma.$transaction(async (tx) => {
+      // Create blog post
+      const blogPost = await tx.blogPost.create({
+        data: {
+          title: data.title,
+          content: data.content,
+          slug: data.slug || data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+          excerpt: data.excerpt || data.content.substring(0, 150) + '...',
+          author: session.user.name || session.user.email || 'SnapBet AI Team',
+          category: data.category || 'predictions',
+          tags: Array.isArray(data.tags) ? data.tags : [],
+          geoTarget: Array.isArray(data.geoTarget) ? data.geoTarget : ['worldwide'],
+          featured: !!data.featured,
+          readTime: typeof data.readTime === 'number' ? data.readTime : 5,
+          seoTitle: data.seoTitle || '',
+          seoDescription: data.seoDescription || '',
+          seoKeywords: Array.isArray(data.seoKeywords) ? data.seoKeywords : [],
+          isPublished: data.isPublished ?? false,
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }
+      })
+
+      // Add media if provided
+      if (data.media && data.media.length > 0) {
+        const mediaData = data.media.map((item: any) => ({
+          blogPostId: blogPost.id,
+          type: item.type,
+          url: item.url,
+          filename: item.filename,
+          size: item.size,
+          alt: item.alt || null,
+          caption: item.caption || null,
+          uploadedAt: item.uploadedAt ? new Date(item.uploadedAt) : new Date()
+        }))
+
+        await tx.blogMedia.createMany({
+          data: mediaData
+        })
       }
+
+      return blogPost
     })
 
-    return NextResponse.json(blogPost)
+    return NextResponse.json({ success: true, data: result })
   } catch (error) {
     console.error("Error creating blog post:", error)
     return NextResponse.json({ error: "Failed to create blog post" }, { status: 500 })

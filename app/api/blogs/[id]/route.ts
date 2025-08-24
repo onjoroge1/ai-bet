@@ -35,6 +35,21 @@ export async function GET(
         isActive: true,
         createdAt: true,
         updatedAt: true,
+        media: {
+          select: {
+            id: true,
+            type: true,
+            url: true,
+            filename: true,
+            size: true,
+            alt: true,
+            caption: true,
+            uploadedAt: true
+          },
+          orderBy: {
+            uploadedAt: 'asc'
+          }
+        }
       }
     })
 
@@ -53,10 +68,7 @@ export async function GET(
       })
     }
 
-    return NextResponse.json({
-      success: true,
-      data: blogPost
-    })
+    return NextResponse.json(blogPost)
 
   } catch (error) {
     console.error('Error fetching blog post:', error)
@@ -111,31 +123,62 @@ export async function PUT(
       }
     }
 
-    // Update blog post
-    const updatedPost = await prisma.blogPost.update({
-      where: { id },
-      data: {
-        title: body.title,
-        slug: body.slug,
-        excerpt: body.excerpt,
-        content: body.content,
-        author: body.author,
-        category: body.category,
-        tags: body.tags,
-        geoTarget: body.geoTarget,
-        featured: body.featured,
-        readTime: body.readTime,
-        seoTitle: body.seoTitle,
-        seoDescription: body.seoDescription,
-        seoKeywords: body.seoKeywords,
-        isPublished: body.isPublished,
-        isActive: body.isActive,
+    // Start a transaction to update blog post and media
+    const result = await prisma.$transaction(async (tx) => {
+      // Update blog post
+      const updatedPost = await tx.blogPost.update({
+        where: { id },
+        data: {
+          title: body.title,
+          slug: body.slug,
+          excerpt: body.excerpt,
+          content: body.content,
+          author: body.author,
+          category: body.category,
+          tags: body.tags,
+          geoTarget: body.geoTarget,
+          featured: body.featured,
+          readTime: body.readTime,
+          seoTitle: body.seoTitle,
+          seoDescription: body.seoDescription,
+          seoKeywords: body.seoKeywords,
+          isPublished: body.isPublished,
+          isActive: body.isActive,
+        }
+      })
+
+      // Handle media updates if provided
+      if (body.media !== undefined) {
+        // Remove existing media
+        await tx.blogMedia.deleteMany({
+          where: { blogPostId: id }
+        })
+
+        // Add new media if any
+        if (body.media && body.media.length > 0) {
+          const mediaData = body.media.map((item: any) => ({
+            blogPostId: id,
+            type: item.type,
+            url: item.url,
+            filename: item.filename,
+            size: item.size,
+            alt: item.alt || null,
+            caption: item.caption || null,
+            uploadedAt: item.uploadedAt ? new Date(item.uploadedAt) : new Date()
+          }))
+
+          await tx.blogMedia.createMany({
+            data: mediaData
+          })
+        }
       }
+
+      return updatedPost
     })
 
     return NextResponse.json({
       success: true,
-      data: updatedPost
+      data: result
     })
 
   } catch (error) {

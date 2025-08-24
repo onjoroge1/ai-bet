@@ -22,7 +22,10 @@ import {
   CheckCircle,
   AlertCircle,
   Activity,
-  X
+  X,
+  Eye,
+  Target,
+  TrendingUp
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
@@ -85,10 +88,22 @@ export default function BlogAutomationPage() {
     isActive: true
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showMatchPreview, setShowMatchPreview] = useState(false)
+  const [upcomingMatches, setUpcomingMatches] = useState<any[]>([])
+  const [matchGenerationStats, setMatchGenerationStats] = useState<any>(null)
+  const [previewBlogData, setPreviewBlogData] = useState<any>(null)
+  const [matchesLoading, setMatchesLoading] = useState(false)
 
   useEffect(() => {
+    console.log('Blog automation page mounted')
     fetchData()
+    fetchUpcomingMatches()
   }, [])
+
+  useEffect(() => {
+    console.log('Upcoming matches updated:', upcomingMatches.length)
+    console.log('Match generation stats updated:', matchGenerationStats)
+  }, [upcomingMatches, matchGenerationStats])
 
   const fetchData = async () => {
     try {
@@ -227,6 +242,89 @@ export default function BlogAutomationPage() {
       checkInterval: 30,
       isActive: true
     })
+  }
+
+  const handleMatchBlogAction = async (action: string, matchId?: string) => {
+    try {
+      setRefreshing(true)
+      
+      const response = await fetch('/api/admin/match-blog-generation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action, matchId })
+      })
+
+      const data = await response.json()
+      
+      if (data.success) {
+        toast.success(data.message || 'Action completed successfully')
+        
+        if (action === 'generate-blogs') {
+          setMatchGenerationStats(data.data)
+        }
+        
+        await fetchData() // Refresh main data
+      } else {
+        toast.error(data.error || 'Action failed')
+      }
+    } catch (error) {
+      console.error('Error performing match blog action:', error)
+      toast.error('Failed to perform action')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const fetchUpcomingMatches = async () => {
+    try {
+      setMatchesLoading(true)
+      console.log('Fetching upcoming matches...')
+      const response = await fetch('/api/admin/match-blog-generation?action=upcoming-matches')
+      const data = await response.json()
+      
+      console.log('Upcoming matches response:', data)
+      
+      if (data.success) {
+        setUpcomingMatches(data.data.matches)
+        setMatchGenerationStats({
+          availableMatches: data.data.total,
+          generatedToday: 0, // You can implement this based on your needs
+          totalGenerated: 0  // You can implement this based on your needs
+        })
+        console.log('Set upcoming matches:', data.data.matches.length)
+        console.log('Set match generation stats:', { availableMatches: data.data.total })
+      }
+    } catch (error) {
+      console.error('Error fetching upcoming matches:', error)
+      toast.error('Failed to fetch upcoming matches')
+    } finally {
+      setMatchesLoading(false)
+    }
+  }
+
+  const previewMatchBlog = async (matchId: string) => {
+    try {
+      const response = await fetch('/api/admin/match-blog-generation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: 'preview-match', matchId })
+      })
+
+      const data = await response.json()
+      
+      if (data.success) {
+        setPreviewBlogData(data.data.blogData)
+      } else {
+        toast.error(data.error || 'Failed to generate preview')
+      }
+    } catch (error) {
+      console.error('Error generating preview:', error)
+      toast.error('Failed to generate preview')
+    }
   }
 
   const getPriorityColor = (priority: string) => {
@@ -422,7 +520,8 @@ export default function BlogAutomationPage() {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <Tabs defaultValue="feeds" className="space-y-6">
+
+        <Tabs defaultValue="generation" className="space-y-6">
           <TabsList className="grid w-full grid-cols-3 bg-slate-800 border-slate-700">
             <TabsTrigger value="feeds" className="data-[state=active]:bg-emerald-600">
               <Rss className="w-4 h-4 mr-2" />
@@ -432,7 +531,10 @@ export default function BlogAutomationPage() {
               <Activity className="w-4 h-4 mr-2" />
               Monitoring
             </TabsTrigger>
-            <TabsTrigger value="generation" className="data-[state=active]:bg-emerald-600">
+            <TabsTrigger 
+              value="generation" 
+              className="data-[state=active]:bg-emerald-600"
+            >
               <FileText className="w-4 h-4 mr-2" />
               Content Generation
             </TabsTrigger>
@@ -668,23 +770,285 @@ export default function BlogAutomationPage() {
           </TabsContent>
 
           <TabsContent value="generation" className="space-y-6">
+
             <Card className="bg-slate-800 border-slate-700">
               <CardHeader>
-                <CardTitle className="text-white">Content Generation</CardTitle>
+                <div className="flex justify-between items-center">
+                  <CardTitle className="text-white">Match-Based Blog Generation</CardTitle>
+                  <div className="flex items-center space-x-2">
+                    {matchesLoading && (
+                      <div className="flex items-center text-blue-400">
+                        <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                        <span className="text-sm">Loading...</span>
+                      </div>
+                    )}
+                    {!matchesLoading && upcomingMatches.length > 0 && (
+                      <Badge variant="secondary" className="bg-green-600 text-white">
+                        {upcomingMatches.length} matches available
+                      </Badge>
+                    )}
+                    {!matchesLoading && upcomingMatches.length === 0 && (
+                      <Badge variant="secondary" className="bg-yellow-600 text-white">
+                        No matches found
+                      </Badge>
+                    )}
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-8">
-                  <FileText className="w-12 h-12 text-slate-500 mx-auto mb-4" />
-                  <p className="text-slate-400 mb-4">OpenAI integration coming soon</p>
-                  <p className="text-slate-500 text-sm">
-                    This feature will allow automatic blog post generation from RSS feeds using OpenAI.
-                  </p>
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <Card className="bg-slate-700 border-slate-600">
+                      <CardHeader>
+                        <CardTitle className="text-white text-lg">Quick Actions</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <Button
+                          onClick={() => handleMatchBlogAction('generate-blogs')}
+                          disabled={refreshing}
+                          className="w-full bg-emerald-600 hover:bg-emerald-700"
+                        >
+                          <FileText className="w-4 h-4 mr-2" />
+                          Generate All Match Blogs
+                        </Button>
+                        
+                        <Button
+                          onClick={() => setShowMatchPreview(true)}
+                          variant="outline"
+                          className="w-full border-blue-600 text-blue-300 hover:bg-blue-700 hover:text-white"
+                        >
+                          <Eye className="w-4 h-4 mr-2" />
+                          Preview Upcoming Matches
+                        </Button>
+                        
+                        <Button
+                          onClick={fetchUpcomingMatches}
+                          disabled={matchesLoading}
+                          variant="outline"
+                          className="w-full border-green-600 text-green-300 hover:bg-green-700 hover:text-white"
+                        >
+                          <RefreshCw className={`w-4 h-4 mr-2 ${matchesLoading ? 'animate-spin' : ''}`} />
+                          Refresh Matches
+                        </Button>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-slate-700 border-slate-600">
+                      <CardHeader>
+                        <CardTitle className="text-white text-lg">Generation Stats</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {matchesLoading ? (
+                          <div className="flex items-center justify-center py-4">
+                            <RefreshCw className="w-5 h-5 text-blue-400 animate-spin mr-2" />
+                            <span className="text-slate-300">Loading matches...</span>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            <div className="flex justify-between">
+                              <span className="text-slate-300">Available Matches:</span>
+                              <span className="text-white font-semibold">{matchGenerationStats?.availableMatches || 0}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-300">Generated Today:</span>
+                              <span className="text-white font-semibold">{matchGenerationStats?.generatedToday || 0}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-300">Total Generated:</span>
+                              <span className="text-white font-semibold">{matchGenerationStats?.totalGenerated || 0}</span>
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <div className="p-4 bg-slate-700 rounded-lg">
+                    <h4 className="font-semibold text-white mb-3">How It Works</h4>
+                    <div className="text-slate-300 text-sm space-y-2">
+                      <p>• <strong>Match Detection:</strong> Automatically identifies upcoming matches from QuickPurchase table</p>
+                      <p>• <strong>Data Enrichment:</strong> Integrates with RapidAPI and Odds API for additional match information</p>
+                      <p>• <strong>Content Generation:</strong> Creates engaging blog posts without revealing predictions</p>
+                      <p>• <strong>AI Enhancement:</strong> Uses OpenAI GPT-3.5 for creative, unique content generation</p>
+                      <p>• <strong>SEO Optimization:</strong> Generates optimized titles, descriptions, and keywords</p>
+                      <p>• <strong>Excitement Building:</strong> Teases the match to encourage purchases</p>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-slate-700 rounded-lg">
+                    <h4 className="font-semibold text-white mb-3">AI Status</h4>
+                    <div className="text-slate-300 text-sm space-y-2">
+                      <div className="flex items-center space-x-2">
+                        <span>OpenAI Integration:</span>
+                        <Badge variant="secondary" className="bg-blue-600 text-white">
+                          Available
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        • AI will generate unique titles, excerpts, and content for each match
+                        • Falls back to templates if OpenAI is unavailable
+                        • Creates engaging, SEO-optimized blog posts
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Match Preview Dialog */}
+      <Dialog open={showMatchPreview} onOpenChange={setShowMatchPreview}>
+        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-white">Upcoming Matches Preview</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {upcomingMatches.length === 0 ? (
+              <div className="text-center py-8">
+                <Target className="w-12 h-12 text-slate-500 mx-auto mb-4" />
+                <p className="text-slate-400">No upcoming matches found</p>
+                <p className="text-slate-500 text-sm mt-2">
+                  Make sure you have active predictions in the QuickPurchase table
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-semibold text-white">
+                    Available Matches ({upcomingMatches.length})
+                  </h3>
+                  <Button
+                    onClick={() => handleMatchBlogAction('generate-blogs')}
+                    disabled={refreshing}
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    <FileText className="w-4 h-4 mr-2" />
+                    Generate All Blogs
+                  </Button>
+                </div>
+                
+                {upcomingMatches.map((match) => (
+                  <Card key={match.id} className="bg-slate-700 border-slate-600">
+                    <CardContent className="p-4">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <h4 className="font-semibold text-white mb-2">{match.name}</h4>
+                          <p className="text-slate-300 text-sm mb-2">{match.description}</p>
+                          
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                            <div>
+                              <span className="text-slate-400">Type:</span>
+                              <span className="text-white ml-2">{match.type}</span>
+                            </div>
+                            {match.odds && (
+                              <div>
+                                <span className="text-slate-400">Odds:</span>
+                                <span className="text-white ml-2">{match.odds}</span>
+                              </div>
+                            )}
+                            {match.confidenceScore && (
+                              <div>
+                                <span className="text-slate-400">Confidence:</span>
+                                <span className="text-white ml-2">{match.confidenceScore}%</span>
+                              </div>
+                            )}
+                            {match.valueRating && (
+                              <div>
+                                <span className="text-slate-400">Value:</span>
+                                <span className="text-white ml-2">{match.valueRating}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="flex space-x-2 ml-4">
+                          <Button
+                            onClick={() => previewMatchBlog(match.id)}
+                            variant="outline"
+                            size="sm"
+                            className="border-blue-600 text-blue-300 hover:bg-blue-700 hover:text-white"
+                          >
+                            <Eye className="w-4 h-4 mr-1" />
+                            Preview
+                          </Button>
+                          
+                          <Button
+                            onClick={() => handleMatchBlogAction('generate-single', match.id)}
+                            disabled={refreshing}
+                            size="sm"
+                            className="bg-emerald-600 hover:bg-emerald-700"
+                          >
+                            <FileText className="w-4 h-4 mr-1" />
+                            Generate
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Blog Preview Dialog */}
+      <Dialog open={!!previewBlogData} onOpenChange={() => setPreviewBlogData(null)}>
+        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-white">Blog Preview</DialogTitle>
+          </DialogHeader>
+          
+          {previewBlogData && (
+            <div className="space-y-4">
+              <div className="p-4 bg-slate-700 rounded-lg">
+                <h3 className="text-xl font-bold text-white mb-2">{previewBlogData.title}</h3>
+                <p className="text-slate-300 mb-4">{previewBlogData.excerpt}</p>
+                
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
+                  <div>
+                    <span className="text-slate-400">Category:</span>
+                    <span className="text-white ml-2">{previewBlogData.category}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Read Time:</span>
+                    <span className="text-white ml-2">{previewBlogData.readTime} min</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Tags:</span>
+                    <span className="text-white ml-2">{previewBlogData.tags.join(', ')}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">SEO Title:</span>
+                    <span className="text-white ml-2 text-xs">{previewBlogData.seoTitle}</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="p-4 bg-slate-700 rounded-lg">
+                <h4 className="font-semibold text-white mb-3">Generated Content</h4>
+                <div 
+                  className="prose prose-invert max-w-none"
+                  dangerouslySetInnerHTML={{ __html: previewBlogData.content }}
+                />
+              </div>
+              
+              <div className="flex justify-end space-x-2 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setPreviewBlogData(null)}
+                  className="border-slate-600 text-slate-300 hover:bg-slate-700"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 } 

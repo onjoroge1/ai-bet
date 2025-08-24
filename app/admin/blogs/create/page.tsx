@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { RichTextEditor } from '@/components/ui/rich-text-editor'
+import { MediaUpload, MediaItem } from '@/components/admin/media-upload'
 import { 
   ArrowLeft, 
   Save, 
@@ -19,7 +20,9 @@ import {
   Globe,
   Tag,
   User,
-  Clock
+  Clock,
+  Image,
+  Video
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
@@ -38,7 +41,8 @@ export default function CreateBlogPage() {
     seoTitle: '',
     seoDescription: '',
     seoKeywords: [] as string[],
-    isPublished: false
+    isPublished: false,
+    media: [] as MediaItem[]
   })
   const [newTag, setNewTag] = useState('')
   const [newKeyword, setNewKeyword] = useState('')
@@ -125,27 +129,41 @@ export default function CreateBlogPage() {
     }))
   }
 
+  const handleMediaChange = (media: MediaItem[]) => {
+    setFormData(prev => ({
+      ...prev,
+      media
+    }))
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    if (!formData.title || !formData.content || !formData.category) {
+      alert('Please fill in all required fields')
+      return
+    }
+
     setLoading(true)
 
     try {
       const response = await fetch('/api/blogs', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(formData),
       })
 
       if (response.ok) {
-        router.push('/admin/blogs')
+        const result = await response.json()
+        router.push(`/admin/blogs/${result.data.id}`)
       } else {
         const error = await response.json()
-        alert(error.error || 'Failed to create blog post')
+        alert(error.message || 'Failed to create blog post')
       }
     } catch (error) {
-      console.error('Error creating blog:', error)
+      console.error('Error creating blog post:', error)
       alert('Failed to create blog post')
     } finally {
       setLoading(false)
@@ -155,23 +173,25 @@ export default function CreateBlogPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       {/* Header */}
-      <div className="flex items-center gap-4 mb-8">
-        <Button
-          variant="ghost"
-          onClick={() => router.back()}
-          className="text-slate-400 hover:text-white"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold text-white">Create New Blog Post</h1>
-          <p className="text-slate-400">Add a new blog post to your site</p>
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-4">
+          <Button 
+            variant="outline" 
+            onClick={() => router.push('/admin/blogs')}
+            className="border-slate-600 text-slate-300 hover:bg-slate-700"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Blogs
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold text-white">Create New Blog Post</h1>
+            <p className="text-slate-400">Write and publish a new blog post</p>
+          </div>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <form onSubmit={handleSubmit}>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
             {/* Basic Information */}
@@ -193,7 +213,7 @@ export default function CreateBlogPage() {
                 </div>
 
                 <div>
-                  <Label htmlFor="slug" className="text-white">Slug *</Label>
+                  <Label htmlFor="slug" className="text-white">Slug</Label>
                   <Input
                     id="slug"
                     value={formData.slug}
@@ -213,6 +233,25 @@ export default function CreateBlogPage() {
                     placeholder="Brief description of the blog post"
                     className="bg-slate-700 border-slate-600 text-white"
                     rows={3}
+                  />
+                </div>
+
+                {/* Media Upload Section */}
+                <div>
+                  <Label className="text-white mb-4 block">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Image className="w-4 h-4" />
+                      <span>Images & Videos</span>
+                    </div>
+                    <p className="text-slate-400 text-sm font-normal">
+                      Upload images and videos to enhance your blog post. Support for JPG, PNG, GIF, MP4, and WebM formats.
+                    </p>
+                  </Label>
+                  <MediaUpload
+                    media={formData.media}
+                    onMediaChange={handleMediaChange}
+                    maxFiles={20}
+                    acceptedTypes={['image', 'video']}
                   />
                 </div>
 

@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { RichTextEditor } from '@/components/ui/rich-text-editor'
+import { MediaUpload, MediaItem } from '@/components/admin/media-upload'
 import { 
   ArrowLeft, 
   Save, 
@@ -20,7 +21,9 @@ import {
   Tag,
   Globe,
   TrendingUp,
-  Loader2
+  Loader2,
+  Image,
+  Video
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -44,6 +47,7 @@ interface BlogPost {
   publishedAt: string
   viewCount: number
   shareCount: number
+  media?: MediaItem[]
 }
 
 export default function EditBlogPage() {
@@ -71,7 +75,8 @@ export default function EditBlogPage() {
     seoDescription: '',
     seoKeywords: [] as string[],
     isPublished: true,
-    isActive: true
+    isActive: true,
+    media: [] as MediaItem[]
   })
 
   const [tagInput, setTagInput] = useState('')
@@ -98,31 +103,28 @@ export default function EditBlogPage() {
         throw new Error('Failed to fetch blog post')
       }
       
-      const data = await response.json()
+      const blogData = await response.json()
+      setBlog(blogData)
       
-      if (data.success) {
-        const blogData = data.data
-        setBlog(blogData)
-        setFormData({
-          title: blogData.title || '',
-          slug: blogData.slug || '',
-          excerpt: blogData.excerpt || '',
-          content: blogData.content || '',
-          author: blogData.author || '',
-          category: blogData.category || '',
-          tags: blogData.tags || [],
-          geoTarget: blogData.geoTarget || [],
-          featured: blogData.featured || false,
-          readTime: blogData.readTime || 5,
-          seoTitle: blogData.seoTitle || '',
-          seoDescription: blogData.seoDescription || '',
-          seoKeywords: blogData.seoKeywords || [],
-          isPublished: blogData.isPublished !== undefined ? blogData.isPublished : true,
-          isActive: blogData.isActive !== undefined ? blogData.isActive : true
-        })
-      } else {
-        setError(data.error || 'Failed to fetch blog post')
-      }
+      // Update form data with fetched blog data
+      setFormData({
+        title: blogData.title || '',
+        slug: blogData.slug || '',
+        excerpt: blogData.excerpt || '',
+        content: blogData.content || '',
+        author: blogData.author || '',
+        category: blogData.category || '',
+        tags: blogData.tags || [],
+        geoTarget: blogData.geoTarget || [],
+        featured: blogData.featured || false,
+        readTime: blogData.readTime || 5,
+        seoTitle: blogData.seoTitle || '',
+        seoDescription: blogData.seoDescription || '',
+        seoKeywords: blogData.seoKeywords || [],
+        isPublished: blogData.isPublished !== undefined ? blogData.isPublished : true,
+        isActive: blogData.isActive !== undefined ? blogData.isActive : true,
+        media: blogData.media || []
+      })
     } catch (error) {
       console.error('Error fetching blog:', error)
       setError('Failed to fetch blog post')
@@ -142,25 +144,20 @@ export default function EditBlogPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(formData),
       })
       
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to update blog post')
+        throw new Error('Failed to update blog post')
       }
       
-      const data = await response.json()
+      toast.success('Blog post updated successfully!')
       
-      if (data.success) {
-        toast.success('Blog post updated successfully')
-        router.push('/admin/blogs')
-      } else {
-        throw new Error(data.error || 'Failed to update blog post')
-      }
+      // Refresh the blog data
+      await fetchBlog()
     } catch (error) {
       console.error('Error updating blog:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to update blog post')
+      toast.error('Failed to update blog post')
     } finally {
       setSaving(false)
     }
@@ -197,6 +194,13 @@ export default function EditBlogPage() {
     setFormData(prev => ({
       ...prev,
       seoKeywords: prev.seoKeywords.filter(keyword => keyword !== keywordToRemove)
+    }))
+  }
+
+  const handleMediaChange = (media: MediaItem[]) => {
+    setFormData(prev => ({
+      ...prev,
+      media
     }))
   }
 
@@ -410,6 +414,25 @@ export default function EditBlogPage() {
                 onChange={(e) => setFormData(prev => ({ ...prev, excerpt: e.target.value }))}
                 className="bg-slate-700 border-slate-600 text-white"
                 rows={3}
+              />
+            </div>
+
+            {/* Media Upload Section */}
+            <div>
+              <Label className="text-slate-300 mb-4 block">
+                <div className="flex items-center space-x-2 mb-2">
+                  <Image className="w-4 h-4" />
+                  <span>Images & Videos</span>
+                </div>
+                <p className="text-slate-400 text-sm font-normal">
+                  Upload images and videos to enhance your blog post. Support for JPG, PNG, GIF, MP4, and WebM formats.
+                </p>
+              </Label>
+              <MediaUpload
+                media={formData.media}
+                onMediaChange={handleMediaChange}
+                maxFiles={20}
+                acceptedTypes={['image', 'video']}
               />
             </div>
 

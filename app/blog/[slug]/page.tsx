@@ -30,6 +30,19 @@ import { BreakingNewsTicker } from '@/components/breaking-news-ticker'
 import { LivePredictionsTicker } from '@/components/live-predictions-ticker'
 import { TrendingTopics } from '@/components/trending-topics'
 import { NewsletterSignup } from '@/components/newsletter-signup'
+import { BlogMediaDisplay } from '@/components/blog-media-display'
+import { BlogComments } from '@/components/blog-comments'
+
+interface BlogMedia {
+  id: string
+  type: string
+  url: string
+  filename: string
+  size: number
+  alt?: string
+  caption?: string
+  uploadedAt: string
+}
 
 interface BlogPost {
   id: string
@@ -52,6 +65,7 @@ interface BlogPost {
   seoKeywords?: string[]
   isPublished: boolean
   isActive: boolean
+  media?: BlogMedia[]
 }
 
 interface Prediction {
@@ -336,6 +350,11 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           {/* Main Content */}
           <div className="lg:col-span-3">
             <Card className="bg-slate-800/50 border-slate-700 p-8 mb-8">
+              {/* Media Display */}
+              {post.media && post.media.length > 0 && (
+                <BlogMediaDisplay media={post.media} />
+              )}
+              
               <div 
                 className="prose prose-invert max-w-none
                   prose-headings:text-white prose-headings:font-semibold prose-headings:tracking-tight
@@ -399,33 +418,9 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                   <p className="text-slate-400 text-sm mb-4">
                     Sports betting expert and AI prediction specialist
                   </p>
-                  <Button variant="outline" size="sm" className="w-full border-slate-600 text-slate-300 hover:bg-slate-700">
-                    Follow Author
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Quick Stats */}
-            <Card className="bg-slate-800/50 border-slate-700 p-6 mb-6">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-lg text-white">Article Stats</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">Views</span>
-                    <span className="text-white font-semibold">{post.viewCount.toLocaleString()}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">Read Time</span>
-                    <span className="text-white font-semibold">{post.readTime} min</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">Category</span>
-                    <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">
-                      {post.category}
-                    </Badge>
+                  <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
+                    <BookOpen className="w-3 h-3" />
+                    <span>Expert Writer</span>
                   </div>
                 </div>
               </CardContent>
@@ -440,9 +435,89 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                 <CardContent>
                   <div className="flex flex-wrap gap-2">
                     {post.tags.map((tag, index) => (
-                      <Badge key={index} variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700">
-                        #{tag}
+                      <Badge key={index} variant="secondary" className="bg-slate-700 text-slate-300 border-slate-600">
+                        {tag}
                       </Badge>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Upcoming Predictions */}
+            {upcomingPredictions.length > 0 && (
+              <Card className="bg-slate-800/50 border-slate-700 p-6 mb-6">
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-lg text-white flex items-center gap-2">
+                    <Zap className="w-5 h-5 text-emerald-400" />
+                    Upcoming Matches
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {upcomingPredictions.slice(0, 3).map((prediction) => (
+                      <div key={prediction.id} className="p-3 bg-slate-700/30 rounded-lg border border-slate-600">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs text-slate-400 uppercase tracking-wide">
+                            {prediction.league}
+                          </span>
+                          <Badge variant="secondary" className="text-xs">
+                            {prediction.status}
+                          </Badge>
+                        </div>
+                        <div className="text-sm text-white mb-2">
+                          <div className="font-medium">{prediction.homeTeam}</div>
+                          <div className="text-slate-400">vs</div>
+                          <div className="font-medium">{prediction.awayTeam}</div>
+                        </div>
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-slate-400">
+                            {new Date(prediction.matchTime).toLocaleDateString()}
+                          </span>
+                          <span className="text-emerald-400 font-medium">
+                            {prediction.confidence}%
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <Button asChild className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700">
+                    <Link href="/live-predictions">
+                      <ArrowRight className="w-4 h-4 mr-2" />
+                      View All
+                    </Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Related Articles */}
+            {relatedArticles.length > 0 && (
+              <Card className="bg-slate-800/50 border-slate-700 p-6">
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-lg text-white">Related Articles</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {relatedArticles.map((article) => (
+                      <Link 
+                        key={article.id} 
+                        href={`/blog/${article.slug}`}
+                        className="block p-3 bg-slate-700/30 rounded-lg border border-slate-600 hover:bg-slate-700/50 transition-colors"
+                      >
+                        <h4 className="text-white font-medium mb-2 line-clamp-2">
+                          {article.title}
+                        </h4>
+                        <p className="text-slate-400 text-sm line-clamp-2 mb-2">
+                          {article.excerpt}
+                        </p>
+                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                          <Calendar className="w-3 h-3" />
+                          <span>
+                            {new Date(article.publishedAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </Link>
                     ))}
                   </div>
                 </CardContent>
@@ -450,117 +525,20 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
             )}
           </div>
         </div>
+      </div>
 
-        {/* Live AI Predictions Ticker */}
-        <LivePredictionsTicker />
-
-        {/* Trending Topics */}
-        <TrendingTopics />
-
-        {/* Upcoming Predictions Section */}
-        {upcomingPredictions.length > 0 && (
-          <Card className="bg-slate-800/50 border-slate-700 p-8 mb-8">
-            <CardHeader className="pb-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-emerald-500/20 rounded-lg">
-                  <Target className="w-6 h-6 text-emerald-400" />
-                </div>
-                <div>
-                  <CardTitle className="text-2xl font-bold text-white">Upcoming Predictions</CardTitle>
-                  <p className="text-slate-400">Get ahead with our AI-powered predictions</p>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {upcomingPredictions.slice(0, 6).map((prediction) => (
-                  <div key={prediction.id} className="p-4 bg-slate-700/50 rounded-lg border border-slate-600 hover:border-emerald-500/50 transition-colors">
-                    <div className="flex items-center justify-between mb-3">
-                      <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">
-                        {prediction.league}
-                      </Badge>
-                      <div className="flex items-center gap-1">
-                        <BarChart3 className="w-3 h-3 text-emerald-400" />
-                        <span className="text-xs text-emerald-400 font-semibold">
-                          {prediction.confidence}%
-                        </span>
-                      </div>
-                    </div>
-                    <div className="text-sm text-white font-semibold mb-2">
-                      {prediction.homeTeam} vs {prediction.awayTeam}
-                    </div>
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-emerald-400 font-bold">{prediction.prediction}</span>
-                      <span className="text-slate-400 text-xs">@{prediction.odds}</span>
-                    </div>
-                    <div className="text-xs text-slate-400">
-                      {new Date(prediction.matchTime).toLocaleDateString()} • {new Date(prediction.matchTime).toLocaleTimeString()}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-6 text-center">
-                <Button asChild className="bg-emerald-600 hover:bg-emerald-700">
-                  <Link href="/">
-                    <Target className="w-4 h-4 mr-2" />
-                    View All Predictions
-                  </Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Related Articles */}
-        {relatedArticles.length > 0 && (
-          <Card className="bg-slate-800/50 border-slate-700 p-8 mb-8">
-            <CardHeader className="pb-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-500/20 rounded-lg">
-                  <BookOpen className="w-6 h-6 text-blue-400" />
-                </div>
-                <div>
-                  <CardTitle className="text-2xl font-bold text-white">Related Articles</CardTitle>
-                  <p className="text-slate-400">Continue your learning journey</p>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid md:grid-cols-3 gap-6">
-                {relatedArticles.map((article) => (
-                  <Link key={article.id} href={`/blog/${article.slug}`} className="group">
-                    <div className="p-4 bg-slate-700/50 rounded-lg border border-slate-600 group-hover:border-emerald-500/50 transition-all duration-300 hover:bg-slate-700/70">
-                      <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 mb-3">
-                        {article.category}
-                      </Badge>
-                      <h4 className="text-lg font-semibold text-white mb-2 group-hover:text-emerald-400 transition-colors">
-                        {article.title}
-                      </h4>
-                      <p className="text-slate-400 text-sm mb-3 line-clamp-2">
-                        {article.excerpt}
-                      </p>
-                      <div className="flex items-center justify-between text-xs text-slate-500">
-                        <span>{article.readTime} min read</span>
-                        <span>{new Date(article.publishedAt).toLocaleDateString()}</span>
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Newsletter Signup */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-          <NewsletterSignup />
-        </div>
-
-        {/* Reading Progress Bar */}
-        <div className="fixed bottom-0 left-0 w-full h-1 bg-slate-800 z-50">
-          <div className="h-full bg-emerald-500 transition-all duration-300" style={{ width: '0%' }}></div>
+      {/* Comments Section */}
+      <div className="py-16">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <BlogComments blogPostId={post.id} blogPostSlug={post.slug} />
         </div>
       </div>
+
+      {/* Newsletter Signup */}
+      <NewsletterSignup />
+
+      {/* Trending Topics */}
+      <TrendingTopics />
     </div>
   )
 } 
