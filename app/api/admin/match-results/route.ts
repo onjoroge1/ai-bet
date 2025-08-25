@@ -56,6 +56,11 @@ export async function GET(request: NextRequest) {
         
         return NextResponse.json(result)
 
+      case 'test':
+        // Test API connection
+        const testResult = await MatchResultsService.testApiConnection()
+        return NextResponse.json(testResult)
+
       default:
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
     }

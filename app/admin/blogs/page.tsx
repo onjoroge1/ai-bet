@@ -107,6 +107,9 @@ export default function AdminBlogsPage() {
     nextSyncIn: 'Not running',
     nextCleanupIn: 'Not running'
   })
+  const [breakingNewsCollapsed, setBreakingNewsCollapsed] = useState(false)
+  const [completedMatchesCollapsed, setCompletedMatchesCollapsed] = useState(true)
+  const [automatedSyncCollapsed, setAutomatedSyncCollapsed] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
@@ -276,6 +279,30 @@ export default function AdminBlogsPage() {
       }
     } catch (error) {
       console.error('Error deleting breaking news:', error)
+    }
+  }
+
+  const handleTestApi = async () => {
+    setIsLoading(true)
+    try {
+      const response = await fetch('/api/admin/match-results?action=test')
+      const data = await response.json()
+      if (data.success) {
+        const summary = data.summary
+        const resultsText = data.results.map((r: any) => 
+          `${r.league} (${r.date}): ${r.totalFixtures} fixtures${r.statuses.length > 0 ? ` (${r.statuses.join(', ')})` : ''}`
+        ).join('\n')
+        
+        alert(`API Test Successful!\n\nSummary:\nTotal Dates: ${summary.totalDates}\nTotal Leagues: ${summary.totalLeagues}\nDates with Fixtures: ${summary.datesWithFixtures}\nLeagues with Fixtures: ${summary.leaguesWithFixtures}\nTotal Fixtures: ${summary.totalFixtures}\n\nDetailed Results:\n${resultsText}\n\nCheck console for full API responses.`)
+        console.log('API Test Result:', data)
+      } else {
+        alert('API test failed. Check console for details.')
+      }
+    } catch (error) {
+      console.error('Error testing API:', error)
+      alert('Failed to test API connection.')
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -554,12 +581,23 @@ export default function AdminBlogsPage() {
       {/* Breaking News Management */}
       <div className="px-8">
         <Card className="bg-slate-800 border-slate-700 mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-white">
-              <AlertTriangle className="w-5 h-5 text-red-400" />
-              Breaking News Management
+          <CardHeader className="cursor-pointer" onClick={() => setBreakingNewsCollapsed(!breakingNewsCollapsed)}>
+            <CardTitle className="flex items-center justify-between text-white">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-red-400" />
+                Breaking News Management
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-400">
+                  {breakingNewsCollapsed ? 'Click to expand' : 'Click to collapse'}
+                </span>
+                <div className={`transform transition-transform duration-200 ${breakingNewsCollapsed ? 'rotate-180' : ''}`}>
+                  ▼
+                </div>
+              </div>
             </CardTitle>
           </CardHeader>
+          {!breakingNewsCollapsed && (
           <CardContent>
             <div className="flex items-center justify-between mb-4">
               <p className="text-slate-300 text-sm">
@@ -709,24 +747,48 @@ export default function AdminBlogsPage() {
               )}
             </div>
           </CardContent>
+          )}
         </Card>
       </div>
 
       {/* Completed Matches Management */}
       <div className="px-8">
         <Card className="bg-slate-800 border-slate-700 mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-white">
-              <Trophy className="w-5 h-5 text-emerald-400" />
-              Completed Matches Management
+          <CardHeader className="cursor-pointer" onClick={() => setCompletedMatchesCollapsed(!completedMatchesCollapsed)}>
+            <CardTitle className="flex items-center justify-between text-white">
+              <div className="flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-emerald-400" />
+                Completed Matches Management
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-400">
+                  {completedMatchesCollapsed ? 'Click to expand' : 'Click to collapse'}
+                </span>
+                <div className={`transform transition-transform duration-200 ${completedMatchesCollapsed ? 'rotate-180' : ''}`}>
+                  ▼
+                </div>
+              </div>
             </CardTitle>
           </CardHeader>
+          {!completedMatchesCollapsed && (
           <CardContent>
             <div className="flex items-center justify-between mb-4">
               <p className="text-slate-300 text-sm">
                 Automatically sync completed matches from RapidAPI to breaking news
               </p>
               <div className="flex gap-2">
+                <Button 
+                  onClick={handleTestApi}
+                  disabled={isLoading}
+                  className="bg-orange-600 hover:bg-orange-700"
+                >
+                  {isLoading ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Play className="w-4 h-4 mr-2" />
+                  )}
+                  Test API
+                </Button>
                 <Button 
                   onClick={handleFetchMatches}
                   disabled={isLoading}
@@ -810,18 +872,30 @@ export default function AdminBlogsPage() {
               ))}
             </div>
           </CardContent>
+          )}
         </Card>
       </div>
 
       {/* Automated Sync Management */}
       <div className="px-8">
         <Card className="bg-slate-800 border-slate-700 mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-white">
-              <Settings className="w-5 h-5 text-blue-400" />
-              Automated Sync Management
+          <CardHeader className="cursor-pointer" onClick={() => setAutomatedSyncCollapsed(!automatedSyncCollapsed)}>
+            <CardTitle className="flex items-center justify-between text-white">
+              <div className="flex items-center gap-2">
+                <Settings className="w-5 h-5 text-blue-400" />
+                Automated Sync Management
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-400">
+                  {automatedSyncCollapsed ? 'Click to expand' : 'Click to collapse'}
+                </span>
+                <div className={`transform transition-transform duration-200 ${automatedSyncCollapsed ? 'rotate-180' : ''}`}>
+                  ▼
+                </div>
+              </div>
             </CardTitle>
           </CardHeader>
+          {!automatedSyncCollapsed && (
           <CardContent>
             <div className="flex items-center justify-between mb-4">
               <p className="text-slate-300 text-sm">
@@ -873,6 +947,7 @@ export default function AdminBlogsPage() {
               </div>
             </div>
           </CardContent>
+          )}
         </Card>
       </div>
 
