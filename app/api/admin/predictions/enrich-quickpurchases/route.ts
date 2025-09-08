@@ -5,6 +5,8 @@ import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { Prisma } from '@prisma/client'
 import { Redis } from '@upstash/redis'
+import { fetchAvailability, partitionAvailability, type AvailabilityItem, type AvailabilityResponse } from '@/lib/predictionAvailability'
+import { predictionCacheKey, ttlForMatch } from '@/lib/predictionCacheKey'
 
 // Initialize Redis client
 const redis = new Redis({
@@ -14,6 +16,22 @@ const redis = new Redis({
 
 // Cache TTL in seconds (1 hour)
 const CACHE_TTL = 3600
+
+// Types are now imported from lib/predictionAvailability.ts
+
+// Utility function to chunk arrays
+function chunk<T>(arr: T[], size = 100): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < arr.length; i += size) {
+    out.push(arr.slice(i, i + size))
+  }
+  return out
+}
+
+// Rate limiting utility for /predict calls
+async function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
 
 // Define the prediction response type
 interface PredictionResponse {
@@ -26,7 +44,14 @@ interface PredictionResponse {
     league: string
     match_importance: string
   }
-  comprehensive_analysis: {
+  predictions?: {
+    recommended_bet: string
+    confidence: number
+    home_win?: number
+    draw?: number
+    away_win?: number
+  }
+  comprehensive_analysis?: {
     ml_prediction: {
       home_win: number
       draw: number
@@ -62,7 +87,13 @@ interface PredictionResponse {
     }
     confidence_breakdown: string
   }
-  additional_markets: {
+  analysis?: {
+    explanation: string
+  }
+  model_info?: {
+    bookmaker_count: number
+  }
+  additional_markets?: {
     total_goals: {
       over_2_5: number
       under_2_5: number
@@ -76,7 +107,7 @@ interface PredictionResponse {
       away_handicap: number
     }
   }
-  analysis_metadata: {
+  analysis_metadata?: {
     analysis_type: string
     data_sources: string[]
     analysis_timestamp: string
@@ -84,9 +115,32 @@ interface PredictionResponse {
     ai_model: string
     processing_time: number
   }
-  processing_time: number
-  timestamp: string
+  processing_time?: number
+  timestamp?: string
 }
+
+// Helper functions are now imported from lib/predictionAvailability.ts
+
+function toValueRating(conf: number): "Very High"|"High"|"Medium"|"Low" {
+  if (conf >= 0.6) return "Very High"
+  if (conf >= 0.4) return "High"
+  if (conf >= 0.25) return "Medium"
+  return "Low"
+}
+
+function probToImpliedOdds(pred?: {home_win?: number; draw?: number; away_win?: number}) {
+  if (!pred) return null
+  const safe = (p?: number) => p && p > 0 ? +(1/p).toFixed(2) : null
+  return {
+    home: safe(pred.home_win),
+    draw: safe(pred.draw),
+    away: safe(pred.away_win),
+  }
+}
+
+// Cache key function is now imported from lib/predictionCacheKey.ts
+
+// Availability function is now imported from lib/predictionAvailability.ts
 
 // Function to fetch prediction data directly (avoiding HTTP middleware)
 async function fetchPredictionData(matchId: string, includeAnalysis: boolean = true): Promise<any> {
@@ -184,67 +238,45 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { limit = 10, leagueId, timeWindow } = await req.json()
+    const { leagueId, timeWindow } = await req.json()
 
-    logger.info('Starting QuickPurchase prediction enrichment', {
+    logger.info('Starting QuickPurchase prediction enrichment (ALL PENDING)', {
       tags: ['api', 'admin', 'predictions', 'enrich'],
-      data: { limit, leagueId, timeWindow, startTime: new Date(startTime).toISOString() }
+      data: { 
+        leagueId, 
+        timeWindow, 
+        startTime: new Date(startTime).toISOString(),
+        approach: 'fetch_all_pending_then_chunk'
+      }
     })
 
-    // Find QuickPurchase records that need prediction data
+    // 1) Get ALL pending QuickPurchase records (no limit)
     const whereClause: Prisma.QuickPurchaseWhereInput = {
       matchId: { not: null },
-      predictionData: { equals: Prisma.JsonNull },
+      OR: [
+        { predictionData: { equals: Prisma.JsonNull } },
+        { predictionData: null }
+      ],
       isPredictionActive: true
     }
 
-    // Add timeWindow filtering if provided
-    let now: Date
-    let cutoffDate: Date
-    
-    if (timeWindow) {
-      now = new Date()
-      
-      switch (timeWindow) {
-        case '72h':
-          cutoffDate = new Date(now.getTime() + 72 * 60 * 60 * 1000)
-          break
-        case '48h':
-          cutoffDate = new Date(now.getTime() + 48 * 60 * 60 * 1000)
-          break
-        case '24h':
-          cutoffDate = new Date(now.getTime() + 24 * 60 * 60 * 1000)
-          break
-        case 'urgent':
-          cutoffDate = new Date(now.getTime() + 6 * 60 * 60 * 1000)
-          break
-        default:
-          cutoffDate = new Date(now.getTime() + 72 * 60 * 60 * 1000) // Default to 72h
-      }
-      
-      logger.info('Applying timeWindow filter', {
+    // Note: No timeWindow filtering needed since /predict/availability handles timing logic
+    logger.info('Using availability-based filtering (no time window needed)', {
         tags: ['api', 'admin', 'predictions', 'enrich'],
-        data: { timeWindow, cutoffDate: cutoffDate.toISOString() }
+      data: { timeWindow: 'availability-based' }
       })
-    }
 
     let quickPurchases: any[] = []
 
-    if (leagueId || timeWindow) {
-      // If leagueId or timeWindow is provided, we need to join with matches
-      // For now, we'll use a raw query approach to handle the time filtering
-      const timeFilter = timeWindow ? `
-        AND m."matchDate" <= '${cutoffDate.toISOString()}'
-        AND m."matchDate" >= '${now.toISOString()}'
-      ` : ''
-      
-      const leagueFilter = leagueId ? `AND m."leagueId" = '${leagueId}'` : ''
+    if (leagueId) {
+      // If leagueId is provided, we need to use the matchData field instead of joining
+      // The QuickPurchase table stores match data in the matchData JSON field
+      const leagueFilter = leagueId ? `AND (qp."matchData"->>'league_id') = '${leagueId}'` : ''
       
       const rawQuery = `
         SELECT qp.* FROM "QuickPurchase" qp
-        INNER JOIN "Match" m ON qp."matchId" = m.id
         WHERE qp."matchId" IS NOT NULL 
-        AND qp."predictionData" IS NULL
+        AND (qp."predictionData" IS NULL OR qp."predictionData" = '{}'::jsonb)
         AND qp."isPredictionActive" = true
         AND qp."name" NOT LIKE '%Team A%'
         AND qp."name" NOT LIKE '%Team B%'
@@ -255,11 +287,14 @@ export async function POST(req: NextRequest) {
         AND qp."name" NOT LIKE '%Team G%'
         AND qp."name" NOT LIKE '%Team H%'
         AND qp."name" NOT LIKE '%Test League%'
-        ${timeFilter}
         ${leagueFilter}
         ORDER BY qp."createdAt" DESC
-        LIMIT ${limit}
       `
+      
+      logger.info('Using raw query with league filtering', {
+        tags: ['api', 'admin', 'predictions', 'enrich'],
+        data: { leagueId, rawQuery: rawQuery.substring(0, 200) + '...' }
+      })
       
       quickPurchases = await prisma.$queryRawUnsafe(rawQuery)
     } else {
@@ -273,11 +308,20 @@ export async function POST(req: NextRequest) {
           ],
           isPredictionActive: true
         },
-        take: limit
+        // No limit - fetch all pending records
       })
     }
 
     const dbQueryTime = Date.now() - startTime
+
+    logger.info('Found all pending QuickPurchases', {
+      tags: ['api', 'admin', 'predictions', 'enrich'],
+      data: { 
+        totalPending: quickPurchases.length,
+        dbQueryTime: `${dbQueryTime}ms`,
+        leagueId: leagueId || 'all'
+      }
+    })
 
     // Debug: Let's also check what QuickPurchase records exist
     const allQuickPurchases = await prisma.quickPurchase.findMany({
@@ -346,165 +390,503 @@ export async function POST(req: NextRequest) {
       data: { 
         totalFound: quickPurchases.length,
         sampleMatchIds: quickPurchases.slice(0, 3).map((qp: any) => qp.matchId),
+        sampleRecords: quickPurchases.slice(0, 2).map((qp: any) => ({
+          id: qp.id,
+          matchId: qp.matchId,
+          name: qp.name,
+          hasMatchData: !!qp.matchData,
+          hasPredictionData: !!qp.predictionData,
+          isPredictionActive: qp.isPredictionActive
+        })),
         estimatedTime: `${quickPurchases.length * 2.5} seconds (${quickPurchases.length} requests × 2.5s each)`
       }
     })
 
+    // Step 1: Collect unique match IDs and dedupe
+    const uniqueMatchIds = [...new Set(quickPurchases.map(qp => parseInt(qp.matchId)).filter(id => !isNaN(id)))]
+    
+    logger.info('Processing all pending matches with chunking', {
+      tags: ['api', 'admin', 'predictions', 'enrich'],
+      data: { 
+        totalQuickPurchases: quickPurchases.length,
+        uniqueMatchIds: uniqueMatchIds.length,
+        sampleMatchIds: uniqueMatchIds.slice(0, 5)
+      }
+    })
+
+    // Step 2: Chunk match IDs into batches of 100
+    const matchIdBatches = chunk(uniqueMatchIds, 100)
+    
+    logger.info('Chunked match IDs for batch processing', {
+      tags: ['api', 'admin', 'predictions', 'enrich'],
+      data: { 
+        totalMatchIds: uniqueMatchIds.length,
+        batchCount: matchIdBatches.length,
+        batchSizes: matchIdBatches.map(batch => batch.length)
+      }
+    })
+
+    // Early return if no matches to process
+    if (uniqueMatchIds.length === 0) {
+      logger.info('No matches found to enrich', {
+        tags: ['api', 'admin', 'predictions', 'enrich'],
+        data: { 
+          totalQuickPurchases: quickPurchases.length,
+          timeWindow,
+          leagueId
+        }
+      })
+      
+      return NextResponse.json({
+        success: true,
+        message: `No matches found in ${timeWindow || 'all'} time window to enrich`,
+        data: {
+          totalProcessed: 0,
+          enrichedCount: 0,
+          skippedCount: 0,
+          failedCount: 0,
+          availability: {
+            readyCount: 0,
+            waitingCount: 0,
+            noOddsCount: 0,
+            breakdown: {}
+          },
+          totalTime: `${Date.now() - startTime}ms`,
+          averageTimePerRequest: 'N/A',
+          errors: []
+        }
+      })
+    }
+
+    // Step 3: Process each batch of match IDs
+    let allReady: number[] = []
+    let allWaiting: AvailabilityItem[] = []
+    let allNoOdds: AvailabilityItem[] = []
+    let totalEnrichTrue = 0
+    let totalEnrichFalse = 0
+    let totalRequested = 0
+    let totalDeduped = 0
+    let totalFailureBreakdown: Record<string, any> = {}
+    for (let batchIndex = 0; batchIndex < matchIdBatches.length; batchIndex++) {
+      const batch = matchIdBatches[batchIndex]
+      
+      logger.info(`Processing batch ${batchIndex + 1}/${matchIdBatches.length}`, {
+        tags: ['api', 'admin', 'predictions', 'enrich'],
+        data: { 
+          batchIndex: batchIndex + 1,
+          totalBatches: matchIdBatches.length,
+          batchSize: batch.length,
+          sampleMatchIds: batch.slice(0, 3)
+        }
+      })
+      
+      try {
+        // Call /predict/availability for this batch
+        const availability = await fetchAvailability(batch, false) // Don't trigger consensus on first pass
+        
+        logger.info(`Batch ${batchIndex + 1} availability check completed`, {
+          tags: ['api', 'admin', 'predictions', 'enrich'],
+          data: {
+            batchIndex: batchIndex + 1,
+            enrichTrue: availability.meta.enrich_true,
+            enrichFalse: availability.meta.enrich_false,
+            requested: availability.meta.requested,
+            deduped: availability.meta.deduped,
+        // Debug: Show specific match IDs and their status
+        matchStatuses: availability.availability.map(item => ({
+          matchId: item.match_id,
+          enrich: item.enrich,
+          reason: item.reason,
+          bookmakers: item.bookmakers,
+          timeBucket: item.time_bucket
+        })),
+        // Special debug for reset match IDs
+        resetMatchIds: availability.availability.filter(item => 
+          [1391284, 1396949, 1390858].includes(item.match_id)
+        ).map(item => ({
+          matchId: item.match_id,
+          enrich: item.enrich,
+          reason: item.reason,
+          bookmakers: item.bookmakers,
+          timeBucket: item.time_bucket
+        }))
+          }
+        })
+        
+        // Partition this batch's results
+        const partitioned = partitionAvailability(availability.availability)
+        allReady.push(...partitioned.ready)
+        allWaiting.push(...partitioned.waiting)
+        allNoOdds.push(...partitioned.noOdds)
+        
+        // Accumulate meta data
+        totalEnrichTrue += availability.meta.enrich_true
+        totalEnrichFalse += availability.meta.enrich_false
+        totalRequested += availability.meta.requested
+        totalDeduped += availability.meta.deduped
+        Object.assign(totalFailureBreakdown, availability.meta.failure_breakdown)
+        
+      } catch (error) {
+        logger.error(`Batch ${batchIndex + 1} availability check failed`, {
+          tags: ['api', 'admin', 'predictions', 'enrich'],
+          data: { 
+            batchIndex: batchIndex + 1,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            batchSize: batch.length
+          }
+        })
+        
+        // Fallback: treat this batch as ready if availability API fails
+        logger.warn(`Using fallback mode for batch ${batchIndex + 1} - processing as ready`, {
+          tags: ['api', 'admin', 'predictions', 'enrich'],
+          data: { batchSize: batch.length }
+        })
+        
+        allReady.push(...batch) // All matches in this batch are "ready"
+        
+        // Accumulate meta data for fallback case
+        totalEnrichTrue += batch.length
+        totalRequested += batch.length
+        totalDeduped += batch.length
+      }
+    }
+    
+    // Set final results
+    const ready = allReady
+    const waiting = allWaiting
+    const noOdds = allNoOdds
+    
+    // Create aggregate meta data for logging
+    const aggregateMeta = {
+      enrich_true: totalEnrichTrue,
+      enrich_false: totalEnrichFalse,
+      requested: totalRequested,
+      deduped: totalDeduped,
+      failure_breakdown: totalFailureBreakdown
+    }
+    
+    // Create lookup map for availability items
+    const availabilityLookup = new Map<number, AvailabilityItem>()
+    ;[...allWaiting, ...allNoOdds].forEach(item => {
+      availabilityLookup.set(item.match_id, item)
+    })
+
+    // Step 4: Log final partitioning results
+    
+    logger.info('Partitioned matches by availability', {
+      tags: ['api', 'admin', 'predictions', 'enrich'],
+      data: {
+        readyCount: ready.length,
+        waitingCount: waiting.length,
+        noOddsCount: noOdds.length,
+        readyMatchIds: ready, // Show ALL ready match IDs that will call /predict
+        waitingReasons: waiting.slice(0, 3).map(w => ({ matchId: w.match_id, reason: w.reason, bucket: w.time_bucket }))
+      }
+    })
+
+    // Step 4: Optional: Trigger consensus for waiting matches (admin mode)
+    if (process.env.ADMIN_MODE === "true" && waiting.length > 0) {
+      logger.info('Triggering consensus for waiting matches', {
+        tags: ['api', 'admin', 'predictions', 'enrich'],
+        data: { waitingCount: waiting.length }
+      })
+      
+      // Fire-and-forget consensus trigger
+      fetchAvailability(waiting.map(w => w.match_id), true).catch((error: any) => {
+        logger.warn('Failed to trigger consensus', {
+          tags: ['api', 'admin', 'predictions', 'enrich'],
+          data: { error: error instanceof Error ? error.message : 'Unknown error' }
+        })
+      })
+    }
+
     let enrichedCount = 0
+    let skippedCount = 0
     let failedCount = 0
     const errors: string[] = []
 
-    // Process each QuickPurchase record
-    for (const quickPurchase of quickPurchases) {
+    // Step 5: Process only ready matches with rate limiting
+    logger.info('Starting /predict calls for ready matches', {
+      tags: ['api', 'admin', 'predictions', 'enrich'],
+      data: {
+        readyMatchIds: ready,
+        totalReady: ready.length
+      }
+    })
+    
+    for (let i = 0; i < ready.length; i++) {
+      const matchId = ready[i]
       const requestStartTime = Date.now()
       
+      logger.info(`Processing match ${i + 1}/${ready.length}`, {
+        tags: ['api', 'admin', 'predictions', 'enrich'],
+        data: { matchId, progress: `${i + 1}/${ready.length}` }
+      })
+      
+      // Rate limiting: 300ms delay between calls, max 3 concurrent
+      if (i > 0) {
+        await delay(300) // 300ms delay between calls
+      }
+      
       try {
-        if (!quickPurchase.matchId) {
-          logger.warn('QuickPurchase has no matchId', {
+        // Find the corresponding QuickPurchase record
+        const quickPurchase = quickPurchases.find(qp => parseInt(qp.matchId) === matchId)
+        if (!quickPurchase) {
+          logger.warn('QuickPurchase not found for ready match', {
             tags: ['api', 'admin', 'predictions', 'enrich'],
-            data: { quickPurchaseId: quickPurchase.id }
+            data: { matchId }
           })
           continue
         }
 
-        logger.debug('Fetching prediction data for match', {
-          tags: ['api', 'admin', 'predictions', 'enrich'],
-          data: { 
-            quickPurchaseId: quickPurchase.id,
-            matchId: quickPurchase.matchId,
-            requestStartTime: new Date(requestStartTime).toISOString()
-          }
-        })
+        // Get availability info for cache key
+        const availabilityItem = availabilityLookup.get(matchId)
+        const cacheKey = predictionCacheKey(matchId, availabilityItem?.last_updated)
+        
+        // Check cache first
+        const cachedPrediction = await redis.get<PredictionResponse>(cacheKey)
+        let prediction: PredictionResponse | null = null
 
-        // Fetch prediction data directly (avoiding HTTP middleware)
-        const predictionData = await fetchPredictionData(quickPurchase.matchId, true)
-
-        const fetchTime = Date.now() - requestStartTime
-
-        // Extract key prediction information
-        const prediction = predictionData.prediction
-        if (!prediction) {
-          logger.warn('No prediction data in response', {
+        if (cachedPrediction) {
+          logger.debug('Using cached prediction', {
             tags: ['api', 'admin', 'predictions', 'enrich'],
-            data: { 
-              quickPurchaseId: quickPurchase.id,
-              matchId: quickPurchase.matchId,
-              responseKeys: Object.keys(predictionData),
-              fetchTime: `${fetchTime}ms`
-            }
+            data: { matchId, source: 'cache' }
+          })
+          prediction = cachedPrediction
+        } else {
+          // Fetch from backend
+          logger.debug('Fetching prediction from backend', {
+          tags: ['api', 'admin', 'predictions', 'enrich'],
+            data: { matchId, backendUrl: `${process.env.BACKEND_URL}/predict` }
+          })
+
+          const response = await fetch(`${process.env.BACKEND_URL}/predict`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${process.env.BACKEND_API_KEY}`
+            },
+            body: JSON.stringify({
+              match_id: matchId,
+              include_analysis: true // Include full analysis for complete data
+            })
+          })
+
+          if (!response.ok) {
+            const errorText = await response.text()
+            throw new Error(`Backend responded with status ${response.status}: ${errorText}`)
+          }
+
+          prediction = await response.json() as PredictionResponse
+          
+          // Cache the prediction with dynamic TTL
+          const ttl = ttlForMatch(availabilityItem)
+          await redis.set(cacheKey, prediction, { ex: ttl })
+        }
+
+        if (!prediction) {
+          logger.warn('No prediction data received', {
+            tags: ['api', 'admin', 'predictions', 'enrich'],
+            data: { matchId }
           })
           failedCount++
-          errors.push(`Match ${quickPurchase.matchId}: No prediction data`)
+          errors.push(`Match ${matchId}: No prediction data`)
+          continue
+        }
+
+        // Skip if confidence is 0 (not ready)
+        const confidence = prediction.predictions?.confidence ?? 0
+        if (confidence === 0) {
+          logger.info('Skipping prediction with 0 confidence', {
+            tags: ['api', 'admin', 'predictions', 'enrich'],
+            data: { matchId, confidence }
+          })
+          skippedCount++
           continue
         }
 
         // Extract prediction details
-        const aiVerdict = prediction.comprehensive_analysis?.ai_verdict
-        const mlPrediction = prediction.comprehensive_analysis?.ml_prediction
-        const matchInfo = prediction.match_info
+        const predictionType = prediction.predictions?.recommended_bet ?? 
+                              prediction.comprehensive_analysis?.ai_verdict?.recommended_outcome?.toLowerCase().replace(' ', '_') ?? 
+                              'no_prediction'
+        
+        const confidenceScore = Math.round(confidence * 100)
+        const valueRating = toValueRating(confidence)
+        const odds = probToImpliedOdds(prediction.predictions)
+        const analysisSummary = prediction.analysis?.explanation ?? 
+                               prediction.comprehensive_analysis?.ai_verdict?.confidence_level ?? 
+                               'AI prediction available'
 
-        // Determine prediction type and confidence
-        let predictionType = 'unknown'
-        let confidenceScore = 0
-        let odds = null
-        let valueRating = 'Low'
-
-        if (aiVerdict) {
-          predictionType = aiVerdict.recommended_outcome?.toLowerCase().replace(' ', '_') || 'unknown'
-          confidenceScore = aiVerdict.confidence_level === 'High' ? 85 : 
-                           aiVerdict.confidence_level === 'Medium' ? 65 : 45
-        }
-
-        if (mlPrediction) {
-          // Use ML confidence if available
-          confidenceScore = Math.round(mlPrediction.confidence * 100)
-          
-          // Calculate implied odds from ML probabilities
-          const maxProb = Math.max(mlPrediction.home_win, mlPrediction.draw, mlPrediction.away_win)
-          odds = maxProb > 0 ? (1 / maxProb).toFixed(2) : null
-        }
-
-        // Determine value rating based on confidence
-        if (confidenceScore >= 80) valueRating = 'Very High'
-        else if (confidenceScore >= 65) valueRating = 'High'
-        else if (confidenceScore >= 50) valueRating = 'Medium'
-        else valueRating = 'Low'
-
-        // Create analysis summary
-        const analysisSummary = aiVerdict?.confidence_level 
-          ? `${aiVerdict.recommended_outcome} (${aiVerdict.confidence_level} confidence)`
-          : 'AI prediction available'
+        // Log the full prediction data before storing
+        logger.info('Full prediction data received from backend', {
+          tags: ['api', 'admin', 'predictions', 'enrich'],
+          data: {
+            matchId,
+            predictionDataSize: JSON.stringify(prediction).length,
+            predictionDataKeys: Object.keys(prediction),
+            hasAnalysis: !!prediction.analysis,
+            hasComprehensiveAnalysis: !!prediction.comprehensive_analysis,
+            hasAiSummary: !!(prediction as any).analysis?.ai_summary,
+            sampleData: {
+              match_info: prediction.match_info,
+              predictions: prediction.predictions,
+              analysis_keys: prediction.analysis ? Object.keys(prediction.analysis) : 'no analysis',
+              comprehensive_analysis_keys: prediction.comprehensive_analysis ? Object.keys(prediction.comprehensive_analysis) : 'no comprehensive_analysis'
+            }
+          }
+        })
 
         // Update the QuickPurchase record
         await prisma.quickPurchase.update({
           where: { id: quickPurchase.id },
           data: {
-            predictionData: predictionData,
+            predictionData: prediction as any,
             predictionType: predictionType,
             confidenceScore: confidenceScore,
-            odds: odds ? parseFloat(odds) : null,
+            odds: odds?.home || null, // Use home odds as primary
             valueRating: valueRating,
             analysisSummary: analysisSummary,
-            isPredictionActive: true
+            isPredictionActive: true,
+            lastEnrichmentAt: new Date(),
+            enrichmentCount: { increment: 1 }
           }
         })
 
         const totalRequestTime = Date.now() - requestStartTime
 
+        // Verify what was actually stored in the database
+        const storedRecord = await prisma.quickPurchase.findUnique({
+          where: { id: quickPurchase.id },
+          select: { predictionData: true }
+        })
+
+        logger.info('Verification: Data stored in database', {
+          tags: ['api', 'admin', 'predictions', 'enrich'],
+          data: {
+            matchId,
+            storedDataSize: storedRecord?.predictionData ? JSON.stringify(storedRecord.predictionData).length : 0,
+            storedDataKeys: storedRecord?.predictionData ? Object.keys(storedRecord.predictionData as any) : 'no data',
+            hasStoredAnalysis: !!(storedRecord?.predictionData as any)?.analysis,
+            hasStoredComprehensiveAnalysis: !!(storedRecord?.predictionData as any)?.comprehensive_analysis,
+            storedAnalysisKeys: storedRecord?.predictionData && (storedRecord.predictionData as any)?.analysis ? Object.keys((storedRecord.predictionData as any).analysis) : 'no analysis'
+          }
+        })
+
         logger.debug('Successfully enriched QuickPurchase', {
           tags: ['api', 'admin', 'predictions', 'enrich'],
           data: {
             quickPurchaseId: quickPurchase.id,
-            matchId: quickPurchase.matchId,
+            matchId: matchId,
             predictionType,
             confidenceScore,
             valueRating,
-            fetchTime: `${fetchTime}ms`,
             totalRequestTime: `${totalRequestTime}ms`,
-            source: predictionData.source
+            source: cachedPrediction ? 'cache' : 'backend'
           }
         })
 
         enrichedCount++
 
-        // Add a longer delay to avoid overwhelming the API and give it time to process
-        // The backend API might need more time between requests
-        const delay = 2000 // 2 seconds delay between requests
-        logger.debug(`Waiting ${delay}ms before next request`, {
+        logger.info(`✅ SUCCESS: Match ${matchId} enriched`, {
           tags: ['api', 'admin', 'predictions', 'enrich'],
           data: { 
-            matchId: quickPurchase.matchId,
-            delay,
-            progress: `${enrichedCount + failedCount}/${quickPurchases.length}`,
-            elapsedTime: `${Date.now() - startTime}ms`
+            matchId, 
+            quickPurchaseId: quickPurchase.id,
+            predictionType: (prediction as any).prediction_type,
+            confidenceScore: (prediction as any).confidence_score,
+            processingTime: `${Date.now() - requestStartTime}ms`,
+            progress: `${enrichedCount}/${ready.length} completed`
           }
         })
-        await new Promise(resolve => setTimeout(resolve, delay))
+
+        // Rate limiting: small delay between requests
+        await new Promise(resolve => setTimeout(resolve, 500))
 
       } catch (error) {
         const errorTime = Date.now() - requestStartTime
         logger.error('Error enriching QuickPurchase', {
           tags: ['api', 'admin', 'predictions', 'enrich'],
           data: {
-            quickPurchaseId: quickPurchase.id,
-            matchId: quickPurchase.matchId,
+            matchId: matchId,
             error: error instanceof Error ? error.message : 'Unknown error',
             requestTime: `${errorTime}ms`
           }
         })
         failedCount++
-        errors.push(`Match ${quickPurchase.matchId}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        errors.push(`Match ${matchId}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
+    }
+
+    // Step 6: Mark waiting and no-odds matches with status (but keep them active for future processing)
+    for (const item of waiting) {
+      const quickPurchase = quickPurchases.find(qp => parseInt(qp.matchId) === item.match_id)
+      if (quickPurchase) {
+        await prisma.quickPurchase.update({
+          where: { id: quickPurchase.id },
+          data: {
+            predictionType: 'waiting_consensus',
+            confidenceScore: 0,
+            valueRating: 'Low',
+            // Store detailed status information as recommended in checklist
+            analysisSummary: `Waiting for consensus: ${item.reason || 'collecting odds'} | Books: ${item.bookmakers || 0} | Bucket: ${item.time_bucket || 'unknown'} | Updated: ${item.last_updated || 'unknown'}`,
+            // Keep isPredictionActive: true so they remain in pending count
+            isPredictionActive: true
+          }
+        })
+      }
+    }
+
+    for (const item of noOdds) {
+      const quickPurchase = quickPurchases.find(qp => parseInt(qp.matchId) === item.match_id)
+      if (quickPurchase) {
+        await prisma.quickPurchase.update({
+          where: { id: quickPurchase.id },
+          data: {
+            predictionType: 'no_odds',
+            confidenceScore: 0,
+            valueRating: 'Low',
+            // Store detailed status information as recommended in checklist
+            analysisSummary: `No betting markets available: ${item.reason || 'no odds'} | Books: ${item.bookmakers || 0} | Bucket: ${item.time_bucket || 'unknown'} | Updated: ${item.last_updated || 'unknown'}`,
+            // Keep isPredictionActive: true so they remain in pending count
+            isPredictionActive: true
+          }
+        })
       }
     }
 
     const totalTime = Date.now() - startTime
+
+    // Add telemetry as specified in playbook
+    logger.info('[ENRICH] availability', { 
+      requested: uniqueMatchIds.length, 
+      ready: ready.length, 
+      waiting: waiting.length, 
+      noOdds: noOdds.length 
+    })
+    
+    logger.info('[ENRICH] results', { 
+      enrichedCount, 
+      skippedCount, 
+      failedCount, 
+      durationMs: totalTime 
+    })
 
     logger.info('QuickPurchase enrichment completed', {
       tags: ['api', 'admin', 'predictions', 'enrich'],
       data: {
         totalProcessed: quickPurchases.length,
         enrichedCount,
+        skippedCount,
         failedCount,
+        // Telemetry counts as recommended in checklist
+        ready_count: ready.length,
+        waiting_count: waiting.length,
+        no_odds_count: noOdds.length,
+        // Additional telemetry
+        readyCount: ready.length,
+        waitingCount: waiting.length,
+        noOddsCount: noOdds.length,
+        availability_meta: aggregateMeta,
         totalTime: `${totalTime}ms`,
         averageTimePerRequest: quickPurchases.length > 0 ? `${Math.round(totalTime / quickPurchases.length)}ms` : 'N/A',
         errors: errors.slice(0, 5) // Log first 5 errors
@@ -513,11 +895,18 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Enriched ${enrichedCount} QuickPurchase records`,
+      message: `Enriched ${enrichedCount} QuickPurchase records (${skippedCount} skipped, ${waiting.length} waiting, ${noOdds.length} no odds)`,
       data: {
         totalProcessed: quickPurchases.length,
         enrichedCount,
+        skippedCount,
         failedCount,
+        availability: {
+          readyCount: ready.length,
+          waitingCount: waiting.length,
+          noOddsCount: noOdds.length,
+          breakdown: aggregateMeta.failure_breakdown
+        },
         totalTime: `${totalTime}ms`,
         averageTimePerRequest: quickPurchases.length > 0 ? `${Math.round(totalTime / quickPurchases.length)}ms` : 'N/A',
         errors: errors.slice(0, 10) // Return first 10 errors

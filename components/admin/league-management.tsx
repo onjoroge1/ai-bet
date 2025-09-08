@@ -36,6 +36,7 @@ import {
   CheckCircle,
   Clock,
   Loader2,
+  XCircle,
   Globe,
   Shield,
   Zap,
@@ -182,6 +183,32 @@ const getEnrichmentStatus = async (): Promise<any> => {
   return response.json()
 }
 
+const syncPredictions = async (params: { timeWindow: string; leagueId?: string; limit?: number }): Promise<any> => {
+  const response = await fetch('/api/admin/predictions/sync-quickpurchases', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params)
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || 'Failed to sync predictions')
+  }
+  return response.json()
+}
+
+const triggerConsensus = async (matchIds: number[]): Promise<any> => {
+  const response = await fetch('/api/admin/predictions/trigger-consensus', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ matchIds })
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || 'Failed to trigger consensus')
+  }
+  return response.json()
+}
+
 export function AdminLeagueManagement() {
   const queryClient = useQueryClient()
   const [searchTerm, setSearchTerm] = useState("")
@@ -276,6 +303,17 @@ export function AdminLeagueManagement() {
     }
   })
 
+  const syncPredictionsMutation = useMutation({
+    mutationFn: syncPredictions,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['enrichment-status'] })
+      toast.success(data.message)
+    },
+    onError: (error) => {
+      toast.error(error.message)
+    }
+  })
+
   const syncMatchesMutation = useMutation({
     mutationFn: async () => {
       console.log('🌐 Making API call to upcoming matches')
@@ -307,6 +345,17 @@ export function AdminLeagueManagement() {
         }
       })
       toast.success(`Found ${data.data.counts.total || 0} upcoming matches`)
+    },
+    onError: (error) => {
+      toast.error(error.message)
+    }
+  })
+
+  const triggerConsensusMutation = useMutation({
+    mutationFn: triggerConsensus,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['enrichment-status'] })
+      toast.success(data.message)
     },
     onError: (error) => {
       toast.error(error.message)
@@ -359,8 +408,14 @@ export function AdminLeagueManagement() {
     testConnectionMutation.mutate(leagueId)
   }
 
-  const handleEnrichPredictions = (limit: number = 10) => {
-    enrichMutation.mutate({ limit })
+  const handleEnrichPredictions = (limit: number = 100) => {
+    // Use the new availability-based enrichment system
+    // This will call /predict/availability first, then only /predict for ready matches
+    // No timeWindow needed since /predict/availability handles timing logic
+    enrichMutation.mutate({ 
+      limit,
+      leagueId: selectedLeagueForMatches === 'all' ? undefined : selectedLeagueForMatches
+    })
   }
 
   const handleSyncUpcomingMatches = () => {
@@ -375,6 +430,39 @@ export function AdminLeagueManagement() {
       timeWindow,
       leagueId: selectedLeagueForMatches === 'all' ? undefined : selectedLeagueForMatches
     })
+  }
+
+  const handleSyncPredictions = (timeWindow: string) => {
+    // Use the new sync API that clears and refreshes predictions
+    syncPredictionsMutation.mutate({
+      timeWindow,
+      leagueId: selectedLeagueForMatches === 'all' ? undefined : selectedLeagueForMatches,
+      limit: 50
+    })
+  }
+
+  const handleSyncAllUpcoming = () => {
+    // Sync all upcoming matches (not time window specific)
+    syncPredictionsMutation.mutate({
+      timeWindow: 'all',
+      leagueId: selectedLeagueForMatches === 'all' ? undefined : selectedLeagueForMatches,
+      limit: 100
+    })
+  }
+
+  const handleTriggerConsensus = () => {
+    // Get all waiting matches and trigger consensus
+    const waitingMatches = upcomingMatches
+      .filter(match => match.predictionType === 'waiting_consensus')
+      .map(match => parseInt(match.matchId))
+      .filter(id => !isNaN(id))
+    
+    if (waitingMatches.length === 0) {
+      toast.info('No matches are currently waiting for consensus')
+      return
+    }
+    
+    triggerConsensusMutation.mutate(waitingMatches)
   }
 
   const handleSave = (formData: LeagueFormData) => {
@@ -523,20 +611,26 @@ export function AdminLeagueManagement() {
                 Prediction Enrichment
               </div>
               <Button
-                onClick={() => handleEnrichPredictions(10)}
+                onClick={() => handleEnrichPredictions()}
                 disabled={enrichMutation.isPending}
                 className="bg-blue-600 hover:bg-blue-700"
+                title="Uses availability system - only processes ready matches"
               >
                 {enrichMutation.isPending ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <Zap className="w-4 h-4" />
                 )}
-                <span className="ml-2">Enrich Predictions</span>
+                <span className="ml-2">Enrich All Predictions (Smart)</span>
               </Button>
             </CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+              <p className="text-sm text-blue-300">
+                <strong>Smart Enrichment:</strong> Processes all pending matches using the availability system to check which are ready for prediction before calling the backend. No time window filtering needed - the backend determines readiness based on consensus data availability.
+              </p>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="text-center">
                 <p className="text-slate-400 text-sm">Total QuickPurchases</p>
@@ -629,36 +723,82 @@ export function AdminLeagueManagement() {
               
               <div className="flex items-center justify-center space-x-2 mb-4">
                 <Button
-                  onClick={() => handleRefetchPredictions('72h')}
-                  disabled={enrichMutation.isPending}
+                  onClick={handleSyncAllUpcoming}
+                  disabled={syncPredictionsMutation.isPending}
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                  size="sm"
+                >
+                  {syncPredictionsMutation.isPending ? (
+                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                  ) : (
+                    <Zap className="w-3 h-3 mr-1" />
+                  )}
+                  Sync All Upcoming
+                </Button>
+                <Button
+                  onClick={handleTriggerConsensus}
+                  disabled={triggerConsensusMutation.isPending}
+                  className="bg-purple-600 hover:bg-purple-700"
+                  size="sm"
+                >
+                  {triggerConsensusMutation.isPending ? (
+                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                  ) : (
+                    <Activity className="w-3 h-3 mr-1" />
+                  )}
+                  Trigger Consensus
+                </Button>
+                <Button
+                  onClick={() => handleSyncPredictions('72h')}
+                  disabled={syncPredictionsMutation.isPending}
                   className="bg-blue-600 hover:bg-blue-700"
                   size="sm"
                 >
-                  Refetch 72h
+                  {syncPredictionsMutation.isPending ? (
+                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                  ) : (
+                    <RefreshCw className="w-3 h-3 mr-1" />
+                  )}
+                  Sync 72h
                 </Button>
                 <Button
-                  onClick={() => handleRefetchPredictions('48h')}
-                  disabled={enrichMutation.isPending}
+                  onClick={() => handleSyncPredictions('48h')}
+                  disabled={syncPredictionsMutation.isPending}
                   className="bg-yellow-600 hover:bg-yellow-700"
                   size="sm"
                 >
-                  Refetch 48h
+                  {syncPredictionsMutation.isPending ? (
+                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                  ) : (
+                    <RefreshCw className="w-3 h-3 mr-1" />
+                  )}
+                  Sync 48h
                 </Button>
                 <Button
-                  onClick={() => handleRefetchPredictions('24h')}
-                  disabled={enrichMutation.isPending}
+                  onClick={() => handleSyncPredictions('24h')}
+                  disabled={syncPredictionsMutation.isPending}
                   className="bg-orange-600 hover:bg-orange-700"
                   size="sm"
                 >
-                  Refetch 24h
+                  {syncPredictionsMutation.isPending ? (
+                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                  ) : (
+                    <RefreshCw className="w-3 h-3 mr-1" />
+                  )}
+                  Sync 24h
                 </Button>
                 <Button
-                  onClick={() => handleRefetchPredictions('urgent')}
-                  disabled={enrichMutation.isPending}
+                  onClick={() => handleSyncPredictions('urgent')}
+                  disabled={syncPredictionsMutation.isPending}
                   className="bg-red-600 hover:bg-red-700"
                   size="sm"
                 >
-                  Refetch Urgent
+                  {syncPredictionsMutation.isPending ? (
+                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                  ) : (
+                    <RefreshCw className="w-3 h-3 mr-1" />
+                  )}
+                  Sync Urgent
                 </Button>
               </div>
               
@@ -697,7 +837,17 @@ export function AdminLeagueManagement() {
                             </div>
                           </TableCell>
                           <TableCell className="text-white">
-                            {match.hasPrediction ? (
+                            {match.predictionType === 'waiting_consensus' ? (
+                              <Badge variant="outline" className="border-blue-600 text-blue-400">
+                                <Clock className="w-3 h-3 mr-1" />
+                                Collecting Odds
+                              </Badge>
+                            ) : match.predictionType === 'no_odds' ? (
+                              <Badge variant="outline" className="border-gray-600 text-gray-400">
+                                <XCircle className="w-3 h-3 mr-1" />
+                                No Markets
+                              </Badge>
+                            ) : match.hasPrediction && match.confidenceScore > 0 ? (
                               <Badge variant="outline" className="border-green-600 text-green-400">
                                 <CheckCircle className="w-3 h-3 mr-1" />
                                 {match.predictionType} ({match.confidenceScore}%)
