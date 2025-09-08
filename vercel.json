@@ -9,5 +9,11 @@
   },
   "env": {
     "PRISMA_GENERATE_DATAPROXY": "true"
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/admin/predictions/enrich-scheduled",
+      "schedule": "*/30 * * * *"
+    }
+  ]
 } 
