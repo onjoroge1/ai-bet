@@ -1,23 +1,42 @@
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { cacheManager } from '@/lib/cache-manager'
+
+// Cache configuration for homepage predictions
+const CACHE_CONFIG = {
+  ttl: 300, // 5 minutes - short TTL for fresh predictions
+  prefix: 'homepage-predictions'
+}
 
 // GET /api/homepage/predictions
 export async function GET() {
   try {
+    // Check cache first
+    const cacheKey = 'current-predictions'
+    const cachedPredictions = await cacheManager.get(cacheKey, CACHE_CONFIG)
+    
+    if (cachedPredictions) {
+      logger.info('GET /api/homepage/predictions - Cache hit', {
+        tags: ['api', 'homepage', 'predictions', 'cache'],
+        data: { source: 'cache', count: cachedPredictions.length }
+      })
+      
+      return NextResponse.json(cachedPredictions)
+    }
+
     const now = new Date()
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000)
     const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000)
 
-    // First, try to get predictions for today/tomorrow
-    let predictions = await prisma.prediction.findMany({
+    // OPTIMIZED: Single query with broader date range and better filtering
+    const predictions = await prisma.prediction.findMany({
       where: {
-        // Upcoming matches (today and tomorrow)
+        // Upcoming matches (today to next week)
         match: {
           matchDate: {
             gte: today,
-            lte: tomorrow,
+            lte: nextWeek,
           },
           status: {
             in: ['upcoming', 'live']
@@ -45,81 +64,18 @@ export async function GET() {
         { valueRating: 'desc' },
         { createdAt: 'desc' }
       ],
-      take: 5
+      take: 3
     })
 
-    // If no today/tomorrow predictions, get from next 7 days
-    if (predictions.length === 0) {
-      predictions = await prisma.prediction.findMany({
-        where: {
-          match: {
-            matchDate: {
-              gte: today,
-              lte: nextWeek,
-            },
-            status: {
-              in: ['upcoming', 'live']
-            }
-          },
-          OR: [
-            { confidenceScore: { gte: 60 } },
-            { valueRating: { in: ['High', 'Very High'] } },
-            { showInDailyTips: true },
-            { isFeatured: true }
-          ]
-        },
-        include: {
-          match: {
-            include: {
-              homeTeam: true,
-              awayTeam: true,
-              league: true,
-            }
-          }
-        },
-        orderBy: [
-          { confidenceScore: 'desc' },
-          { valueRating: 'desc' },
-          { createdAt: 'desc' }
-        ],
-        take: 5
-      })
-    }
+    // Cache the results
+    await cacheManager.set(cacheKey, predictions, CACHE_CONFIG)
 
-    // If still no predictions, get the best available predictions regardless of date
-    if (predictions.length === 0) {
-      predictions = await prisma.prediction.findMany({
-        where: {
-          OR: [
-            { confidenceScore: { gte: 70 } },
-            { valueRating: { in: ['High', 'Very High'] } },
-            { showInDailyTips: true },
-            { isFeatured: true }
-          ]
-        },
-        include: {
-          match: {
-            include: {
-              homeTeam: true,
-              awayTeam: true,
-              league: true,
-            }
-          }
-        },
-        orderBy: [
-          { confidenceScore: 'desc' },
-          { valueRating: 'desc' },
-          { createdAt: 'desc' }
-        ],
-        take: 5
-      })
-    }
-
-    logger.info('GET /api/homepage/predictions - Success', {
+    logger.info('GET /api/homepage/predictions - Success (Database)', {
       tags: ['api', 'homepage', 'predictions'],
       data: { 
         predictionsCount: predictions.length,
-        dateRange: { from: today.toISOString(), to: nextWeek.toISOString() }
+        dateRange: { from: today.toISOString(), to: nextWeek.toISOString() },
+        source: 'database'
       }
     })
 
