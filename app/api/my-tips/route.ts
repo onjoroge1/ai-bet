@@ -55,8 +55,8 @@ export async function GET(request: Request) {
     const tips = purchases.map((purchase) => {
       const qp = purchase.quickPurchase
       
-      // The actual prediction payload is nested inside the 'prediction' property
-      const predictionPayload = (qp.predictionData as PredictionPayload)?.prediction || null
+      // The prediction payload is directly in qp.predictionData (not nested under 'prediction')
+      const predictionPayload = qp.predictionData || null
       
       // Helper variable to avoid repeated null checks
       const confidenceScore = qp.confidenceScore || 0
@@ -143,7 +143,15 @@ export async function GET(request: Request) {
             }
             
             // Format the prediction based on the best option
-            if (bestOption === 'yes') {
+            if (bestOption.startsWith('home_')) {
+              const handicapValue = bestOption.replace('home_', '')
+              prediction = `Home Team Asian Handicap ${handicapValue}`
+              reasoning = `Home team expected to perform well with ${handicapValue} handicap`
+            } else if (bestOption.startsWith('away_')) {
+              const handicapValue = bestOption.replace('away_', '')
+              prediction = `Away Team Asian Handicap ${handicapValue}`
+              reasoning = `Away team expected to perform well with ${handicapValue} handicap`
+            } else if (bestOption === 'yes') {
               prediction = 'Asian Handicap - Yes'
               reasoning = 'Asian handicap market is likely to be active'
             } else if (bestOption === 'no') {
@@ -157,12 +165,6 @@ export async function GET(request: Request) {
               const thresholdValue = bestOption.replace('under_', '').replace('_', '.')
               prediction = `Asian Handicap Under ${thresholdValue}`
               reasoning = `Asian handicap suggests under ${thresholdValue} goals is likely`
-            } else if (bestOption === 'home_handicap') {
-              prediction = 'Home Team Asian Handicap'
-              reasoning = 'Home team expected to perform well with Asian handicap advantage'
-            } else if (bestOption === 'away_handicap') {
-              prediction = 'Away Team Asian Handicap'
-              reasoning = 'Away team expected to perform well with Asian handicap advantage'
             } else {
               // Fallback for unexpected option format
               prediction = `Asian Handicap - ${bestOption.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}`
@@ -300,12 +302,14 @@ export async function GET(request: Request) {
               const thresholdValue = bestOption.replace('under_', '').replace('_', '.')
               prediction = `Asian Handicap Under ${thresholdValue}`
               reasoning = `Asian handicap suggests under ${thresholdValue} goals is likely`
-            } else if (bestOption === 'home_handicap') {
-              prediction = 'Home Team Asian Handicap'
-              reasoning = 'Home team expected to perform well with Asian handicap advantage'
-            } else if (bestOption === 'away_handicap') {
-              prediction = 'Away Team Asian Handicap'
-              reasoning = 'Away team expected to perform well with Asian handicap advantage'
+            } else if (bestOption.startsWith('home_')) {
+              const handicapValue = bestOption.replace('home_', '')
+              prediction = `Home Team Asian Handicap ${handicapValue}`
+              reasoning = `Home team expected to perform well with ${handicapValue} handicap`
+            } else if (bestOption.startsWith('away_')) {
+              const handicapValue = bestOption.replace('away_', '')
+              prediction = `Away Team Asian Handicap ${handicapValue}`
+              reasoning = `Away team expected to perform well with ${handicapValue} handicap`
             } else {
               // Fallback for unexpected option format
               prediction = `Asian Handicap - ${bestOption.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}`
@@ -386,15 +390,15 @@ export async function GET(request: Request) {
         amount: qp.price, // Use the current price from QuickPurchase instead of stored purchase amount
         paymentMethod: purchase.paymentMethod,
         // Add tip type to distinguish between monetary and credit purchases
-        tipType: purchase.paymentMethod === 'credits' ? 'credit' : 'monetary',
+        tipType: purchase.paymentMethod === 'credits' ? 'credit_claim' : 'purchase',
         creditsSpent: purchase.paymentMethod === 'credits' ? 1 : null,
-        // Match information from the prediction data if available
-        homeTeam: predictionPayload?.match_info?.home_team || 'TBD',
-        awayTeam: predictionPayload?.match_info?.away_team || 'TBD',
-        matchDate: predictionPayload?.match_info?.date || null,
-        venue: predictionPayload?.match_info?.venue || null,
-        league: predictionPayload?.match_info?.league || null,
-        matchStatus: predictionPayload?.match_info?.status || null,
+        // Match information from the matchData if available, fallback to prediction data
+        homeTeam: (qp.matchData as any)?.home_team || predictionPayload?.match_info?.home_team || 'TBD',
+        awayTeam: (qp.matchData as any)?.away_team || predictionPayload?.match_info?.away_team || 'TBD',
+        matchDate: (qp.matchData as any)?.date || predictionPayload?.match_info?.date || null,
+        venue: (qp.matchData as any)?.venue || predictionPayload?.match_info?.venue || null,
+        league: (qp.matchData as any)?.league || predictionPayload?.match_info?.league || null,
+        matchStatus: (qp.matchData as any)?.status || predictionPayload?.match_info?.status || null,
         // Enriched prediction data
         predictionType: qp.predictionType || null,
         confidenceScore: qp.confidenceScore || null,

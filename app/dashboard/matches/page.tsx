@@ -122,16 +122,20 @@ export default function MatchesPage() {
       )
     }
 
-    // Status filter (upcoming, live, completed)
+    // Status filter (upcoming, scheduled)
     if (filters.status !== "all") {
       filtered = filtered.filter(match => {
         const matchDate = match.matchData?.date ? new Date(match.matchData.date) : null
         const now = new Date()
         
         if (filters.status === "upcoming") {
-          return matchDate && matchDate > now
-        } else if (filters.status === "completed") {
-          return matchDate && matchDate < now
+          // Show matches starting within next 2 hours
+          const twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000)
+          return matchDate && matchDate > now && matchDate <= twoHoursFromNow
+        } else if (filters.status === "scheduled") {
+          // Show matches scheduled for later (more than 2 hours away)
+          const twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000)
+          return matchDate && matchDate > twoHoursFromNow
         }
         return true
       })
@@ -225,11 +229,21 @@ export default function MatchesPage() {
       console.log('Decoded data:', decodedData.length, 'items')
       
       // Filter to only show prediction/tip type items that have match data
-      const predictionMatches = (decodedData as Match[]).filter((item) => 
-        (item.type === 'prediction' || item.type === 'tip') && 
-        item.matchId && 
-        item.isActive
-      )
+      const predictionMatches = (decodedData as Match[]).filter((item) => {
+        // Basic filters
+        const hasValidType = (item.type === 'prediction' || item.type === 'tip')
+        const hasMatchId = !!item.matchId
+        const isActive = !!item.isActive
+        
+        // Filter out completed matches
+        const matchDate = item.matchData?.date ? new Date(item.matchData.date) : null
+        const isNotCompleted = matchDate ? matchDate > new Date() : false
+        
+        // Filter out matches with no confidence or zero confidence
+        const hasValidConfidence = item.confidenceScore && item.confidenceScore > 0
+        
+        return hasValidType && hasMatchId && isActive && isNotCompleted && hasValidConfidence
+      })
       
       console.log('Filtered prediction matches:', predictionMatches.length)
       console.log('Sample match data:', predictionMatches[0])
@@ -254,7 +268,7 @@ export default function MatchesPage() {
     const timeDiff = matchDate.getTime() - now.getTime()
     const hoursDiff = timeDiff / (1000 * 60 * 60)
     
-    if (hoursDiff < 0) return "completed"
+    // Since we filter out completed matches, we only have upcoming and scheduled
     if (hoursDiff <= 2) return "upcoming"
     return "scheduled"
   }
@@ -265,8 +279,6 @@ export default function MatchesPage() {
         return <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30">Upcoming</Badge>
       case "scheduled":
         return <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">Scheduled</Badge>
-      case "completed":
-        return <Badge className="bg-slate-500/20 text-slate-400 border-slate-500/30">Completed</Badge>
       default:
         return <Badge className="bg-gray-500/20 text-gray-400 border-gray-500/30">Unknown</Badge>
     }
@@ -404,14 +416,14 @@ export default function MatchesPage() {
     <div className="max-w-7xl mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">All Matches</h1>
+        <h1 className="text-3xl font-bold text-white mb-2">Upcoming Matches</h1>
         <p className="text-slate-400">
-          Browse and filter through all available match predictions
+          Browse and filter through upcoming match predictions with confidence scores
         </p>
       </div>
 
       {/* Filters */}
-      <Card className="bg-slate-800/50 border-slate-700 p-6 mb-8">
+      <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-6 mb-8">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
@@ -429,9 +441,8 @@ export default function MatchesPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="upcoming">Upcoming</SelectItem>
+              <SelectItem value="upcoming">Upcoming (Next 2 hours)</SelectItem>
               <SelectItem value="scheduled">Scheduled</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
             </SelectContent>
           </Select>
 
@@ -490,13 +501,13 @@ export default function MatchesPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <Card className="bg-slate-800/50 border-slate-700 p-4">
+        <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-4 hover:bg-slate-800/70 transition-colors">
           <div className="text-center">
             <div className="text-2xl font-bold text-white">{filteredMatches.length}</div>
             <div className="text-slate-400 text-sm">Total Matches</div>
           </div>
         </Card>
-        <Card className="bg-slate-800/50 border-slate-700 p-4">
+        <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-4 hover:bg-slate-800/70 transition-colors">
           <div className="text-center">
             <div className="text-2xl font-bold text-emerald-400">
               {filteredMatches.filter(m => (m.confidenceScore || 0) >= 80).length}
@@ -504,7 +515,7 @@ export default function MatchesPage() {
             <div className="text-slate-400 text-sm">80%+ Confidence</div>
           </div>
         </Card>
-        <Card className="bg-slate-800/50 border-slate-700 p-4">
+        <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-4 hover:bg-slate-800/70 transition-colors">
           <div className="text-center">
             <div className="text-2xl font-bold text-orange-400">
               {filteredMatches.filter(m => getMatchStatus(m) === "upcoming").length}
@@ -512,7 +523,7 @@ export default function MatchesPage() {
             <div className="text-slate-400 text-sm">Upcoming</div>
           </div>
         </Card>
-        <Card className="bg-slate-800/50 border-slate-700 p-4">
+        <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-4 hover:bg-slate-800/70 transition-colors">
           <div className="text-center">
             <div className="text-2xl font-bold text-purple-400">
               {filteredMatches.filter(m => m.valueRating?.toLowerCase() === "very high").length}
@@ -529,7 +540,7 @@ export default function MatchesPage() {
           const matchData = match.matchData || {}
           
           return (
-            <Card key={match.id} className="bg-slate-800/50 border-slate-700 hover:border-slate-600 transition-colors">
+            <Card key={match.id} className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm hover:border-slate-500/70 hover:bg-slate-800/70 transition-all duration-200">
               <CardHeader className="pb-4">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -567,11 +578,8 @@ export default function MatchesPage() {
                 {/* Prediction Details */}
                 {match.predictionType && (
                   <div className="bg-slate-700/30 rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-emerald-400 font-medium">Prediction</span>
-                      {match.odds && (
-                        <span className="text-slate-300 text-sm">@{match.odds}</span>
-                      )}
+                    <div className="mb-2">
+                      <span className="text-emerald-400 font-medium">Our Prediction</span>
                     </div>
                     <div className="text-white font-semibold mb-1">
                       {match.predictionType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
@@ -586,8 +594,14 @@ export default function MatchesPage() {
 
                 {/* Analysis Summary */}
                 {match.analysisSummary && (
-                  <div className="text-slate-300 text-sm">
-                    {match.analysisSummary}
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-4">
+                    <div className="flex items-center mb-2">
+                      <TrendingUp className="h-4 w-4 text-emerald-400 mr-2" />
+                      <span className="text-emerald-400 font-medium text-sm">Analysis</span>
+                    </div>
+                    <div className="text-slate-200 text-sm leading-relaxed">
+                      {match.analysisSummary}
+                    </div>
                   </div>
                 )}
 
@@ -632,7 +646,7 @@ export default function MatchesPage() {
 
       {/* Empty State */}
       {filteredMatches.length === 0 && !loading && (
-        <Card className="bg-slate-800/50 border-slate-700 p-12">
+        <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-12">
           <div className="text-center">
             <Target className="h-12 w-12 text-slate-400 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-white mb-2">No matches found</h3>
