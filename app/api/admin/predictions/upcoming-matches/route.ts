@@ -66,7 +66,6 @@ export async function GET(request: NextRequest) {
     // Process the data to extract match information
     const processedMatches = filteredMatches.map(qp => {
       const matchData = qp.matchData as any
-      const predictionData = qp.predictionData as any
       
       return {
         id: qp.id,

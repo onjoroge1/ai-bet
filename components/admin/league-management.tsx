@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   PlusCircle,
   Edit,
@@ -26,7 +26,6 @@ import {
   Search,
   RefreshCw,
   Wifi,
-  WifiOff,
   Activity,
   Settings,
   Database,
@@ -38,9 +37,7 @@ import {
   Loader2,
   XCircle,
   Globe,
-  Shield,
   Zap,
-  BarChart3,
   Calendar,
   Users,
   Trophy
@@ -215,7 +212,6 @@ export function AdminLeagueManagement() {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingLeague, setEditingLeague] = useState<League | null>(null)
   const [currentTab, setCurrentTab] = useState("all")
-  const [syncStatus, setSyncStatus] = useState<Record<string, SyncStatus>>({})
   const [selectedLeagueForMatches, setSelectedLeagueForMatches] = useState("all")
   const [upcomingMatches, setUpcomingMatches] = useState<any[]>([])
   const [upcomingMatchesStatus, setUpcomingMatchesStatus] = useState<any>(null)
@@ -423,23 +419,6 @@ export function AdminLeagueManagement() {
     syncMatchesMutation.mutate()
   }
 
-  const handleRefetchPredictions = (timeWindow: string) => {
-    // Use the existing enrichment API but with time window filtering
-    enrichMutation.mutate({ 
-      limit: 50, 
-      timeWindow,
-      leagueId: selectedLeagueForMatches === 'all' ? undefined : selectedLeagueForMatches
-    })
-  }
-
-  const handleSyncPredictions = (timeWindow: string) => {
-    // Use the new sync API that clears and refreshes predictions
-    syncPredictionsMutation.mutate({
-      timeWindow,
-      leagueId: selectedLeagueForMatches === 'all' ? undefined : selectedLeagueForMatches,
-      limit: 50
-    })
-  }
 
   const handleSyncAllUpcoming = () => {
     // Sync all upcoming matches (not time window specific)
@@ -834,7 +813,7 @@ export function AdminLeagueManagement() {
             <div className="text-center py-8">
               <Calendar className="w-12 h-12 text-slate-400 mx-auto mb-4" />
               <p className="text-slate-400">No upcoming matches data available</p>
-              <p className="text-slate-500 text-sm">Click "Sync Matches" to fetch the latest data</p>
+              <p className="text-slate-500 text-sm">Click &quot;Sync Matches&quot; to fetch the latest data</p>
             </div>
           )}
         </CardContent>
