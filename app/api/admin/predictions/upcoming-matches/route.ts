@@ -29,37 +29,39 @@ export async function GET(request: NextRequest) {
 
     const cutoffDate = new Date(now.getTime() + (hoursFromNow * 60 * 60 * 1000))
 
-    // Build where clause
-    const whereClause: any = {
-      matchId: { not: null },
-      isPredictionActive: true
-    }
-
+    // Use raw SQL for proper date filtering on JSON field
+    let sqlQuery = `
+      SELECT * FROM "QuickPurchase" 
+      WHERE "matchId" IS NOT NULL 
+        AND "isPredictionActive" = true
+        AND ("matchData"->>'date')::timestamp >= $1::timestamp
+        AND ("matchData"->>'date')::timestamp <= $2::timestamp
+      ORDER BY "createdAt" ASC 
+      LIMIT 100
+    `
+    
+    let queryParams = [now.toISOString(), cutoffDate.toISOString()]
+    
     // Add league filter if provided
     if (leagueId && leagueId !== 'all') {
-      whereClause.matchData = {
-        path: ['league'],
-        equals: leagueId
-      }
+      sqlQuery = `
+        SELECT * FROM "QuickPurchase" 
+        WHERE "matchId" IS NOT NULL 
+          AND "isPredictionActive" = true
+          AND ("matchData"->>'date')::timestamp >= $1::timestamp
+          AND ("matchData"->>'date')::timestamp <= $2::timestamp
+          AND ("matchData"->>'league') = $3
+        ORDER BY "createdAt" ASC 
+        LIMIT 100
+      `
+      queryParams = [now.toISOString(), cutoffDate.toISOString(), leagueId]
     }
 
-    // Fetch QuickPurchase records that need refetching
-    const upcomingMatches = await prisma.quickPurchase.findMany({
-      where: whereClause,
-      orderBy: {
-        createdAt: 'asc'
-      },
-      take: 100 // Increased to get more records for filtering
-    })
+    // Execute raw SQL query
+    const upcomingMatches = await prisma.$queryRawUnsafe(sqlQuery, ...queryParams)
 
-    // Filter by match date within the time window in JavaScript
-    const filteredMatches = upcomingMatches.filter(qp => {
-      const matchData = qp.matchData as any
-      if (!matchData?.date) return false
-      
-      const matchDate = new Date(matchData.date)
-      return matchDate >= now && matchDate <= cutoffDate
-    })
+    // No need for JavaScript filtering since SQL handles it
+    const filteredMatches = upcomingMatches as any[]
 
     // Process the data to extract match information
     const processedMatches = filteredMatches.map(qp => {
@@ -88,11 +90,11 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Group by time windows
+    // Group by time windows (inclusive from 0 to specified hours)
     const groupedMatches = {
-      '72h': processedMatches.filter(m => m.hoursUntilMatch && m.hoursUntilMatch <= 72 && m.hoursUntilMatch > 48),
-      '48h': processedMatches.filter(m => m.hoursUntilMatch && m.hoursUntilMatch <= 48 && m.hoursUntilMatch > 24),
-      '24h': processedMatches.filter(m => m.hoursUntilMatch && m.hoursUntilMatch <= 24 && m.hoursUntilMatch > 0),
+      '72h': processedMatches.filter(m => m.hoursUntilMatch && m.hoursUntilMatch <= 72),
+      '48h': processedMatches.filter(m => m.hoursUntilMatch && m.hoursUntilMatch <= 48),
+      '24h': processedMatches.filter(m => m.hoursUntilMatch && m.hoursUntilMatch <= 24),
       'urgent': processedMatches.filter(m => m.hoursUntilMatch && m.hoursUntilMatch <= 6)
     }
 

@@ -40,10 +40,8 @@ function probToImpliedOdds(pred?: {home_win?: number; draw?: number; away_win?: 
 
 // Helper function to find all upcoming matches (for syncAll)
 async function findAllUpcomingMatches(leagueId?: string) {
-  const whereClause: Prisma.QuickPurchaseWhereInput = {
-    matchId: { not: null },
-    isPredictionActive: true
-  }
+  const now = new Date()
+  const cutoffDate = new Date(now.getTime() + (72 * 60 * 60 * 1000)) // 72 hours from now
 
   if (leagueId) {
     // Use raw query for league filtering since we need to check matchData JSON field
@@ -53,16 +51,25 @@ async function findAllUpcomingMatches(leagueId?: string) {
       SELECT qp.* FROM "QuickPurchase" qp
       WHERE qp."matchId" IS NOT NULL 
       AND qp."isPredictionActive" = true
+      AND (qp."matchData"->>'date')::timestamp >= '${now.toISOString()}'::timestamp
+      AND (qp."matchData"->>'date')::timestamp <= '${cutoffDate.toISOString()}'::timestamp
       ${leagueFilter}
       ORDER BY qp."createdAt" DESC
     `
     
     return await prisma.$queryRawUnsafe(rawQuery)
   } else {
-    return await prisma.quickPurchase.findMany({
-      where: whereClause,
-      orderBy: { createdAt: 'desc' }
-    })
+    // Use raw query for date filtering on JSON field
+    const rawQuery = `
+      SELECT qp.* FROM "QuickPurchase" qp
+      WHERE qp."matchId" IS NOT NULL 
+      AND qp."isPredictionActive" = true
+      AND (qp."matchData"->>'date')::timestamp >= '${now.toISOString()}'::timestamp
+      AND (qp."matchData"->>'date')::timestamp <= '${cutoffDate.toISOString()}'::timestamp
+      ORDER BY qp."createdAt" DESC
+    `
+    
+    return await prisma.$queryRawUnsafe(rawQuery)
   }
 }
 
@@ -261,18 +268,155 @@ async function performSmartEnrichment(matches: any[], timeWindow: string, league
             waitingCount: waiting.length,
             noOddsCount: noOdds.length,
             readyMatchIds: ready,
-            waitingReasons: waiting.slice(0, 3).map(w => ({ matchId: w.match_id, reason: w.reason }))
+            waitingReasons: waiting.slice(0, 3).map(w => ({ matchId: w.match_id, reason: w.reason })),
+            noOddsReasons: noOdds.slice(0, 3).map(n => ({ matchId: n.match_id, reason: n.reason })),
+            // Debug: Show why matches are not ready
+            availabilityDetails: availability.availability.slice(0, 3).map(item => ({
+              matchId: item.match_id,
+              enrich: item.enrich,
+              reason: item.reason,
+              bookmakers: item.bookmakers,
+              timeBucket: item.time_bucket
+            }))
           }
         })
         
         // Process only ready matches
+        logger.info(`🚀 Processing ${ready.length} ready matches for prediction`, {
+          tags: ['api', 'admin', 'predictions', 'enrichment'],
+          data: {
+            readyCount: ready.length,
+            readyMatchIds: ready.slice(0, 5),
+            totalMatches: matches.length
+          }
+        })
+        
+        // If no matches are ready, try fallback approach
+        if (ready.length === 0) {
+          logger.warn(`⚠️ No ready matches in batch ${batchIndex + 1}, trying fallback approach`, {
+            tags: ['api', 'admin', 'predictions', 'enrichment'],
+            data: {
+              batchIndex: batchIndex + 1,
+              waitingCount: waiting.length,
+              noOddsCount: noOdds.length,
+              waitingReasons: waiting.slice(0, 3).map(w => ({ matchId: w.match_id, reason: w.reason })),
+              noOddsReasons: noOdds.slice(0, 3).map(n => ({ matchId: n.match_id, reason: n.reason })),
+              fallbackApproach: 'process_all_matches_in_batch'
+            }
+          })
+          
+          // Fallback: Process all matches in this batch as if they were ready
+          const fallbackReady = batch
+          logger.info(`🔄 Using fallback approach for batch ${batchIndex + 1}`, {
+            tags: ['api', 'admin', 'predictions', 'enrichment'],
+            data: {
+              batchIndex: batchIndex + 1,
+              fallbackReadyCount: fallbackReady.length,
+              fallbackMatchIds: fallbackReady.slice(0, 5)
+            }
+          })
+          
+          // Process fallback matches
+          for (const matchId of fallbackReady) {
+            try {
+              const quickPurchase = matches.find(m => parseInt(m.matchId) === matchId)
+              if (!quickPurchase) {
+                logger.warn('QuickPurchase not found for fallback match', {
+                  tags: ['api', 'admin', 'predictions', 'enrichment'],
+                  data: { matchId, availableMatchIds: matches.map(m => m.matchId).slice(0, 5) }
+                })
+                continue
+              }
+
+              // Fetch prediction from backend
+              const response = await fetch(`${process.env.BACKEND_URL}/predict`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${process.env.BACKEND_API_KEY}`
+                },
+                body: JSON.stringify({
+                  match_id: matchId,
+                  include_analysis: true
+                })
+              })
+
+              if (!response.ok) {
+                const errorText = await response.text()
+                throw new Error(`Backend responded with status ${response.status}: ${errorText}`)
+              }
+
+              const prediction = await response.json()
+              
+              if (!prediction) {
+                failedCount++
+                errors.push(`Match ${matchId}: No prediction data`)
+                continue
+              }
+
+              // Skip if confidence is 0 (not ready)
+              const confidence = prediction.predictions?.confidence ?? 0
+              if (confidence === 0) {
+                skippedCount++
+                continue
+              }
+
+              // Extract prediction details
+              const predictionType = prediction.predictions?.recommended_bet ?? 
+                                    prediction.comprehensive_analysis?.ai_verdict?.recommended_outcome?.toLowerCase().replace(' ', '_') ?? 
+                                    'no_prediction'
+              
+              const confidenceScore = Math.round(confidence * 100)
+              const valueRating = toValueRating(confidence)
+              const odds = probToImpliedOdds(prediction.predictions)
+              const analysisSummary = prediction.analysis?.explanation ?? 
+                                     prediction.comprehensive_analysis?.ai_verdict?.confidence_level ?? 
+                                     'AI prediction available'
+
+              // Update the QuickPurchase record
+              await prisma.quickPurchase.update({
+                where: { id: quickPurchase.id },
+                data: {
+                  predictionData: prediction as any,
+                  predictionType: predictionType,
+                  confidenceScore: confidenceScore,
+                  odds: odds?.home || null,
+                  valueRating: valueRating,
+                  analysisSummary: analysisSummary,
+                  isPredictionActive: true,
+                  lastEnrichmentAt: new Date(),
+                  enrichmentCount: { increment: 1 }
+                }
+              })
+
+              enrichedCount++
+
+              // Rate limiting: delay between requests
+              await delay(300)
+
+            } catch (error) {
+              logger.error('Error enriching QuickPurchase (fallback)', {
+                tags: ['api', 'admin', 'predictions', 'enrichment', 'error'],
+                data: {
+                  matchId: matchId,
+                  error: error instanceof Error ? error.message : 'Unknown error'
+                }
+              })
+              failedCount++
+              errors.push(`Match ${matchId}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+            }
+          }
+          
+          continue // Skip to next batch
+        }
+        
         for (const matchId of ready) {
           try {
             const quickPurchase = matches.find(m => parseInt(m.matchId) === matchId)
             if (!quickPurchase) {
               logger.warn('QuickPurchase not found for ready match', {
                 tags: ['api', 'admin', 'predictions', 'enrichment'],
-                data: { matchId }
+                data: { matchId, availableMatchIds: matches.map(m => m.matchId).slice(0, 5) }
               })
               continue
             }
@@ -400,7 +544,15 @@ async function performSmartEnrichment(matches: any[], timeWindow: string, league
         skippedCount,
         failedCount,
         totalTime: `${totalTime}ms`,
-        errors: errors.slice(0, 10)
+        errors: errors.slice(0, 10),
+        // Summary of what happened
+        summary: {
+          totalMatches: matches.length,
+          enriched: enrichedCount,
+          skipped: skippedCount,
+          failed: failedCount,
+          successRate: matches.length > 0 ? Math.round((enrichedCount / matches.length) * 100) : 0
+        }
       }
     })
 

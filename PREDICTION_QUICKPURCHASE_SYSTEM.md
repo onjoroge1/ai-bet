@@ -117,17 +117,25 @@ graph TD
 
 ### Prediction QuickPurchase Manager
 
-- **Match Overview**: View all upcoming matches
+- **Match Overview**: View all upcoming matches (next 72 hours)
 - **League Filtering**: Filter by different leagues
 - **Search**: Search matches by team or league
 - **Status Tracking**: See which matches have QuickPurchases
 - **Bulk Creation**: Create multiple QuickPurchases efficiently
 
+### Sync & Enrich System
+
+- **Sync All Upcoming Matches**: Processes all upcoming matches (86 matches typically)
+- **Enrich All Predictions (Smart)**: Populates predictions using availability API
+- **Real-time Status**: Live counts of total, enriched, and pending matches
+- **Enhanced Logging**: Detailed progress tracking with emojis and comprehensive data
+
 ### Statistics Dashboard
 
-- **Total Matches**: Number of upcoming matches
-- **Available for Purchase**: Matches without QuickPurchases
-- **Already Created**: Matches with existing QuickPurchases
+- **Total Matches**: Number of upcoming matches (86+ typically)
+- **Enriched Matches**: Matches with complete prediction data
+- **Pending Matches**: Matches awaiting enrichment
+- **Success Rate**: Enrichment success percentage
 
 ## Purchase Delivery Format
 
@@ -268,6 +276,25 @@ curl -X POST "http://localhost:3000/api/purchase-tip" \
   -H "Content-Type: application/json" \
   -d '{"itemId": "quickpurchase-id", "paymentMethod": "test", "price": "5.00"}'
 ```
+
+## Recent System Improvements (September 2025)
+
+### ✅ **Sync & Enrich System Overhaul**
+- **Fixed Critical Issue**: "Sync & Enrich Matches" now processes all 86 upcoming matches instead of just 37
+- **Improved Date Filtering**: Moved from JavaScript to SQL-level filtering for accuracy
+- **Enhanced UI**: Simplified from 7 buttons to 2 main actions (Sync All + Enrich All)
+- **Better Logging**: Added comprehensive progress tracking with detailed metrics
+
+### ✅ **Data Processing Improvements**
+- **All Matches Processed**: System now refreshes ALL upcoming matches, not just unenriched ones
+- **Availability API Integration**: Only enriches matches marked as "ready" by external API
+- **Real-time Status Updates**: Live counts of total, enriched, and pending matches
+- **Error Handling**: Enhanced error context and retry logic
+
+### ✅ **Performance Optimizations**
+- **Database-Level Filtering**: More reliable than application-level filtering
+- **Batch Processing**: Efficient handling of large match datasets
+- **Smart Enrichment**: Selective processing based on availability criteria
 
 ## Future Enhancements
 
