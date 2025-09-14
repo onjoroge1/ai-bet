@@ -215,6 +215,7 @@ export function AdminLeagueManagement() {
   const [selectedLeagueForMatches, setSelectedLeagueForMatches] = useState("all")
   const [upcomingMatches, setUpcomingMatches] = useState<any[]>([])
   const [upcomingMatchesStatus, setUpcomingMatchesStatus] = useState<any>(null)
+  const [syncStatus, setSyncStatus] = useState<Record<string, SyncStatus>>({})
 
   // Queries
   const { data: leagues = [], isLoading, error } = useQuery({

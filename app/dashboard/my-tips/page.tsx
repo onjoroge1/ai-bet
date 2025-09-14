@@ -254,19 +254,19 @@ export default function MyTipsPage() {
   // Component for upcoming match cards (full-size)
   const UpcomingMatchCard = ({ tip }: { tip: Tip }) => {
     const timeRemaining = getTimeRemaining(tip.matchDate)
-    
-    return (
-      <Card 
-        className="bg-slate-800/60 border-emerald-500/30 backdrop-blur-sm hover:border-emerald-400/50 hover:bg-slate-800/70 transition-all duration-200 cursor-pointer"
-        onClick={() => handleViewPrediction(tip)}
-      >
+
+  return (
+            <Card 
+        className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm hover:border-emerald-400/50 hover:bg-slate-800/70 transition-all duration-200 cursor-pointer"
+              onClick={() => handleViewPrediction(tip)}
+            >
         <div className="p-6 space-y-4">
           {/* Header with time remaining */}
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2 text-emerald-400 text-sm font-medium">
-              <Calendar className="w-4 h-4" />
-              <span>{formatMatchDate(tip.matchDate)}</span>
-            </div>
+                    <Calendar className="w-4 h-4" />
+                    <span>{formatMatchDate(tip.matchDate)}</span>
+                  </div>
             {timeRemaining && (
               <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
                 Starts in {timeRemaining}
@@ -277,47 +277,47 @@ export default function MyTipsPage() {
           {/* Match Teams */}
           <div className="text-center">
             <div className="text-white font-bold text-xl mb-2">
-              {tip.homeTeam} vs {tip.awayTeam}
-            </div>
-            {tip.league && (
+                    {tip.homeTeam} vs {tip.awayTeam}
+                  </div>
+                  {tip.league && (
               <div className="flex items-center justify-center text-slate-400 text-sm">
-                <Trophy className="w-4 h-4 mr-1" />
-                {tip.league}
-              </div>
-            )}
-          </div>
+                      <Trophy className="w-4 h-4 mr-1" />
+                      {tip.league}
+                    </div>
+                  )}
+                </div>
 
-          {/* Prediction Info */}
-          {tip.predictionType && (
+                {/* Prediction Info */}
+                {tip.predictionType && (
             <div className="text-center space-y-3">
               <Badge className="bg-emerald-600 text-white text-sm px-3 py-1">
-                {getPredictionTypeLabel(tip.predictionType)}
-              </Badge>
+                      {getPredictionTypeLabel(tip.predictionType)}
+                    </Badge>
               <div className="flex items-center justify-center space-x-4">
-                {tip.confidenceScore && (
-                  <div className="text-emerald-400 text-sm">
+                    {tip.confidenceScore && (
+                      <div className="text-emerald-400 text-sm">
                     <span className="font-medium">{tip.confidenceScore}%</span> confidence
+                      </div>
+                    )}
+                    {tip.valueRating && (
+                  <Badge className={`${getValueRatingColor(tip.valueRating)} text-white text-xs`}>
+                        {tip.valueRating} Value
+                      </Badge>
+                    )}
+              </div>
                   </div>
                 )}
-                {tip.valueRating && (
-                  <Badge className={`${getValueRatingColor(tip.valueRating)} text-white text-xs`}>
-                    {tip.valueRating} Value
-                  </Badge>
-                )}
-              </div>
-            </div>
-          )}
 
-          {/* Purchase Info */}
+                {/* Purchase Info */}
           <div className="border-t border-slate-700 pt-4">
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-slate-400">
-                {tip.tipType === 'credit_claim' ? 'Claimed:' : 'Purchased:'}
-              </span>
-              <span className="text-slate-300">
-                {new Date(tip.purchaseDate).toLocaleDateString()}
-              </span>
-            </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-slate-400">
+                      {tip.tipType === 'credit_claim' ? 'Claimed:' : 'Purchased:'}
+                    </span>
+                    <span className="text-slate-300">
+                      {new Date(tip.purchaseDate).toLocaleDateString()}
+                    </span>
+                  </div>
           </div>
 
           <Button 
@@ -338,7 +338,7 @@ export default function MyTipsPage() {
   const CompletedMatchCard = ({ tip }: { tip: Tip }) => {
     return (
       <Card 
-        className="bg-slate-800/40 border-slate-600/20 backdrop-blur-sm hover:border-slate-500/30 hover:bg-slate-800/50 transition-all duration-200 cursor-pointer"
+        className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm hover:border-slate-500/30 hover:bg-slate-800/70 transition-all duration-200 cursor-pointer"
         onClick={() => handleViewPrediction(tip)}
       >
         <div className="p-4 space-y-3">
@@ -361,9 +361,9 @@ export default function MyTipsPage() {
             {tip.league && (
               <div className="text-slate-400 text-xs mt-1">
                 {tip.league}
-              </div>
-            )}
-          </div>
+                    </div>
+                  )}
+                </div>
 
           {/* Prediction Info - Compact */}
           {tip.predictionType && (
@@ -382,18 +382,18 @@ export default function MyTipsPage() {
           )}
 
 
-          <Button 
+                <Button 
             size="sm"
             className="w-full bg-slate-600 hover:bg-slate-700 text-white text-sm"
-            onClick={(e) => {
-              e.stopPropagation()
-              handleViewPrediction(tip)
-            }}
-          >
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleViewPrediction(tip)
+                  }}
+                >
             View Details
-          </Button>
-        </div>
-      </Card>
+                </Button>
+              </div>
+            </Card>
     )
   }
 
@@ -410,13 +410,27 @@ export default function MyTipsPage() {
   const completedTips = getCompletedTips(tips)
 
   return (
-    <div className="container mx-auto py-8">
-      <h1 className="text-2xl font-bold text-white mb-6">My Predictions</h1>
+    <div className="max-w-7xl mx-auto px-4 py-8">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-white mb-2">My Predictions</h1>
+        <p className="text-slate-400">
+          View and manage your purchased predictions and claimed tips
+        </p>
+      </div>
       
       {tips.length === 0 ? (
-        <Card className="bg-slate-800 border-slate-700 p-6 text-center">
-          <p className="text-slate-400">You haven&apos;t purchased or claimed any predictions yet.</p>
-          <p className="text-slate-500 text-sm mt-2">Start by claiming tips with credits or purchasing premium predictions!</p>
+        <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-12">
+          <div className="text-center">
+            <Target className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-white mb-2">No predictions yet</h3>
+            <p className="text-slate-400 mb-4">
+              You haven&apos;t purchased or claimed any predictions yet.
+            </p>
+            <p className="text-slate-500 text-sm">
+              Start by claiming tips with credits or purchasing premium predictions!
+            </p>
+          </div>
         </Card>
       ) : (
         <div className="space-y-8">
@@ -462,8 +476,12 @@ export default function MyTipsPage() {
 
           {/* No matches message */}
           {upcomingTips.length === 0 && completedTips.length === 0 && (
-            <Card className="bg-slate-800 border-slate-700 p-6 text-center">
-              <p className="text-slate-400">No matches found in your predictions.</p>
+            <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-12">
+              <div className="text-center">
+                <Target className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-white mb-2">No matches found</h3>
+                <p className="text-slate-400">No matches found in your predictions.</p>
+              </div>
             </Card>
           )}
         </div>
@@ -606,7 +624,7 @@ export default function MyTipsPage() {
                             <span className="text-slate-300">Confidence</span>
                             <span className="text-emerald-400 font-bold text-xl">
                               {((selectedTip.predictionData as any).predictions.confidence * 100).toFixed(1)}%
-                            </span>
+                                </span>
                           </div>
                         )}
                       </>
@@ -626,7 +644,7 @@ export default function MyTipsPage() {
                   <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
                     <div className="text-slate-300 leading-relaxed whitespace-pre-line">
                       {(selectedTip.predictionData as any).analysis.ai_summary}
-                    </div>
+                          </div>
                   </div>
                 </Card>
               )}
@@ -659,7 +677,7 @@ export default function MyTipsPage() {
                                   </li>
                                 ))}
                               </ul>
-                            </div>
+                  </div>
                           )}
                           
                           {/* Weaknesses */}
@@ -674,27 +692,27 @@ export default function MyTipsPage() {
                                   </li>
                                 ))}
                               </ul>
-                            </div>
-                          )}
-
+                      </div>
+                    )}
+                    
                           {/* Form Assessment */}
                           {(selectedTip.predictionData as any).analysis.team_analysis.home_team.form_assessment && (
                             <div>
                               <div className="text-sm text-blue-400 font-medium mb-2">Form Assessment:</div>
                               <div className="text-slate-300 text-sm">
                                 {(selectedTip.predictionData as any).analysis.team_analysis.home_team.form_assessment}
-                              </div>
-                            </div>
-                          )}
-
+                        </div>
+                      </div>
+                    )}
+                    
                           {/* Injury Impact */}
                           {(selectedTip.predictionData as any).analysis.team_analysis.home_team.injury_impact && (
                             <div>
                               <div className="text-sm text-orange-400 font-medium mb-2">Injury Impact:</div>
                               <div className="text-slate-300 text-sm">
                                 {(selectedTip.predictionData as any).analysis.team_analysis.home_team.injury_impact}
-                              </div>
-                            </div>
+                        </div>
+                          </div>
                           )}
                         </div>
                       </div>
@@ -702,7 +720,7 @@ export default function MyTipsPage() {
 
                     {/* Away Team */}
                     {(selectedTip.predictionData as any).analysis.team_analysis.away_team && (
-                      <div className="space-y-4">
+                  <div className="space-y-4">
                         <h4 className="text-md font-medium text-white flex items-center">
                           <span className="w-3 h-3 bg-red-500 rounded-full mr-2"></span>
                           {selectedTip.awayTeam}
@@ -720,7 +738,7 @@ export default function MyTipsPage() {
                                   </li>
                                 ))}
                               </ul>
-                            </div>
+                      </div>
                           )}
                           
                           {/* Weaknesses */}
@@ -735,7 +753,7 @@ export default function MyTipsPage() {
                                   </li>
                                 ))}
                               </ul>
-                            </div>
+                  </div>
                           )}
 
                           {/* Form Assessment */}
@@ -744,21 +762,21 @@ export default function MyTipsPage() {
                               <div className="text-sm text-blue-400 font-medium mb-2">Form Assessment:</div>
                               <div className="text-slate-300 text-sm">
                                 {(selectedTip.predictionData as any).analysis.team_analysis.away_team.form_assessment}
-                              </div>
-                            </div>
-                          )}
-
+                        </div>
+                      </div>
+                    )}
+                    
                           {/* Injury Impact */}
                           {(selectedTip.predictionData as any).analysis.team_analysis.away_team.injury_impact && (
                             <div>
                               <div className="text-sm text-orange-400 font-medium mb-2">Injury Impact:</div>
                               <div className="text-slate-300 text-sm">
                                 {(selectedTip.predictionData as any).analysis.team_analysis.away_team.injury_impact}
-                              </div>
-                            </div>
-                          )}
                         </div>
                       </div>
+                    )}
+                  </div>
+                        </div>
                     )}
                   </div>
                 </Card>
@@ -766,19 +784,19 @@ export default function MyTipsPage() {
 
               {/* Prediction Analysis */}
               {(selectedTip.predictionData as any)?.analysis?.prediction_analysis && (
-                <Card className="bg-slate-800 border-slate-700 p-6">
+              <Card className="bg-slate-800 border-slate-700 p-6">
                   <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
                     <Target className="w-5 h-5 mr-2 text-yellow-400" />
                     Prediction Analysis
                   </h3>
-                  <div className="space-y-4">
+                <div className="space-y-4">
                     {/* Model Assessment */}
                     {(selectedTip.predictionData as any).analysis.prediction_analysis.model_assessment && (
                       <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
                         <div className="text-yellow-400 font-medium mb-2">Model Assessment:</div>
                         <div className="text-slate-300">
                           {(selectedTip.predictionData as any).analysis.prediction_analysis.model_assessment}
-                        </div>
+                  </div>
                       </div>
                     )}
 
@@ -794,22 +812,22 @@ export default function MyTipsPage() {
 
                     {/* Confidence Factors */}
                     {(selectedTip.predictionData as any).analysis.prediction_analysis.confidence_factors && (
-                      <div>
+                    <div>
                         <div className="text-green-400 font-medium mb-2">Confidence Factors:</div>
-                        <ul className="space-y-1">
+                      <ul className="space-y-1">
                           {(selectedTip.predictionData as any).analysis.prediction_analysis.confidence_factors.map((factor: string, index: number) => (
-                            <li key={index} className="text-slate-300 text-sm flex items-start">
+                          <li key={index} className="text-slate-300 text-sm flex items-start">
                               <span className="text-green-400 mr-2">•</span>
                               {factor}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  
                     {/* Risk Factors */}
                     {(selectedTip.predictionData as any).analysis.prediction_analysis.risk_factors && (
-                      <div>
+                    <div>
                         <div className="text-red-400 font-medium mb-2">Risk Factors:</div>
                         <ul className="space-y-1">
                           {(selectedTip.predictionData as any).analysis.prediction_analysis.risk_factors.map((risk: string, index: number) => (
@@ -819,10 +837,10 @@ export default function MyTipsPage() {
                             </li>
                           ))}
                         </ul>
-                      </div>
-                    )}
-                  </div>
-                </Card>
+                    </div>
+                  )}
+                </div>
+              </Card>
               )}
 
               {/* Betting Recommendations */}
@@ -832,15 +850,15 @@ export default function MyTipsPage() {
                     <Shield className="w-5 h-5 mr-2 text-emerald-400" />
                     Betting Recommendations
                   </h3>
-                  <div className="space-y-4">
+                    <div className="space-y-4">
                     {/* Primary Bet */}
                     {(selectedTip.predictionData as any).analysis.betting_recommendations.primary_bet && (
                       <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-4">
                         <div className="text-emerald-400 font-medium mb-2">Primary Recommendation:</div>
                         <div className="text-slate-200">
                           {(selectedTip.predictionData as any).analysis.betting_recommendations.primary_bet}
-                        </div>
-                      </div>
+                          </div>
+                          </div>
                     )}
                     
                     {/* Risk Level */}
@@ -854,7 +872,7 @@ export default function MyTipsPage() {
                         }`}>
                           {(selectedTip.predictionData as any).analysis.betting_recommendations.risk_level}
                         </Badge>
-                      </div>
+                        </div>
                     )}
 
                     {/* Suggested Stake */}
@@ -864,7 +882,7 @@ export default function MyTipsPage() {
                         <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
                           {(selectedTip.predictionData as any).analysis.betting_recommendations.suggested_stake}
                         </Badge>
-                      </div>
+                        </div>
                     )}
 
                     {/* Alternative Bets */}
@@ -879,7 +897,7 @@ export default function MyTipsPage() {
                             </li>
                           ))}
                         </ul>
-                      </div>
+                                </div>
                     )}
                   </div>
                 </Card>
@@ -897,7 +915,7 @@ export default function MyTipsPage() {
                     {(selectedTip.predictionData as any).additional_markets.total_goals && (
                       <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
                         <h5 className="text-white font-medium mb-3">Total Goals</h5>
-                        <div className="space-y-2">
+                      <div className="space-y-2">
                           <div className="flex justify-between">
                             <span className="text-slate-400">Over 2.5:</span>
                             <span className="text-white font-medium">
@@ -913,18 +931,18 @@ export default function MyTipsPage() {
                         </div>
                       </div>
                     )}
-
+                    
                     {/* Both Teams to Score */}
                     {(selectedTip.predictionData as any).additional_markets.both_teams_score && (
                       <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
                         <h5 className="text-white font-medium mb-3">Both Teams to Score</h5>
-                        <div className="space-y-2">
+                      <div className="space-y-2">
                           <div className="flex justify-between">
                             <span className="text-slate-400">Yes:</span>
                             <span className="text-white font-medium">
                               {((selectedTip.predictionData as any).additional_markets.both_teams_score.yes * 100).toFixed(1)}%
                             </span>
-                          </div>
+                            </div>
                           <div className="flex justify-between">
                             <span className="text-slate-400">No:</span>
                             <span className="text-white font-medium">
@@ -934,26 +952,26 @@ export default function MyTipsPage() {
                         </div>
                       </div>
                     )}
-
+                    
                     {/* Asian Handicap */}
                     {(selectedTip.predictionData as any).additional_markets.asian_handicap && (
                       <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
                         <h5 className="text-white font-medium mb-3">Asian Handicap</h5>
-                        <div className="space-y-2">
+                      <div className="space-y-2">
                           <div className="flex justify-between">
                             <span className="text-slate-400">Home -0.5:</span>
                             <span className="text-white font-medium">
                               {((selectedTip.predictionData as any).additional_markets.asian_handicap['home_-0.5'] * 100).toFixed(1)}%
                             </span>
-                          </div>
+                            </div>
                           <div className="flex justify-between">
                             <span className="text-slate-400">Away +0.5:</span>
                             <span className="text-white font-medium">
                               {((selectedTip.predictionData as any).additional_markets.asian_handicap['away_+0.5'] * 100).toFixed(1)}%
                             </span>
-                          </div>
                         </div>
                       </div>
+                  </div>
                     )}
                   </div>
                 </Card>
@@ -961,7 +979,7 @@ export default function MyTipsPage() {
 
               {/* Model Information */}
               {(selectedTip.predictionData as any)?.model_info && (
-                <Card className="bg-slate-800 border-slate-700 p-6">
+              <Card className="bg-slate-800 border-slate-700 p-6">
                   <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
                     <Shield className="w-5 h-5 mr-2 text-purple-400" />
                     Model Information
@@ -971,37 +989,37 @@ export default function MyTipsPage() {
                       <div className="flex justify-between">
                         <span className="text-slate-400">Model Type:</span>
                         <span className="text-white">{(selectedTip.predictionData as any).model_info.type}</span>
-                      </div>
+                    </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400">Version:</span>
                         <span className="text-white">{(selectedTip.predictionData as any).model_info.version}</span>
-                      </div>
+                  </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400">Performance:</span>
                         <span className="text-white">{(selectedTip.predictionData as any).model_info.performance}</span>
-                      </div>
                     </div>
+                  </div>
                     <div className="space-y-2">
                       <div className="flex justify-between">
                         <span className="text-slate-400">Quality Score:</span>
                         <span className="text-white">{(selectedTip.predictionData as any).model_info.quality_score ? ((selectedTip.predictionData as any).model_info.quality_score * 100).toFixed(1) + '%' : 'N/A'}</span>
-                      </div>
+                    </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400">Bookmaker Count:</span>
                         <span className="text-white">{(selectedTip.predictionData as any).model_info.bookmaker_count}</span>
-                      </div>
+                    </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400">Data Sources:</span>
                         <span className="text-white">{(selectedTip.predictionData as any).model_info.data_sources?.join(', ')}</span>
-                      </div>
                     </div>
-                  </div>
-                </Card>
+                    </div>
+                </div>
+              </Card>
               )}
 
               {/* Data Freshness */}
               {(selectedTip.predictionData as any)?.data_freshness && (
-                <Card className="bg-slate-800 border-slate-700 p-6">
+              <Card className="bg-slate-800 border-slate-700 p-6">
                   <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
                     <Calendar className="w-5 h-5 mr-2 text-blue-400" />
                     Data Freshness
@@ -1010,19 +1028,19 @@ export default function MyTipsPage() {
                     <div className="text-center">
                       <div className="text-2xl font-bold text-blue-400">{(selectedTip.predictionData as any).data_freshness.h2h_matches}</div>
                       <div className="text-slate-400 text-sm">H2H Matches</div>
-                    </div>
+                  </div>
                     <div className="text-center">
                       <div className="text-2xl font-bold text-green-400">{(selectedTip.predictionData as any).data_freshness.form_matches}</div>
                       <div className="text-slate-400 text-sm">Form Matches</div>
-                    </div>
+                  </div>
                     <div className="text-center">
                       <div className="text-2xl font-bold text-orange-400">{(selectedTip.predictionData as any).data_freshness.home_injuries}</div>
                       <div className="text-slate-400 text-sm">Home Injuries</div>
-                    </div>
+                  </div>
                     <div className="text-center">
                       <div className="text-2xl font-bold text-red-400">{(selectedTip.predictionData as any).data_freshness.away_injuries}</div>
                       <div className="text-slate-400 text-sm">Away Injuries</div>
-                    </div>
+                </div>
                   </div>
                   {(selectedTip.predictionData as any).data_freshness.collection_time && (
                     <div className="mt-4 pt-4 border-t border-slate-600">
@@ -1031,7 +1049,7 @@ export default function MyTipsPage() {
                       </div>
                     </div>
                   )}
-                </Card>
+              </Card>
               )}
 
 
@@ -1045,4 +1063,4 @@ export default function MyTipsPage() {
       )}
     </div>
   )
-}
+} 
