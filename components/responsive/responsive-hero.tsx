@@ -56,12 +56,11 @@ export function ResponsiveHero() {
     <section className="relative px-4 py-12 md:py-20 text-center overflow-hidden min-h-[70vh] md:min-h-[90vh] flex items-center">
       {/* Soccer Player Background Image */}
       <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-900">
-        {/* Soccer player background image */}
+        {/* Soccer player background image - Responsive positioning */}
         <div 
-          className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-25"
+          className="absolute inset-0 bg-cover bg-no-repeat opacity-25 bg-center"
           style={{
-            backgroundImage: "url('https://images.unsplash.com/photo-1574629810360-7efbbe195018?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80')",
-            backgroundPosition: 'center bottom',
+            backgroundImage: "url('/uploads/image/footballer-bg.jpeg')",
             backgroundSize: 'cover'
           }}
         />

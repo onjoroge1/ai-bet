@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Menu, X, TrendingUp, User, LogOut, MapPin, BookOpen, Target, Crown, Radio, HelpCircle, BarChart3, Gift } from "lucide-react"
@@ -14,11 +14,30 @@ export function Navigation() {
   const { countryData, isLoading } = useUserCountry()
   const { user, isAuthenticated, logout } = useAuth()
   const router = useRouter()
+  const navRef = useRef<HTMLDivElement>(null)
 
   const handleSignOut = async () => {
     await logout()
+    setIsOpen(false) // Close mobile menu
     router.push("/")
   }
+
+  // Close mobile menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (navRef.current && !navRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isOpen])
 
   // Core navigation links - simplified and focused
   const navLinks = [
@@ -37,7 +56,7 @@ export function Navigation() {
   // Show navbar immediately with fallback country data
 
   return (
-    <nav className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800">
+    <nav ref={navRef} className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800">
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo - Simplified with Homepage Link */}
@@ -195,6 +214,7 @@ export function Navigation() {
                       <Button 
                         variant="ghost" 
                         className="w-full text-slate-300 hover:text-white hover:bg-slate-800/50"
+                        onClick={() => setIsOpen(false)}
                       >
                         <Link href="/dashboard" className="flex items-center justify-center w-full">
                           <User className="w-4 h-4 mr-2" />
@@ -215,11 +235,13 @@ export function Navigation() {
                       <Button 
                         variant="ghost" 
                         className="w-full text-slate-300 hover:text-white hover:bg-slate-800/50"
+                        onClick={() => setIsOpen(false)}
                       >
                         <Link href="/signin">Login</Link>
                       </Button>
                       <Button 
                         className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                        onClick={() => setIsOpen(false)}
                       >
                         <Link href="/signup">Sign Up</Link>
                       </Button>
