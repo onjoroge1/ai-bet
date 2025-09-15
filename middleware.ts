@@ -48,10 +48,20 @@ const protectedPaths = [
 ]
 
 // Rate limiting configuration
+const isDevelopment = process.env.NODE_ENV === 'development'
 const rateLimitConfig = {
-  default: { maxRequests: 100, windowMs: 60000 }, // 100 requests per minute
-  auth: { maxRequests: 5, windowMs: 60000 }, // 5 auth attempts per minute
-  api: { maxRequests: 1000, windowMs: 60000 }, // 1000 API calls per minute
+  default: { 
+    maxRequests: isDevelopment ? 10000 : 100, // 10000 requests per minute in dev, 100 in prod
+    windowMs: 60000 
+  },
+  auth: { 
+    maxRequests: isDevelopment ? 100 : 5, // 100 auth attempts per minute in dev, 5 in prod
+    windowMs: 60000 
+  },
+  api: { 
+    maxRequests: isDevelopment ? 10000 : 1000, // 10000 API calls per minute in dev, 1000 in prod
+    windowMs: 60000 
+  },
 }
 
 // Helper function to check if path is admin-only (excluding authenticated paths and public history endpoints)

@@ -739,10 +739,14 @@ export class EmailService {
       
       if (template && template.isActive) {
         // Use the template system
+        const appUrl = data.appUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        const resetUrl = `${appUrl}/reset-password?token=${data.resetToken}`
+        
         const renderedEmail = await EmailTemplateService.renderTemplate('password-reset', {
           userName: data.userName,
-          resetToken: data.resetToken,
-          appUrl: data.appUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+          userEmail: data.to,
+          resetUrl: resetUrl,
+          appUrl: appUrl
         })
         
         return this.sendEmail({
@@ -751,8 +755,9 @@ export class EmailService {
           template: 'password-reset',
           data: {
             userName: data.userName,
-            resetToken: data.resetToken,
-            appUrl: data.appUrl
+            userEmail: data.to,
+            resetUrl: resetUrl,
+            appUrl: appUrl
           },
         }, renderedEmail.html)
       }
@@ -972,7 +977,7 @@ export class EmailService {
 
       logger.info('[EmailService] Attempting to send email', { template: emailData.template, to: emailData.to });
       const result = await resend.emails.send({
-        from: process.env.FROM_EMAIL || 'notifications@notifications.snapbet.bet',
+        from: process.env.FROM_EMAIL || 'notifications@snapbet.bet',
         to: emailData.to,
         subject: emailData.subject,
         html,

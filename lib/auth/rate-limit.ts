@@ -6,7 +6,8 @@ const redis = new Redis({
 })
 
 const RATE_LIMIT_WINDOW = 60 * 60 // 1 hour in seconds
-const MAX_ATTEMPTS = 5 // Maximum number of attempts within the window
+const isDevelopment = process.env.NODE_ENV === 'development'
+const MAX_ATTEMPTS = isDevelopment ? 100 : 5 // 100 attempts in dev, 5 in production
 
 export async function checkRateLimit(identifier: string): Promise<boolean> {
   const key = `rate-limit:${identifier}`

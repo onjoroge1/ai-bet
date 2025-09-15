@@ -19,6 +19,9 @@ export function checkRateLimit(
   maxRequests: number = 100,
   windowMs: number = 60000
 ): { allowed: boolean; remaining: number; resetTime: number } {
+  // In development, be more lenient with rate limits
+  const isDevelopment = process.env.NODE_ENV === 'development'
+  const adjustedMaxRequests = isDevelopment ? Math.max(maxRequests * 20, 1000) : maxRequests
   const now = Date.now()
   const key = identifier
   const windowStart = now - windowMs
@@ -49,13 +52,13 @@ export function checkRateLimit(
   // Increment count
   entry.count++
 
-  const allowed = entry.count <= maxRequests
-  const remaining = Math.max(0, maxRequests - entry.count)
+  const allowed = entry.count <= adjustedMaxRequests
+  const remaining = Math.max(0, adjustedMaxRequests - entry.count)
 
   if (!allowed) {
     logger.warn('Rate limit exceeded', {
       tags: ['security', 'rate-limit'],
-      data: { identifier, count: entry.count, maxRequests }
+      data: { identifier, count: entry.count, maxRequests: adjustedMaxRequests }
     })
   }
 

@@ -33,21 +33,20 @@ export function Navigation() {
     { href: "/referral", text: "Referrals", icon: Gift },
   ]
 
-  if (isLoading) {
-    return <div>Loading...</div>
-  }
+  // Don't block the entire navbar for country detection
+  // Show navbar immediately with fallback country data
 
   return (
     <nav className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800">
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center justify-between h-16">
-          {/* Logo - Simplified */}
-          <div className="flex items-center space-x-3">
+          {/* Logo - Simplified with Homepage Link */}
+          <Link href="/" className="flex items-center space-x-3 hover:opacity-90 transition-opacity">
             <div className="w-8 h-8 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-lg flex items-center justify-center">
               <TrendingUp className="w-5 h-5 text-slate-900" />
             </div>
             <span className="text-xl font-bold text-white">SnapBet</span>
-          </div>
+          </Link>
 
           {/* Desktop Navigation - Cleaner spacing */}
           <div className="hidden md:flex items-center space-x-6">
@@ -77,12 +76,15 @@ export function Navigation() {
 
           {/* Right Side - Consolidated and Cleaner */}
           <div className="flex items-center space-x-3">
-            {/* Country & Currency - Simplified */}
-            {!isLoading && countryData && (
+            {/* Country & Currency - Simplified with fallback */}
+            {countryData && (
               <div className="hidden lg:flex items-center space-x-2 px-3 py-2 bg-slate-800/30 rounded-md">
                 <MapPin className="w-4 h-4 text-emerald-400" />
                 <span className="text-sm text-slate-300">{countryData.flag}</span>
                 <span className="text-sm font-medium text-white">{countryData.currencySymbol}</span>
+                {isLoading && (
+                  <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse ml-1" />
+                )}
               </div>
             )}
 
@@ -145,12 +147,15 @@ export function Navigation() {
         {isOpen && (
           <div className="md:hidden py-4 border-t border-slate-800">
             <div className="space-y-3">
-              {/* Mobile Country Display - Simplified */}
-              {!isLoading && countryData && (
+              {/* Mobile Country Display - Simplified with fallback */}
+              {countryData && (
                 <div className="px-3 py-2 flex items-center justify-center space-x-2 bg-slate-800/30 rounded-md mx-3">
                   <MapPin className="w-4 h-4 text-emerald-400" />
                   <span className="text-sm text-slate-300">{countryData.flag}</span>
                   <span className="text-sm font-medium text-white">{countryData.currencySymbol}</span>
+                  {isLoading && (
+                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse ml-1" />
+                  )}
                 </div>
               )}
 

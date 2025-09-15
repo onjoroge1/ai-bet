@@ -73,22 +73,62 @@ export function UserCountryProvider({ children }: { children: ReactNode }) {
             return
           }
 
-          // Try to detect country from API
-          const response = await fetch('/api/user/country')
-          if (response.ok) {
-            const result = await response.json()
-            if (result.success) {
-              const countryCode = result.country.code.toLowerCase()
-              setUserCountry(countryCode)
-              setCountryData(result.pricing)
-              setDetectedFrom(result.country.detectedFrom)
-            } else {
-              // Fallback to US
-              setUserCountry("us")
-              setCountryData(getCountryPricing("us"))
-              setDetectedFrom("fallback")
+          // Check localStorage for cached country data first
+          const cachedCountry = localStorage.getItem('snapbet_user_country')
+          const cachedTimestamp = localStorage.getItem('snapbet_country_timestamp')
+          const cacheExpiry = 24 * 60 * 60 * 1000 // 24 hours
+
+          if (cachedCountry && cachedTimestamp && 
+              (Date.now() - parseInt(cachedTimestamp)) < cacheExpiry) {
+            try {
+              const parsedCountry = JSON.parse(cachedCountry)
+              setUserCountry(parsedCountry.code)
+              setCountryData(parsedCountry.pricing)
+              setDetectedFrom("cache")
+              setIsLoading(false)
+              return
+            } catch (e) {
+              // Invalid cache, continue with API call
             }
-          } else {
+          }
+
+          // Try to detect country from API with timeout
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 3000) // 3 second timeout
+
+          try {
+            const response = await fetch('/api/user/country', {
+              signal: controller.signal
+            })
+            clearTimeout(timeoutId)
+            
+            if (response.ok) {
+              const result = await response.json()
+              if (result.success) {
+                const countryCode = result.country.code.toLowerCase()
+                setUserCountry(countryCode)
+                setCountryData(result.pricing)
+                setDetectedFrom(result.country.detectedFrom)
+                
+                // Cache the result
+                localStorage.setItem('snapbet_user_country', JSON.stringify({
+                  code: countryCode,
+                  pricing: result.pricing
+                }))
+                localStorage.setItem('snapbet_country_timestamp', Date.now().toString())
+              } else {
+                throw new Error('API returned unsuccessful result')
+              }
+            } else {
+              throw new Error(`API returned ${response.status}`)
+            }
+          } catch (error) {
+            clearTimeout(timeoutId)
+            if (error.name === 'AbortError') {
+              console.warn('Country detection API timed out, using fallback')
+            } else {
+              console.warn('Failed to detect country:', error)
+            }
             // Fallback to US
             setUserCountry("us")
             setCountryData(getCountryPricing("us"))

@@ -89,65 +89,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refetchOnMount: false, // Prevent refetch on component mount if data exists
   })
 
-  // Sync with NextAuth session - Fixed to prevent infinite loops
+  // Sync with NextAuth session - Optimized for faster loading
   useEffect(() => {
-    // Debounce session checks to prevent excessive API calls
-    const timeoutId = setTimeout(() => {
-      console.log('AuthProvider useEffect - status:', status, 'session user:', session?.user?.id)
+    console.log('AuthProvider useEffect - status:', status, 'session user:', session?.user?.id)
+    
+    if (status === 'loading') {
+      console.log('AuthProvider - status is loading, setting isLoading to true')
+      setIsLoading(true)
+      return
+    }
+
+    if (status === 'authenticated' && session?.user) {
+      console.log('AuthProvider - status is authenticated')
+      // Set basic user data immediately to ensure isAuthenticated is true
+      const basicUser = {
+        id: session.user.id,
+        email: session.user.email || '',
+        name: session.user.name || undefined,
+        role: session.user.role || undefined,
+        referralCode: session.user.referralCode || undefined
+      }
       
-      if (status === 'loading') {
-        console.log('AuthProvider - status is loading, setting isLoading to true')
-        setIsLoading(true)
-        return
+      // If we have profile data, use it; otherwise use basic session data
+      if (userProfile) {
+        console.log('AuthProvider - using profile data:', userProfile.id)
+        setUser(userProfile)
+      } else {
+        console.log('AuthProvider - using basic session data')
+        setUser(basicUser)
       }
-
-      if (status === 'authenticated' && session?.user) {
-        console.log('AuthProvider - status is authenticated')
-        // Set basic user data immediately to ensure isAuthenticated is true
-        const basicUser = {
-          id: session.user.id,
-          email: session.user.email || '',
-          name: session.user.name || undefined,
-          role: session.user.role || undefined,
-          referralCode: session.user.referralCode || undefined
+      
+      setIsLoading(false)
+      
+      logger.debug('Auth state updated', {
+        tags: ['auth', 'provider'],
+        data: { 
+          status,
+          hasUser: true,
+          role: session.user.role,
+          hasProfile: !!userProfile,
+          profileLoading
         }
-        
-        // If we have profile data, use it; otherwise use basic session data
-        if (userProfile) {
-          console.log('AuthProvider - using profile data:', userProfile.id)
-          setUser(userProfile)
-        } else {
-          console.log('AuthProvider - using basic session data')
-          setUser(basicUser)
+      })
+    } else if (status === 'unauthenticated') {
+      console.log('AuthProvider - status is not authenticated, setting user to null')
+      setUser(null)
+      setIsLoading(false)
+      logger.debug('Auth state updated', {
+        tags: ['auth', 'provider'],
+        data: { 
+          status,
+          hasUser: false
         }
-        
-        setIsLoading(false)
-        
-        logger.debug('Auth state updated', {
-          tags: ['auth', 'provider'],
-          data: { 
-            status,
-            hasUser: true,
-            role: session.user.role,
-            hasProfile: !!userProfile,
-            profileLoading
-          }
-        })
-      } else if (status === 'unauthenticated') {
-        console.log('AuthProvider - status is not authenticated, setting user to null')
-        setUser(null)
-        setIsLoading(false)
-        logger.debug('Auth state updated', {
-          tags: ['auth', 'provider'],
-          data: { 
-            status,
-            hasUser: false
-          }
-        })
-      }
-    }, 100) // 100ms debounce to prevent excessive calls
-
-    return () => clearTimeout(timeoutId)
+      })
+    }
   }, [status, session]) // Removed userProfile and profileLoading from dependencies to prevent infinite loops
 
   // Separate effect to handle profile data updates
