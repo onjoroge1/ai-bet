@@ -38,35 +38,37 @@ function probToImpliedOdds(pred?: {home_win?: number; draw?: number; away_win?: 
   }
 }
 
-// Helper function to find all upcoming matches (for syncAll)
-async function findAllUpcomingMatches(leagueId?: string) {
+// Helper function to find matches that have prediction data (ready for updates)
+async function findMatchesWithPredictionData(leagueId?: string) {
   const now = new Date()
   const cutoffDate = new Date(now.getTime() + (72 * 60 * 60 * 1000)) // 72 hours from now
 
-  if (leagueId) {
-    // Use raw query for league filtering since we need to check matchData JSON field
-    const leagueFilter = `AND (qp."matchData"->>'league_id') = '${leagueId}'`
-    
+  if (leagueId && leagueId !== 'all') {
+    // Find matches that already have prediction data
     const rawQuery = `
-      SELECT qp.* FROM "QuickPurchase" qp
-      WHERE qp."matchId" IS NOT NULL 
-      AND qp."isPredictionActive" = true
-      AND (qp."matchData"->>'date')::timestamp >= '${now.toISOString()}'::timestamp
-      AND (qp."matchData"->>'date')::timestamp <= '${cutoffDate.toISOString()}'::timestamp
-      ${leagueFilter}
-      ORDER BY qp."createdAt" DESC
+      SELECT * FROM "QuickPurchase" 
+      WHERE "matchId" IS NOT NULL 
+        AND "isPredictionActive" = true
+        AND "predictionData" IS NOT NULL
+        AND ("matchData"->>'date')::timestamp >= '${now.toISOString()}'::timestamp
+        AND ("matchData"->>'date')::timestamp <= '${cutoffDate.toISOString()}'::timestamp
+        AND ("matchData"->>'league') = '${leagueId}'
+      ORDER BY "createdAt" ASC 
+      LIMIT 100
     `
     
     return await prisma.$queryRawUnsafe(rawQuery)
   } else {
-    // Use raw query for date filtering on JSON field
+    // Find matches that already have prediction data
     const rawQuery = `
-      SELECT qp.* FROM "QuickPurchase" qp
-      WHERE qp."matchId" IS NOT NULL 
-      AND qp."isPredictionActive" = true
-      AND (qp."matchData"->>'date')::timestamp >= '${now.toISOString()}'::timestamp
-      AND (qp."matchData"->>'date')::timestamp <= '${cutoffDate.toISOString()}'::timestamp
-      ORDER BY qp."createdAt" DESC
+      SELECT * FROM "QuickPurchase" 
+      WHERE "matchId" IS NOT NULL 
+        AND "isPredictionActive" = true
+        AND "predictionData" IS NOT NULL
+        AND ("matchData"->>'date')::timestamp >= '${now.toISOString()}'::timestamp
+        AND ("matchData"->>'date')::timestamp <= '${cutoffDate.toISOString()}'::timestamp
+      ORDER BY "createdAt" ASC 
+      LIMIT 100
     `
     
     return await prisma.$queryRawUnsafe(rawQuery)
@@ -158,12 +160,12 @@ async function clearPredictionData(matches: any[]) {
   return result.count
 }
 
-// Simplified enrichment function using working logic from enrich-quickpurchases
-async function performSmartEnrichment(matches: any[], timeWindow: string, leagueId?: string) {
+// Simplified enrichment function - call /predict directly on matches with prediction data
+async function performDirectEnrichment(matches: any[], timeWindow: string, leagueId?: string) {
   const startTime = Date.now()
   
   try {
-    logger.info('🔄 Starting smart enrichment process', {
+    logger.info('🔄 Starting direct enrichment process', {
       tags: ['api', 'admin', 'predictions', 'enrichment'],
       data: { 
         totalMatches: matches.length,
@@ -175,7 +177,7 @@ async function performSmartEnrichment(matches: any[], timeWindow: string, league
     // Extract unique match IDs and convert to numbers
     const uniqueMatchIds = [...new Set(matches.map(m => parseInt(m.matchId)).filter(id => !isNaN(id)))]
     
-    logger.info('🔍 Extracted unique match IDs for enrichment', {
+    logger.info('🔍 Processing matches that already have prediction data', {
       tags: ['api', 'admin', 'predictions', 'enrichment'],
       data: {
         totalMatches: matches.length,
@@ -185,7 +187,7 @@ async function performSmartEnrichment(matches: any[], timeWindow: string, league
           id: m.id,
           matchId: m.matchId,
           name: m.name,
-          hasMatchData: !!m.matchData
+          hasPredictionData: !!m.predictionData
         }))
       }
     })
@@ -215,328 +217,138 @@ async function performSmartEnrichment(matches: any[], timeWindow: string, league
       }
     }
 
-    // Process in chunks of 100
-    const chunks = chunk(uniqueMatchIds, 100)
     let enrichedCount = 0
     let skippedCount = 0
     let failedCount = 0
     const errors: string[] = []
 
-    // Process each batch
-    for (let batchIndex = 0; batchIndex < chunks.length; batchIndex++) {
-      const batch = chunks[batchIndex]
-      
+    // Process each match directly
+    for (const matchId of uniqueMatchIds) {
       try {
-        // Call /predict/availability for this batch
-        logger.info(`🔍 Checking availability for batch ${batchIndex + 1}`, {
+        logger.info(`🔍 Processing match ${matchId}`, {
           tags: ['api', 'admin', 'predictions', 'enrichment'],
-          data: {
-            batchIndex: batchIndex + 1,
-            batchSize: batch.length,
-            sampleMatchIds: batch.slice(0, 3)
-          }
+          data: { matchId }
         })
-        
-        const availability = await fetchAvailability(batch, false)
-        
-        logger.info(`📊 Availability results for batch ${batchIndex + 1}`, {
-          tags: ['api', 'admin', 'predictions', 'enrichment'],
-          data: {
-            batchIndex: batchIndex + 1,
-            totalMatches: availability.availability.length,
-            enrichTrue: availability.meta.enrich_true,
-            enrichFalse: availability.meta.enrich_false,
-            requested: availability.meta.requested,
-            sampleResults: availability.availability.slice(0, 3).map(item => ({
-              matchId: item.match_id,
-              enrich: item.enrich,
-              reason: item.reason,
-              bookmakers: item.bookmakers,
-              timeBucket: item.time_bucket
-            }))
-          }
-        })
-        
-        // Partition results
-        const { ready, waiting, noOdds } = partitionAvailability(availability.availability)
-        
-        logger.info(`📋 Partitioned results for batch ${batchIndex + 1}`, {
-          tags: ['api', 'admin', 'predictions', 'enrichment'],
-          data: {
-            batchIndex: batchIndex + 1,
-            readyCount: ready.length,
-            waitingCount: waiting.length,
-            noOddsCount: noOdds.length,
-            readyMatchIds: ready,
-            waitingReasons: waiting.slice(0, 3).map(w => ({ matchId: w.match_id, reason: w.reason })),
-            noOddsReasons: noOdds.slice(0, 3).map(n => ({ matchId: n.match_id, reason: n.reason })),
-            // Debug: Show why matches are not ready
-            availabilityDetails: availability.availability.slice(0, 3).map(item => ({
-              matchId: item.match_id,
-              enrich: item.enrich,
-              reason: item.reason,
-              bookmakers: item.bookmakers,
-              timeBucket: item.time_bucket
-            }))
-          }
-        })
-        
-        // Process only ready matches
-        logger.info(`🚀 Processing ${ready.length} ready matches for prediction`, {
-          tags: ['api', 'admin', 'predictions', 'enrichment'],
-          data: {
-            readyCount: ready.length,
-            readyMatchIds: ready.slice(0, 5),
-            totalMatches: matches.length
-          }
-        })
-        
-        // If no matches are ready, try fallback approach
-        if (ready.length === 0) {
-          logger.warn(`⚠️ No ready matches in batch ${batchIndex + 1}, trying fallback approach`, {
+
+        const quickPurchase = matches.find(m => parseInt(m.matchId) === matchId)
+        if (!quickPurchase) {
+          logger.warn('QuickPurchase not found for match', {
             tags: ['api', 'admin', 'predictions', 'enrichment'],
-            data: {
-              batchIndex: batchIndex + 1,
-              waitingCount: waiting.length,
-              noOddsCount: noOdds.length,
-              waitingReasons: waiting.slice(0, 3).map(w => ({ matchId: w.match_id, reason: w.reason })),
-              noOddsReasons: noOdds.slice(0, 3).map(n => ({ matchId: n.match_id, reason: n.reason })),
-              fallbackApproach: 'process_all_matches_in_batch'
-            }
+            data: { matchId, availableMatchIds: matches.map(m => m.matchId).slice(0, 5) }
           })
-          
-          // Fallback: Process all matches in this batch as if they were ready
-          const fallbackReady = batch
-          logger.info(`🔄 Using fallback approach for batch ${batchIndex + 1}`, {
-            tags: ['api', 'admin', 'predictions', 'enrichment'],
-            data: {
-              batchIndex: batchIndex + 1,
-              fallbackReadyCount: fallbackReady.length,
-              fallbackMatchIds: fallbackReady.slice(0, 5)
-            }
-          })
-          
-          // Process fallback matches
-          for (const matchId of fallbackReady) {
-            try {
-              const quickPurchase = matches.find(m => parseInt(m.matchId) === matchId)
-              if (!quickPurchase) {
-                logger.warn('QuickPurchase not found for fallback match', {
-                  tags: ['api', 'admin', 'predictions', 'enrichment'],
-                  data: { matchId, availableMatchIds: matches.map(m => m.matchId).slice(0, 5) }
-                })
-                continue
-              }
-
-              // Fetch prediction from backend
-              const response = await fetch(`${process.env.BACKEND_URL}/predict`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${process.env.BACKEND_API_KEY}`
-                },
-                body: JSON.stringify({
-                  match_id: matchId,
-                  include_analysis: true
-                })
-              })
-
-              if (!response.ok) {
-                const errorText = await response.text()
-                throw new Error(`Backend responded with status ${response.status}: ${errorText}`)
-              }
-
-              const prediction = await response.json()
-              
-              if (!prediction) {
-                failedCount++
-                errors.push(`Match ${matchId}: No prediction data`)
-                continue
-              }
-
-              // Skip if confidence is 0 (not ready)
-              const confidence = prediction.predictions?.confidence ?? 0
-              if (confidence === 0) {
-                skippedCount++
-                continue
-              }
-
-              // Extract prediction details
-              const predictionType = prediction.predictions?.recommended_bet ?? 
-                                    prediction.comprehensive_analysis?.ai_verdict?.recommended_outcome?.toLowerCase().replace(' ', '_') ?? 
-                                    'no_prediction'
-              
-              const confidenceScore = Math.round(confidence * 100)
-              const valueRating = toValueRating(confidence)
-              const odds = probToImpliedOdds(prediction.predictions)
-              const analysisSummary = prediction.analysis?.explanation ?? 
-                                     prediction.comprehensive_analysis?.ai_verdict?.confidence_level ?? 
-                                     'AI prediction available'
-
-              // Update the QuickPurchase record
-              await prisma.quickPurchase.update({
-                where: { id: quickPurchase.id },
-                data: {
-                  predictionData: prediction as any,
-                  predictionType: predictionType,
-                  confidenceScore: confidenceScore,
-                  odds: odds?.home || null,
-                  valueRating: valueRating,
-                  analysisSummary: analysisSummary,
-                  isPredictionActive: true,
-                  lastEnrichmentAt: new Date(),
-                  enrichmentCount: { increment: 1 }
-                }
-              })
-
-              enrichedCount++
-
-              // Rate limiting: delay between requests
-              await delay(300)
-
-            } catch (error) {
-              logger.error('Error enriching QuickPurchase (fallback)', {
-                tags: ['api', 'admin', 'predictions', 'enrichment', 'error'],
-                data: {
-                  matchId: matchId,
-                  error: error instanceof Error ? error.message : 'Unknown error'
-                }
-              })
-              failedCount++
-              errors.push(`Match ${matchId}: ${error instanceof Error ? error.message : 'Unknown error'}`)
-            }
-          }
-          
-          continue // Skip to next batch
-        }
-        
-        for (const matchId of ready) {
-          try {
-            const quickPurchase = matches.find(m => parseInt(m.matchId) === matchId)
-            if (!quickPurchase) {
-              logger.warn('QuickPurchase not found for ready match', {
-                tags: ['api', 'admin', 'predictions', 'enrichment'],
-                data: { matchId, availableMatchIds: matches.map(m => m.matchId).slice(0, 5) }
-              })
-              continue
-            }
-
-            // Fetch prediction from backend
-            const response = await fetch(`${process.env.BACKEND_URL}/predict`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.BACKEND_API_KEY}`
-              },
-              body: JSON.stringify({
-                match_id: matchId,
-                include_analysis: true
-              })
-            })
-
-            if (!response.ok) {
-              const errorText = await response.text()
-              throw new Error(`Backend responded with status ${response.status}: ${errorText}`)
-            }
-
-            const prediction = await response.json()
-            
-            if (!prediction) {
-              failedCount++
-              errors.push(`Match ${matchId}: No prediction data`)
-              continue
-            }
-
-            // Skip if confidence is 0 (not ready)
-            const confidence = prediction.predictions?.confidence ?? 0
-            if (confidence === 0) {
-              skippedCount++
-              continue
-            }
-
-            // Extract prediction details
-            const predictionType = prediction.predictions?.recommended_bet ?? 
-                                  prediction.comprehensive_analysis?.ai_verdict?.recommended_outcome?.toLowerCase().replace(' ', '_') ?? 
-                                  'no_prediction'
-            
-            const confidenceScore = Math.round(confidence * 100)
-            const valueRating = toValueRating(confidence)
-            const odds = probToImpliedOdds(prediction.predictions)
-            const analysisSummary = prediction.analysis?.explanation ?? 
-                                   prediction.comprehensive_analysis?.ai_verdict?.confidence_level ?? 
-                                   'AI prediction available'
-
-            // Update the QuickPurchase record
-            await prisma.quickPurchase.update({
-              where: { id: quickPurchase.id },
-              data: {
-                predictionData: prediction as any,
-                predictionType: predictionType,
-                confidenceScore: confidenceScore,
-                odds: odds?.home || null,
-                valueRating: valueRating,
-                analysisSummary: analysisSummary,
-                isPredictionActive: true,
-                lastEnrichmentAt: new Date(),
-                enrichmentCount: { increment: 1 }
-              }
-            })
-
-            enrichedCount++
-
-            // Rate limiting: delay between requests
-            await delay(300)
-
-          } catch (error) {
-            logger.error('Error enriching QuickPurchase', {
-              tags: ['api', 'admin', 'predictions', 'enrichment', 'error'],
-              data: {
-                matchId: matchId,
-                error: error instanceof Error ? error.message : 'Unknown error'
-              }
-            })
-            failedCount++
-            errors.push(`Match ${matchId}: ${error instanceof Error ? error.message : 'Unknown error'}`)
-          }
+          continue
         }
 
-        // Update waiting and no-odds matches with status
-        for (const item of [...waiting, ...noOdds]) {
-          const quickPurchase = matches.find(m => parseInt(m.matchId) === item.match_id)
-          if (quickPurchase) {
-            await prisma.quickPurchase.update({
-              where: { id: quickPurchase.id },
-              data: {
-                predictionType: item.enrich ? 'waiting_consensus' : 'no_odds',
-                confidenceScore: 0,
-                valueRating: 'Low',
-                analysisSummary: `Status: ${item.reason} (${item.bookmakers || 0} books, ${item.time_bucket || 'unknown'})`,
-                isPredictionActive: true,
-                lastEnrichmentAt: new Date()
-              }
-            })
-          }
-        }
-
-      } catch (batchError) {
-        logger.error(`Batch ${batchIndex + 1} failed`, {
-          tags: ['api', 'admin', 'predictions', 'enrichment', 'error'],
+        logger.info(`📡 Calling /predict for match ${matchId}`, {
+          tags: ['api', 'admin', 'predictions', 'enrichment'],
           data: { 
-            batchIndex: batchIndex + 1,
-            error: batchError instanceof Error ? batchError.message : 'Unknown error',
-            batchSize: batch.length
+            matchId, 
+            backendUrl: process.env.BACKEND_URL,
+            hasApiKey: !!process.env.BACKEND_API_KEY
+          }
+        })
+
+        // Fetch prediction from backend
+        const response = await fetch(`${process.env.BACKEND_URL}/predict`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.BACKEND_API_KEY}`
+          },
+          body: JSON.stringify({
+            match_id: matchId,
+            include_analysis: true
+          })
+        })
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          logger.error(`❌ /predict failed for match ${matchId}`, {
+            tags: ['api', 'admin', 'predictions', 'enrichment'],
+            data: { 
+              matchId, 
+              status: response.status, 
+              errorText: errorText.substring(0, 200)
+            }
+          })
+          throw new Error(`Backend responded with status ${response.status}: ${errorText}`)
+        }
+
+        const prediction = await response.json()
+        
+        logger.info(`✅ /predict success for match ${matchId}`, {
+          tags: ['api', 'admin', 'predictions', 'enrichment'],
+          data: { 
+            matchId, 
+            hasPrediction: !!prediction,
+            confidence: prediction?.predictions?.confidence ?? 0
           }
         })
         
-        // Mark all matches in this batch as failed
-        failedCount += batch.length
-        errors.push(`Batch ${batchIndex + 1}: ${batchError instanceof Error ? batchError.message : 'Unknown error'}`)
+        if (!prediction) {
+          failedCount++
+          errors.push(`Match ${matchId}: No prediction data`)
+          continue
+        }
+
+        // Get confidence score
+        const confidence = prediction.predictions?.confidence ?? 0
+        
+        // Only skip if there's no prediction data at all
+        if (!prediction || !prediction.predictions) {
+          skippedCount++
+          continue
+        }
+
+        // Extract prediction details
+        const predictionType = prediction.predictions?.recommended_bet ?? 
+                              prediction.comprehensive_analysis?.ai_verdict?.recommended_outcome?.toLowerCase().replace(' ', '_') ?? 
+                              'no_prediction'
+        
+        const confidenceScore = Math.round(confidence * 100)
+        const valueRating = toValueRating(confidence)
+        const odds = probToImpliedOdds(prediction.predictions)
+        const analysisSummary = prediction.analysis?.explanation ?? 
+                               prediction.comprehensive_analysis?.ai_verdict?.confidence_level ?? 
+                               'AI prediction available'
+
+        // Update the QuickPurchase record
+        await prisma.quickPurchase.update({
+          where: { id: quickPurchase.id },
+          data: {
+            predictionData: prediction as any,
+            predictionType: predictionType,
+            confidenceScore: confidenceScore,
+            odds: odds?.home || null,
+            valueRating: valueRating,
+            analysisSummary: analysisSummary,
+            isPredictionActive: true,
+            lastEnrichmentAt: new Date(),
+            enrichmentCount: { increment: 1 }
+          }
+        })
+
+        enrichedCount++
+
+        // Rate limiting: delay between requests
+        await delay(300)
+
+      } catch (error) {
+        logger.error('Error enriching QuickPurchase', {
+          tags: ['api', 'admin', 'predictions', 'enrichment', 'error'],
+          data: {
+            matchId: matchId,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          }
+        })
+        failedCount++
+        errors.push(`Match ${matchId}: ${error instanceof Error ? error.message : 'Unknown error'}`)
       }
     }
 
     const totalTime = Date.now() - startTime
 
-    logger.info('✅ Smart enrichment completed', {
+    logger.info('✅ Direct enrichment completed', {
       tags: ['api', 'admin', 'predictions', 'enrichment'],
       data: {
         totalProcessed: matches.length,
@@ -571,7 +383,7 @@ async function performSmartEnrichment(matches: any[], timeWindow: string, league
   } catch (error) {
     const totalTime = Date.now() - startTime
     
-    logger.error('❌ Smart enrichment failed', {
+    logger.error('❌ Direct enrichment failed', {
       tags: ['api', 'admin', 'predictions', 'enrichment', 'error'],
       data: {
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -621,7 +433,11 @@ export async function POST(req: NextRequest) {
     let matchesToSync: any[] = []
     
     if (syncAll) {
-      matchesToSync = await findAllUpcomingMatches(leagueId)
+    logger.info('🔍 Fetching matches that already have prediction data', {
+      tags: ['api', 'admin', 'predictions', 'sync'],
+      data: { leagueId: leagueId || 'all' }
+    })
+    matchesToSync = await findMatchesWithPredictionData(leagueId)
     } else {
       matchesToSync = await findMatchesByTimeWindow(timeWindow, leagueId, limit)
     }
@@ -640,7 +456,7 @@ export async function POST(req: NextRequest) {
     const clearedCount = await clearPredictionData(matchesToSync)
     
     // Step 3: Perform smart enrichment
-    const enrichmentResult = await performSmartEnrichment(matchesToSync, timeWindow, leagueId)
+    const enrichmentResult = await performDirectEnrichment(matchesToSync, timeWindow, leagueId)
     
     const totalTime = Date.now() - startTime
 

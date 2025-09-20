@@ -1,0 +1,10 @@
+[33m7c197e7[m[33m ([m[1;36mHEAD -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m feat: Fix mobile navigation and background image improvements
+[33m5f431bd[m feat: Optimize navbar performance and fix rate limiting
+[33m4cb9208[m feat: Add comprehensive session summary and update documentation
+[33m2c3042f[m feat: remove price display from my-tips cards and enhance prediction details modal
+[33m2ff84fc[m fix: resolve vercel.json JSON syntax error
+[33m7177a77[m fix: resolve linting errors in enrichment files and admin components
+[33m9087991[m fix: resolve sync & enrich system issues and update documentation
+[33m3eccdcf[m feat: comprehensive documentation and sync/enrich integration analysis
+[33m660ced4[m feat: optimize homepage performance and enhance UI
+[33mf72d568[m feat: implement smart cron scheduling system

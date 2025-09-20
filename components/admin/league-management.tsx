@@ -416,12 +416,22 @@ export function AdminLeagueManagement() {
   }
 
   const handleSyncUpcomingMatches = () => {
-    console.log('🔄 Sync upcoming matches button clicked')
+    console.log('🔄 PURPLE BUTTON CLICKED - Fetching upcoming matches data only')
+    console.log('📊 This will call /api/admin/predictions/upcoming-matches (NO /predict calls)')
+    console.log('⚠️  Use the GREEN button to actually sync and enrich predictions')
     syncMatchesMutation.mutate()
   }
 
 
   const handleSyncAllUpcoming = () => {
+    console.log('🚀 GREEN BUTTON CLICKED - Starting sync and enrichment process')
+    console.log('📊 Parameters:', {
+      timeWindow: 'all',
+      leagueId: selectedLeagueForMatches === 'all' ? undefined : selectedLeagueForMatches,
+      limit: 100
+    })
+    console.log('🎯 This will call /api/admin/predictions/sync-quickpurchases which calls /predict endpoint')
+    
     // Sync all upcoming matches (not time window specific)
     syncPredictionsMutation.mutate({
       timeWindow: 'all',
@@ -659,13 +669,14 @@ export function AdminLeagueManagement() {
                 onClick={handleSyncUpcomingMatches}
                 disabled={syncMatchesMutation.isPending}
                 className="bg-purple-600 hover:bg-purple-700"
+                title="Fetch upcoming matches data only (no /predict calls)"
               >
                 {syncMatchesMutation.isPending ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <RefreshCw className="w-4 h-4" />
                 )}
-                <span className="ml-2">Sync Matches</span>
+                <span className="ml-2">Fetch Matches Only</span>
               </Button>
             </div>
           </CardTitle>
@@ -707,13 +718,14 @@ export function AdminLeagueManagement() {
                   disabled={syncPredictionsMutation.isPending}
                   className="bg-emerald-600 hover:bg-emerald-700 px-6 py-2"
                   size="lg"
+                  title="Sync and enrich all upcoming matches (calls /predict endpoint)"
                 >
                   {syncPredictionsMutation.isPending ? (
                     <Loader2 className="w-4 h-4 animate-spin mr-2" />
                   ) : (
                     <Zap className="w-4 h-4 mr-2" />
                   )}
-                  Sync All Upcoming Matches
+                  Sync & Enrich All Matches
                 </Button>
                 <Button
                   onClick={handleTriggerConsensus}
