@@ -10,6 +10,7 @@ import { AdminPersonalizedOffersManagement } from "@/components/admin-personaliz
 import { AdminLeagueManagement } from "@/components/admin/league-management" // Import new
 import { PredictionQuickPurchaseManager } from "@/components/admin/prediction-quickpurchase-manager" // Import new
 import { PricingManagement } from "@/components/admin/pricing-management" // Import new
+import { GlobalMatchSync } from "@/components/admin/global-match-sync" // Import new Global Sync
 
 export default function AdminPage() {
   return (
@@ -26,7 +27,10 @@ export default function AdminPage() {
         {/* Pricing Management Section */}
         <PricingManagement />
 
-        {/* League Management Section */}
+        {/* Global Match Sync Section - Primary sync system */}
+        <GlobalMatchSync />
+
+        {/* League Management Section - Specialized management */}
         <AdminLeagueManagement />
 
         {/* Prediction QuickPurchase Manager Section */}

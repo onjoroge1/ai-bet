@@ -523,9 +523,13 @@ export function AdminLeagueManagement() {
           <h2 className="text-2xl font-bold text-white flex items-center">
             <Trophy className="w-6 h-6 mr-2 text-emerald-400" />
             League Management
+            <Badge variant="secondary" className="ml-3 bg-slate-600/50 text-slate-300 border-slate-500/30">
+              Specialized Tool
+            </Badge>
           </h2>
           <p className="text-slate-400 mt-1">
-            Manage leagues, data collection, and sync settings
+            Individual league controls for specialized management. 
+            <span className="text-emerald-400 font-medium">Use Global Sync above for comprehensive coverage.</span>
           </p>
         </div>
         <Button onClick={handleCreate} className="bg-emerald-600 hover:bg-emerald-700">
