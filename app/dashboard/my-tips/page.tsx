@@ -919,13 +919,13 @@ export default function MyTipsPage() {
                           <div className="flex justify-between">
                             <span className="text-slate-400">Over 2.5:</span>
                             <span className="text-white font-medium">
-                              {((selectedTip.predictionData as any).additional_markets.total_goals['over_2.5'] * 100).toFixed(1)}%
+                              {((selectedTip.predictionData as any).additional_markets.total_goals['over_2_5'] * 100).toFixed(1)}%
                             </span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-slate-400">Under 2.5:</span>
                             <span className="text-white font-medium">
-                              {((selectedTip.predictionData as any).additional_markets.total_goals['under_2.5'] * 100).toFixed(1)}%
+                              {((selectedTip.predictionData as any).additional_markets.total_goals['under_2_5'] * 100).toFixed(1)}%
                             </span>
                           </div>
                         </div>
@@ -972,6 +972,347 @@ export default function MyTipsPage() {
                         </div>
                       </div>
                   </div>
+                    )}
+                  </div>
+                </Card>
+              )}
+
+              {/* Additional Markets V2 - Enhanced Condensed Display */}
+              {(selectedTip.predictionData as any)?.additional_markets_v2 && (
+                <Card className="bg-slate-800 border-slate-700 p-6">
+                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
+                    <TrendingUp className="w-5 h-5 mr-2 text-purple-400" />
+                    Advanced Markets Analysis
+                  </h3>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    
+                    {/* Totals Section */}
+                    {(selectedTip.predictionData as any).additional_markets_v2.totals && (
+                      <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
+                        <h5 className="text-white font-medium mb-3 flex items-center">
+                          <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                          Total Goals Markets
+                        </h5>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          {Object.entries((selectedTip.predictionData as any).additional_markets_v2.totals).map(([key, value]: [string, any]) => (
+                            <div key={key} className="space-y-1">
+                              <div className="text-slate-400 text-xs font-medium">
+                                {key.replace('_', '.').toUpperCase()}
+                              </div>
+                              <div className="space-y-1">
+                                <div className="flex justify-between">
+                                  <span className="text-slate-300 text-xs">Over:</span>
+                                  <span className="text-green-400 text-xs font-medium">
+                                    {(value.over * 100).toFixed(1)}%
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-slate-300 text-xs">Under:</span>
+                                  <span className="text-red-400 text-xs font-medium">
+                                    {(value.under * 100).toFixed(1)}%
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Team Totals Section */}
+                    {(selectedTip.predictionData as any).additional_markets_v2.team_totals && (
+                      <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
+                        <h5 className="text-white font-medium mb-3 flex items-center">
+                          <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                          Team Total Goals
+                        </h5>
+                        <div className="space-y-4">
+                          {/* Home Team Totals */}
+                          {(selectedTip.predictionData as any).additional_markets_v2.team_totals.home && (
+                            <div>
+                              <div className="text-slate-300 text-sm font-medium mb-2">{selectedTip.homeTeam}</div>
+                              <div className="grid grid-cols-3 gap-2 text-xs">
+                                {Object.entries((selectedTip.predictionData as any).additional_markets_v2.team_totals.home).map(([key, value]: [string, any]) => (
+                                  <div key={key} className="space-y-1">
+                                    <div className="text-slate-400">{key.replace('_', '.').toUpperCase()}</div>
+                                    <div className="flex justify-between">
+                                      <span className="text-slate-300">O:</span>
+                                      <span className="text-green-400">{(value.over * 100).toFixed(0)}%</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-slate-300">U:</span>
+                                      <span className="text-red-400">{(value.under * 100).toFixed(0)}%</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Away Team Totals */}
+                          {(selectedTip.predictionData as any).additional_markets_v2.team_totals.away && (
+                            <div>
+                              <div className="text-slate-300 text-sm font-medium mb-2">{selectedTip.awayTeam}</div>
+                              <div className="grid grid-cols-3 gap-2 text-xs">
+                                {Object.entries((selectedTip.predictionData as any).additional_markets_v2.team_totals.away).map(([key, value]: [string, any]) => (
+                                  <div key={key} className="space-y-1">
+                                    <div className="text-slate-400">{key.replace('_', '.').toUpperCase()}</div>
+                                    <div className="flex justify-between">
+                                      <span className="text-slate-300">O:</span>
+                                      <span className="text-green-400">{(value.over * 100).toFixed(0)}%</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-slate-300">U:</span>
+                                      <span className="text-red-400">{(value.under * 100).toFixed(0)}%</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* BTTS Section */}
+                    {(selectedTip.predictionData as any).additional_markets_v2.btts && (
+                      <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
+                        <h5 className="text-white font-medium mb-3 flex items-center">
+                          <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
+                          Both Teams to Score
+                        </h5>
+                        <div className="flex justify-between items-center">
+                          <div className="flex items-center space-x-4">
+                            <div className="text-center">
+                              <div className="text-slate-400 text-xs">Yes</div>
+                              <div className="text-green-400 font-bold text-lg">
+                                {((selectedTip.predictionData as any).additional_markets_v2.btts.yes * 100).toFixed(1)}%
+                              </div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-slate-400 text-xs">No</div>
+                              <div className="text-red-400 font-bold text-lg">
+                                {((selectedTip.predictionData as any).additional_markets_v2.btts.no * 100).toFixed(1)}%
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Double Chance Section */}
+                    {(selectedTip.predictionData as any).additional_markets_v2.double_chance && (
+                      <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
+                        <h5 className="text-white font-medium mb-3 flex items-center">
+                          <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
+                          Double Chance
+                        </h5>
+                        <div className="space-y-2">
+                          {Object.entries((selectedTip.predictionData as any).additional_markets_v2.double_chance).map(([key, value]: [string, any]) => (
+                            <div key={key} className="flex justify-between items-center">
+                              <span className="text-slate-300 text-sm">
+                                {key === '1X' ? 'Home or Draw' : key === '12' ? 'Home or Away' : key === 'X2' ? 'Draw or Away' : key}
+                              </span>
+                              <span className="text-white font-medium">
+                                {(value * 100).toFixed(1)}%
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Draw No Bet Section */}
+                    {(selectedTip.predictionData as any).additional_markets_v2.dnb && (
+                      <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
+                        <h5 className="text-white font-medium mb-3 flex items-center">
+                          <span className="w-2 h-2 bg-orange-500 rounded-full mr-2"></span>
+                          Draw No Bet
+                        </h5>
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-300 text-sm">Home</span>
+                            <span className="text-green-400 font-medium">
+                              {((selectedTip.predictionData as any).additional_markets_v2.dnb.home * 100).toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-300 text-sm">Away</span>
+                            <span className="text-red-400 font-medium">
+                              {((selectedTip.predictionData as any).additional_markets_v2.dnb.away * 100).toFixed(1)}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Asian Handicap Section */}
+                    {(selectedTip.predictionData as any).additional_markets_v2.asian_handicap && (
+                      <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
+                        <h5 className="text-white font-medium mb-3 flex items-center">
+                          <span className="w-2 h-2 bg-cyan-500 rounded-full mr-2"></span>
+                          Asian Handicap
+                        </h5>
+                        <div className="space-y-3">
+                          {/* Home Handicaps */}
+                          {(selectedTip.predictionData as any).additional_markets_v2.asian_handicap.home && (
+                            <div>
+                              <div className="text-slate-300 text-sm font-medium mb-2">{selectedTip.homeTeam}</div>
+                              <div className="space-y-1">
+                                {Object.entries((selectedTip.predictionData as any).additional_markets_v2.asian_handicap.home).map(([key, value]: [string, any]) => {
+                                  const handicap = key.replace('_minus_', '-').replace('_', '.');
+                                  return (
+                                    <div key={key} className="flex justify-between items-center text-xs">
+                                      <span className="text-slate-300">{handicap}</span>
+                                      <div className="flex space-x-2">
+                                        <span className="text-green-400">W: {(value.win * 100).toFixed(0)}%</span>
+                                        {value.push && <span className="text-yellow-400">P: {(value.push * 100).toFixed(0)}%</span>}
+                                        <span className="text-red-400">L: {(value.lose * 100).toFixed(0)}%</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Away Handicaps */}
+                          {(selectedTip.predictionData as any).additional_markets_v2.asian_handicap.away && (
+                            <div>
+                              <div className="text-slate-300 text-sm font-medium mb-2">{selectedTip.awayTeam}</div>
+                              <div className="space-y-1">
+                                {Object.entries((selectedTip.predictionData as any).additional_markets_v2.asian_handicap.away).map(([key, value]: [string, any]) => {
+                                  const handicap = key.replace('_plus_', '+').replace('_', '.');
+                                  return (
+                                    <div key={key} className="flex justify-between items-center text-xs">
+                                      <span className="text-slate-300">{handicap}</span>
+                                      <div className="flex space-x-2">
+                                        <span className="text-green-400">W: {(value.win * 100).toFixed(0)}%</span>
+                                        {value.push && <span className="text-yellow-400">P: {(value.push * 100).toFixed(0)}%</span>}
+                                        <span className="text-red-400">L: {(value.lose * 100).toFixed(0)}%</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Winning Margin Section */}
+                    {(selectedTip.predictionData as any).additional_markets_v2.winning_margin && (
+                      <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
+                        <h5 className="text-white font-medium mb-3 flex items-center">
+                          <span className="w-2 h-2 bg-pink-500 rounded-full mr-2"></span>
+                          Winning Margin
+                        </h5>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          {Object.entries((selectedTip.predictionData as any).additional_markets_v2.winning_margin).map(([key, value]: [string, any]) => (
+                            <div key={key} className="flex justify-between items-center">
+                              <span className="text-slate-300">
+                                {key === '-3+' ? 'Home 3+' : key === '+3+' ? 'Away 3+' : key}
+                              </span>
+                              <span className="text-white font-medium">
+                                {(value * 100).toFixed(1)}%
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Correct Scores Section */}
+                    {(selectedTip.predictionData as any).additional_markets_v2.correct_scores && (
+                      <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
+                        <h5 className="text-white font-medium mb-3 flex items-center">
+                          <span className="w-2 h-2 bg-indigo-500 rounded-full mr-2"></span>
+                          Most Likely Scores
+                        </h5>
+                        <div className="space-y-1">
+                          {(selectedTip.predictionData as any).additional_markets_v2.correct_scores.slice(0, 6).map((score: any, index: number) => (
+                            <div key={index} className="flex justify-between items-center text-xs">
+                              <span className="text-slate-300">{score.score}</span>
+                              <span className="text-white font-medium">
+                                {(score.p * 100).toFixed(1)}%
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Odd/Even Total Section */}
+                    {(selectedTip.predictionData as any).additional_markets_v2.odd_even_total && (
+                      <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
+                        <h5 className="text-white font-medium mb-3 flex items-center">
+                          <span className="w-2 h-2 bg-teal-500 rounded-full mr-2"></span>
+                          Odd/Even Total Goals
+                        </h5>
+                        <div className="flex justify-between items-center">
+                          <div className="text-center">
+                            <div className="text-slate-400 text-xs">Odd</div>
+                            <div className="text-blue-400 font-bold">
+                              {((selectedTip.predictionData as any).additional_markets_v2.odd_even_total.odd * 100).toFixed(1)}%
+                            </div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-slate-400 text-xs">Even</div>
+                            <div className="text-purple-400 font-bold">
+                              {((selectedTip.predictionData as any).additional_markets_v2.odd_even_total.even * 100).toFixed(1)}%
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Clean Sheet Section */}
+                    {(selectedTip.predictionData as any).additional_markets_v2.clean_sheet && (
+                      <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
+                        <h5 className="text-white font-medium mb-3 flex items-center">
+                          <span className="w-2 h-2 bg-emerald-500 rounded-full mr-2"></span>
+                          Clean Sheet Probability
+                        </h5>
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-300 text-sm">{selectedTip.homeTeam}</span>
+                            <span className="text-green-400 font-medium">
+                              {((selectedTip.predictionData as any).additional_markets_v2.clean_sheet.home * 100).toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-300 text-sm">{selectedTip.awayTeam}</span>
+                            <span className="text-red-400 font-medium">
+                              {((selectedTip.predictionData as any).additional_markets_v2.clean_sheet.away * 100).toFixed(1)}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Win to Nil Section */}
+                    {(selectedTip.predictionData as any).additional_markets_v2.win_to_nil && (
+                      <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600">
+                        <h5 className="text-white font-medium mb-3 flex items-center">
+                          <span className="w-2 h-2 bg-rose-500 rounded-full mr-2"></span>
+                          Win to Nil Probability
+                        </h5>
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-300 text-sm">{selectedTip.homeTeam}</span>
+                            <span className="text-green-400 font-medium">
+                              {((selectedTip.predictionData as any).additional_markets_v2.win_to_nil.home * 100).toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-300 text-sm">{selectedTip.awayTeam}</span>
+                            <span className="text-red-400 font-medium">
+                              {((selectedTip.predictionData as any).additional_markets_v2.win_to_nil.away * 100).toFixed(1)}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </Card>
