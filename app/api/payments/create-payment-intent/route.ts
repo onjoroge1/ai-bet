@@ -4,6 +4,7 @@ import prisma from "@/lib/db"
 import { authOptions } from "@/lib/auth"
 import { stripe, formatAmountForStripe, getStripeCurrency } from "@/lib/stripe-server"
 import { getAvailablePaymentMethods, getPaymentMethodConfiguration } from "@/lib/stripe"
+import { getDbCountryPricing } from "@/lib/server-pricing-service"
 
 // POST /api/payments/create-payment-intent - Create a payment intent for purchase
 export async function POST(request: Request) {
@@ -149,7 +150,7 @@ export async function POST(request: Request) {
     } else if (itemType === 'tip') {
       console.log("🔍 DEBUG: Processing TIP item")
       
-      // Get quick purchase item
+      // Get quick purchase item for metadata
       const quickPurchase = await prisma.quickPurchase.findUnique({
         where: { id: itemId },
         include: {
@@ -174,12 +175,38 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Item not found" }, { status: 404 })
       }
 
-      amount = Number(quickPurchase.price)
-      currency = quickPurchase.country?.currencyCode || 'USD'
-      description = `Purchase: ${quickPurchase.name}`
-      
-      metadata.itemName = quickPurchase.name
-      metadata.quickPurchaseType = quickPurchase.type
+      // Get correct pricing from PackageCountryPrice table using getDbCountryPricing()
+      // This ensures consistency with the initial display pricing
+      console.log("🔍 DEBUG: Getting pricing from PackageCountryPrice table via getDbCountryPricing()")
+      try {
+        const pricingConfig = await getDbCountryPricing(user.country.code, 'prediction')
+        console.log("🔍 DEBUG: Pricing config from getDbCountryPricing():", {
+          price: pricingConfig.price,
+          originalPrice: pricingConfig.originalPrice,
+          currencyCode: pricingConfig.currencyCode,
+          source: pricingConfig.source
+        })
+        
+        amount = pricingConfig.price
+        currency = pricingConfig.currencyCode
+        description = `Purchase: ${quickPurchase.name}`
+        
+        metadata.itemName = quickPurchase.name
+        metadata.quickPurchaseType = quickPurchase.type
+        metadata.pricingSource = 'PackageCountryPrice'
+        
+      } catch (error) {
+        console.error("❌ DEBUG: Error getting pricing from PackageCountryPrice:", error)
+        // Fallback to QuickPurchase price if PackageCountryPrice lookup fails
+        console.log("🔍 DEBUG: Falling back to QuickPurchase price")
+        amount = Number(quickPurchase.price)
+        currency = quickPurchase.country?.currencyCode || 'USD'
+        description = `Purchase: ${quickPurchase.name}`
+        
+        metadata.itemName = quickPurchase.name
+        metadata.quickPurchaseType = quickPurchase.type
+        metadata.pricingSource = 'QuickPurchase_fallback'
+      }
     } else {
       console.log("❌ DEBUG: Invalid item type:", itemType)
       return NextResponse.json({ error: "Invalid item type" }, { status: 400 })
