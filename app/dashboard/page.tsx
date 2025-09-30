@@ -47,9 +47,6 @@ const NotificationsWidget = dynamic(() => import('@/components/notifications-wid
   loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
 })
 
-const AchievementsWidget = dynamic(() => import('@/components/achievements-widget').then(mod => mod.AchievementsWidget), {
-  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
-})
 
 const LiveMatchesWidget = dynamic(() => import('@/components/live-matches-widget').then(mod => mod.LiveMatchesWidget), {
   loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
@@ -120,8 +117,8 @@ export default function DashboardPage() {
         </Suspense>
       </div>
 
-      {/* Middle Row: Notifications, Live Matches, Achievements */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+      {/* Middle Row: Notifications, Live Matches */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         <div>
           <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
             <NotificationsWidget />
@@ -130,11 +127,6 @@ export default function DashboardPage() {
         <div>
           <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
             <LiveMatchesWidget />
-          </Suspense>
-        </div>
-        <div>
-          <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
-            <AchievementsWidget />
           </Suspense>
         </div>
       </div>

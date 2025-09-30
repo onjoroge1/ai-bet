@@ -102,9 +102,9 @@ export function RecentPredictions() {
     queryFn: fetchPredictions,
   })
 
-  // Sort by date, show latest 4
-  const sorted = [...predictions].sort((a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime())
-  const recent = sorted.slice(0, 4)
+  // Sort by date ascending (soonest first), show next 4 upcoming matches
+  const sorted = [...predictions].sort((a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime())
+  const upcoming = sorted.slice(0, 4)
 
   const getStatusIcon = (result: string) => {
     switch (result) {
@@ -133,7 +133,7 @@ export function RecentPredictions() {
   }
 
   if (isLoading) {
-    return <Card className="bg-slate-800/50 border-slate-700 p-6">Loading recent predictions...</Card>
+    return <Card className="bg-slate-800/50 border-slate-700 p-6">Loading upcoming predictions...</Card>
   }
   if (error) {
     return <Card className="bg-slate-800/50 border-slate-700 p-6 text-red-400">Failed to load predictions.</Card>
@@ -159,7 +159,7 @@ export function RecentPredictions() {
       <div className="relative">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-2">
-            <h2 className="text-xl font-semibold text-white">Recent Predictions</h2>
+            <h2 className="text-xl font-semibold text-white">Upcoming Predictions</h2>
             <Star className="w-5 h-5 text-yellow-400 animate-pulse" />
           </div>
           <Button
@@ -172,10 +172,10 @@ export function RecentPredictions() {
         </div>
 
         <div className="space-y-4">
-          {recent.length === 0 && (
-            <div className="text-center text-slate-400 py-8">No recent predictions.</div>
+          {upcoming.length === 0 && (
+            <div className="text-center text-slate-400 py-8">No upcoming predictions.</div>
           )}
-          {recent.map((prediction) => (
+          {upcoming.map((prediction) => (
             <div
               key={prediction.id}
               className="bg-slate-900/50 rounded-lg p-4 hover:bg-slate-900/70 transition-all duration-300 hover:scale-[1.02] cursor-pointer relative overflow-hidden"

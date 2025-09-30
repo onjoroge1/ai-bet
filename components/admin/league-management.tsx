@@ -180,7 +180,7 @@ const getEnrichmentStatus = async (): Promise<any> => {
   return response.json()
 }
 
-const syncPredictions = async (params: { timeWindow: string; leagueId?: string; limit?: number }): Promise<any> => {
+const syncPredictions = async (params: { timeWindow: string; leagueId?: string; limit?: number; syncAll?: boolean }): Promise<any> => {
   const response = await fetch('/api/admin/predictions/sync-quickpurchases', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -428,7 +428,8 @@ export function AdminLeagueManagement() {
     console.log('📊 Parameters:', {
       timeWindow: 'all',
       leagueId: selectedLeagueForMatches === 'all' ? undefined : selectedLeagueForMatches,
-      limit: 100
+      limit: 100,
+      syncAll: true
     })
     console.log('🎯 This will call /api/admin/predictions/sync-quickpurchases which calls /predict endpoint')
     
@@ -436,7 +437,8 @@ export function AdminLeagueManagement() {
     syncPredictionsMutation.mutate({
       timeWindow: 'all',
       leagueId: selectedLeagueForMatches === 'all' ? undefined : selectedLeagueForMatches,
-      limit: 100
+      limit: 100,
+      syncAll: true
     })
   }
 

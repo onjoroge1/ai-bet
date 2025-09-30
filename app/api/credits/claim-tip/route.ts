@@ -208,31 +208,36 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Check if prediction exists and is available
-    const prediction = await prisma.prediction.findUnique({
+    // Check if quickPurchase exists (since TimelineFeed uses QuickPurchase records)
+    const quickPurchase = await prisma.quickPurchase.findUnique({
       where: { id: predictionId },
       include: {
-        match: {
-          include: {
-            homeTeam: true,
-            awayTeam: true,
-            league: true
+        country: {
+          select: {
+            currencyCode: true,
+            currencySymbol: true
           }
         }
       }
     });
 
-    if (!prediction) {
+    if (!quickPurchase) {
       return NextResponse.json({ error: 'Prediction not found' }, { status: 404 });
+    }
+
+    // Extract prediction data from JSON
+    const matchData = quickPurchase.matchData as any;
+    const predictionData = quickPurchase.predictionData as any;
+    
+    if (!matchData || !predictionData) {
+      return NextResponse.json({ error: 'Invalid prediction data' }, { status: 400 });
     }
 
     // Check if user already purchased this tip (either with money or credits)
     const existingPurchase = await prisma.purchase.findFirst({
       where: {
         userId,
-        quickPurchase: {
-          matchId: prediction.matchId
-        }
+        quickPurchaseId: predictionId
       }
     });
 
@@ -244,119 +249,7 @@ export async function POST(request: NextRequest) {
       }, { status: 409 });
     }
 
-    // Find or create a QuickPurchase record for this prediction
-    let quickPurchase = await prisma.quickPurchase.findFirst({
-      where: {
-        matchId: prediction.matchId,
-        isPredictionActive: true
-      }
-    });
-
-    // If no QuickPurchase exists, create one from the prediction data
-    if (!quickPurchase) {
-      quickPurchase = await prisma.quickPurchase.create({
-        data: {
-          name: `AI Prediction - ${prediction.predictionType.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}`,
-          price: new Prisma.Decimal(1), // 1 credit worth
-          description: prediction.explanation || 'AI-powered prediction',
-          features: ['AI Analysis', 'Confidence Score', 'Value Rating'],
-          type: 'prediction',
-          iconName: 'Brain',
-          colorGradientFrom: 'from-blue-500',
-          colorGradientTo: 'to-cyan-500',
-          isUrgent: false,
-          isPopular: false,
-          isActive: true,
-          displayOrder: 1,
-          countryId: user.countryId || 'clx1q8b0000000000000000001', // Default country
-          matchId: prediction.matchId,
-          matchData: {
-            home_team: prediction.match.homeTeam.name,
-            away_team: prediction.match.awayTeam.name,
-            league: prediction.match.league.name,
-            date: prediction.match.matchDate.toISOString(),
-            venue: null,
-            match_importance: 'regular_season'
-          },
-          predictionData: {
-            prediction: {
-              match_info: {
-                home_team: prediction.match.homeTeam.name,
-                away_team: prediction.match.awayTeam.name,
-                league: prediction.match.league.name,
-                date: prediction.match.matchDate.toISOString(),
-                venue: null,
-                match_importance: 'regular_season'
-              },
-              comprehensive_analysis: {
-                ml_prediction: {
-                  confidence: prediction.confidenceScore || 60,
-                  home_win: prediction.predictionType === 'home_win' ? 0.6 : 0.2,
-                  away_win: prediction.predictionType === 'away_win' ? 0.6 : 0.2,
-                  draw: prediction.predictionType === 'draw' ? 0.6 : 0.2,
-                  model_type: 'unified_production'
-                },
-                ai_verdict: {
-                  recommended_outcome: prediction.predictionType?.replace(/_/g, ' ') || 'unknown',
-                  confidence_level: prediction.confidenceScore >= 80 ? 'High' : 
-                                    prediction.confidenceScore >= 60 ? 'Medium' : 'Low',
-                  probability_assessment: {
-                    home: prediction.predictionType === 'home_win' ? 0.6 : 0.2,
-                    away: prediction.predictionType === 'away_win' ? 0.6 : 0.2,
-                    draw: prediction.predictionType === 'draw' ? 0.6 : 0.2
-                  }
-                },
-                detailed_reasoning: {
-                  form_analysis: prediction.explanation || 'AI-powered prediction analysis',
-                  injury_impact: 'No significant injuries reported',
-                  tactical_factors: 'Based on current form and tactical analysis',
-                  historical_context: 'Historical data supports this prediction',
-                  ml_model_weight: '50% of decision based on ML model'
-                },
-                risk_analysis: {
-                  key_risks: ['Market volatility may affect odds'],
-                  overall_risk: prediction.confidenceScore >= 80 ? 'Low' : 
-                               prediction.confidenceScore >= 60 ? 'Medium' : 'High',
-                  upset_potential: 'Standard risk level for this type of prediction'
-                },
-                betting_intelligence: {
-                  primary_bet: `${prediction.predictionType?.replace(/_/g, ' ')} with odds around ${prediction.odds}`,
-                  value_bets: [`${prediction.predictionType?.replace(/_/g, ' ')} and over 1.5 goals`],
-                  avoid_bets: ['High-risk accumulator bets', 'Betting against the prediction']
-                },
-                confidence_breakdown: `The ${prediction.confidenceScore >= 80 ? 'high' : prediction.confidenceScore >= 60 ? 'medium' : 'low'} confidence level is based on the ML model prediction, current form analysis, and historical data. The prediction suggests a ${prediction.predictionType?.replace(/_/g, ' ')} outcome.`
-              },
-              additional_markets: {
-                total_goals: {
-                  over_1_5: 0.7,
-                  under_1_5: 0.3
-                },
-                both_teams_score: {
-                  yes: 0.6,
-                  no: 0.4
-                }
-              },
-              analysis_metadata: {
-                analysis_type: 'comprehensive',
-                data_sources: ['ml_model', 'historical_data', 'form_analysis'],
-                ai_model: 'gpt-4o',
-                processing_time: 2.5,
-                ml_model_accuracy: '71.5%',
-                analysis_timestamp: new Date().toISOString()
-              },
-              processing_time: 2.5,
-              timestamp: new Date().toISOString()
-            }
-          },
-          predictionType: prediction.predictionType,
-          confidenceScore: prediction.confidenceScore,
-          odds: prediction.odds,
-          valueRating: prediction.valueRating,
-          analysisSummary: prediction.explanation,
-          isPredictionActive: true
-        }
-      });
-    }
+    // We already have the quickPurchase record from the earlier query
 
     // Calculate expiration (24 hours from now)
     const expiresAt = new Date();
@@ -604,11 +497,14 @@ export async function POST(request: NextRequest) {
       const { NotificationService } = await import('@/lib/notification-service');
       
       // Get tip details for the notification
-      const tipName = `Premium Tip - ${prediction.match.homeTeam.name} vs ${prediction.match.awayTeam.name}`;
-      const matchDetails = `${prediction.match.homeTeam.name} vs ${prediction.match.awayTeam.name} - ${prediction.match.league.name}`;
-      const predictionText = purchaseWithQuickPurchase?.quickPurchase.predictionType || 'Match prediction';
-      const confidence = purchaseWithQuickPurchase?.quickPurchase.confidenceScore || 85;
-      const expiresAt = prediction.match.matchDate ? new Date(prediction.match.matchDate).toISOString() : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const homeTeam = matchData.home_team || matchData.homeTeam;
+      const awayTeam = matchData.away_team || matchData.awayTeam;
+      const league = matchData.league;
+      const tipName = `Premium Tip - ${homeTeam} vs ${awayTeam}`;
+      const matchDetails = `${homeTeam} vs ${awayTeam} - ${league}`;
+      const predictionText = quickPurchase.predictionType || 'Match prediction';
+      const confidence = quickPurchase.confidenceScore || 85;
+      const expiresAt = matchData.date ? new Date(matchData.date).toISOString() : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       const creditsUsed = 1;
       const creditsRemaining = remainingCredits;
       
@@ -651,11 +547,11 @@ export async function POST(request: NextRequest) {
           analysisSummary: purchaseWithQuickPurchase?.quickPurchase.analysisSummary,
           predictionData: purchaseWithQuickPurchase?.quickPurchase.predictionData,
           match: {
-            id: prediction.match.id,
-            homeTeam: prediction.match.homeTeam.name,
-            awayTeam: prediction.match.awayTeam.name,
-            league: prediction.match.league.name,
-            matchDate: prediction.match.matchDate
+            id: quickPurchase.matchId,
+            homeTeam: matchData.home_team || matchData.homeTeam,
+            awayTeam: matchData.away_team || matchData.awayTeam,
+            league: matchData.league,
+            matchDate: matchData.date
           }
         },
         creditsSpent: 1,

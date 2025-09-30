@@ -161,8 +161,17 @@ export async function GET() {
           }
         }
       },
+      where: {
+        match: {
+          matchDate: {
+            gte: new Date(), // Only future matches
+          }
+        }
+      },
       orderBy: {
-        createdAt: 'desc',
+        match: {
+          matchDate: 'asc', // Soonest upcoming matches first
+        },
       },
     })
 

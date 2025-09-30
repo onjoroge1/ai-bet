@@ -519,15 +519,27 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get statistics about QuickPurchase sync status
+    // Get statistics about QuickPurchase sync status (upcoming matches only)
+    const now = new Date()
+    
     const totalQuickPurchases = await prisma.quickPurchase.count({
-      where: { matchId: { not: null } }
+      where: { 
+        matchId: { not: null },
+        matchData: {
+          path: ['date'],
+          gte: now.toISOString()
+        }
+      }
     })
 
     const enrichedQuickPurchases = await prisma.quickPurchase.count({
       where: { 
         matchId: { not: null },
-        predictionData: { not: Prisma.JsonNull }
+        predictionData: { not: Prisma.JsonNull },
+        matchData: {
+          path: ['date'],
+          gte: now.toISOString()
+        }
       }
     })
 
@@ -535,14 +547,22 @@ export async function GET() {
       where: {
         matchId: { not: null },
         predictionData: { equals: Prisma.JsonNull },
-        isPredictionActive: true
+        isPredictionActive: true,
+        matchData: {
+          path: ['date'],
+          gte: now.toISOString()
+        }
       }
     })
 
     const inactivePredictions = await prisma.quickPurchase.count({
       where: {
         matchId: { not: null },
-        isPredictionActive: false
+        isPredictionActive: false,
+        matchData: {
+          path: ['date'],
+          gte: now.toISOString()
+        }
       }
     })
 

@@ -148,7 +148,7 @@ export function TimelineFeed() {
     return (
       <Card className="bg-slate-800/50 border-slate-700 p-6">
         <div className="flex items-center space-x-2 mb-6">
-          <h2 className="text-xl font-semibold text-white">Recent Predictions</h2>
+          <h2 className="text-xl font-semibold text-white">Upcoming Predictions</h2>
           <Star className="w-5 h-5 text-yellow-400 animate-pulse" />
         </div>
         <div className="space-y-4">
@@ -195,7 +195,7 @@ export function TimelineFeed() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center space-x-2">
-          <h2 className="text-xl font-semibold text-white">Recent Predictions</h2>
+          <h2 className="text-xl font-semibold text-white">Upcoming Predictions</h2>
           <Star className="w-5 h-5 text-yellow-400 animate-pulse" />
         </div>
         <div className="flex items-center space-x-4">

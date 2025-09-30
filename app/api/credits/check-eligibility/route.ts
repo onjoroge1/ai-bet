@@ -71,38 +71,44 @@ export async function GET(request: NextRequest) {
     // Calculate total unified credits
     const totalCredits = hasUnlimited ? Infinity : (packageCreditsCount + quizCreditsCount);
 
-    // Check if prediction exists
-    const prediction = await prisma.prediction.findUnique({
+    // Check if quickPurchase exists (since TimelineFeed uses QuickPurchase records)
+    const quickPurchase = await prisma.quickPurchase.findUnique({
       where: { id: predictionId },
       include: {
-        match: {
-          include: {
-            homeTeam: true,
-            awayTeam: true,
-            league: true
+        country: {
+          select: {
+            currencyCode: true,
+            currencySymbol: true
           }
         }
       }
     });
 
-    if (!prediction) {
+    if (!quickPurchase) {
       return NextResponse.json({ error: 'Prediction not found' }, { status: 404 });
+    }
+
+    // Extract prediction data from JSON
+    const matchData = quickPurchase.matchData as any;
+    const predictionData = quickPurchase.predictionData as any;
+    
+    if (!matchData || !predictionData) {
+      return NextResponse.json({ error: 'Invalid prediction data' }, { status: 400 });
     }
 
     // Check if user already purchased this tip (either with money or credits)
     const existingPurchase = await prisma.purchase.findFirst({
       where: {
         userId,
-        quickPurchase: {
-          matchId: prediction.matchId
-        }
+        quickPurchaseId: predictionId
       }
     });
 
     // Determine eligibility
     const hasEnoughCredits = totalCredits > 1; // More than 1 credit required
     const alreadyClaimed = !!existingPurchase;
-    const isEligible = hasEnoughCredits && !alreadyClaimed && !prediction.isFree;
+    const isFree = predictionData.isFree || false;
+    const isEligible = hasEnoughCredits && !alreadyClaimed && !isFree;
 
     return NextResponse.json({
       success: true,
@@ -110,7 +116,7 @@ export async function GET(request: NextRequest) {
         isEligible,
         hasEnoughCredits,
         alreadyClaimed,
-        isFree: prediction.isFree,
+        isFree: isFree,
         currentCredits: totalCredits,
         requiredCredits: 1,
         creditBreakdown: {
@@ -120,16 +126,16 @@ export async function GET(request: NextRequest) {
           hasUnlimited
         },
         prediction: {
-          id: prediction.id,
-          predictionType: prediction.predictionType,
-          odds: prediction.odds,
-          confidenceScore: prediction.confidenceScore,
-          valueRating: prediction.valueRating,
+          id: quickPurchase.id,
+          predictionType: quickPurchase.predictionType,
+          odds: quickPurchase.odds,
+          confidenceScore: quickPurchase.confidenceScore,
+          valueRating: quickPurchase.valueRating,
           match: {
-            homeTeam: prediction.match.homeTeam.name,
-            awayTeam: prediction.match.awayTeam.name,
-            league: prediction.match.league.name,
-            matchDate: prediction.match.matchDate
+            homeTeam: matchData.home_team || matchData.homeTeam,
+            awayTeam: matchData.away_team || matchData.awayTeam,
+            league: matchData.league,
+            matchDate: matchData.date
           }
         },
         existingClaim: existingPurchase ? {

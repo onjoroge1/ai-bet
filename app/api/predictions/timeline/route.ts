@@ -25,8 +25,8 @@ export async function GET(request: NextRequest) {
     const dateFrom = searchParams.get('dateFrom')
     const dateTo = searchParams.get('dateTo')
 
-    // Create cache key based on user and filters
-    const cacheKey = `timeline:${session.user.id}:${limit}:${status || 'all'}:${dateFrom || 'all'}:${dateTo || 'all'}`
+    // Create cache key based on filters only (no user-specific caching for global predictions)
+    const cacheKey = `timeline:${limit}:${status || 'all'}:${dateFrom || 'all'}:${dateTo || 'all'}`
 
     // Check cache first
     const cachedData = await cacheManager.get(cacheKey, CACHE_CONFIG)
@@ -34,7 +34,6 @@ export async function GET(request: NextRequest) {
       logger.info('GET /api/predictions/timeline - Cache hit', {
         tags: ['api', 'predictions', 'timeline', 'cache'],
         data: {
-          userId: session.user.id,
           source: 'cache'
         }
       })
@@ -59,91 +58,73 @@ export async function GET(request: NextRequest) {
       if (dateTo) matchWhere.matchDate.lte = new Date(dateTo)
     }
 
-    // Get predictions with match data and user predictions
-    const predictions = await prisma.prediction.findMany({
-      where: predictionWhere,
-      include: {
-        match: {
-          include: {
-            homeTeam: true,
-            awayTeam: true,
-            league: true,
-          }
-        },
-        userPredictions: {
-          where: {
-            userId: session.user.id
-          },
-          select: {
-            id: true,
-            status: true,
-            stakeAmount: true,
-            potentialReturn: true,
-            actualReturn: true,
-            placedAt: true
-          }
-        }
-      },
-      orderBy: {
-        match: {
-          matchDate: 'desc'
-        }
-      },
-      take: limit
-    })
+    // Get upcoming predictions using raw SQL with proper JSON date filtering
+    const predictions = await prisma.$queryRaw`
+      SELECT 
+          qp.id,
+          qp.name,
+          qp.description,
+          qp.features,
+          qp.type,
+          qp.odds,
+          qp."valueRating",
+          qp."analysisSummary",
+          qp."isPredictionActive",
+          qp."matchId",
+          qp."matchData",
+          qp."predictionData",
+          qp."predictionType",
+          qp."confidenceScore",
+          qp."createdAt",
+          c."currencyCode",
+          c."currencySymbol"
+      FROM "QuickPurchase" qp
+      INNER JOIN "Country" c ON qp."countryId" = c.id
+      WHERE qp."isActive" = true
+      AND qp."matchId" IS NOT NULL
+      AND qp."matchData" IS NOT NULL
+      AND qp."predictionData" IS NOT NULL
+      AND qp."confidenceScore" > 0
+      AND (qp."matchData"->>'date')::timestamp >= NOW()
+      ORDER BY qp."displayOrder" ASC
+      LIMIT ${limit}
+    `
 
     // Transform data for timeline
-    const timelineData = predictions.map(prediction => {
-      const userPrediction = prediction.userPredictions[0] || null
+    const timelineData = (predictions as any[]).map(prediction => {
+      // Extract match data from JSON
+      const matchData = prediction.matchData as any
+      const predictionData = prediction.predictionData as any
       
       // Determine timeline status
       let timelineStatus = 'upcoming'
-      if (prediction.status === 'won' || prediction.status === 'lost') {
-        timelineStatus = prediction.status
-      } else if (prediction.match.matchDate < new Date()) {
+      const matchDate = new Date(matchData.date)
+      if (matchDate < new Date()) {
         timelineStatus = 'pending'
-      }
-
-      // Calculate user profit/loss
-      let userProfit = null
-      if (userPrediction) {
-        if (userPrediction.status === 'won') {
-          userProfit = Number(userPrediction.actualReturn || userPrediction.potentialReturn) - Number(userPrediction.stakeAmount)
-        } else if (userPrediction.status === 'lost') {
-          userProfit = -Number(userPrediction.stakeAmount)
-        }
       }
 
       return {
         id: prediction.id,
         match: {
-          id: prediction.match.id,
-          homeTeam: prediction.match.homeTeam,
-          awayTeam: prediction.match.awayTeam,
-          league: prediction.match.league,
-          matchDate: prediction.match.matchDate,
-          status: prediction.match.status,
-          homeScore: prediction.match.homeScore,
-          awayScore: prediction.match.awayScore
+          id: prediction.matchId,
+          homeTeam: { name: matchData.home_team || matchData.homeTeam },
+          awayTeam: { name: matchData.away_team || matchData.awayTeam },
+          league: { name: matchData.league },
+          matchDate: matchDate,
+          status: matchData.status || 'scheduled',
+          homeScore: matchData.home_score || null,
+          awayScore: matchData.away_score || null
         },
         prediction: {
           type: prediction.predictionType,
           odds: prediction.odds,
           confidence: prediction.confidenceScore,
           valueRating: prediction.valueRating,
-          explanation: prediction.explanation,
-          isFree: prediction.isFree,
-          status: prediction.status,
-          resultUpdatedAt: prediction.resultUpdatedAt
+          explanation: predictionData?.explanation || prediction.analysisSummary,
+          isFree: predictionData?.isFree || false,
+          status: predictionData?.status || 'pending',
+          resultUpdatedAt: predictionData?.resultUpdatedAt || null
         },
-        userPrediction: userPrediction ? {
-          id: userPrediction.id,
-          status: userPrediction.status,
-          amount: Number(userPrediction.stakeAmount),
-          potentialReturn: Number(userPrediction.potentialReturn),
-          profit: userProfit,
-          placedAt: userPrediction.placedAt
-        } : null,
         timelineStatus,
         createdAt: prediction.createdAt
       }
@@ -152,7 +133,6 @@ export async function GET(request: NextRequest) {
     const responseData = {
       predictions: timelineData,
       count: timelineData.length,
-      userId: session.user.id,
       filters: { status, dateFrom, dateTo, limit }
     }
 
@@ -163,7 +143,6 @@ export async function GET(request: NextRequest) {
       tags: ['api', 'predictions', 'timeline'],
       data: { 
         count: timelineData.length,
-        userId: session.user.id,
         filters: { status, dateFrom, dateTo, limit },
         source: 'database'
       }
