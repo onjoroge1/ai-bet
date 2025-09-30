@@ -9,38 +9,44 @@ import { DashboardResponse } from "@/types/dashboard"
 export function StatsOverview() {
   const { data, isLoading, error } = useDashboardData()
   const [animatedValues, setAnimatedValues] = useState({
-    predictionAccuracy: 71,
-    monthlySuccess: 0,
-    totalPredictions: 0,
-    currentStreak: 0,
+    totalTipsPurchased: 0,
+    thisMonthActivity: 0,
+    totalSpent: 0,
+    averageConfidence: 0,
   })
 
-  // Calculate derived metrics
+  // Calculate derived metrics from real purchase data
   const calculateMetrics = (data: DashboardResponse | null) => {
-    if (!data) return { totalPredictions: 0, currentStreak: 0, accuracy: 0, monthlySuccess: 0 }
+    if (!data) return { 
+      totalTipsPurchased: 0, 
+      thisMonthActivity: 0, 
+      totalSpent: 0, 
+      averageConfidence: 0 
+    }
     
-    // Use model accuracy instead of user accuracy - this represents historical model performance
-    const modelAccuracy = 71 // Model's historical accuracy across all predictions
-    const monthlySuccess = parseInt(data.dashboard.monthlySuccess.replace('%', '')) || 0
+    // Use real purchase metrics from the API
+    const totalTipsPurchased = data.dashboard.totalTipsPurchased || 0
+    const thisMonthActivity = data.dashboard.thisMonthActivity || 0
+    const totalSpent = data.dashboard.totalSpent || 0
+    const averageConfidence = data.dashboard.averageConfidence || 0
     
-    // Estimate total predictions based on accuracy and level
-    const totalPredictions = Math.max(5, data.dashboard.level * 10) // Minimum 5, scale with level
-    
-    // Use win streak from user data
-    const currentStreak = data.user.winStreak || 0
-    
-    return { totalPredictions, currentStreak, accuracy: modelAccuracy, monthlySuccess }
+    return { 
+      totalTipsPurchased, 
+      thisMonthActivity, 
+      totalSpent, 
+      averageConfidence 
+    }
   }
 
   const metrics = calculateMetrics(data)
   
   // Memoize finalValues to prevent unnecessary re-renders
   const finalValues = useMemo(() => ({
-    predictionAccuracy: metrics.accuracy,
-    monthlySuccess: metrics.monthlySuccess,
-    totalPredictions: metrics.totalPredictions,
-    currentStreak: metrics.currentStreak,
-  }), [metrics.accuracy, metrics.monthlySuccess, metrics.totalPredictions, metrics.currentStreak])
+    totalTipsPurchased: metrics.totalTipsPurchased,
+    thisMonthActivity: metrics.thisMonthActivity,
+    totalSpent: metrics.totalSpent,
+    averageConfidence: metrics.averageConfidence,
+  }), [metrics.totalTipsPurchased, metrics.thisMonthActivity, metrics.totalSpent, metrics.averageConfidence])
 
   useEffect(() => {
     if (!data) return
@@ -55,19 +61,19 @@ export function StatsOverview() {
       const progress = currentStep / steps
 
       setAnimatedValues({
-        predictionAccuracy: 71, // Always show 71% for model accuracy
-        monthlySuccess: Math.floor(finalValues.monthlySuccess * progress),
-        totalPredictions: Math.floor(finalValues.totalPredictions * progress),
-        currentStreak: Math.floor(finalValues.currentStreak * progress),
+        totalTipsPurchased: Math.floor(finalValues.totalTipsPurchased * progress),
+        thisMonthActivity: Math.floor(finalValues.thisMonthActivity * progress),
+        totalSpent: Math.floor(finalValues.totalSpent * progress),
+        averageConfidence: Math.floor(finalValues.averageConfidence * progress),
       })
 
       if (currentStep >= steps) {
         clearInterval(interval)
         setAnimatedValues({
-          predictionAccuracy: 71, // Keep 71% for model accuracy
-          monthlySuccess: finalValues.monthlySuccess,
-          totalPredictions: finalValues.totalPredictions,
-          currentStreak: finalValues.currentStreak,
+          totalTipsPurchased: finalValues.totalTipsPurchased,
+          thisMonthActivity: finalValues.thisMonthActivity,
+          totalSpent: finalValues.totalSpent,
+          averageConfidence: finalValues.averageConfidence,
         })
       }
     }, stepDuration)
@@ -75,18 +81,25 @@ export function StatsOverview() {
     return () => clearInterval(interval)
   }, [data, finalValues])
 
-  // Determine trend indicators based on data
+  // Determine trend indicators based on purchase data
   const getTrendData = () => {
-    if (!data) return { accuracyTrend: 'neutral', monthlyTrend: 'neutral', predictionsTrend: 'neutral', streakTrend: 'neutral' }
+    if (!data) return { 
+      totalTipsTrend: 'neutral', 
+      monthlyTrend: 'neutral', 
+      spentTrend: 'neutral', 
+      confidenceTrend: 'neutral' 
+    }
     
-    const modelAccuracy = finalValues.predictionAccuracy // This is now model accuracy (71%)
-    const monthlySuccess = finalValues.monthlySuccess
+    const totalTips = finalValues.totalTipsPurchased
+    const thisMonth = finalValues.thisMonthActivity
+    const totalSpent = finalValues.totalSpent
+    const avgConfidence = finalValues.averageConfidence
     
     return {
-      accuracyTrend: modelAccuracy > 70 ? 'up' : modelAccuracy > 60 ? 'neutral' : 'down',
-      monthlyTrend: monthlySuccess > 60 ? 'up' : monthlySuccess > 40 ? 'neutral' : 'down',
-      predictionsTrend: finalValues.totalPredictions > 20 ? 'up' : 'neutral',
-      streakTrend: finalValues.currentStreak > 3 ? 'up' : finalValues.currentStreak > 0 ? 'neutral' : 'down'
+      totalTipsTrend: totalTips > 10 ? 'up' : totalTips > 5 ? 'neutral' : 'down',
+      monthlyTrend: thisMonth > 3 ? 'up' : thisMonth > 1 ? 'neutral' : 'down',
+      spentTrend: totalSpent > 50 ? 'up' : totalSpent > 20 ? 'neutral' : 'down',
+      confidenceTrend: avgConfidence > 75 ? 'up' : avgConfidence > 60 ? 'neutral' : 'down'
     }
   }
 
@@ -94,26 +107,26 @@ export function StatsOverview() {
 
   const stats = [
     {
-      title: "Win Streak",
-      value: `${animatedValues.currentStreak} wins`,
-      change: trends.streakTrend === 'up' ? "On fire!" : trends.streakTrend === 'down' ? "Building up" : "Getting started",
-      trend: trends.streakTrend,
+      title: "Total Tips Purchased",
+      value: animatedValues.totalTipsPurchased.toString(),
+      change: trends.totalTipsTrend === 'up' ? "Active user!" : trends.totalTipsTrend === 'down' ? "Getting started" : "Building up",
+      trend: trends.totalTipsTrend,
       icon: Trophy,
-      color: "yellow",
-      emoji: "🏆",
-      description: "Consecutive successful predictions",
-      progress: Math.min(100, (animatedValues.currentStreak / 10) * 100), // Scale to 10 max
+      color: "emerald",
+      emoji: "🎯",
+      description: "Tips you've purchased",
+      progress: Math.min(100, (animatedValues.totalTipsPurchased / 20) * 100), // Scale to 20 max
     },
     {
-      title: "Total Predictions",
-      value: animatedValues.totalPredictions.toString(),
-      change: trends.predictionsTrend === 'up' ? "Active user" : "Getting started",
-      trend: trends.predictionsTrend,
+      title: "This Month's Activity",
+      value: animatedValues.thisMonthActivity.toString(),
+      change: trends.monthlyTrend === 'up' ? "Very active!" : trends.monthlyTrend === 'down' ? "Stay engaged" : "Good progress",
+      trend: trends.monthlyTrend,
       icon: TrendingUp,
-      color: "purple",
-      emoji: "📈",
-      description: "Predictions you've followed",
-      progress: Math.min(100, (animatedValues.totalPredictions / 50) * 100), // Scale to 50 max
+      color: "blue",
+      emoji: "📊",
+      description: "Tips purchased this month",
+      progress: Math.min(100, (animatedValues.thisMonthActivity / 10) * 100), // Scale to 10 max
     },
   ]
 
@@ -260,13 +273,13 @@ export function StatsOverview() {
               <span className="text-sm font-medium text-emerald-400">Your Performance Insights</span>
             </div>
             <p className="text-slate-300 text-sm">
-              {finalValues.currentStreak > 5 
-                ? "Incredible win streak! You're on fire with consecutive successful predictions. Keep up this amazing momentum!"
-                : finalValues.currentStreak > 2
-                  ? "Great win streak! You're building momentum with consecutive wins. Consider following more AI predictions to extend your streak."
-                  : finalValues.totalPredictions > 10
-                    ? "You're an active user! Follow more AI predictions to build your win streak and improve your overall performance."
-                    : "Getting started! Follow more AI predictions to build your experience and start building win streaks."
+              {finalValues.totalTipsPurchased > 15 
+                ? "Excellent engagement! You're a highly active user with great tip purchasing habits. Keep up this fantastic momentum!"
+                : finalValues.totalTipsPurchased > 5
+                  ? "Great activity! You're building a solid foundation with your tip purchases. Consider exploring more predictions to maximize your value."
+                  : finalValues.thisMonthActivity > 2
+                    ? "Good monthly activity! You're staying engaged with recent purchases. Keep exploring our AI predictions for better results."
+                    : "Welcome to SnapBet AI! Start purchasing tips to build your experience and discover the power of AI predictions."
               }
             </p>
           </div>

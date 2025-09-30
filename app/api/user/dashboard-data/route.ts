@@ -57,6 +57,9 @@ export async function GET() {
     // Calculate current win streak dynamically
     const currentWinStreak = await calculateCurrentWinStreak(user.id)
     
+    // Calculate real purchase metrics
+    const purchaseMetrics = await calculatePurchaseMetrics(user.id)
+    
     // Format member since date
     const memberSince = formatMemberSince(user.createdAt)
     
@@ -85,7 +88,12 @@ export async function GET() {
         predictionAccuracy: formattedAccuracy,
         monthlySuccess: formattedMonthlySuccess,
         vipExpiryDate,
-        subscriptionPlan: user.subscriptionPlan
+        subscriptionPlan: user.subscriptionPlan,
+        // Real purchase metrics
+        totalTipsPurchased: purchaseMetrics.totalTipsPurchased,
+        thisMonthActivity: purchaseMetrics.thisMonthActivity,
+        totalSpent: purchaseMetrics.totalSpent,
+        averageConfidence: purchaseMetrics.averageConfidence
       }
     })
   } catch (error) {
@@ -206,4 +214,84 @@ function formatVIPExpiry(expiryDate: Date): string {
 
 function formatPercentage(value: number): string {
   return `${Math.round(value)}%`
+}
+
+async function calculatePurchaseMetrics(userId: string): Promise<{
+  totalTipsPurchased: number
+  thisMonthActivity: number
+  totalSpent: number
+  averageConfidence: number
+}> {
+  try {
+    // Calculate total tips purchased
+    const totalPurchases = await prisma.purchase.count({
+      where: {
+        userId: userId,
+        status: 'completed'
+      }
+    })
+
+    // Calculate this month's activity (last 30 days)
+    const thirtyDaysAgo = new Date()
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+    
+    const thisMonthPurchases = await prisma.purchase.count({
+      where: {
+        userId: userId,
+        status: 'completed',
+        createdAt: {
+          gte: thirtyDaysAgo
+        }
+      }
+    })
+
+    // Calculate total spent
+    const totalSpentResult = await prisma.purchase.aggregate({
+      _sum: {
+        amount: true
+      },
+      where: {
+        userId: userId,
+        status: 'completed'
+      }
+    })
+
+    // Calculate average confidence from purchased tips
+    const confidenceResult = await prisma.purchase.findMany({
+      where: {
+        userId: userId,
+        status: 'completed'
+      },
+      include: {
+        quickPurchase: {
+          select: {
+            confidenceScore: true
+          }
+        }
+      }
+    })
+
+    const validConfidenceScores = confidenceResult
+      .map(p => p.quickPurchase?.confidenceScore)
+      .filter((score): score is number => score !== null && score !== undefined)
+
+    const averageConfidence = validConfidenceScores.length > 0
+      ? validConfidenceScores.reduce((sum, score) => sum + score, 0) / validConfidenceScores.length
+      : 0
+
+    return {
+      totalTipsPurchased: totalPurchases,
+      thisMonthActivity: thisMonthPurchases,
+      totalSpent: totalSpentResult._sum.amount || 0,
+      averageConfidence: Math.round(averageConfidence)
+    }
+  } catch (error) {
+    console.error("Error calculating purchase metrics:", error)
+    return {
+      totalTipsPurchased: 0,
+      thisMonthActivity: 0,
+      totalSpent: 0,
+      averageConfidence: 0
+    }
+  }
 } 
