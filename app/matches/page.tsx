@@ -6,12 +6,10 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Calendar, MapPin, Trophy, Target, TrendingUp, Eye, CheckCircle, Loader2, Search, Filter, X, CreditCard } from "lucide-react"
+import { Calendar, MapPin, Trophy, Target, TrendingUp, Eye, CheckCircle, Loader2, Search, Filter, X, LogIn, Star, Users, Zap } from "lucide-react"
 import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
 import { decodeQuickPurchasesData } from "@/lib/optimized-data-decoder"
-import { QuickPurchaseModal } from "@/components/quick-purchase-modal"
 import { toast } from "sonner"
 
 interface MatchData {
@@ -61,45 +59,13 @@ interface MatchFilters {
   sortBy: string
 }
 
-// Add QuickPurchaseItem type for modal
-interface QuickPurchaseItem {
-  id: string
-  name: string
-  price: number
-  originalPrice?: number
-  description: string
-  features: string[]
-  type: "prediction" | "tip" | "package" | "vip"
-  iconName: string
-  colorGradientFrom: string
-  colorGradientTo: string
-  isUrgent?: boolean
-  timeLeft?: string
-  isPopular?: boolean
-  discountPercentage?: number
-  confidenceScore?: number
-  matchData?: MatchData
-  country?: {
-    currencyCode: string
-    currencySymbol: string
-  }
-  tipCount?: number
-  predictionType?: string
-  odds?: number
-  valueRating?: string
-  analysisSummary?: string
-}
-
-export default function MatchesPage() {
-  const { isAuthenticated, isLoading: authLoading, user } = useAuth()
+export default function PublicMatchesPage() {
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
   const router = useRouter()
   const [matches, setMatches] = useState<Match[]>([])
   const [filteredMatches, setFilteredMatches] = useState<Match[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedMatch, setSelectedMatch] = useState<Match | null>(null)
-  const [modalItem, setModalItem] = useState<QuickPurchaseItem | null>(null)
-  const [showPurchaseModal, setShowPurchaseModal] = useState(false)
   const [filters, setFilters] = useState<MatchFilters>({
     search: "",
     status: "all",
@@ -108,65 +74,33 @@ export default function MatchesPage() {
     sortBy: "date"
   })
 
-  console.log('MatchesPage render - authLoading:', authLoading, 'isAuthenticated:', isAuthenticated, 'user:', user?.id, 'loading:', loading, 'matches count:', matches.length, 'filtered count:', filteredMatches.length, 'error:', error)
+  console.log('PublicMatchesPage render - authLoading:', authLoading, 'isAuthenticated:', isAuthenticated, 'loading:', loading, 'matches count:', matches.length, 'filtered count:', filteredMatches.length, 'error:', error)
 
-  // Redirect unauthenticated users to public matches page
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      router.push('/matches')
-    }
-  }, [authLoading, isAuthenticated, router])
-
-  // Show loading while checking authentication
-  if (authLoading) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <Loader2 className="h-8 w-8 animate-spin text-emerald-400 mx-auto mb-4" />
-            <div className="text-white text-lg font-semibold mb-2">Loading...</div>
-            <div className="text-slate-400 text-sm">Checking authentication...</div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Don't render anything if not authenticated (will redirect)
-  if (!isAuthenticated) {
-    return null
-  }
-
-  const applyFilters = useCallback(() => {
+  const applyFilters = useCallback((matches: Match[], filters: MatchFilters) => {
     let filtered = [...matches]
 
     // Search filter
     if (filters.search) {
       const searchLower = filters.search.toLowerCase()
-      filtered = filtered.filter(match => 
-        match.name.toLowerCase().includes(searchLower) ||
-        (match.matchData?.home_team && match.matchData.home_team.toLowerCase().includes(searchLower)) ||
-        (match.matchData?.away_team && match.matchData.away_team.toLowerCase().includes(searchLower)) ||
-        (match.matchData?.league && match.matchData.league.toLowerCase().includes(searchLower))
-      )
+      filtered = filtered.filter(match => {
+        const matchData = match.matchData || {}
+        const homeTeam = matchData.home_team?.toLowerCase() || ""
+        const awayTeam = matchData.away_team?.toLowerCase() || ""
+        const league = matchData.league?.toLowerCase() || ""
+        const predictionType = match.predictionType?.toLowerCase() || ""
+        
+        return homeTeam.includes(searchLower) || 
+               awayTeam.includes(searchLower) || 
+               league.includes(searchLower) ||
+               predictionType.includes(searchLower)
+      })
     }
 
-    // Status filter (upcoming, scheduled)
+    // Status filter
     if (filters.status !== "all") {
       filtered = filtered.filter(match => {
-        const matchDate = match.matchData?.date ? new Date(match.matchData.date) : null
-        const now = new Date()
-        
-        if (filters.status === "upcoming") {
-          // Show matches starting within next 2 hours
-          const twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000)
-          return matchDate && matchDate > now && matchDate <= twoHoursFromNow
-        } else if (filters.status === "scheduled") {
-          // Show matches scheduled for later (more than 2 hours away)
-          const twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000)
-          return matchDate && matchDate > twoHoursFromNow
-        }
-        return true
+        const status = getMatchStatus(match)
+        return status === filters.status
       })
     }
 
@@ -175,19 +109,24 @@ export default function MatchesPage() {
       filtered = filtered.filter(match => {
         const confidence = match.confidenceScore || 0
         switch (filters.confidence) {
-          case "high": return confidence >= 80
-          case "medium": return confidence >= 60 && confidence < 80
-          case "low": return confidence < 60
-          default: return true
+          case "high":
+            return confidence >= 80
+          case "medium":
+            return confidence >= 60 && confidence < 80
+          case "low":
+            return confidence < 60
+          default:
+            return true
         }
       })
     }
 
     // Value rating filter
     if (filters.valueRating !== "all") {
-      filtered = filtered.filter(match => 
-        match.valueRating?.toLowerCase() === filters.valueRating
-      )
+      filtered = filtered.filter(match => {
+        const rating = match.valueRating?.toLowerCase() || ""
+        return rating === filters.valueRating.toLowerCase()
+      })
     }
 
     // Sort
@@ -195,46 +134,28 @@ export default function MatchesPage() {
       switch (filters.sortBy) {
         case "confidence":
           return (b.confidenceScore || 0) - (a.confidenceScore || 0)
-        case "date":
-          const dateA = a.matchData?.date ? new Date(a.matchData.date) : new Date(0)
-          const dateB = b.matchData?.date ? new Date(b.matchData.date) : new Date(0)
-          return dateA.getTime() - dateB.getTime()
         case "price":
           return a.price - b.price
         case "name":
-          return a.name.localeCompare(b.name)
+          const aName = `${a.matchData?.home_team || ""} vs ${a.matchData?.away_team || ""}`
+          const bName = `${b.matchData?.home_team || ""} vs ${b.matchData?.away_team || ""}`
+          return aName.localeCompare(bName)
+        case "date":
         default:
-          return 0
+          const aDate = a.matchData?.date ? new Date(a.matchData.date) : new Date(0)
+          const bDate = b.matchData?.date ? new Date(b.matchData.date) : new Date(0)
+          return aDate.getTime() - bDate.getTime()
       }
     })
 
-    setFilteredMatches(filtered)
-  }, [matches, filters])
+    return filtered
+  }, [])
 
   useEffect(() => {
-    console.log('MatchesPage useEffect - fetching matches, isAuthenticated:', isAuthenticated)
-    if (isAuthenticated) {
-      fetchMatches()
+    if (!authLoading) {
+      setFilteredMatches(applyFilters(matches, filters))
     }
-  }, [isAuthenticated])
-
-  useEffect(() => {
-    console.log('MatchesPage useEffect - applying filters')
-    applyFilters()
-  }, [matches, filters, applyFilters])
-
-  // Handle escape key to close modal
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && showPurchaseModal) {
-        setShowPurchaseModal(false)
-        setSelectedMatch(null)
-      }
-    }
-
-    document.addEventListener('keydown', handleEscape)
-    return () => document.removeEventListener('keydown', handleEscape)
-  }, [showPurchaseModal])
+  }, [matches, filters, applyFilters, authLoading])
 
   const fetchMatches = async () => {
     try {
@@ -280,14 +201,15 @@ export default function MatchesPage() {
       setMatches(predictionMatches)
     } catch (error) {
       console.error('Error fetching matches:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
-      setError(errorMessage)
-      // Set empty array to prevent infinite loading
-      setMatches([])
+      setError(error instanceof Error ? error.message : 'Failed to fetch matches')
     } finally {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    fetchMatches()
+  }, [])
 
   const getMatchStatus = (match: Match) => {
     const matchDate = match.matchData?.date ? new Date(match.matchData.date) : null
@@ -297,7 +219,6 @@ export default function MatchesPage() {
     const timeDiff = matchDate.getTime() - now.getTime()
     const hoursDiff = timeDiff / (1000 * 60 * 60)
     
-    // Since we filter out completed matches, we only have upcoming and scheduled
     if (hoursDiff <= 2) return "upcoming"
     return "scheduled"
   }
@@ -309,117 +230,75 @@ export default function MatchesPage() {
       case "scheduled":
         return <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">Scheduled</Badge>
       default:
-        return <Badge className="bg-gray-500/20 text-gray-400 border-gray-500/30">Unknown</Badge>
+        return <Badge className="bg-slate-500/20 text-slate-400 border-slate-500/30">Unknown</Badge>
     }
   }
 
   const getConfidenceBadge = (confidence: number) => {
-    let colorClass = 'bg-red-500/20 text-red-400 border-red-500/30'
     if (confidence >= 80) {
-      colorClass = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+      return <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">{confidence}%</Badge>
     } else if (confidence >= 60) {
-      colorClass = 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+      return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">{confidence}%</Badge>
+    } else {
+      return <Badge className="bg-red-500/20 text-red-400 border-red-500/30">{confidence}%</Badge>
     }
-    
-    return (
-      <Badge className={colorClass}>
-        {confidence}%
-      </Badge>
-    )
   }
 
   const getValueRatingBadge = (rating: string) => {
-    switch (rating?.toLowerCase()) {
+    const ratingLower = rating.toLowerCase()
+    switch (ratingLower) {
       case "very high":
-        return <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">Very High</Badge>
+        return <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">Very High Value</Badge>
       case "high":
-        return <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">High</Badge>
+        return <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">High Value</Badge>
       case "medium":
-        return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">Medium</Badge>
+        return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">Medium Value</Badge>
       case "low":
-        return <Badge className="bg-red-500/20 text-red-400 border-red-500/30">Low</Badge>
+        return <Badge className="bg-red-500/20 text-red-400 border-red-500/30">Low Value</Badge>
       default:
-        return <Badge className="bg-gray-500/20 text-gray-400 border-gray-500/30">Unknown</Badge>
+        return <Badge className="bg-slate-500/20 text-slate-400 border-slate-500/30">{rating}</Badge>
     }
   }
 
   const formatMatchDate = (dateString: string) => {
     const date = new Date(dateString)
-    return date.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
-
-  const handlePurchaseClick = (match: Match) => {
-    const quickPurchaseItem: QuickPurchaseItem = {
-      id: match.id,
-      name: match.name,
-      price: match.price,
-      originalPrice: match.originalPrice,
-      description: match.analysisSummary || `AI prediction for ${match.name}`,
-      features: match.features || ['AI Analysis', 'Match Statistics', 'Risk Assessment'],
-      type: (match.type as "prediction" | "tip" | "package" | "vip"),
-      iconName: match.iconName || 'Star',
-      colorGradientFrom: match.colorGradientFrom || '#3B82F6',
-      colorGradientTo: match.colorGradientTo || '#1D4ED8',
-      isUrgent: match.isUrgent || false,
-      timeLeft: match.timeLeft,
-      isPopular: match.isPopular || false,
-      discountPercentage: match.discountPercentage,
-      confidenceScore: match.confidenceScore,
-      matchData: match.matchData,
-      country: match.country,
-      tipCount: match.tipCount,
-      predictionType: match.predictionType,
-      odds: match.odds,
-      valueRating: match.valueRating,
-      analysisSummary: match.analysisSummary
+    const now = new Date()
+    const diffInHours = (date.getTime() - now.getTime()) / (1000 * 60 * 60)
+    
+    if (diffInHours < 1) {
+      const minutes = Math.floor(diffInHours * 60)
+      return `In ${minutes} minutes`
+    } else if (diffInHours < 24) {
+      const hours = Math.floor(diffInHours)
+      return `In ${hours} hours`
+    } else {
+      return date.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
     }
-    setModalItem(quickPurchaseItem)
-    setShowPurchaseModal(true)
   }
 
-  // Check authentication first
-  if (authLoading) {
-    console.log('MatchesPage - authLoading is true, showing loading state')
-    return (
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
-          <span className="ml-2 text-slate-300">Checking authentication...</span>
-        </div>
-      </div>
-    )
+  const handleLoginClick = () => {
+    router.push('/signin?callbackUrl=/dashboard/matches')
   }
 
-  if (!isAuthenticated) {
-    console.log('MatchesPage - not authenticated, showing auth required state')
-    return (
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="text-red-400 text-lg font-semibold mb-2">Authentication Required</div>
-            <div className="text-slate-400 text-sm mb-4">You need to be logged in to view this page.</div>
-            <Button onClick={() => window.location.href = '/signin'} variant="outline">
-              Go to Sign In
-            </Button>
-          </div>
-        </div>
-      </div>
-    )
+  const handleSignUpClick = () => {
+    router.push('/signup?callbackUrl=/dashboard/matches')
   }
-
-  console.log('MatchesPage - authenticated, proceeding with normal render')
 
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
+          <div className="text-center">
+            <Loader2 className="h-8 w-8 animate-spin text-emerald-400 mx-auto mb-4" />
+            <div className="text-white text-lg font-semibold mb-2">Loading Matches</div>
+            <div className="text-slate-400 text-sm">Fetching the latest predictions...</div>
+          </div>
         </div>
       </div>
     )
@@ -443,12 +322,60 @@ export default function MatchesPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">Upcoming Matches</h1>
-        <p className="text-slate-400">
-          Browse and filter through upcoming match predictions with confidence scores
+      {/* Hero Section */}
+      <div className="text-center mb-12">
+        <h1 className="text-4xl font-bold text-white mb-4">
+          AI-Powered Sports Predictions
+        </h1>
+        <p className="text-xl text-slate-300 mb-6 max-w-3xl mx-auto">
+          Discover upcoming matches with our advanced AI predictions. See confidence scores, 
+          analysis, and value ratings - all powered by machine learning.
         </p>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <Button 
+            onClick={handleSignUpClick}
+            size="lg"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3"
+          >
+            <Zap className="h-5 w-5 mr-2" />
+            Get Started Free
+          </Button>
+          <Button 
+            onClick={handleLoginClick}
+            variant="outline"
+            size="lg"
+            className="border-slate-600 text-white hover:bg-slate-800 px-8 py-3"
+          >
+            <LogIn className="h-5 w-5 mr-2" />
+            Sign In
+          </Button>
+        </div>
+      </div>
+
+      {/* Stats Section */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+        <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-6 text-center">
+          <div className="text-3xl font-bold text-emerald-400 mb-2">{filteredMatches.length}</div>
+          <div className="text-slate-400">Available Predictions</div>
+        </Card>
+        <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-6 text-center">
+          <div className="text-3xl font-bold text-blue-400 mb-2">
+            {filteredMatches.filter(m => (m.confidenceScore || 0) >= 80).length}
+          </div>
+          <div className="text-slate-400">High Confidence (80%+)</div>
+        </Card>
+        <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-6 text-center">
+          <div className="text-3xl font-bold text-orange-400 mb-2">
+            {filteredMatches.filter(m => getMatchStatus(m) === "upcoming").length}
+          </div>
+          <div className="text-slate-400">Starting Soon</div>
+        </Card>
+        <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-6 text-center">
+          <div className="text-3xl font-bold text-purple-400 mb-2">
+            {filteredMatches.filter(m => m.valueRating?.toLowerCase() === "very high").length}
+          </div>
+          <div className="text-slate-400">Very High Value</div>
+        </Card>
       </div>
 
       {/* Filters */}
@@ -528,40 +455,6 @@ export default function MatchesPage() {
         </div>
       </Card>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-4 hover:bg-slate-800/70 transition-colors">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-white">{filteredMatches.length}</div>
-            <div className="text-slate-400 text-sm">Total Matches</div>
-          </div>
-        </Card>
-        <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-4 hover:bg-slate-800/70 transition-colors">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-emerald-400">
-              {filteredMatches.filter(m => (m.confidenceScore || 0) >= 80).length}
-            </div>
-            <div className="text-slate-400 text-sm">80%+ Confidence</div>
-          </div>
-        </Card>
-        <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-4 hover:bg-slate-800/70 transition-colors">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-orange-400">
-              {filteredMatches.filter(m => getMatchStatus(m) === "upcoming").length}
-            </div>
-            <div className="text-slate-400 text-sm">Upcoming</div>
-          </div>
-        </Card>
-        <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-4 hover:bg-slate-800/70 transition-colors">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-purple-400">
-              {filteredMatches.filter(m => m.valueRating?.toLowerCase() === "very high").length}
-            </div>
-            <div className="text-slate-400 text-sm">Very High Value</div>
-          </div>
-        </Card>
-      </div>
-
       {/* Matches Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
         {filteredMatches.map((match) => {
@@ -634,44 +527,45 @@ export default function MatchesPage() {
                   </div>
                 )}
 
-                {/* Price and Actions */}
-                <div className="flex items-center justify-between pt-4 border-t border-slate-700">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-white font-bold">
+                {/* Login CTA */}
+                <div className="bg-gradient-to-r from-emerald-500/10 to-blue-500/10 border border-emerald-500/20 rounded-lg p-4">
+                  <div className="text-center">
+                    <div className="flex items-center justify-center mb-3">
+                      <Star className="h-5 w-5 text-emerald-400 mr-2" />
+                      <span className="text-emerald-400 font-medium">Premium Prediction</span>
+                    </div>
+                    <div className="text-white font-semibold mb-2">
                       {match.country?.currencySymbol}{match.price}
-                    </span>
-                    {match.originalPrice && match.originalPrice > match.price && (
-                      <span className="text-slate-400 line-through text-sm">
-                        {match.country?.currencySymbol}{match.originalPrice}
-                      </span>
-                    )}
+                    </div>
+                    <div className="text-slate-400 text-sm mb-4">
+                      Get full access to this prediction and analysis
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Button 
+                        onClick={handleLoginClick}
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-700 flex-1"
+                      >
+                        <LogIn className="h-4 w-4 mr-1" />
+                        Login to Purchase
+                      </Button>
+                      <Button 
+                        onClick={handleSignUpClick}
+                        variant="outline"
+                        size="sm"
+                        className="border-slate-600 text-white hover:bg-slate-800 flex-1"
+                      >
+                        <Users className="h-4 w-4 mr-1" />
+                        Sign Up
+                      </Button>
+                    </div>
                   </div>
-                  <Button 
-                    size="sm" 
-                    onClick={() => handlePurchaseClick(match)}
-                    className="bg-emerald-600 hover:bg-emerald-700"
-                  >
-                    <Target className="h-4 w-4 mr-1" />
-                    Purchase
-                  </Button>
                 </div>
               </CardContent>
             </Card>
           )
         })}
       </div>
-
-      {/* Purchase Modal */}
-      {showPurchaseModal && modalItem && (
-        <QuickPurchaseModal
-          isOpen={showPurchaseModal}
-          onClose={() => {
-            setShowPurchaseModal(false)
-            setModalItem(null)
-          }}
-          item={modalItem}
-        />
-      )}
 
       {/* Empty State */}
       {filteredMatches.length === 0 && !loading && (
@@ -697,6 +591,38 @@ export default function MatchesPage() {
           </div>
         </Card>
       )}
+
+      {/* Bottom CTA */}
+      <div className="mt-16 text-center">
+        <Card className="bg-gradient-to-r from-emerald-500/10 to-blue-500/10 border border-emerald-500/20 p-8">
+          <h2 className="text-2xl font-bold text-white mb-4">
+            Ready to Start Winning?
+          </h2>
+          <p className="text-slate-300 mb-6 max-w-2xl mx-auto">
+            Join thousands of successful bettors who trust our AI predictions. 
+            Get access to premium analysis, confidence scores, and value ratings.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Button 
+              onClick={handleSignUpClick}
+              size="lg"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3"
+            >
+              <Zap className="h-5 w-5 mr-2" />
+              Start Free Trial
+            </Button>
+            <Button 
+              onClick={handleLoginClick}
+              variant="outline"
+              size="lg"
+              className="border-slate-600 text-white hover:bg-slate-800 px-8 py-3"
+            >
+              <LogIn className="h-5 w-5 mr-2" />
+              Already have an account?
+            </Button>
+          </div>
+        </Card>
+      </div>
     </div>
   )
-} 
+}
