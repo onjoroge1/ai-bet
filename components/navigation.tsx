@@ -17,9 +17,8 @@ export function Navigation() {
   const navRef = useRef<HTMLDivElement>(null)
 
   const handleSignOut = async () => {
-    await logout()
-    setIsOpen(false) // Close mobile menu
-    router.push("/")
+    setIsOpen(false) // Close mobile menu first
+    await logout() // This will handle the redirect
   }
 
   // Close mobile menu when clicking outside

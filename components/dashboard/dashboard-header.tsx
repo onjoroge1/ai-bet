@@ -30,8 +30,7 @@ export function DashboardHeader() {
   }, [streak])
 
   const handleSignOut = async () => {
-    await logout()
-    router.push("/")
+    await logout() // This will handle the redirect
   }
 
   // Loading state

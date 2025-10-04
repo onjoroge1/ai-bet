@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { TrendingUp, Mail, Lock, Eye, EyeOff, User, Globe, Smartphone, Gift } from "lucide-react"
+import { TrendingUp, Mail, Lock, User, Globe, Smartphone, Gift } from "lucide-react"
 import Link from "next/link"
 import { checkPasswordStrength, PASSWORD_REQUIREMENTS } from "@/lib/auth/password"
 import { Progress } from "@/components/ui/progress"
@@ -27,8 +27,6 @@ interface Country {
 
 export function SignUpForm() {
   const router = useRouter()
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [passwordStrength, setPasswordStrength] = useState<{ score: number; feedback: string[] }>({ score: 0, feedback: [] })
@@ -280,20 +278,13 @@ export function SignUpForm() {
               <Input
                 id="password"
                 name="password"
-                type={showPassword ? "text" : "password"}
+                type="password"
                 placeholder="Create a password"
-                className="pl-10 pr-10 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-400"
+                className="pl-10 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-400"
                 required
                 value={formData.password}
                 onChange={handleChange}
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-white"
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
             </div>
             {/* Password Strength Indicator */}
             {formData.password && (
@@ -323,20 +314,13 @@ export function SignUpForm() {
               <Input
                 id="confirmPassword"
                 name="confirmPassword"
-                type={showConfirmPassword ? "text" : "password"}
+                type="password"
                 placeholder="Confirm your password"
-                className="pl-10 pr-10 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-400"
+                className="pl-10 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-400"
                 required
                 value={formData.confirmPassword}
                 onChange={handleChange}
               />
-              <button
-                type="button"
-                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-white"
-              >
-                {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
             </div>
           </div>
 

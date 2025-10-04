@@ -166,30 +166,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
-      console.log('AuthProvider - starting logout process')
+      logger.debug('AuthProvider - starting logout process', {
+        tags: ['auth', 'provider']
+      })
       
       // Clear local state immediately to prevent further API calls
       setUser(null)
       setIsLoading(false)
       
-      // Sign out from NextAuth first - this is the proper way
+      // Sign out from NextAuth with redirect
       await signOut({ 
-        redirect: false,
+        redirect: true,
         callbackUrl: '/'
       })
       
-      logger.debug('User logged out via NextAuth', {
+      logger.debug('User logged out successfully', {
         tags: ['auth', 'provider']
       })
-
-      // Force a hard refresh to clear all state and cookies
-      window.location.href = '/'
     } catch (error: unknown) {
       logger.error('Logout error', {
         tags: ['auth', 'provider'],
         error: error instanceof Error ? error : undefined
       })
-      // Even if there's an error, try to redirect to home
+      
+      // Fallback: clear state and redirect manually
+      setUser(null)
+      setIsLoading(false)
       window.location.href = '/'
     }
   }

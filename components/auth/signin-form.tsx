@@ -4,20 +4,21 @@ import type React from "react"
 import { useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { signIn } from "next-auth/react"
+import { useAuth } from "@/components/auth-provider"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
-import { TrendingUp, Mail, Lock, Eye, EyeOff } from "lucide-react"
+import { TrendingUp, Mail, Lock } from "lucide-react"
 import Link from "next/link"
 import { logger } from "@/lib/logger"
 
 export function SignInForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { login } = useAuth()
   const callbackUrl = searchParams.get("callbackUrl") || "/dashboard"
-  const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [formData, setFormData] = useState({
@@ -53,14 +54,25 @@ export function SignInForm() {
           tags: ['auth', 'signin'],
           data: { email: formData.email, error: result.error }
         })
-        throw new Error(result.error)
+        
+        // Provide user-friendly error messages
+        if (result.error === 'CredentialsSignin') {
+          setError('Invalid email or password. Please check your credentials and try again.')
+        } else if (result.error === 'CallbackRouteError') {
+          setError('Authentication service temporarily unavailable. Please try again later.')
+        } else {
+          setError('Sign in failed. Please try again.')
+        }
+        return
       }
 
-      logger.info("Sign in successful", { tags: ["auth", "signin"] })
-      router.push(callbackUrl)
-      router.refresh()
+      if (result?.ok) {
+        logger.info("Sign in successful", { tags: ["auth", "signin"] })
+        router.push(callbackUrl)
+        router.refresh()
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong')
+      setError('An unexpected error occurred. Please try again.')
       logger.error('Sign in error', { 
         tags: ['auth', 'signin'],
         error: err instanceof Error ? err : undefined,
@@ -132,9 +144,9 @@ export function SignInForm() {
               <Input
                 id="password"
                 name="password"
-                type={showPassword ? "text" : "password"}
+                type="password"
                 placeholder="Enter your password"
-                className="pl-10 pr-10 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-400"
+                className="pl-10 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-400"
                 required
                 value={formData.password}
                 onChange={handleChange}
@@ -144,14 +156,6 @@ export function SignInForm() {
                 aria-invalid={!!error}
                 aria-describedby={error ? "password-error" : undefined}
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-white"
-                aria-label={showPassword ? "Hide password" : "Show password"}
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
-              </button>
             </div>
           </div>
 
