@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { signIn } from "next-auth/react"
 import { useAuth } from "@/components/auth-provider"
@@ -26,6 +26,18 @@ export function SignInForm() {
     password: "",
     remember: false
   })
+
+  // Clear URL parameters on component mount to prevent credentials from being displayed
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    if (url.searchParams.has('email') || url.searchParams.has('password')) {
+      // Remove sensitive parameters from URL
+      url.searchParams.delete('email')
+      url.searchParams.delete('password')
+      // Replace the current URL without the sensitive parameters
+      window.history.replaceState({}, '', url.toString())
+    }
+  }, [])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target
@@ -108,7 +120,10 @@ export function SignInForm() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate method="POST" action="">
+          {/* Hidden input to ensure form is always submitted via POST */}
+          <input type="hidden" name="_method" value="POST" />
+          
           {/* Email Field */}
           <div className="space-y-2">
             <Label htmlFor="email" className="text-slate-300">
