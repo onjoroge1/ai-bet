@@ -174,11 +174,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null)
       setIsLoading(false)
       
-      // Sign out from NextAuth with redirect
+      // Sign out from NextAuth without redirect for faster logout
       await signOut({ 
-        redirect: true,
-        callbackUrl: '/'
+        redirect: false
       })
+      
+      // Manual redirect for better performance
+      window.location.href = '/'
       
       logger.debug('User logged out successfully', {
         tags: ['auth', 'provider']

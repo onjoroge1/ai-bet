@@ -1,38 +1,62 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getCountryFromRequest, getCountryPricing, isCountrySupported } from "@/lib/country-pricing"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { getCountryPricing } from "@/lib/country-pricing"
+import prisma from "@/lib/db"
 
 export async function GET(request: NextRequest) {
   try {
-    // Get user session to check if they have a country preference
-    const session = await getServerSession(authOptions)
+    // For guest users, use ONLY geolocation - no user session needed
+    console.log('Guest user country detection - using geolocation only')
     
-    // Get user's IP address
-    const forwarded = request.headers.get('x-forwarded-for')
-    const ip = forwarded ? forwarded.split(',')[0] : request.headers.get('x-real-ip') || 'unknown'
-    
-    // Get country from IP (optional - you can enable this in production)
+    // Get country from IP using our geo-location API
     let ipCountryCode: string | undefined
     
-    // Uncomment the following code to enable IP-based country detection
-    // try {
-    //   const response = await fetch(`https://ipapi.co/${ip}/json/`)
-    //   const data = await response.json()
-    //   ipCountryCode = data.country_code
-    // } catch (error) {
-    //   console.warn('Failed to detect country from IP:', error)
-    // }
+    try {
+      // Use our internal geo-location API
+      const geoResponse = await fetch(`${request.nextUrl.origin}/api/geo/location`)
+      
+      if (geoResponse.ok) {
+        const geoData = await geoResponse.json()
+        if (geoData.success && geoData.data.country) {
+          ipCountryCode = geoData.data.country
+          console.log('Guest user - IP geolocation detected country:', ipCountryCode)
+        }
+      }
+    } catch (error) {
+      console.warn('Guest user - Failed to detect country from IP:', error)
+    }
     
-    // Get user's country preference from their profile
-    const userCountryCode = session?.user?.country?.code
+    // Use geolocation result or fallback to US
+    let detectedCountry: string
     
-    // Detect country using the enhanced function
-    const detectedCountry = await getCountryFromRequest(
-      request.headers.get('host') || '',
-      userCountryCode,
-      ipCountryCode
-    )
+    if (ipCountryCode) {
+      try {
+        // Look up country in database dynamically
+        const country = await prisma.country.findFirst({
+          where: {
+            code: {
+              equals: ipCountryCode,
+              mode: 'insensitive'
+            },
+            isActive: true
+          }
+        })
+        
+        if (country) {
+          detectedCountry = country.code.toLowerCase()
+          console.log('Guest user - using geolocation from database:', detectedCountry)
+        } else {
+          // Country not supported in database, use US fallback
+          detectedCountry = 'us'
+          console.log('Guest user - unsupported country in database, using US fallback')
+        }
+      } catch (dbError) {
+        console.warn('Database lookup failed, using US fallback:', dbError)
+        detectedCountry = 'us'
+      }
+    } else {
+      detectedCountry = 'us' // Fallback if geolocation fails
+      console.log('Guest user - geolocation failed, using US fallback')
+    }
     
     // Get the country pricing data
     const countryData = getCountryPricing(detectedCountry)

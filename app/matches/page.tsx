@@ -161,9 +161,9 @@ export default function PublicMatchesPage() {
     try {
       setLoading(true)
       setError(null)
-      console.log('Fetching matches from /api/quick-purchases...')
+      console.log('Fetching matches from /api/matches...')
       
-      const response = await fetch('/api/quick-purchases')
+      const response = await fetch('/api/matches')
       console.log('Response status:', response.status)
       
       if (!response.ok) {
@@ -174,28 +174,10 @@ export default function PublicMatchesPage() {
       console.log('Raw API response:', data)
       console.log('Total items received:', data.length)
       
-      // Decode the optimized data structure
-      const decodedData = decodeQuickPurchasesData(data)
-      console.log('Decoded data:', decodedData.length, 'items')
+      // Data is already filtered and transformed by the API
+      const predictionMatches = data as Match[]
       
-      // Filter to only show prediction/tip type items that have match data
-      const predictionMatches = (decodedData as Match[]).filter((item) => {
-        // Basic filters
-        const hasValidType = (item.type === 'prediction' || item.type === 'tip')
-        const hasMatchId = !!item.matchId
-        const isActive = !!item.isActive
-        
-        // Filter out completed matches
-        const matchDate = item.matchData?.date ? new Date(item.matchData.date) : null
-        const isNotCompleted = matchDate ? matchDate > new Date() : false
-        
-        // Filter out matches with no confidence or zero confidence
-        const hasValidConfidence = item.confidenceScore && item.confidenceScore > 0
-        
-        return hasValidType && hasMatchId && isActive && isNotCompleted && hasValidConfidence
-      })
-      
-      console.log('Filtered prediction matches:', predictionMatches.length)
+      console.log('Prediction matches:', predictionMatches.length)
       console.log('Sample match data:', predictionMatches[0])
       
       setMatches(predictionMatches)
