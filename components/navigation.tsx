@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Menu, X, TrendingUp, User, LogOut, MapPin, BookOpen, Target, Crown, Radio, HelpCircle, BarChart3, Gift } from "lucide-react"
+import { Menu, X, TrendingUp, User, LogOut, MapPin, BookOpen, Target, Crown, Radio, HelpCircle, BarChart3, Gift, RefreshCw, Activity } from "lucide-react"
 import { useUserCountry } from "@/contexts/user-country-context"
 import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
@@ -19,6 +19,17 @@ export function Navigation() {
   const handleSignOut = async () => {
     setIsOpen(false) // Close mobile menu first
     await logout() // This will handle the redirect
+  }
+
+  const handleCountryRefresh = () => {
+    // Clear the country cache and reload the page with force refresh
+    localStorage.removeItem('snapbet_user_country')
+    localStorage.removeItem('snapbet_country_timestamp')
+    
+    // Reload the page with force refresh parameter
+    const url = new URL(window.location.href)
+    url.searchParams.set('refresh_country', 'true')
+    window.location.href = url.toString()
   }
 
   // Close mobile menu when clicking outside
@@ -48,6 +59,7 @@ export function Navigation() {
 
   // Additional links for authenticated users
   const authenticatedNavLinks = [
+    { href: "/dashboard/clv", text: "CLV Tracker", icon: Activity, badge: "Live" },
     { href: "/referral", text: "Referrals", icon: Gift },
   ]
 
@@ -88,6 +100,11 @@ export function Navigation() {
               >
                 <link.icon className="w-4 h-4" />
                 <span className="font-medium">{link.text}</span>
+                {link.badge && (
+                  <Badge className="bg-red-500 text-white text-xs ml-2 animate-pulse">
+                    {link.badge}
+                  </Badge>
+                )}
               </Link>
             ))}
           </div>
@@ -103,6 +120,15 @@ export function Navigation() {
                 {isLoading && (
                   <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse ml-1" />
                 )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleCountryRefresh}
+                  className="h-6 w-6 p-0 text-slate-400 hover:text-emerald-400"
+                  title="Refresh country detection"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                </Button>
               </div>
             )}
 
@@ -174,6 +200,15 @@ export function Navigation() {
                   {isLoading && (
                     <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse ml-1" />
                   )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleCountryRefresh}
+                    className="h-6 w-6 p-0 text-slate-400 hover:text-emerald-400"
+                    title="Refresh country detection"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                  </Button>
                 </div>
               )}
 
@@ -196,11 +231,18 @@ export function Navigation() {
                   <Link
                     key={link.href}
                     href={link.href}
-                    className="flex items-center space-x-3 px-3 py-3 text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-md transition-all duration-200"
+                    className="flex items-center justify-between px-3 py-3 text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-md transition-all duration-200"
                     onClick={() => setIsOpen(false)}
                   >
-                    <link.icon className="w-4 h-4" />
-                    <span className="font-medium">{link.text}</span>
+                    <div className="flex items-center space-x-3">
+                      <link.icon className="w-4 h-4" />
+                      <span className="font-medium">{link.text}</span>
+                    </div>
+                    {link.badge && (
+                      <Badge className="bg-red-500 text-white text-xs animate-pulse">
+                        {link.badge}
+                      </Badge>
+                    )}
                   </Link>
                 ))}
               </div>

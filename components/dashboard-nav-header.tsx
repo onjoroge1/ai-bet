@@ -5,8 +5,9 @@ import { usePathname } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Menu, X, Home, Zap, Gift, Crown, Settings, BarChart3, Target, HeadphonesIcon, History, Bell } from "lucide-react"
+import { Menu, X, Home, Zap, Gift, Crown, Settings, BarChart3, Target, HeadphonesIcon, History, Bell, Activity } from "lucide-react"
 import { NotificationBell } from "@/components/notifications/NotificationBell"
+import { Badge } from "@/components/ui/badge"
 
 export function DashboardNavHeader() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -22,6 +23,7 @@ export function DashboardNavHeader() {
     { href: "/dashboard/daily-tips", label: "Daily Tips", icon: Zap, category: "predictions" },
     { href: "/dashboard/weekend-special", label: "Weekend Special", icon: Gift, category: "predictions" },
     { href: "/dashboard/vip", label: "VIP Zone", icon: Crown, category: "predictions" },
+    { href: "/dashboard/clv", label: "CLV Tracker", icon: Activity, category: "predictions", badge: "Live" },
     
     // User Content
     { href: "/dashboard/my-tips", label: "My Tips", icon: Target, category: "user" },
@@ -127,14 +129,21 @@ export function DashboardNavHeader() {
                       key={item.href}
                       href={item.href}
                       onClick={() => setIsMenuOpen(false)}
-                      className={`flex items-center space-x-3 p-3 rounded-lg transition-all duration-200 ${
+                      className={`flex items-center justify-between p-3 rounded-lg transition-all duration-200 ${
                         pathname === item.href
                           ? "bg-emerald-600 text-white shadow-lg"
                           : "bg-slate-700/50 text-slate-300 hover:bg-slate-600 hover:text-white"
                       }`}
                     >
-                      <item.icon className="w-4 h-4" />
-                      <span className="text-sm font-medium">{item.label}</span>
+                      <div className="flex items-center space-x-3">
+                        <item.icon className="w-4 h-4" />
+                        <span className="text-sm font-medium">{item.label}</span>
+                      </div>
+                      {item.badge && (
+                        <Badge className="bg-red-500 text-white text-xs animate-pulse">
+                          {item.badge}
+                        </Badge>
+                      )}
                     </Link>
                   ))}
                 </div>

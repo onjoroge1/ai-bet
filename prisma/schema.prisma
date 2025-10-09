@@ -1916,3 +1916,29 @@ model NewsletterSubscription {
 }
 
 
+
+// CLV Opportunity Cache for low-bandwidth users
+model CLVOpportunityCache {
+  id           String   @id @default(cuid())
+  matchId      String?
+  homeTeam     String
+  awayTeam     String
+  league       String
+  matchDate    DateTime
+  marketType   String
+  selection    String
+  entryOdds    Decimal
+  closeOdds    Decimal
+  entryTime    DateTime
+  bookmaker    String
+  timeBucket   String
+  windowFilter String   @default("all")
+  cachedAt     DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@unique([matchId, marketType, selection, windowFilter])
+  @@index([cachedAt])
+  @@index([windowFilter])
+  @@index([matchDate])
+}
+
