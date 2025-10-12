@@ -30,7 +30,6 @@ import {
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
-import { QuizSection } from "@/components/quiz-section"
 
 interface Feature {
   icon: JSX.Element
@@ -46,7 +45,15 @@ interface Stat {
   color: string
 }
 
-export default function HomePage() {
+interface Testimonial {
+  name: string
+  role: string
+  content: string
+  rating: number
+  avatar?: string
+}
+
+export default function SalesPage() {
   const router = useRouter()
   const { isAuthenticated } = useAuth()
   const [liveStats, setLiveStats] = useState({
@@ -122,6 +129,27 @@ export default function HomePage() {
     { value: "€2.8M", label: "User Profits Generated", trend: "+€180K this week", color: "text-orange-400" }
   ]
 
+  const testimonials: Testimonial[] = [
+    {
+      name: "Marcus Johnson",
+      role: "Professional Bettor",
+      content: "The CLV tracker changed everything for me. I can now identify value bets in real-time and my ROI has increased by 340% since joining.",
+      rating: 5
+    },
+    {
+      name: "Sarah Chen",
+      role: "Sports Analyst",
+      content: "Finally, a platform that combines AI predictions with proper bankroll management. The confidence scores and Kelly staking are game-changers.",
+      rating: 5
+    },
+    {
+      name: "David Rodriguez",
+      role: "Recreational Bettor",
+      content: "I went from losing money to consistent profits. The AI predictions are incredibly accurate and the value ratings help me pick the best bets.",
+      rating: 5
+    }
+  ]
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-900">
       
@@ -147,26 +175,26 @@ export default function HomePage() {
           </p>
 
           {/* Live Stats Banner */}
-          <div className="bg-slate-800/60 border border-slate-600/50 rounded-xl p-4 sm:p-6 mb-6 sm:mb-8 backdrop-blur-sm">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+          <div className="bg-slate-800/60 border border-slate-600/50 rounded-xl p-6 mb-8 backdrop-blur-sm">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="text-center">
-                <div className="text-xl sm:text-2xl font-bold text-emerald-400 flex items-center justify-center">
-                  <Activity className="h-4 w-4 sm:h-5 sm:w-5 mr-2 animate-pulse" />
+                <div className="text-2xl font-bold text-emerald-400 flex items-center justify-center">
+                  <Activity className="h-5 w-5 mr-2 animate-pulse" />
                   {liveStats.activeOpportunities}
                 </div>
-                <div className="text-slate-400 text-xs sm:text-sm">Live CLV Opportunities</div>
+                <div className="text-slate-400 text-sm">Live CLV Opportunities</div>
               </div>
               <div className="text-center">
-                <div className="text-xl sm:text-2xl font-bold text-blue-400">
+                <div className="text-2xl font-bold text-blue-400">
                   {liveStats.avgConfidence}%
                 </div>
-                <div className="text-slate-400 text-xs sm:text-sm">Average Confidence Score</div>
+                <div className="text-slate-400 text-sm">Average Confidence Score</div>
               </div>
               <div className="text-center">
-                <div className="text-xl sm:text-2xl font-bold text-purple-400">
+                <div className="text-2xl font-bold text-purple-400">
                   {liveStats.liveMatches}
                 </div>
-                <div className="text-slate-400 text-xs sm:text-sm">Matches Being Tracked</div>
+                <div className="text-slate-400 text-sm">Matches Being Tracked</div>
               </div>
             </div>
           </div>
@@ -263,28 +291,28 @@ export default function HomePage() {
                 across multiple bookmakers and alerts you to profitable betting opportunities in real-time.
               </p>
               
-              <div className="space-y-3 sm:space-y-4 mb-6 sm:mb-8">
+              <div className="space-y-4 mb-8">
                 <div className="flex items-center">
                   <CheckCircle className="h-5 w-5 text-emerald-400 mr-3 flex-shrink-0" />
-                  <span className="text-slate-200 text-sm sm:text-base">30-second auto-refresh with live data</span>
+                  <span className="text-slate-200">30-second auto-refresh with live data</span>
                 </div>
                 <div className="flex items-center">
                   <CheckCircle className="h-5 w-5 text-emerald-400 mr-3 flex-shrink-0" />
-                  <span className="text-slate-200 text-sm sm:text-base">Confidence scoring (0-100) based on EV%</span>
+                  <span className="text-slate-200">Confidence scoring (0-100) based on EV%</span>
                 </div>
                 <div className="flex items-center">
                   <CheckCircle className="h-5 w-5 text-emerald-400 mr-3 flex-shrink-0" />
-                  <span className="text-slate-200 text-sm sm:text-base">Kelly criterion stake recommendations</span>
+                  <span className="text-slate-200">Kelly criterion stake recommendations</span>
                 </div>
                 <div className="flex items-center">
                   <CheckCircle className="h-5 w-5 text-emerald-400 mr-3 flex-shrink-0" />
-                  <span className="text-slate-200 text-sm sm:text-base">Time window filtering (72h, 48h, 24h)</span>
+                  <span className="text-slate-200">Time window filtering (72h, 48h, 24h)</span>
                 </div>
               </div>
 
               <Button 
                 size="lg" 
-                className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 sm:px-8 py-3 w-full sm:w-auto"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3"
                 onClick={() => handleCTAClick('clv_spotlight')}
               >
                 <Activity className="h-5 w-5 mr-2" />
@@ -296,62 +324,62 @@ export default function HomePage() {
               <Card className="bg-slate-800/80 border-slate-600/50 backdrop-blur-sm overflow-hidden">
                 <CardHeader>
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-white flex items-center text-base sm:text-lg">
-                      <Activity className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-400 mr-2" />
+                    <CardTitle className="text-white flex items-center">
+                      <Activity className="h-5 w-5 text-emerald-400 mr-2" />
                       CLV Opportunities
                     </CardTitle>
-                    <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 animate-pulse text-xs">
+                    <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 animate-pulse">
                       Live
                     </Badge>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3 sm:space-y-4">
-                    <div className="bg-slate-700/50 rounded-lg p-3 sm:p-4">
+                  <div className="space-y-4">
+                    <div className="bg-slate-700/50 rounded-lg p-4">
                       <div className="flex justify-between items-start mb-2">
                         <div>
-                          <div className="text-white font-medium text-sm sm:text-base">Barcelona vs Real Madrid</div>
-                          <div className="text-slate-400 text-xs sm:text-sm">LaLiga • Match Winner</div>
+                          <div className="text-white font-medium">Barcelona vs Real Madrid</div>
+                          <div className="text-slate-400 text-sm">LaLiga • Match Winner</div>
                         </div>
-                        <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">
-                          92%
+                        <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+                          92% Confidence
                         </Badge>
                       </div>
                       <div className="flex justify-between items-center">
-                        <div className="text-xs sm:text-sm text-slate-400">CLV: +8.5% • EV: +4.2%</div>
-                        <div className="text-emerald-400 font-medium text-xs sm:text-sm">Kelly: 2.1%</div>
+                        <div className="text-sm text-slate-400">CLV: +8.5% • EV: +4.2%</div>
+                        <div className="text-emerald-400 font-medium">Kelly: 2.1%</div>
                       </div>
                     </div>
 
-                    <div className="bg-slate-700/50 rounded-lg p-3 sm:p-4">
+                    <div className="bg-slate-700/50 rounded-lg p-4">
                       <div className="flex justify-between items-start mb-2">
                         <div>
-                          <div className="text-white font-medium text-sm sm:text-base">Man City vs Liverpool</div>
-                          <div className="text-slate-400 text-xs sm:text-sm">Premier League • Over 2.5</div>
+                          <div className="text-white font-medium">Man City vs Liverpool</div>
+                          <div className="text-slate-400 text-sm">Premier League • Over 2.5</div>
                         </div>
-                        <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs">
-                          78%
+                        <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
+                          78% Confidence
                         </Badge>
                       </div>
                       <div className="flex justify-between items-center">
-                        <div className="text-xs sm:text-sm text-slate-400">CLV: +5.2% • EV: +2.8%</div>
-                        <div className="text-yellow-400 font-medium text-xs sm:text-sm">Kelly: 1.4%</div>
+                        <div className="text-sm text-slate-400">CLV: +5.2% • EV: +2.8%</div>
+                        <div className="text-yellow-400 font-medium">Kelly: 1.4%</div>
                       </div>
                     </div>
 
-                    <div className="bg-slate-700/50 rounded-lg p-3 sm:p-4">
+                    <div className="bg-slate-700/50 rounded-lg p-4">
                       <div className="flex justify-between items-start mb-2">
                         <div>
-                          <div className="text-white font-medium text-sm sm:text-base">Bayern vs Dortmund</div>
-                          <div className="text-slate-400 text-xs sm:text-sm">Bundesliga • BTTS Yes</div>
+                          <div className="text-white font-medium">Bayern vs Dortmund</div>
+                          <div className="text-slate-400 text-sm">Bundesliga • BTTS Yes</div>
                         </div>
-                        <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">
-                          85%
+                        <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+                          85% Confidence
                         </Badge>
                       </div>
                       <div className="flex justify-between items-center">
-                        <div className="text-xs sm:text-sm text-slate-400">CLV: +6.8% • EV: +3.5%</div>
-                        <div className="text-emerald-400 font-medium text-xs sm:text-sm">Kelly: 1.8%</div>
+                        <div className="text-sm text-slate-400">CLV: +6.8% • EV: +3.5%</div>
+                        <div className="text-emerald-400 font-medium">Kelly: 1.8%</div>
                       </div>
                     </div>
                   </div>
@@ -362,8 +390,100 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Quiz Section */}
-      <QuizSection />
+      {/* Testimonials */}
+      <section className="py-12 sm:py-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="text-center mb-12 sm:mb-16">
+            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4 sm:mb-6">
+              Trusted by Professional Bettors
+            </h2>
+            <p className="text-lg sm:text-xl text-slate-300">
+              See what our users are saying about their results
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+            {testimonials.map((testimonial, index) => (
+              <Card key={index} className="bg-slate-800/60 border-slate-600/50 p-4 sm:p-6">
+                <CardContent className="space-y-3 sm:space-y-4">
+                  <div className="flex">
+                    {Array.from({ length: testimonial.rating }).map((_, i) => (
+                      <Star key={i} className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400 fill-current" />
+                    ))}
+                  </div>
+                  <p className="text-slate-300 italic leading-relaxed text-sm sm:text-base">
+                    "{testimonial.content}"
+                  </p>
+                  <div className="border-t border-slate-600/30 pt-3 sm:pt-4">
+                    <div className="text-white font-medium text-sm sm:text-base">{testimonial.name}</div>
+                    <div className="text-slate-400 text-xs sm:text-sm">{testimonial.role}</div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing/CTA Section */}
+      <section className="py-12 sm:py-20 bg-slate-900/50">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center">
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4 sm:mb-6">
+            Ready to Start Winning?
+          </h2>
+          <p className="text-lg sm:text-xl text-slate-300 mb-8 sm:mb-12 max-w-3xl mx-auto px-2 sm:px-0">
+            Join thousands of successful bettors who trust SnapBet's AI predictions and real-time CLV tracking 
+            to maximize their profits while minimizing risk.
+          </p>
+
+          <Card className="bg-gradient-to-r from-emerald-500/10 to-blue-500/10 border border-emerald-500/20 p-6 sm:p-8 max-w-2xl mx-auto">
+            <div className="text-center mb-6 sm:mb-8">
+              <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 mb-3 sm:mb-4">
+                🎯 Launch Special
+              </Badge>
+              <div className="text-3xl sm:text-4xl font-bold text-white mb-2">
+                Free 7-Day Trial
+              </div>
+              <div className="text-slate-400 text-sm sm:text-base">
+                Full access to all features • No credit card required
+              </div>
+            </div>
+
+            <div className="space-y-3 mb-8">
+              <div className="flex items-center justify-center">
+                <CheckCircle className="h-5 w-5 text-emerald-400 mr-3" />
+                <span className="text-slate-200">Real-time CLV Tracker</span>
+              </div>
+              <div className="flex items-center justify-center">
+                <CheckCircle className="h-5 w-5 text-emerald-400 mr-3" />
+                <span className="text-slate-200">AI Predictions with Confidence Scores</span>
+              </div>
+              <div className="flex items-center justify-center">
+                <CheckCircle className="h-5 w-5 text-emerald-400 mr-3" />
+                <span className="text-slate-200">Kelly Criterion Staking</span>
+              </div>
+              <div className="flex items-center justify-center">
+                <CheckCircle className="h-5 w-5 text-emerald-400 mr-3" />
+                <span className="text-slate-200">Value Rating System</span>
+              </div>
+            </div>
+
+            <Button 
+              size="lg" 
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 sm:py-4 text-base sm:text-lg"
+              onClick={() => handleCTAClick('pricing_cta')}
+            >
+              <Zap className="h-5 w-5 sm:h-6 sm:w-6 mr-2" />
+              Start Your Free Trial
+              <ArrowRight className="h-5 w-5 sm:h-6 sm:w-6 ml-2" />
+            </Button>
+
+            <div className="text-slate-400 text-xs sm:text-sm mt-3 sm:mt-4">
+              Join 15,000+ successful bettors • Cancel anytime
+            </div>
+          </Card>
+        </div>
+      </section>
 
     </div>
   )
