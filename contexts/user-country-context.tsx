@@ -76,10 +76,21 @@ export function UserCountryProvider({ children }: { children: ReactNode }) {
           // Check localStorage for cached country data first
           const cachedCountry = localStorage.getItem('snapbet_user_country')
           const cachedTimestamp = localStorage.getItem('snapbet_country_timestamp')
-          const cacheExpiry = 24 * 60 * 60 * 1000 // 24 hours
+          const cacheExpiry = 5 * 60 * 1000 // 5 minutes (reduced from 24 hours for better VPN responsiveness)
+          
+          // Check for force refresh parameter
+          const urlParams = new URLSearchParams(window.location.search)
+          const forceRefresh = urlParams.get('refresh_country') === 'true'
+          
+          // If force refresh is requested, clear the cache
+          if (forceRefresh) {
+            localStorage.removeItem('snapbet_user_country')
+            localStorage.removeItem('snapbet_country_timestamp')
+            console.log('Force refresh requested - cleared country cache')
+          }
 
           if (cachedCountry && cachedTimestamp && 
-              (Date.now() - parseInt(cachedTimestamp)) < cacheExpiry) {
+              (Date.now() - parseInt(cachedTimestamp)) < cacheExpiry && !forceRefresh) {
             try {
               const parsedCountry = JSON.parse(cachedCountry)
               setUserCountry(parsedCountry.code)

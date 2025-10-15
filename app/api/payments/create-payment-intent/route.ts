@@ -219,14 +219,37 @@ export async function POST(request: Request) {
     const paymentConfig = getPaymentMethodConfiguration(user.country.code)
     const availableMethods = getAvailablePaymentMethods(user.country.code)
 
+    // Configure payment method options for Apple Pay
+    const paymentMethodOptions: any = {
+      card: {
+        request_three_d_secure: 'automatic'
+      }
+    }
+
+    // Add Apple Pay configuration if supported
+    if (availableMethods.includes('apple_pay')) {
+      paymentMethodOptions.apple_pay = {
+        request_three_d_secure: 'automatic'
+      }
+    }
+
+    // Add Google Pay configuration if supported
+    if (availableMethods.includes('google_pay')) {
+      paymentMethodOptions.google_pay = {
+        request_three_d_secure: 'automatic'
+      }
+    }
+
     // If a specific payment method is requested, use only that method
     let paymentMethodTypes = paymentConfig.payment_method_types
     if (paymentMethod) {
       // Map the frontend payment method to Stripe payment method types
       switch (paymentMethod) {
         case 'apple_pay':
+          paymentMethodTypes = ['card'] // Apple Pay uses card as base type
+          break
         case 'google_pay':
-          paymentMethodTypes = ['card'] // Both use card as base type
+          paymentMethodTypes = ['card'] // Google Pay uses card as base type
           break
         case 'paypal':
           paymentMethodTypes = ['paypal']
@@ -242,13 +265,17 @@ export async function POST(request: Request) {
     console.log("🔍 DEBUG: Creating Stripe payment intent with:", { amount, currency, description })
     console.log("🔍 DEBUG: Stripe payment intent metadata:", metadata)
 
-    // Create payment intent with automatic payment methods
+    // Create payment intent with automatic payment methods and Apple Pay support
     const paymentIntent = await stripe.paymentIntents.create({
       amount: formatAmountForStripe(amount, currency),
       currency: getStripeCurrency(currency),
       description,
       metadata,
-      automatic_payment_methods: { enabled: true },
+      automatic_payment_methods: { 
+        enabled: true,
+        allow_redirects: 'never'
+      },
+      payment_method_options: paymentMethodOptions,
       receipt_email: user.email,
     })
 

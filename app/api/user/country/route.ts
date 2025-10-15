@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from "next/server"
 import { getCountryPricing } from "@/lib/country-pricing"
 import prisma from "@/lib/db"
 
+// Helper function to check if country is supported
+function isCountrySupported(countryCode: string): boolean {
+  // For now, assume all countries are supported
+  // This can be enhanced to check against a list of supported countries
+  return true
+}
+
 export async function GET(request: NextRequest) {
   try {
     // For guest users, use ONLY geolocation - no user session needed
@@ -70,7 +77,7 @@ export async function GET(request: NextRequest) {
         currency: countryData.currency,
         currencySymbol: countryData.currencySymbol,
         isSupported: isCountrySupported(detectedCountry),
-        detectedFrom: userCountryCode ? 'user_profile' : ipCountryCode ? 'ip_geolocation' : 'domain_or_default'
+        detectedFrom: ipCountryCode ? 'ip_geolocation' : 'fallback'
       },
       pricing: countryData
     })

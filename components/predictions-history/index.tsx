@@ -62,6 +62,8 @@ export default function PredictionsHistory() {
         return <XCircle className="w-4 h-4 text-red-500" />
       case 'void':
         return <AlertCircle className="w-4 h-4 text-orange-500" />
+      case 'pending_result':
+        return <RefreshCw className="w-4 h-4 text-blue-500" />
       default:
         return <Clock className="w-4 h-4 text-yellow-500" />
     }
@@ -75,6 +77,8 @@ export default function PredictionsHistory() {
         return "bg-red-500/20 text-red-400"
       case 'void':
         return "bg-orange-500/20 text-orange-400"
+      case 'pending_result':
+        return "bg-blue-500/20 text-blue-400"
       default:
         return "bg-yellow-500/20 text-yellow-400"
     }
@@ -134,7 +138,7 @@ export default function PredictionsHistory() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-white mb-2">Predictions History</h1>
         <p className="text-slate-400">
-          Browse our complete history of AI-powered sports predictions for completed matches
+          Browse our complete history of AI-powered sports predictions for matches that have occurred. Most matches show "Awaiting Result" as match results are updated separately from the prediction system.
         </p>
       </div>
 
@@ -267,6 +271,7 @@ export default function PredictionsHistory() {
                   <SelectItem value="won">Won</SelectItem>
                   <SelectItem value="lost">Lost</SelectItem>
                   <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="pending_result">Awaiting Result</SelectItem>
                   <SelectItem value="void">Void</SelectItem>
                 </SelectContent>
               </Select>
@@ -278,8 +283,6 @@ export default function PredictionsHistory() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="live">Live</SelectItem>
                   <SelectItem value="finished">Finished</SelectItem>
                   <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
@@ -307,11 +310,11 @@ export default function PredictionsHistory() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-white">All Predictions</CardTitle>
+              <CardTitle className="text-white">Completed Match Predictions</CardTitle>
               <CardDescription className="text-slate-400">
                 {predictionsData?.pagination ? 
-                  `Showing ${((predictionsData.pagination.page - 1) * predictionsData.pagination.limit) + 1} to ${Math.min(predictionsData.pagination.page * predictionsData.pagination.limit, predictionsData.pagination.totalCount)} of ${predictionsData.pagination.totalCount} predictions` :
-                  'Loading predictions...'
+                  `Showing ${((predictionsData.pagination.page - 1) * predictionsData.pagination.limit) + 1} to ${Math.min(predictionsData.pagination.page * predictionsData.pagination.limit, predictionsData.pagination.totalCount)} of ${predictionsData.pagination.totalCount} completed match predictions` :
+                  'Loading completed match predictions...'
                 }
               </CardDescription>
             </div>
@@ -346,7 +349,8 @@ export default function PredictionsHistory() {
           ) : !predictionsData?.predictions || predictionsData.predictions.length === 0 ? (
             <div className="text-center py-8 text-slate-400">
               <Target className="w-12 h-12 mx-auto mb-4" />
-              <p>No predictions found matching your criteria</p>
+              <p>No past match predictions found matching your criteria</p>
+              <p className="text-sm mt-2">Only matches that occurred more than 24 hours ago are shown in the history</p>
             </div>
           ) : (
             <div className="space-y-4">
