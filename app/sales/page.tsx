@@ -125,8 +125,8 @@ export default function SalesPage() {
   const platformStats: Stat[] = [
     { value: "87%", label: "Average Prediction Accuracy", color: "text-emerald-400" },
     { value: "2.3x", label: "Average ROI Improvement", trend: "+23% this month", color: "text-blue-400" },
-    { value: "15,000+", label: "Active Users", trend: "+2,847 this week", color: "text-purple-400" },
-    { value: "€2.8M", label: "User Profits Generated", trend: "+€180K this week", color: "text-orange-400" }
+    { value: "1000+", label: "CLV Opportunities", trend: "Value opportunities identified", color: "text-purple-400" },
+    { value: "450", label: "AI Predictions This Week", trend: "Soccer predictions generated", color: "text-orange-400" }
   ]
 
   const testimonials: Testimonial[] = [

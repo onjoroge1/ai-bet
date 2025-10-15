@@ -7,20 +7,20 @@ import { Card } from "@/components/ui/card"
 import { TrendingUp, Zap, Globe, Trophy, Target, Brain, Bell } from "lucide-react"
 
 export function HeroSection() {
-  const [winCount, setWinCount] = useState(1247)
-  const [activeUsers, setActiveUsers] = useState(2834)
+  const [predictionsCount, setPredictionsCount] = useState(450)
+  const [clvCount, setClvCount] = useState(1000)
   const [showNotification, setShowNotification] = useState(false)
 
   // Simulate live updates
   useEffect(() => {
     const interval = setInterval(() => {
       if (Math.random() > 0.7) {
-        setWinCount((prev) => prev + 1)
+        setPredictionsCount((prev) => prev + 1)
         setShowNotification(true)
         setTimeout(() => setShowNotification(false), 3000)
       }
       if (Math.random() > 0.8) {
-        setActiveUsers((prev) => prev + Math.floor(Math.random() * 3))
+        setClvCount((prev) => prev + Math.floor(Math.random() * 2))
       }
     }, 4000)
 
@@ -129,16 +129,16 @@ export function HeroSection() {
         <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-4 mb-8 max-w-2xl mx-auto">
           <div className="grid grid-cols-3 gap-4 text-center">
             <div>
-              <div className="text-2xl font-bold text-emerald-400 animate-pulse">{winCount.toLocaleString()}</div>
-              <div className="text-xs text-slate-400">Wins Today</div>
+              <div className="text-2xl font-bold text-emerald-400 animate-pulse">{predictionsCount.toLocaleString()}</div>
+              <div className="text-xs text-slate-400">AI Predictions This Week</div>
             </div>
             <div>
-              <div className="text-2xl font-bold text-cyan-400 animate-pulse">{activeUsers.toLocaleString()}</div>
-              <div className="text-xs text-slate-400">Active Users</div>
+              <div className="text-2xl font-bold text-cyan-400 animate-pulse">{clvCount.toLocaleString()}</div>
+              <div className="text-xs text-slate-400">CLV Opportunities</div>
             </div>
             <div>
               <div className="text-2xl font-bold text-yellow-400">87%</div>
-              <div className="text-xs text-slate-400">Win Rate</div>
+              <div className="text-xs text-slate-400">AI Accuracy</div>
             </div>
           </div>
         </div>

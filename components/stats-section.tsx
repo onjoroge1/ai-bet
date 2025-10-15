@@ -79,13 +79,13 @@ export function StatsSection() {
     {
       icon: Target,
       value: stats.totalWinnings.value,
-      label: "Community Success",
+      label: "AI Predictions This Week",
       description: stats.totalWinnings.description,
     },
     {
       icon: BarChart3,
       value: stats.countries.value,
-      label: "Global Reach",
+      label: "CLV Opportunities",
       description: stats.countries.description,
     },
   ] : defaultStats

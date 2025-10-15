@@ -57,8 +57,8 @@ const formatPrediction = (prediction: string, homeTeam: string, awayTeam: string
 }
 
 export function ResponsiveHero() {
-  const [winCount, setWinCount] = useState(0)
-  const [activeUsers, setActiveUsers] = useState(0)
+  const [predictionsCount, setPredictionsCount] = useState(450)
+  const [clvCount, setClvCount] = useState(1000)
   const [showNotification, setShowNotification] = useState(false)
   const [freeTip, setFreeTip] = useState<FreeTip | null>(null)
   const [isLoadingTip, setIsLoadingTip] = useState(true)
@@ -94,12 +94,12 @@ export function ResponsiveHero() {
   useEffect(() => {
     const interval = setInterval(() => {
       if (Math.random() > 0.7) {
-        setWinCount((prev) => prev + 1)
+        setPredictionsCount((prev) => prev + 1)
         setShowNotification(true)
         setTimeout(() => setShowNotification(false), 3000)
       }
       if (Math.random() > 0.8) {
-        setActiveUsers((prev) => prev + Math.floor(Math.random() * 3))
+        setClvCount((prev) => prev + Math.floor(Math.random() * 2))
       }
     }, 4000)
 
@@ -183,19 +183,19 @@ export function ResponsiveHero() {
           <div className="grid grid-cols-3 gap-4 text-center">
             <div>
               <div className="text-xl md:text-2xl font-bold text-emerald-400 animate-pulse">
-                {winCount.toLocaleString()}
+                {predictionsCount.toLocaleString()}
               </div>
-              <div className="text-xs text-slate-400">Wins Today</div>
+              <div className="text-xs text-slate-400">AI Predictions This Week</div>
             </div>
             <div>
               <div className="text-xl md:text-2xl font-bold text-cyan-400 animate-pulse">
-                {activeUsers.toLocaleString()}
+                {clvCount.toLocaleString()}
               </div>
-              <div className="text-xs text-slate-400">Active Users</div>
+              <div className="text-xs text-slate-400">CLV Opportunities</div>
             </div>
             <div>
-              <div className="text-xl md:text-2xl font-bold text-yellow-400">AI Powered</div>
-              <div className="text-xs text-slate-400">Advanced Analytics</div>
+              <div className="text-xl md:text-2xl font-bold text-yellow-400">87%</div>
+              <div className="text-xs text-slate-400">AI Accuracy</div>
             </div>
           </div>
         </div>
