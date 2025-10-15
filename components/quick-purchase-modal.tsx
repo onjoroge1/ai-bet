@@ -637,6 +637,12 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
                       },
                     },
                   },
+                  // Enable Apple Pay and Google Pay
+                  paymentMethodOrder: ['apple_pay', 'google_pay', 'card'],
+                  wallets: {
+                    applePay: 'auto',
+                    googlePay: 'auto',
+                  },
                 }}
               >
                 <PaymentForm

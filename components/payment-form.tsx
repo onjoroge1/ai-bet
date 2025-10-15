@@ -247,10 +247,17 @@ export function PaymentForm({
                   radios: true,
                   spacedAccordionItems: false
                 },
-                paymentMethodOrder: selectedPaymentMethod ? [selectedPaymentMethod] : undefined,
+                paymentMethodOrder: selectedPaymentMethod ? [selectedPaymentMethod] : ['apple_pay', 'google_pay', 'card'],
                 wallets: {
                   applePay: 'auto',
                   googlePay: 'auto',
+                },
+                fields: {
+                  billingDetails: {
+                    name: 'auto',
+                    email: 'auto',
+                    address: 'never',
+                  },
                 },
               }}
             />
