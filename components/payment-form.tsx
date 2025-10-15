@@ -256,8 +256,22 @@ export function PaymentForm({
                   billingDetails: {
                     name: 'auto',
                     email: 'auto',
-                    address: 'never',
+                    address: {
+                      country: 'auto',
+                      line1: 'auto',
+                      line2: 'auto',
+                      city: 'auto',
+                      state: 'auto',
+                      postalCode: 'auto',
+                    },
                   },
+                },
+                // Enhanced configuration for better digital wallet support
+                terms: {
+                  card: 'auto',
+                },
+                business: {
+                  name: 'SnapBet AI',
                 },
               }}
             />

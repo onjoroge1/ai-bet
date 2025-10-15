@@ -13,8 +13,11 @@ import type {
 
 export async function GET(request: Request) {
   try {
+    console.log("🔍 DEBUG: /api/my-tips called")
     const session = await getServerSession(authOptions)
+    console.log("🔍 DEBUG: Session user:", session?.user?.id ? "found" : "not found")
     if (!session?.user) {
+      console.log("❌ DEBUG: No session user - returning 401")
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -33,6 +36,7 @@ export async function GET(request: Request) {
     }
 
     // Get purchases with prediction data and match information
+    console.log("🔍 DEBUG: Querying purchases for user:", session.user.id)
     const purchases = await prisma.purchase.findMany({
       where: {
         userId: session.user.id,
@@ -50,6 +54,7 @@ export async function GET(request: Request) {
       },
       take: limit
     })
+    console.log("🔍 DEBUG: Found", purchases.length, "completed purchases")
 
     // Transform the data to include prediction details
     const tips = purchases.map((purchase) => {

@@ -595,6 +595,7 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
                 stripe={stripePromise} 
                 options={{ 
                   clientSecret,
+                  loader: 'auto',
                   appearance: {
                     theme: 'night',
                     variables: {
@@ -637,12 +638,14 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
                       },
                     },
                   },
-                  // Enable Apple Pay and Google Pay
+                  // Enhanced Apple Pay and Google Pay configuration
                   paymentMethodOrder: ['apple_pay', 'google_pay', 'card'],
                   wallets: {
                     applePay: 'auto',
                     googlePay: 'auto',
                   },
+                  // Additional configuration for better digital wallet support
+                  loader: 'auto',
                 }}
               >
                 <PaymentForm

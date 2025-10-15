@@ -59,18 +59,105 @@ export function getPaymentMethodConfiguration(countryCode: string) {
   }
 }
 
-// Convert currency code to Stripe currency format
-export function getStripeCurrency(currencyCode: string): string {
-  return currencyCode.toLowerCase()
-}
-
-// Format amount for Stripe (convert to smallest currency unit)
-export function formatAmountForStripe(amount: number, currency: string): number {
-  const currenciesWithDecimals = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'HUF', 'RON', 'BGN', 'HRK', 'RUB', 'TRY', 'BRL', 'MXN', 'ARS', 'CLP', 'COP', 'PEN', 'UYU', 'VND', 'THB', 'MYR', 'SGD', 'HKD', 'TWD', 'KRW', 'INR', 'IDR', 'PHP', 'ZAR', 'EGP', 'NGN', 'KES', 'GHS', 'UGX', 'TZS']
+// Get payment method order for Stripe Elements based on country
+export function getPaymentMethodOrder(countryCode: string): string[] {
+  const availableMethods = getAvailablePaymentMethods(countryCode)
   
-  if (currenciesWithDecimals.includes(currency.toUpperCase())) {
-    return Math.round(amount * 100)
+  // Define priority order for payment methods
+  const priorityOrder = [
+    'apple_pay',
+    'google_pay', 
+    'paypal',
+    'card'
+  ]
+  
+  // Filter available methods and sort by priority
+  const orderedMethods = priorityOrder.filter(method => 
+    availableMethods.includes(method as SupportedPaymentMethod)
+  )
+  
+  // Always ensure card is at the end as fallback
+  if (availableMethods.includes('card') && !orderedMethods.includes('card')) {
+    orderedMethods.push('card')
   }
   
-  return Math.round(amount)
-} 
+  return orderedMethods
+}
+
+// Currency mapping for Stripe
+export const STRIPE_CURRENCY_MAP: Record<string, string> = {
+  'USD': 'usd',
+  'EUR': 'eur',
+  'GBP': 'gbp',
+  'CAD': 'cad',
+  'AUD': 'aud',
+  'JPY': 'jpy',
+  'CHF': 'chf',
+  'SEK': 'sek',
+  'NOK': 'nok',
+  'DKK': 'dkk',
+  'PLN': 'pln',
+  'CZK': 'czk',
+  'HUF': 'huf',
+  'BGN': 'bgn',
+  'RON': 'ron',
+  'HRK': 'hrk',
+  'RUB': 'rub',
+  'TRY': 'try',
+  'BRL': 'brl',
+  'MXN': 'mxn',
+  'ARS': 'ars',
+  'CLP': 'clp',
+  'COP': 'cop',
+  'PEN': 'pen',
+  'UYU': 'uyu',
+  'INR': 'inr',
+  'SGD': 'sgd',
+  'HKD': 'hkd',
+  'TWD': 'twd',
+  'KRW': 'krw',
+  'THB': 'thb',
+  'MYR': 'myr',
+  'PHP': 'php',
+  'IDR': 'idr',
+  'VND': 'vnd',
+  'ZAR': 'zar',
+  'EGP': 'egp',
+  'MAD': 'mad',
+  'NGN': 'ngn',
+  'KES': 'kes',
+  'GHS': 'ghs',
+  'UGX': 'ugx',
+  'TZS': 'tzs',
+  'ETB': 'etb',
+  'NZD': 'nzd'
+}
+
+// Get Stripe currency code
+export function getStripeCurrency(currencyCode: string): string {
+  return STRIPE_CURRENCY_MAP[currencyCode.toUpperCase()] || 'usd'
+}
+
+// Format amount for Stripe (convert to cents)
+export function formatAmountForStripe(amount: number, currency: string): number {
+  // Some currencies don't use decimal places
+  const zeroDecimalCurrencies = ['JPY', 'KRW', 'VND', 'UGX', 'TZS', 'ETB']
+  
+  if (zeroDecimalCurrencies.includes(currency.toUpperCase())) {
+    return Math.round(amount)
+  }
+  
+  return Math.round(amount * 100)
+}
+
+// Format amount from Stripe (convert from cents)
+export function formatAmountFromStripe(amount: number, currency: string): number {
+  // Some currencies don't use decimal places
+  const zeroDecimalCurrencies = ['JPY', 'KRW', 'VND', 'UGX', 'TZS', 'ETB']
+  
+  if (zeroDecimalCurrencies.includes(currency.toUpperCase())) {
+    return amount
+  }
+  
+  return amount / 100
+}

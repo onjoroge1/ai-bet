@@ -156,12 +156,19 @@ export default function MyTipsPage() {
 
   const fetchTips = async () => {
     try {
+      console.log("🔍 DEBUG: Fetching tips from /api/my-tips")
       const response = await fetch("/api/my-tips")
-      if (!response.ok) throw new Error("Failed to fetch tips")
+      console.log("🔍 DEBUG: Response status:", response.status)
+      if (!response.ok) {
+        console.error("❌ DEBUG: Response not OK:", response.status, response.statusText)
+        throw new Error("Failed to fetch tips")
+      }
       const data = await response.json()
+      console.log("🔍 DEBUG: Received tips data:", data.length, "tips")
+      console.log("🔍 DEBUG: First tip:", data[0])
       setTips(data)
     } catch (error) {
-      console.error("Error fetching tips:", error)
+      console.error("❌ DEBUG: Error fetching tips:", error)
     } finally {
       setLoading(false)
     }

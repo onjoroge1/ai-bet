@@ -215,42 +215,9 @@ export async function POST(request: Request) {
     console.log("🔍 DEBUG: Final values:", { amount, currency, description })
     console.log("🔍 DEBUG: Final metadata:", metadata)
 
-    // Get payment method configuration for user's country
-    const paymentConfig = getPaymentMethodConfiguration(user.country.code)
-    const availableMethods = getAvailablePaymentMethods(user.country.code)
-
-    // Configure payment method options for 3D Secure
-    const paymentMethodOptions: any = {
-      card: {
-        request_three_d_secure: 'automatic'
-      }
-    }
-
-    // If a specific payment method is requested, use only that method
-    let paymentMethodTypes = paymentConfig.payment_method_types
-    if (paymentMethod) {
-      // Map the frontend payment method to Stripe payment method types
-      switch (paymentMethod) {
-        case 'apple_pay':
-          paymentMethodTypes = ['card'] // Apple Pay uses card as base type
-          break
-        case 'google_pay':
-          paymentMethodTypes = ['card'] // Google Pay uses card as base type
-          break
-        case 'paypal':
-          paymentMethodTypes = ['paypal']
-          break
-        case 'card':
-          paymentMethodTypes = ['card']
-          break
-        default:
-          paymentMethodTypes = ['card'] // Default to card
-      }
-    }
-
     console.log("🔍 DEBUG: Creating Stripe payment intent with:", { amount, currency, description })
     console.log("🔍 DEBUG: Stripe payment intent metadata:", metadata)
-
+    
     // Create payment intent with automatic payment methods (includes Apple Pay & Google Pay)
     const paymentIntent = await stripe.paymentIntents.create({
       amount: formatAmountForStripe(amount, currency),
@@ -258,8 +225,12 @@ export async function POST(request: Request) {
       description,
       metadata,
       automatic_payment_methods: { 
-        enabled: true,
-        allow_redirects: 'never'
+        enabled: true
+      },
+      payment_method_options: {
+        card: {
+          request_three_d_secure: 'automatic'
+        }
       },
       receipt_email: user.email,
     })
@@ -271,8 +242,7 @@ export async function POST(request: Request) {
       clientSecret: paymentIntent.client_secret,
       amount,
       currency,
-      paymentIntentId: paymentIntent.id,
-      availablePaymentMethods: availableMethods
+      paymentIntentId: paymentIntent.id
     })
   } catch (error) {
     console.error("❌ DEBUG: Error creating payment intent:", error)
