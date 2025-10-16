@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import prisma from "@/lib/db"
+import { Prisma } from "@prisma/client"
 import { authOptions } from "@/lib/auth"
 import type { PaymentIntent, PrismaDecimal } from "@/types/api"
 import Stripe from "stripe"
@@ -264,7 +265,7 @@ async function processPaymentManually(paymentIntent: any, userId: string) {
         data: {
           userId,
           quickPurchaseId: itemId,
-          amount: new (prisma as any).Decimal(paymentIntent.amount / 100),
+          amount: new Prisma.Decimal(paymentIntent.amount / 100),
           paymentMethod: 'stripe',
           status: 'completed',
           createdAt: new Date(),
@@ -502,8 +503,8 @@ async function processTipPurchaseAndCredits(userId: string, itemId: string, paym
           data: {
             userId,
             predictionId: prediction.id,
-            stakeAmount: new (prisma as any).Decimal(0),
-            potentialReturn: new (prisma as any).Decimal(0),
+            stakeAmount: new Prisma.Decimal(0),
+            potentialReturn: new Prisma.Decimal(0),
             status: 'pending'
           }
         })

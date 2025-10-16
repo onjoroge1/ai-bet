@@ -154,7 +154,7 @@ export function PremiumPackageReceipt({ package: pkg, onClose }: PremiumPackageR
               <div className="flex justify-between items-center">
                 <span className="text-slate-400">Amount Paid:</span>
                 <span className="text-white font-medium text-lg">
-                  {pkg.currencySymbol}{pkg.amount.toFixed(2)}
+                  {pkg.currencySymbol}{Number(pkg.amount).toFixed(2)}
                 </span>
               </div>
               <div className="flex justify-between items-center">

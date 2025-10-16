@@ -67,7 +67,9 @@ export async function GET(request: NextRequest) {
         participatedAt: true,
         isCompleted: true,
         referralCode: true,
-        bettingExperience: true
+        bettingExperience: true,
+        creditsClaimed: true,
+        claimedAt: true
       }
     })
 

@@ -18,6 +18,8 @@ interface QuizParticipation {
   isCompleted: boolean
   referralCode: string | null
   bettingExperience: string
+  creditsClaimed: boolean
+  claimedAt: string | null
 }
 
 export default function QuizCreditClaim() {
@@ -106,9 +108,13 @@ export default function QuizCreditClaim() {
       
       const result = await response.json()
       
-      // Update the local state - remove from unclaimed list
+      // Update the local state - mark as claimed
       setParticipations(prev => 
-        prev.filter(p => p.id !== participationId)
+        prev.map(p => 
+          p.id === participationId 
+            ? { ...p, creditsClaimed: true, claimedAt: new Date().toISOString() }
+            : p
+        )
       )
       
       // Show success message with toast instead of alert
@@ -206,7 +212,8 @@ export default function QuizCreditClaim() {
     )
   }
 
-  const unclaimedParticipations = participations.filter(p => p.isCompleted)
+  const unclaimedParticipations = participations.filter(p => p.isCompleted && !p.creditsClaimed)
+  const claimedParticipations = participations.filter(p => p.isCompleted && p.creditsClaimed)
   const totalCreditsEarned = participations.reduce((sum, p) => sum + calculateCreditsFromPoints(p.totalScore), 0)
   const totalPointsEarned = participations.reduce((sum, p) => sum + p.totalScore, 0)
   const availableCreditsToClaim = unclaimedParticipations.reduce((sum, p) => sum + calculateCreditsFromPoints(p.totalScore), 0)
@@ -381,6 +388,81 @@ export default function QuizCreditClaim() {
                     </div>
                     <div>
                       <span className="text-slate-400">Date:</span>
+                      <div className="text-slate-300 font-mono text-xs">
+                        {new Date(participation.participatedAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <Progress value={accuracy} className="mt-3" />
+                </div>
+              )
+            })}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Claimed Credits History */}
+      {claimedParticipations.length > 0 && (
+        <Card className="bg-slate-800/50 border-slate-700">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center space-x-2">
+              <CheckCircle className="w-5 h-5 text-green-400" />
+              <span>Claimed Credits History</span>
+            </CardTitle>
+            <div className="text-slate-400 text-sm mt-2">
+              <span className="text-green-400 font-medium">Credits already claimed and added to your account</span>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {claimedParticipations.map((participation) => {
+              const accuracy = calculateAccuracy(participation.correctAnswers, participation.questionsAnswered)
+              const creditsInfo = getCreditsDisplay(participation.totalScore)
+              return (
+                <div key={participation.id} className="bg-slate-700/30 rounded-lg p-4 opacity-75">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center space-x-3">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-400">{creditsInfo.credits}</div>
+                        <div className="text-xs text-slate-400">Credits</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-semibold text-blue-400">{participation.totalScore}</div>
+                        <div className="text-xs text-slate-400">Points</div>
+                      </div>
+                      <div className="text-center">
+                        <div className={`text-lg font-semibold ${getAccuracyColor(accuracy)}`}>
+                          {accuracy}%
+                        </div>
+                        <div className="text-xs text-slate-400">Accuracy</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      {getAccuracyBadge(accuracy)}
+                      <div className="flex items-center space-x-2 text-green-400">
+                        <CheckCircle className="w-4 h-4" />
+                        <span className="text-sm font-medium">Claimed</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <span className="text-slate-400">Correct Answers:</span>
+                      <div className="text-white font-medium">{participation.correctAnswers}/{participation.questionsAnswered}</div>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Total Points:</span>
+                      <div className="text-emerald-400 font-medium">{participation.totalScore}</div>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Claimed Date:</span>
+                      <div className="text-green-400 font-mono text-xs">
+                        {participation.claimedAt ? new Date(participation.claimedAt).toLocaleDateString() : 'N/A'}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Quiz Date:</span>
                       <div className="text-slate-300 font-mono text-xs">
                         {new Date(participation.participatedAt).toLocaleDateString()}
                       </div>
