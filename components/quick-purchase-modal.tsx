@@ -180,142 +180,66 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
   const handlePaymentSuccess = async () => {
     toast.success('Purchase successful!');
     
-    // Handle package purchases differently
+    // Handle package purchases - use current item data instead of fetching from database
     if (item?.type === 'package') {
-      try {
-        const res = await fetch('/api/my-packages?latest=1');
-        if (!res.ok) {
-          throw new Error('Failed to fetch package details');
-        }
-        
-        const data = await res.json();
-        if (data && data.packages && data.packages.length > 0) {
-          const latestPackage = data.packages[0];
-          setPurchasedTip(latestPackage);
-          setShowReceipt(true);
-        } else {
-          // If no packages found, create a fallback receipt with the original item data
-          const fallbackPackage = {
-            id: item?.id || 'unknown',
-            purchaseId: item?.id || 'unknown',
-            name: item?.name || 'Package Purchase',
-            type: 'package',
-            price: item?.price || 0,
-            amount: item?.price || 0,
-            description: item?.description || 'Package purchase completed successfully',
-            features: item?.features || [],
-            currencySymbol: item?.country?.currencySymbol || '$',
-            currencyCode: item?.country?.currencyCode || 'USD',
-            purchaseDate: new Date().toISOString(),
-            paymentMethod: selectedPaymentMethod || 'card',
-            packageType: item?.id?.split('_')[1] || 'unknown',
-            creditsGained: item?.tipCount === -1 ? 1000 : (item?.tipCount || 1),
-            tipsIncluded: item?.tipCount || 1,
-            validityDays: item?.tipCount === -1 ? 30 : (item?.tipCount === 5 ? 3 : 7)
-          };
-          setPurchasedTip(fallbackPackage);
-          setShowReceipt(true);
-        }
-      } catch (error) {
-        console.error('Error fetching package details:', error);
-        toast.error('Purchase successful but could not load receipt details');
-        
-        // Create a minimal package receipt with available data
-        const minimalPackage = {
-          id: item?.id || 'unknown',
-          purchaseId: item?.id || 'unknown',
-          name: item?.name || 'Package Purchase',
-          type: 'package',
-          price: item?.price || 0,
-          amount: item?.price || 0,
-          description: item?.description || 'Package purchase completed successfully',
-          features: item?.features || [],
-          currencySymbol: item?.country?.currencySymbol || '$',
-          currencyCode: item?.country?.currencyCode || 'USD',
-          purchaseDate: new Date().toISOString(),
-          paymentMethod: selectedPaymentMethod || 'card',
-          packageType: item?.id?.split('_')[1] || 'unknown',
-          creditsGained: item?.tipCount === -1 ? 1000 : (item?.tipCount || 1),
-          tipsIncluded: item?.tipCount || 1,
-          validityDays: item?.tipCount === -1 ? 30 : (item?.tipCount === 5 ? 3 : 7)
-        };
-        setPurchasedTip(minimalPackage);
-        setShowReceipt(true);
-      }
+      console.log('🔍 DEBUG: Creating receipt for package purchase:', item?.id);
+      
+      const receiptPackage = {
+        id: item?.id || 'unknown',
+        purchaseId: item?.id || 'unknown',
+        name: item?.name || 'Package Purchase',
+        type: 'package',
+        price: item?.price || 0,
+        amount: item?.price || 0,
+        description: item?.description || 'Package purchase completed successfully',
+        features: item?.features || [],
+        currencySymbol: item?.country?.currencySymbol || '$',
+        currencyCode: item?.country?.currencyCode || 'USD',
+        purchaseDate: new Date().toISOString(),
+        paymentMethod: selectedPaymentMethod || 'card',
+        packageType: item?.id?.split('_')[1] || 'unknown',
+        creditsGained: item?.tipCount === -1 ? 1000 : (item?.tipCount || 1),
+        tipsIncluded: item?.tipCount || 1,
+        validityDays: item?.tipCount === -1 ? 30 : (item?.tipCount === 5 ? 3 : 7)
+      };
+      
+      console.log('🔍 DEBUG: Receipt package data:', receiptPackage);
+      setPurchasedTip(receiptPackage);
+      setShowReceipt(true);
     } else {
-      // Handle tip purchases (existing logic)
-      try {
-        const res = await fetch('/api/my-tips?latest=1');
-        if (!res.ok) {
-          throw new Error('Failed to fetch purchase details');
-        }
-        
-        const data = await res.json();
-        if (data && data.tips && data.tips.length > 0) {
-          const latestTip = data.tips[0];
-          setPurchasedTip(latestTip);
-          setShowReceipt(true);
-        } else {
-          // If no tips found, create a fallback receipt with the original item data
-          const fallbackTip = {
-            id: item?.id || 'unknown',
-            purchaseId: item?.id || 'unknown',
-            name: item?.name || 'Tip Purchase',
-            type: item?.type || 'tip',
-            price: item?.price || 0,
-            amount: item?.price || 0,
-            description: item?.description || 'Tip purchase completed successfully',
-            features: item?.features || [],
-            isUrgent: item?.isUrgent || false,
-            timeLeft: item?.timeLeft || null,
-            currencySymbol: item?.country?.currencySymbol || '$',
-            currencyCode: item?.country?.currencyCode || 'USD',
-            purchaseDate: new Date().toISOString(),
-            paymentMethod: selectedPaymentMethod || 'card',
-            homeTeam: item?.matchData?.home_team,
-            awayTeam: item?.matchData?.away_team,
-            matchDate: item?.matchData?.date,
-            league: item?.matchData?.league,
-            predictionType: item?.predictionType,
-            confidenceScore: item?.confidenceScore,
-            odds: item?.odds,
-            valueRating: item?.valueRating
-          };
-          setPurchasedTip(fallbackTip);
-          setShowReceipt(true);
-        }
-      } catch (error) {
-        console.error('Error fetching purchase details:', error);
-        toast.error('Purchase successful but could not load receipt details');
-        
-        // Create a minimal receipt with available data
-        const minimalTip = {
-          id: item?.id || 'unknown',
-          purchaseId: item?.id || 'unknown',
-          name: item?.name || 'Tip Purchase',
-          type: item?.type || 'tip',
-          price: item?.price || 0,
-          amount: item?.price || 0,
-          description: item?.description || 'Tip purchase completed successfully',
-          features: item?.features || [],
-          isUrgent: item?.isUrgent || false,
-          timeLeft: item?.timeLeft || null,
-          currencySymbol: item?.country?.currencySymbol || '$',
-          currencyCode: item?.country?.currencyCode || 'USD',
-          purchaseDate: new Date().toISOString(),
-          paymentMethod: selectedPaymentMethod || 'card',
-          homeTeam: item?.matchData?.home_team,
-          awayTeam: item?.matchData?.away_team,
-          matchDate: item?.matchData?.date,
-          league: item?.matchData?.league,
-          predictionType: item?.predictionType,
-          confidenceScore: item?.confidenceScore,
-          odds: item?.odds,
-          valueRating: item?.valueRating
-        };
-        setPurchasedTip(minimalTip);
-        setShowReceipt(true);
-      }
+      // Handle tip purchases - use current item data instead of fetching from database
+      // This prevents race condition where webhook hasn't processed yet
+      console.log('🔍 DEBUG: Creating receipt for tip purchase:', item?.id);
+      
+      const receiptTip = {
+        id: item?.id || 'unknown',
+        purchaseId: item?.id || 'unknown',
+        name: item?.name || 'Tip Purchase',
+        type: item?.type || 'tip',
+        price: item?.price || 0,
+        amount: item?.price || 0,
+        description: item?.description || 'Tip purchase completed successfully',
+        features: item?.features || [],
+        isUrgent: item?.isUrgent || false,
+        timeLeft: item?.timeLeft || null,
+        currencySymbol: item?.country?.currencySymbol || '$',
+        currencyCode: item?.country?.currencyCode || 'USD',
+        purchaseDate: new Date().toISOString(),
+        paymentMethod: selectedPaymentMethod || 'card',
+        // Use the current item's match data instead of fetching from database
+        homeTeam: item?.matchData?.home_team,
+        awayTeam: item?.matchData?.away_team,
+        matchDate: item?.matchData?.date,
+        league: item?.matchData?.league,
+        predictionType: item?.predictionType,
+        confidenceScore: item?.confidenceScore,
+        odds: item?.odds,
+        valueRating: item?.valueRating
+      };
+      
+      console.log('🔍 DEBUG: Receipt tip data:', receiptTip);
+      setPurchasedTip(receiptTip);
+      setShowReceipt(true);
     }
     
     // Invalidate notification unread count to update bell
