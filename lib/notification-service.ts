@@ -27,6 +27,9 @@ export class NotificationService {
    */
   static async createNotification(data: CreateNotificationData) {
     try {
+      console.log('🔔 DEBUG: Creating notification for user:', data.userId);
+      console.log('🔔 DEBUG: Notification data:', { title: data.title, type: data.type, category: data.category });
+      
       // Check if user has notifications enabled (default to true for now)
       const user = await prisma.user.findUnique({
         where: { id: data.userId },
@@ -34,9 +37,12 @@ export class NotificationService {
       })
 
       if (!user) {
+        console.log('❌ DEBUG: User not found for notification:', data.userId);
         logger.info('User not found for notification', { data: { userId: data.userId } })
         return null
       }
+
+      console.log('✅ DEBUG: User found, creating notification...');
 
       // For now, we'll create notifications regardless of settings
       // TODO: Add notification preferences check once schema is updated
@@ -53,6 +59,7 @@ export class NotificationService {
         },
       })
 
+      console.log('✅ DEBUG: Notification created successfully:', notification.id);
       logger.info('Notification created', {
         data: {
           notificationId: notification.id,
@@ -64,6 +71,7 @@ export class NotificationService {
 
       return notification
     } catch (error) {
+      console.error('❌ DEBUG: Failed to create notification:', error);
       logger.error('Failed to create notification', {
         error: error as Error,
         data: { userId: data.userId },
