@@ -187,24 +187,18 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
         }
         // Send notification with package details
         try {
-          console.log('🔔 DEBUG: Sending payment success notification...');
-          console.log('🔔 DEBUG: User ID:', userId);
-          console.log('🔔 DEBUG: Amount:', actualPrice);
-          console.log('🔔 DEBUG: Package type:', packagePurchase.packageType);
-          console.log('🔔 DEBUG: Credits gained:', creditsGained);
-          
+          console.log('Sending payment success notification...');
           const { NotificationService } = await import('@/lib/notification-service');
-          const notification = await NotificationService.createPaymentSuccessNotification(
+          await NotificationService.createPaymentSuccessNotification(
             userId,
             actualPrice, // Use the consistent API price instead of payment intent amount
             itemType === 'package' ? 'Premium Package' : 'Tip',
             packagePurchase.packageType,
             creditsGained
           );
-          
-          console.log('✅ DEBUG: Notification sent successfully:', notification?.id);
+          console.log('Notification sent.');
         } catch (error) {
-          console.error('❌ DEBUG: Failed to send payment notification:', error);
+          console.error('Failed to send payment notification:', error);
         }
       }
       
@@ -282,11 +276,7 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
       
       // Send notification for tip purchase with detailed tip information
       try {
-        console.log('🔔 DEBUG: Sending tip purchase notification...');
-        console.log('🔔 DEBUG: User ID:', userId);
-        console.log('🔔 DEBUG: Item ID:', itemId);
-        console.log('🔔 DEBUG: Amount:', actualPrice);
-        
+        console.log('Sending tip purchase notification...');
         const { NotificationService } = await import('@/lib/notification-service');
         
         // Get tip details for the notification
@@ -303,8 +293,6 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
           }
         });
         
-        console.log('🔔 DEBUG: Quick purchase found:', !!quickPurchase);
-        
         if (quickPurchase && quickPurchase.match) {
           const match = quickPurchase.match;
           const tipName = `Premium Tip - ${match.homeTeam.name} vs ${match.awayTeam.name}`;
@@ -315,8 +303,7 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
           const transactionId = paymentIntent.id;
           const currencySymbol = paymentIntent.currency === 'usd' ? '$' : '€';
           
-          console.log('🔔 DEBUG: Creating detailed tip notification...');
-          const notification = await NotificationService.createTipPurchaseNotification(
+          await NotificationService.createTipPurchaseNotification(
             userId,
             actualPrice, // Use the consistent API price instead of payment intent amount
             tipName,
@@ -327,20 +314,17 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
             transactionId,
             currencySymbol
           );
-          console.log('✅ DEBUG: Detailed tip notification sent:', notification?.id);
         } else {
           // Fallback to generic notification if tip details not available
-          console.log('🔔 DEBUG: Creating fallback tip notification...');
-          const notification = await NotificationService.createPaymentSuccessNotification(
+          await NotificationService.createPaymentSuccessNotification(
             userId,
             actualPrice, // Use the consistent API price instead of payment intent amount
             'Premium Tip'
           );
-          console.log('✅ DEBUG: Fallback tip notification sent:', notification?.id);
         }
-        console.log('✅ DEBUG: Tip purchase notification sent successfully.');
+        console.log('Tip purchase notification sent.');
       } catch (error) {
-        console.error('❌ DEBUG: Failed to send tip purchase notification:', error);
+        console.error('Failed to send tip purchase notification:', error);
       }
       
       // Note: Email is now sent by the NotificationService.createPaymentSuccessNotification method

@@ -216,6 +216,8 @@ export class NotificationService {
     // Send email notification for payment confirmation
     if (user?.email) {
       try {
+        console.log('📧 DEBUG: Sending payment confirmation email...');
+        console.log('📧 DEBUG: Email data:', { userEmail: user.email, amount, packageName });
         await EmailService.sendPaymentConfirmation({
           to: user.email, // Add the email address
           amount,
@@ -224,14 +226,17 @@ export class NotificationService {
           userName: user.email, // Email address
           tipsCount: creditsGained || 5, // Use credits gained or default to 5
         })
+        console.log('✅ DEBUG: Payment confirmation email sent successfully');
         logger.info('Payment confirmation email sent', {
           data: { userId, email: user.email, amount, packageName, creditsGained }
         })
       } catch (error) {
+        console.error('❌ DEBUG: Failed to send payment confirmation email:', error);
         logger.error('Failed to send payment confirmation email', {
           error: error as Error,
           data: { userId, email: user.email }
         })
+        // Don't throw the error - notification should still be created even if email fails
       }
     }
 
@@ -711,6 +716,8 @@ export class NotificationService {
     // Send email notification for tip purchase confirmation
     if (user?.email) {
       try {
+        console.log('📧 DEBUG: Sending tip purchase confirmation email...');
+        console.log('📧 DEBUG: Email data:', { userEmail: user.email, amount, tipName });
         await EmailService.sendTipPurchaseConfirmation({
           amount,
           tipName,
@@ -725,14 +732,17 @@ export class NotificationService {
           currency: currencySymbol === '$' ? 'USD' : 'EUR',
           appUrl: process.env.NEXT_PUBLIC_APP_URL || 'https://snapbet.com'
         })
+        console.log('✅ DEBUG: Tip purchase confirmation email sent successfully');
         logger.info('Tip purchase confirmation email sent', {
           data: { userId, email: user.email, amount, tipName }
         })
       } catch (error) {
+        console.error('❌ DEBUG: Failed to send tip purchase confirmation email:', error);
         logger.error('Failed to send tip purchase confirmation email', {
           error: error as Error,
           data: { userId, email: user.email }
         })
+        // Don't throw the error - notification should still be created even if email fails
       }
     }
 
