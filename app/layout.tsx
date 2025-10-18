@@ -8,6 +8,7 @@ import { Providers } from "./providers"
 import { SkipToMainContent, LiveRegion } from "@/components/ui/accessibility"
 import { AllSchemaMarkup } from "@/components/schema-markup"
 import { GoogleAnalytics } from "@/components/analytics/google-analytics"
+import { Analytics } from "@vercel/analytics/next"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -155,6 +156,9 @@ export default function RootLayout({
         {GA_MEASUREMENT_ID && process.env.NODE_ENV === 'production' && (
           <GoogleAnalytics GA_MEASUREMENT_ID={GA_MEASUREMENT_ID} />
         )}
+        
+        {/* Vercel Analytics */}
+        <Analytics />
       </body>
     </html>
   )
