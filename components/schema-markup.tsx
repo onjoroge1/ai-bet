@@ -5,8 +5,8 @@ export function OrganizationSchema() {
     "@context": "https://schema.org",
     "@type": "Organization",
     "name": "SnapBet AI",
-    "url": "https://snapbet.ai",
-    "logo": "https://snapbet.ai/logo.png",
+    "url": "https://www.snapbet.bet",
+    "logo": "https://www.snapbet.bet/logo.png",
     "description": "AI-powered sports betting predictions and tips platform",
     "foundingDate": "2024",
     "sameAs": [
@@ -38,13 +38,13 @@ export function WebSiteSchema() {
     "@context": "https://schema.org",
     "@type": "WebSite",
     "name": "SnapBet AI",
-    "url": "https://snapbet.ai",
+    "url": "https://www.snapbet.bet",
     "description": "AI-powered sports betting predictions and tips",
     "potentialAction": {
       "@type": "SearchAction",
       "target": {
         "@type": "EntryPoint",
-        "urlTemplate": "https://snapbet.ai/search?q={search_term_string}"
+        "urlTemplate": "https://www.snapbet.bet/search?q={search_term_string}"
       },
       "query-input": "required name=search_term_string"
     },
@@ -213,7 +213,7 @@ export function NewsArticleSchema({
   articleSection?: string
   articleBody?: string
 }) {
-  const baseUrl = process.env.NEXTAUTH_URL || 'https://snapbet.ai'
+  const baseUrl = process.env.NEXTAUTH_URL || 'https://www.snapbet.bet'
   
   const schema = {
     "@context": "https://schema.org",

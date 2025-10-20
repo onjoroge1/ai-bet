@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server'
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
-  const baseUrl = process.env.NEXTAUTH_URL || 'https://snapbet.ai'
+  const baseUrl = process.env.NEXTAUTH_URL || 'https://www.snapbet.bet'
   const currentDate = new Date().toISOString()
 
   const staticPages = [

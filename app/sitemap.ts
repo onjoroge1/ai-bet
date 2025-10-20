@@ -1,7 +1,7 @@
 import { MetadataRoute } from 'next'
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = process.env.NEXTAUTH_URL || 'https://snapbet.ai'
+  const baseUrl = process.env.NEXTAUTH_URL || 'https://www.snapbet.bet'
   const currentDate = new Date()
 
   // Main sitemap index that references all other sitemaps

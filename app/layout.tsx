@@ -8,6 +8,10 @@ import { Providers } from "./providers"
 import { SkipToMainContent, LiveRegion } from "@/components/ui/accessibility"
 import { AllSchemaMarkup } from "@/components/schema-markup"
 import { GoogleAnalytics } from "@/components/analytics/google-analytics"
+import { CoreWebVitals } from "@/components/analytics/core-web-vitals"
+import { SearchConsole } from "@/components/analytics/search-console"
+import { PerformanceMonitoring, ErrorTracking, RealUserMonitoring } from "@/components/analytics/performance-monitoring"
+import { PWAInstallPrompt, OfflineSupport } from "@/components/pwa/pwa-enhancements"
 import { Analytics } from "@vercel/analytics/next"
 
 const inter = Inter({
@@ -48,7 +52,7 @@ export const metadata: Metadata = {
     address: false,
     telephone: false,
   },
-  metadataBase: new URL(process.env.NEXTAUTH_URL || "https://snapbet.bet"),
+  metadataBase: new URL(process.env.NEXTAUTH_URL || "https://www.snapbet.bet"),
   // Removed static canonical URL - will be set dynamically per page
   openGraph: {
     title: "SnapBet AI - AI-Powered Sports Predictions & Betting Tips",
@@ -61,10 +65,19 @@ export const metadata: Metadata = {
         width: 1200,
         height: 630,
         alt: "SnapBet AI - AI-Powered Sports Predictions",
+        type: "image/jpeg",
+      },
+      {
+        url: "/og-image-square.jpg",
+        width: 1200,
+        height: 1200,
+        alt: "SnapBet AI - AI-Powered Sports Predictions",
+        type: "image/jpeg",
       },
     ],
     locale: "en_US",
     type: "website",
+    countryName: "United States",
   },
   twitter: {
     card: "summary_large_image",
@@ -140,6 +153,9 @@ export default function RootLayout({
         
         {/* Schema Markup for SEO */}
         <AllSchemaMarkup />
+        
+        {/* Search Console Verification */}
+        <SearchConsole siteVerificationId={process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION} />
       </head>
       <body className={`overflow-x-hidden ${inter.className}`} suppressHydrationWarning>
         <Providers>
@@ -152,9 +168,19 @@ export default function RootLayout({
           <Footer />
         </Providers>
         
-        {/* Google Analytics - Only load in production */}
+        {/* PWA Components */}
+        <PWAInstallPrompt />
+        <OfflineSupport />
+        
+        {/* Analytics - Only load in production */}
         {GA_MEASUREMENT_ID && process.env.NODE_ENV === 'production' && (
-          <GoogleAnalytics GA_MEASUREMENT_ID={GA_MEASUREMENT_ID} />
+          <>
+            <GoogleAnalytics GA_MEASUREMENT_ID={GA_MEASUREMENT_ID} />
+            <CoreWebVitals />
+            <PerformanceMonitoring />
+            <ErrorTracking />
+            <RealUserMonitoring />
+          </>
         )}
         
         {/* Vercel Analytics */}
