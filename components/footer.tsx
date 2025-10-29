@@ -54,7 +54,7 @@ export function Footer() {
                 </a>
               </li>
               <li>
-                <a href="#" className="text-slate-400 hover:text-white text-sm">
+                <a href="/model-info" className="text-slate-400 hover:text-white text-sm">
                   How It Works
                 </a>
               </li>

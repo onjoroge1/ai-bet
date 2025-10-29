@@ -23,7 +23,10 @@ import {
   TrendingUp,
   Loader2,
   Image,
-  Video
+  Video,
+  Search,
+  Plus,
+  Trash2
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -82,6 +85,15 @@ export default function EditBlogPage() {
   const [tagInput, setTagInput] = useState('')
   const [keywordInput, setKeywordInput] = useState('')
 
+  // Team logo management state
+  const [teamLogoSearch, setTeamLogoSearch] = useState('')
+  const [logoSearchResult, setLogoSearchResult] = useState<any>(null)
+  const [logoSearchLoading, setLogoSearchLoading] = useState(false)
+  const [blogLogos, setBlogLogos] = useState<any[]>([])
+  const [bothTeamsSearch, setBothTeamsSearch] = useState('')
+  const [bothTeamsLoading, setBothTeamsLoading] = useState(false)
+  const [bothTeamsResults, setBothTeamsResults] = useState<any[]>([])
+
   useEffect(() => {
     if (blogId) {
       fetchBlog()
@@ -125,6 +137,9 @@ export default function EditBlogPage() {
         isActive: blogData.isActive !== undefined ? blogData.isActive : true,
         media: blogData.media || []
       })
+      
+      // Fetch team logos for this blog
+      fetchBlogLogos()
     } catch (error) {
       console.error('Error fetching blog:', error)
       setError('Failed to fetch blog post')
@@ -202,6 +217,181 @@ export default function EditBlogPage() {
       ...prev,
       media
     }))
+  }
+
+  // Team logo management functions
+  const handleSearchTeamLogo = async () => {
+    if (!teamLogoSearch.trim()) return
+
+    try {
+      setLogoSearchLoading(true)
+      setLogoSearchResult(null)
+      
+      const response = await fetch(`/api/team-logo?team=${encodeURIComponent(teamLogoSearch.trim())}`)
+      const data = await response.json()
+      
+      if (response.ok) {
+        setLogoSearchResult(data)
+        toast.success(`Found logo for ${data.name}`)
+      } else {
+        toast.error(data.error || 'Failed to fetch team logo')
+      }
+    } catch (error) {
+      console.error('Error fetching team logo:', error)
+      toast.error('Failed to fetch team logo')
+    } finally {
+      setLogoSearchLoading(false)
+    }
+  }
+
+  const handleAddTeamLogo = async (logoData: any) => {
+    console.log('Adding team logo:', logoData)
+    
+    if (!logoData.logo) {
+      toast.error('No logo URL available for this team')
+      return
+    }
+    
+    try {
+      const response = await fetch(`/api/blogs/${blogId}/team-logos`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          teamId: logoData.id,
+          teamName: logoData.name,
+          logoUrl: logoData.logo,
+          country: logoData.country,
+        }),
+      })
+
+      const data = await response.json()
+      
+      if (response.ok) {
+        toast.success(`Team logo added for ${logoData.name}`)
+        fetchBlogLogos() // Refresh the blog logos list
+        setLogoSearchResult(null) // Clear search result
+        setTeamLogoSearch('') // Clear search input
+      } else {
+        toast.error(data.error || 'Failed to add team logo')
+      }
+    } catch (error) {
+      console.error('Error adding team logo:', error)
+      toast.error('Failed to add team logo')
+    }
+  }
+
+  const handleRemoveTeamLogo = async (logoId: string) => {
+    if (!confirm('Are you sure you want to remove this team logo?')) return
+
+    try {
+      const response = await fetch(`/api/blogs/${blogId}/team-logos/${logoId}`, {
+        method: 'DELETE'
+      })
+      
+      const data = await response.json()
+      
+      if (response.ok) {
+        toast.success('Team logo removed successfully')
+        fetchBlogLogos() // Refresh the blog logos list
+      } else {
+        toast.error(data.error || 'Failed to remove team logo')
+      }
+    } catch (error) {
+      console.error('Error removing team logo:', error)
+      toast.error('Failed to remove team logo')
+    }
+  }
+
+  const fetchBlogLogos = async () => {
+    try {
+      const response = await fetch(`/api/blogs/${blogId}/team-logos`)
+      const data = await response.json()
+      
+      if (data.success) {
+        setBlogLogos(data.data)
+      }
+    } catch (error) {
+      console.error('Error fetching blog logos:', error)
+    }
+  }
+
+  // Fetch logos for both teams (e.g., "Arsenal vs Chelsea")
+  const handleFetchBothTeams = async () => {
+    if (!bothTeamsSearch.trim()) return
+
+    try {
+      setBothTeamsLoading(true)
+      setBothTeamsResults([])
+      
+      // Parse team names from input like "Arsenal vs Chelsea" or "Arsenal, Chelsea"
+      const teamNames = bothTeamsSearch
+        .split(/[vs,]/)
+        .map(name => name.trim())
+        .filter(name => name.length > 0)
+      
+      if (teamNames.length < 2) {
+        toast.error('Please enter two team names (e.g., "Arsenal vs Chelsea")')
+        return
+      }
+
+      const response = await fetch(`/api/team-logos?teams=${teamNames.join(',')}`)
+      const data = await response.json()
+      
+      if (data.success) {
+        setBothTeamsResults(data.teams)
+        const successCount = data.teams.filter((t: any) => t.success).length
+        toast.success(`Found logos for ${successCount}/${teamNames.length} teams`)
+      } else {
+        toast.error(data.error || 'Failed to fetch team logos')
+      }
+    } catch (error) {
+      console.error('Error fetching both team logos:', error)
+      toast.error('Failed to fetch team logos')
+    } finally {
+      setBothTeamsLoading(false)
+    }
+  }
+
+  // Add multiple team logos at once
+  const handleAddMultipleLogos = async (teams: any[]) => {
+    const successfulTeams = teams.filter(t => t.success)
+    
+    if (successfulTeams.length === 0) {
+      toast.error('No valid team logos to add')
+      return
+    }
+
+    try {
+      const promises = successfulTeams.map(team => 
+        fetch(`/api/blogs/${blogId}/team-logos`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            teamId: team.id,
+            teamName: team.name,
+            logoUrl: team.logo,
+            country: team.country,
+          }),
+        })
+      )
+
+      const responses = await Promise.all(promises)
+      const results = await Promise.all(responses.map(r => r.json()))
+      
+      const successCount = results.filter(r => r.success).length
+      toast.success(`Added ${successCount}/${successfulTeams.length} team logos`)
+      
+      fetchBlogLogos() // Refresh the blog logos list
+      setBothTeamsResults([]) // Clear results
+      setBothTeamsSearch('') // Clear input
+    } catch (error) {
+      console.error('Error adding multiple team logos:', error)
+      toast.error('Failed to add team logos')
+    }
   }
 
   const categories = [
@@ -434,6 +624,194 @@ export default function EditBlogPage() {
                 maxFiles={20}
                 acceptedTypes={['image', 'video']}
               />
+            </div>
+
+            {/* Team Logo Management */}
+            <div>
+              <Label className="text-slate-300 mb-2 block">Team Logos</Label>
+              <Card className="bg-slate-800 border-slate-700">
+                <CardHeader>
+                  <CardTitle className="text-white text-lg">Add Team Logos</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Fetch Both Teams */}
+                  <div className="p-3 bg-slate-700 rounded-md">
+                    <h4 className="text-white font-medium mb-2">Quick Add Both Teams</h4>
+                    <div className="flex gap-3 items-end">
+                      <div className="flex-1">
+                        <Label className="text-slate-300 mb-1">Both Teams</Label>
+                        <Input
+                          type="text"
+                          placeholder="e.g., Arsenal vs Chelsea, Real Madrid vs Barcelona"
+                          value={bothTeamsSearch}
+                          onChange={(e) => setBothTeamsSearch(e.target.value)}
+                          className="bg-slate-600 border-slate-500 text-white"
+                        />
+                      </div>
+                      <Button
+                        onClick={handleFetchBothTeams}
+                        disabled={!bothTeamsSearch.trim() || bothTeamsLoading}
+                        className="bg-purple-600 hover:bg-purple-700 text-white"
+                      >
+                        {bothTeamsLoading ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Fetching...
+                          </>
+                        ) : (
+                          <>
+                            <Search className="w-4 h-4 mr-2" />
+                            Fetch Both
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    
+                    {/* Both teams results */}
+                    {bothTeamsResults.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        {bothTeamsResults.map((result, index) => (
+                          <div key={index} className="flex items-center gap-3 p-2 bg-slate-600 rounded">
+                            {result.success ? (
+                              <>
+                                <img 
+                                  src={result.logo} 
+                                  alt={`${result.name} logo`}
+                                  className="w-8 h-8 object-contain"
+                                />
+                                <div className="flex-1">
+                                  <p className="text-white text-sm font-medium">{result.name}</p>
+                                  <p className="text-slate-300 text-xs">{result.country}</p>
+                                </div>
+                                <span className="text-green-400 text-xs">✓ Found</span>
+                              </>
+                            ) : (
+                              <>
+                                <div className="w-8 h-8 bg-slate-500 rounded flex items-center justify-center">
+                                  <span className="text-slate-400 text-xs">?</span>
+                                </div>
+                                <div className="flex-1">
+                                  <p className="text-white text-sm font-medium">{result.teamName}</p>
+                                  <p className="text-red-400 text-xs">{result.error}</p>
+                                </div>
+                                <span className="text-red-400 text-xs">✗ Not found</span>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                        
+                        <Button
+                          onClick={() => handleAddMultipleLogos(bothTeamsResults)}
+                          size="sm"
+                          className="w-full bg-green-600 hover:bg-green-700 text-white mt-2"
+                        >
+                          <Plus className="w-4 h-4 mr-1" />
+                          Add All Found Logos
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Search for single team logo */}
+                  <div className="flex gap-3 items-end">
+                    <div className="flex-1">
+                      <Label className="text-slate-300 mb-1">Search Single Team</Label>
+                      <Input
+                        type="text"
+                        placeholder="e.g., Arsenal, Real Madrid"
+                        value={teamLogoSearch}
+                        onChange={(e) => setTeamLogoSearch(e.target.value)}
+                        className="bg-slate-700 border-slate-600 text-white"
+                      />
+                    </div>
+                    <Button
+                      onClick={handleSearchTeamLogo}
+                      disabled={!teamLogoSearch.trim() || logoSearchLoading}
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      {logoSearchLoading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Searching...
+                        </>
+                      ) : (
+                        <>
+                          <Search className="w-4 h-4 mr-2" />
+                          Search
+                        </>
+                      )}
+                    </Button>
+                  </div>
+
+                  {/* Search result */}
+                  {logoSearchResult && (
+                    <div className="p-3 bg-slate-700 rounded-md">
+                      <div className="flex items-center gap-3">
+                        {logoSearchResult.logo ? (
+                          <img 
+                            src={logoSearchResult.logo} 
+                            alt={`${logoSearchResult.name} logo`}
+                            className="w-12 h-12 object-contain"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 bg-slate-600 rounded flex items-center justify-center">
+                            <span className="text-slate-400 text-xs">No Logo</span>
+                          </div>
+                        )}
+                        <div className="flex-1">
+                          <p className="text-white font-medium">{logoSearchResult.name}</p>
+                          <p className="text-slate-300 text-sm">ID: {logoSearchResult.id}</p>
+                          <p className="text-slate-300 text-sm">Country: {logoSearchResult.country}</p>
+                          {!logoSearchResult.logo && (
+                            <p className="text-red-400 text-xs">No logo available for this team</p>
+                          )}
+                        </div>
+                        {logoSearchResult.logo && (
+                          <Button
+                            onClick={() => handleAddTeamLogo(logoSearchResult)}
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700 text-white"
+                          >
+                            <Plus className="w-4 h-4 mr-1" />
+                            Add Logo
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Current blog logos */}
+                  <div>
+                    <h4 className="text-white font-medium mb-2">Current Team Logos</h4>
+                    {blogLogos.length === 0 ? (
+                      <p className="text-slate-400 text-sm">No team logos added yet.</p>
+                    ) : (
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        {blogLogos.map((logo) => (
+                          <div key={logo.id} className="bg-slate-700 rounded-lg p-3">
+                            <div className="flex flex-col items-center text-center">
+                              <img 
+                                src={logo.url} 
+                                alt={logo.alt}
+                                className="w-10 h-10 object-contain mb-2"
+                              />
+                              <p className="text-white text-sm font-medium truncate w-full">{logo.filename}</p>
+                              <Button
+                                onClick={() => handleRemoveTeamLogo(logo.id)}
+                                size="sm"
+                                variant="outline"
+                                className="mt-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
             </div>
 
             <div>

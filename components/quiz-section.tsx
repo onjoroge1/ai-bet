@@ -31,6 +31,7 @@ import { useQuizLeaderboard } from "@/hooks/use-quiz-leaderboard"
 export function QuizSection() {
   const [currentTime, setCurrentTime] = useState(new Date())
   const [isHovered, setIsHovered] = useState(false)
+  const [mounted, setMounted] = useState(false)
   
   // Fetch real leaderboard data
   const { 
@@ -48,9 +49,15 @@ export function QuizSection() {
 
   // Update time every second for live countdown
   useEffect(() => {
+    setMounted(true)
     const interval = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(interval)
   }, [])
+  
+  // Prevent hydration mismatch
+  if (!mounted) {
+    return null
+  }
 
   // Calculate time until next quiz reset (assuming daily reset at midnight)
   const getTimeUntilReset = () => {

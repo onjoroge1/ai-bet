@@ -28,8 +28,9 @@ import Link from 'next/link'
 import prisma from '@/lib/db'
 import { generateMetadata } from '@/lib/seo-helpers'
 import { BlogSearch } from '@/components/blog-search'
-import { LivePredictionsTicker } from '@/components/live-predictions-ticker'
-import { TrendingTopics } from '@/components/trending-topics'
+import { BlogPredictions } from '@/components/blog/blog-predictions'
+import { BlogMatchPredictions } from '@/components/blog/blog-match-predictions'
+import { TeamLogoGenerator } from '@/components/blog/team-logo-generator'
 import { BreakingNewsTicker } from '@/components/breaking-news-ticker'
 import { NewsletterSignup } from '@/components/newsletter-signup'
 
@@ -98,15 +99,50 @@ async function getBlogPosts(): Promise<BlogPost[]> {
 // Media Display Component for Blog Cards
 function BlogCardMedia({ media, title }: { media?: BlogMedia[], title: string }) {
   if (!media || media.length === 0) {
+    // Try to extract team names from title for sports-related posts
+    const isSportsPost = title.toLowerCase().includes('vs') || 
+                        title.toLowerCase().includes('match') || 
+                        title.toLowerCase().includes('prediction') ||
+                        title.toLowerCase().includes('football') ||
+                        title.toLowerCase().includes('soccer')
+    
+    if (isSportsPost) {
+      // Extract team names from title (basic extraction)
+      const vsMatch = title.match(/(.+?)\s+vs\s+(.+?)(?:\s|$)/i)
+      if (vsMatch) {
+        const homeTeam = vsMatch[1].trim()
+        const awayTeam = vsMatch[2].trim()
+        return (
+          <div className="h-48 bg-gradient-to-br from-slate-800 to-slate-700 relative overflow-hidden">
+            <div className="absolute inset-0 flex items-center justify-center p-4">
+              <TeamLogoGenerator
+                homeTeam={homeTeam}
+                awayTeam={awayTeam}
+                className="w-full h-full"
+              />
+            </div>
+          </div>
+        )
+      }
+    }
+    
+    // Fallback to original design for non-sports posts
     return (
-      <div className="h-48 bg-gradient-to-br from-slate-700 to-slate-600 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent" />
+      <div className="h-48 bg-gradient-to-br from-emerald-600/20 via-blue-600/20 to-purple-600/20 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-slate-900/40 to-transparent" />
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="text-center">
-            <BookOpen className="w-12 h-12 text-slate-500 mx-auto mb-2" />
-            <p className="text-slate-400 text-sm">No Media</p>
+            <div className="p-4 bg-slate-800/50 rounded-full mb-3 backdrop-blur-sm">
+              <BookOpen className="w-12 h-12 text-emerald-400" />
+            </div>
+            <p className="text-slate-300 text-sm font-medium">Featured Article</p>
+            <div className="w-16 h-0.5 bg-emerald-400 mx-auto mt-2 rounded-full"></div>
           </div>
         </div>
+        {/* Decorative elements */}
+        <div className="absolute top-4 right-4 w-8 h-8 bg-emerald-400/20 rounded-full"></div>
+        <div className="absolute bottom-4 left-4 w-6 h-6 bg-blue-400/20 rounded-full"></div>
+        <div className="absolute top-1/2 left-1/4 w-4 h-4 bg-purple-400/20 rounded-full"></div>
       </div>
     )
   }
@@ -229,9 +265,6 @@ export default async function BlogPage() {
               {/* Content Section */}
               <CardContent className="p-8 flex flex-col justify-center">
                 <div className="flex items-center gap-2 mb-4">
-                  <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
-                    {featuredPost.category}
-                  </Badge>
                   <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
                     AI Generated
                   </Badge>
@@ -363,8 +396,8 @@ export default async function BlogPage() {
         )}
       </div>
 
-      {/* Live AI Predictions - Moved above newsletter */}
-      <LivePredictionsTicker />
+      {/* Blog Predictions */}
+      <BlogPredictions />
 
       {/* Newsletter Signup - Enhanced */}
       <div className="bg-gradient-to-r from-slate-800/80 via-slate-700/80 to-slate-800/80 border-t border-slate-700">
@@ -389,8 +422,8 @@ export default async function BlogPage() {
         </div>
       </div>
 
-      {/* Trending Topics - Now with blog post links */}
-      <TrendingTopics blogPosts={blogPosts} />
+      {/* Blog Match Predictions */}
+      <BlogMatchPredictions />
     </div>
   )
 } 

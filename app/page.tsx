@@ -31,6 +31,8 @@ import {
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import { QuizSection } from "@/components/quiz-section"
+import { OddsPredictionTable } from "@/components/ui/odds-prediction-table"
+import { MarqueeTicker } from "@/components/marquee-ticker"
 
 interface Feature {
   icon: JSX.Element
@@ -190,6 +192,31 @@ export default function HomePage() {
               View Live Predictions
             </Button>
           </div>
+        </div>
+      </section>
+
+      {/* Marquee Ticker */}
+      <MarqueeTicker />
+
+      {/* Live Matches Table */}
+      <section className="py-12 sm:py-20 bg-slate-900/50 backdrop-blur-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="text-center mb-8">
+            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">Live Matches</h2>
+            <p className="text-slate-300 text-sm">Real-time match updates</p>
+          </div>
+          <OddsPredictionTable status="live" limit={10} showStatusTabs={false} />
+        </div>
+      </section>
+
+      {/* Upcoming Matches Table */}
+      <section className="py-12 sm:py-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="text-center mb-8">
+            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">Upcoming Matches</h2>
+            <p className="text-slate-300 text-sm">Get ready for these exciting matches</p>
+          </div>
+          <OddsPredictionTable status="upcoming" limit={20} showStatusTabs={false} />
         </div>
       </section>
 

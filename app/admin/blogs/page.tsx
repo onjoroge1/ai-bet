@@ -35,6 +35,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 
 interface BlogPost {
   id: string
@@ -167,11 +168,17 @@ export default function AdminBlogsPage() {
         method: 'DELETE'
       })
       
-      if (response.ok) {
+      const data = await response.json()
+      
+      if (response.ok && data.success) {
+        toast.success('Blog post deleted successfully')
         fetchBlogs() // Refresh the list
+      } else {
+        toast.error(data.error || 'Failed to delete blog post')
       }
     } catch (error) {
       console.error('Error deleting blog:', error)
+      toast.error('Failed to delete blog post')
     }
   }
 

@@ -219,10 +219,9 @@ export async function DELETE(
       )
     }
 
-    // Soft delete by setting isActive to false
-    await prisma.blogPost.update({
-      where: { id },
-      data: { isActive: false }
+    // Hard delete - permanently remove from database
+    await prisma.blogPost.delete({
+      where: { id }
     })
 
     return NextResponse.json({

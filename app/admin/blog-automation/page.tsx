@@ -25,7 +25,12 @@ import {
   X,
   Eye,
   Target,
-  TrendingUp
+  TrendingUp,
+  Loader2,
+  Sparkles,
+  LayoutTemplate,
+  Search,
+  Save
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
@@ -93,11 +98,25 @@ export default function BlogAutomationPage() {
   const [matchGenerationStats, setMatchGenerationStats] = useState<any>(null)
   const [previewBlogData, setPreviewBlogData] = useState<any>(null)
   const [matchesLoading, setMatchesLoading] = useState(false)
+  
+  // Template blogs state
+  const [templateMatches, setTemplateMatches] = useState<any[]>([])
+  const [templateLoading, setTemplateLoading] = useState(false)
+  const [templateStats, setTemplateStats] = useState<any>(null)
+
+  // Team logo fetcher state
+  const [logoTeamName, setLogoTeamName] = useState('')
+  const [logoLoading, setLogoLoading] = useState(false)
+  const [logoResult, setLogoResult] = useState<any>(null)
+  const [savedLogos, setSavedLogos] = useState<any[]>([])
+  const [savedLogosLoading, setSavedLogosLoading] = useState(false)
 
   useEffect(() => {
     console.log('Blog automation page mounted')
     fetchData()
     fetchUpcomingMatches()
+    fetchTemplateMatches()
+    fetchSavedLogos()
   }, [])
 
   useEffect(() => {
@@ -272,6 +291,156 @@ export default function BlogAutomationPage() {
     } catch (error) {
       console.error('Error performing match blog action:', error)
       toast.error('Failed to perform action')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const fetchTemplateMatches = async () => {
+    try {
+      setTemplateLoading(true)
+      const response = await fetch('/api/admin/template-blogs')
+      const data = await response.json()
+      
+      if (data.success) {
+        setTemplateMatches(data.data)
+        setTemplateStats({
+          availableMatches: data.data.length,
+        })
+      }
+    } catch (error) {
+      console.error('Error fetching template matches:', error)
+      toast.error('Failed to load template matches')
+    } finally {
+      setTemplateLoading(false)
+    }
+  }
+
+  const handleFetchTeamLogo = async () => {
+    if (!logoTeamName.trim()) return
+
+    try {
+      setLogoLoading(true)
+      setLogoResult(null)
+      
+      const response = await fetch(`/api/team-logo?team=${encodeURIComponent(logoTeamName.trim())}`)
+      const data = await response.json()
+      
+      if (response.ok) {
+        setLogoResult(data)
+        toast.success(`Found logo for ${data.name}`)
+      } else {
+        toast.error(data.error || 'Failed to fetch team logo')
+      }
+    } catch (error) {
+      console.error('Error fetching team logo:', error)
+      toast.error('Failed to fetch team logo')
+    } finally {
+      setLogoLoading(false)
+    }
+  }
+
+  const handleSaveLogo = async (logoData: any) => {
+    try {
+      const response = await fetch('/api/admin/team-logos', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          teamId: logoData.id,
+          teamName: logoData.name,
+          logoUrl: logoData.logo,
+          country: logoData.country,
+        }),
+      })
+
+      const data = await response.json()
+      
+      if (response.ok) {
+        toast.success(`Logo saved for ${logoData.name}`)
+        fetchSavedLogos() // Refresh the saved logos list
+      } else {
+        toast.error(data.error || 'Failed to save logo')
+      }
+    } catch (error) {
+      console.error('Error saving logo:', error)
+      toast.error('Failed to save logo')
+    }
+  }
+
+  const fetchSavedLogos = async () => {
+    try {
+      setSavedLogosLoading(true)
+      const response = await fetch('/api/admin/team-logos')
+      const data = await response.json()
+      
+      if (data.success) {
+        setSavedLogos(data.data)
+      }
+    } catch (error) {
+      console.error('Error fetching saved logos:', error)
+    } finally {
+      setSavedLogosLoading(false)
+    }
+  }
+
+  const handleDeleteLogo = async (logoId: string) => {
+    if (!confirm('Are you sure you want to delete this logo?')) return
+
+    try {
+      const response = await fetch(`/api/admin/team-logos?id=${logoId}`, {
+        method: 'DELETE'
+      })
+      
+      const data = await response.json()
+      
+      if (response.ok) {
+        toast.success('Logo deleted successfully')
+        fetchSavedLogos() // Refresh the saved logos list
+      } else {
+        toast.error(data.error || 'Failed to delete logo')
+      }
+    } catch (error) {
+      console.error('Error deleting logo:', error)
+      toast.error('Failed to delete logo')
+    }
+  }
+
+  const handleTemplateBlogGeneration = async (action: 'generate_all' | 'generate_single', matchId?: string) => {
+    try {
+      setRefreshing(true)
+      
+      const response = await fetch('/api/admin/template-blogs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action, matchId })
+      })
+
+      const data = await response.json()
+      
+      if (data.success) {
+        if (action === 'generate_all') {
+          toast.success(`Generated ${data.data.success} templates, skipped ${data.data.skipped} existing`)
+        } else {
+          // Single generation
+          if (data.data.created) {
+            toast.success('Template blog draft created successfully')
+          } else if (data.data.error) {
+            toast.error(`Failed to create blog: ${data.data.error}`)
+          } else {
+            toast.info('Blog already exists for this match')
+          }
+        }
+        await fetchTemplateMatches() // Refresh the list
+      } else {
+        toast.error(data.error || 'Action failed')
+      }
+    } catch (error) {
+      console.error('Error generating template blogs:', error)
+      toast.error('Failed to generate template blogs')
     } finally {
       setRefreshing(false)
     }
@@ -522,7 +691,7 @@ export default function BlogAutomationPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
         <Tabs defaultValue="generation" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 bg-slate-800 border-slate-700">
+          <TabsList className="grid w-full grid-cols-4 bg-slate-800 border-slate-700">
             <TabsTrigger value="feeds" className="data-[state=active]:bg-emerald-600">
               <Rss className="w-4 h-4 mr-2" />
               RSS Feeds
@@ -537,6 +706,13 @@ export default function BlogAutomationPage() {
             >
               <FileText className="w-4 h-4 mr-2" />
               Content Generation
+            </TabsTrigger>
+            <TabsTrigger 
+              value="templates" 
+              className="data-[state=active]:bg-emerald-600"
+            >
+              <Target className="w-4 h-4 mr-2" />
+              Template Blogs
             </TabsTrigger>
           </TabsList>
 
@@ -895,6 +1071,246 @@ export default function BlogAutomationPage() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* Template Blogs Tab */}
+          <TabsContent value="templates" className="space-y-6">
+            <Card className="bg-slate-800 border-slate-700">
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle className="text-white">Template-Only Blog Generation</CardTitle>
+                  <Badge className="bg-blue-600 text-white">
+                    No AI Required
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  <div className="p-4 bg-slate-700 rounded-lg">
+                    <h4 className="font-semibold text-white mb-2">About Template Blogs</h4>
+                    <p className="text-slate-300 text-sm mb-3">
+                      Generate simple blog previews from QuickPurchase matches. These are template-only blogs (no AI) 
+                      that create compelling preview content to drive purchases without revealing full predictions.
+                    </p>
+                    <div className="text-slate-400 text-xs space-y-1">
+                      <p>• Creates unpublished drafts for admin review</p>
+                      <p>• Links back to original QuickPurchase via sourceUrl</p>
+                      <p>• No AI badge - set as aiGenerated: false</p>
+                      <p>• Team logos available via manual API fetch</p>
+                      <p>• Minimum 60% confidence threshold</p>
+                    </div>
+                  </div>
+
+                  {/* Team Logo Fetcher */}
+                  <div className="p-4 bg-slate-700 rounded-lg">
+                    <h4 className="font-semibold text-white mb-3">Team Logo Fetcher</h4>
+                    <div className="flex gap-3 items-end">
+                      <div className="flex-1">
+                        <label className="block text-sm text-slate-300 mb-1">Team Name</label>
+                        <input
+                          type="text"
+                          placeholder="e.g., Arsenal, Real Madrid"
+                          className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-md text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          value={logoTeamName}
+                          onChange={(e) => setLogoTeamName(e.target.value)}
+                        />
+                      </div>
+                      <Button
+                        onClick={handleFetchTeamLogo}
+                        disabled={!logoTeamName.trim() || logoLoading}
+                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                      >
+                        {logoLoading ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Fetching...
+                          </>
+                        ) : (
+                          <>
+                            <Search className="w-4 h-4 mr-2" />
+                            Get Logo
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    {logoResult && (
+                      <div className="mt-3 p-3 bg-slate-600 rounded-md">
+                        <div className="flex items-center gap-3">
+                          {logoResult.logo && (
+                            <img 
+                              src={logoResult.logo} 
+                              alt={`${logoResult.name} logo`}
+                              className="w-12 h-12 object-contain"
+                            />
+                          )}
+                          <div className="flex-1">
+                            <p className="text-white font-medium">{logoResult.name}</p>
+                            <p className="text-slate-300 text-sm">ID: {logoResult.id}</p>
+                            <p className="text-slate-300 text-sm">Country: {logoResult.country}</p>
+                            {logoResult.logo && (
+                              <p className="text-blue-400 text-xs break-all">{logoResult.logo}</p>
+                            )}
+                          </div>
+                          <Button
+                            onClick={() => handleSaveLogo(logoResult)}
+                            disabled={logoLoading}
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700 text-white"
+                          >
+                            <Save className="w-4 h-4 mr-1" />
+                            Save Logo
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Saved Team Logos */}
+                  <div className="p-4 bg-slate-700 rounded-lg">
+                    <div className="flex justify-between items-center mb-3">
+                      <h4 className="font-semibold text-white">Saved Team Logos</h4>
+                      <Button
+                        onClick={fetchSavedLogos}
+                        disabled={savedLogosLoading}
+                        size="sm"
+                        variant="outline"
+                        className="border-slate-500 text-slate-300 hover:bg-slate-600"
+                      >
+                        <RefreshCw className={`w-4 h-4 mr-1 ${savedLogosLoading ? 'animate-spin' : ''}`} />
+                        Refresh
+                      </Button>
+                    </div>
+                    
+                    {savedLogosLoading ? (
+                      <div className="flex items-center justify-center p-8">
+                        <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                        <span className="ml-3 text-slate-400">Loading saved logos...</span>
+                      </div>
+                    ) : savedLogos.length === 0 ? (
+                      <p className="text-slate-400 text-center py-8">No team logos saved yet.</p>
+                    ) : (
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-h-[300px] overflow-y-auto">
+                        {savedLogos.map((logo) => (
+                          <div key={logo.id} className="bg-slate-600 rounded-lg p-3">
+                            <div className="flex flex-col items-center text-center">
+                              <img 
+                                src={logo.url} 
+                                alt={logo.alt}
+                                className="w-12 h-12 object-contain mb-2"
+                              />
+                              <p className="text-white text-sm font-medium truncate w-full">{logo.filename}</p>
+                              <p className="text-slate-300 text-xs">{logo.caption}</p>
+                              <Button
+                                onClick={() => handleDeleteLogo(logo.id)}
+                                size="sm"
+                                variant="outline"
+                                className="mt-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <Card className="bg-slate-700 border-slate-600">
+                      <CardHeader>
+                        <CardTitle className="text-white text-lg">Quick Actions</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <Button
+                          onClick={() => handleTemplateBlogGeneration('generate_all')}
+                          disabled={refreshing || templateLoading}
+                          className="w-full bg-emerald-600 hover:bg-emerald-700"
+                        >
+                          <FileText className="w-4 h-4 mr-2" />
+                          Generate All Template Blogs
+                        </Button>
+                        
+                        <Button
+                          onClick={fetchTemplateMatches}
+                          disabled={templateLoading}
+                          variant="outline"
+                          className="w-full border-green-600 text-green-300 hover:bg-green-700 hover:text-white"
+                        >
+                          <RefreshCw className={`w-4 h-4 mr-2 ${templateLoading ? 'animate-spin' : ''}`} />
+                          Refresh Matches
+                        </Button>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-slate-700 border-slate-600">
+                      <CardHeader>
+                        <CardTitle className="text-white text-lg">Stats</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {templateLoading ? (
+                          <div className="flex items-center justify-center py-4">
+                            <RefreshCw className="w-5 h-5 text-blue-400 animate-spin mr-2" />
+                            <span className="text-slate-300">Loading matches...</span>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            <div className="flex justify-between">
+                              <span className="text-slate-300">Available Matches:</span>
+                              <span className="text-white font-semibold">{templateStats?.availableMatches || 0}</span>
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {templateMatches.length > 0 && (
+                    <div className="space-y-4">
+                      <h3 className="text-white font-semibold">Eligible Matches</h3>
+                      <div className="space-y-2">
+                        {templateMatches.slice(0, 10).map((match) => (
+                          <Card key={match.id} className="bg-slate-700 border-slate-600">
+                            <CardContent className="p-4">
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <h4 className="text-white font-semibold">{match.name}</h4>
+                                  {match.description && (
+                                    <p className="text-slate-400 text-sm mt-1">{match.description.slice(0, 100)}...</p>
+                                  )}
+                                  <div className="flex items-center gap-4 mt-2 text-sm">
+                                    {match.confidenceScore && (
+                                      <span className="text-slate-300">
+                                        Confidence: <strong>{match.confidenceScore}%</strong>
+                                      </span>
+                                    )}
+                                    {match.valueRating && (
+                                      <span className="text-slate-300">
+                                        Value: <strong>{match.valueRating}</strong>
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="ml-4">
+                                  <Button
+                                    onClick={() => handleTemplateBlogGeneration('generate_single', match.id)}
+                                    disabled={refreshing}
+                                    size="sm"
+                                    className="bg-emerald-600 hover:bg-emerald-700"
+                                  >
+                                    <FileText className="w-4 h-4 mr-1" />
+                                    Generate
+                                  </Button>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
       </div>
 
@@ -1000,7 +1416,7 @@ export default function BlogAutomationPage() {
         <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-white">Blog Preview</DialogTitle>
-          </DialogHeader>
+                     </DialogHeader>
           
           {previewBlogData && (
             <div className="space-y-4">
