@@ -188,7 +188,7 @@ export function OddsPredictionTable({
           odds: normalizedOdds,
           primaryBook,
           predictions,
-          link: `/matches/${match.match_id || match.id}`,
+          link: `/match/${match.match_id || match.id}`,
         }
       })
       
@@ -469,7 +469,7 @@ function MatchTableRow({ match }: { match: MarketMatch }) {
   const homeOdds = match.odds[match.primaryBook || "bet365"]
   
   const handleClick = () => {
-    router.push(match.link || `/matches/${match.id}`)
+    router.push(`/match/${match.id}`)
   }
 
   const getSideName = (side: string) => {
@@ -616,7 +616,7 @@ function MatchCard({ match }: { match: MarketMatch }) {
   const homeOdds = match.odds[match.primaryBook || "bet365"]
 
   const handleClick = () => {
-    router.push(match.link || `/matches/${match.id}`)
+    router.push(`/match/${match.id}`)
   }
 
   const getSideName = (side: string) => {
