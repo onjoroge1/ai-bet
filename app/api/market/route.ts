@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const BASE_URL = process.env.BACKEND_API_URL || "http://localhost:8000"
-const API_KEY = process.env.NEXT_PUBLIC_MARKET_KEY || "betgenius_secure_key_2024"
+const BASE_URL = process.env.BACKEND_URL || process.env.BACKEND_API_URL || "http://localhost:8000"
+const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY || "betgenius_secure_key_2024"
 
 export async function GET(request: NextRequest) {
   try {

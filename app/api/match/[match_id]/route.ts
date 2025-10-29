@@ -4,8 +4,8 @@ import prisma from '@/lib/db'
 import { authOptions } from '@/lib/auth'
 import { getDbCountryPricing } from '@/lib/server-pricing-service'
 
-const BASE_URL = process.env.BACKEND_API_URL || "http://localhost:8000"
-const API_KEY = process.env.NEXT_PUBLIC_MARKET_KEY || "betgenius_secure_key_2024"
+const BASE_URL = process.env.BACKEND_URL || process.env.BACKEND_API_URL || "http://localhost:8000"
+const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY || "betgenius_secure_key_2024"
 
 /**
  * Get match details by match_id
