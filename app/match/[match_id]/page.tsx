@@ -6,9 +6,12 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Calendar, MapPin, Trophy, Target, TrendingUp, Shield, Lock, Unlock, ArrowLeft, CheckCircle, Brain } from "lucide-react"
+import ConsensusRow from "./ConsensusRow"
+import BookmakerOdds from "./BookmakerOdds"
 import { useAuth } from "@/components/auth-provider"
 import { QuickPurchaseModal } from "@/components/quick-purchase-modal"
 import type { QuickPurchaseItem } from "@/components/quick-purchase-modal"
+import { PredictionCard } from "@/components/predictions/PredictionCard"
 
 interface MatchData {
   match_id: string | number
@@ -72,6 +75,7 @@ interface QuickPurchaseInfo {
   predictionType: string | null
   valueRating: string | null
   analysisSummary: string | null
+  predictionData?: FullPrediction | null
   country: {
     currencyCode: string
     currencySymbol: string
@@ -141,31 +145,41 @@ export default function MatchDetailPage() {
       setLoading(true)
       setError(null)
 
-      // Fetch match data and QuickPurchase info
-      const matchResponse = await fetch(`/api/match/${matchId}`)
-      if (!matchResponse.ok) {
-        throw new Error('Failed to fetch match details')
-      }
-      const matchResult = await matchResponse.json()
-      setMatchData(matchResult.match)
-      setQuickPurchaseInfo(matchResult.quickPurchase)
+      // Run match and purchase-status in parallel
+      const matchPromise = (async () => {
+        const resp = await fetch(`/api/match/${matchId}`)
+        if (!resp.ok) throw new Error('Failed to fetch match details')
+        const json = await resp.json()
+        setMatchData(json.match)
+        setQuickPurchaseInfo(json.quickPurchase)
+      })()
 
-      // Check purchase status if authenticated
-      if (isAuthenticated) {
-        const purchaseResponse = await fetch(`/api/match/${matchId}/purchase-status`)
-        if (purchaseResponse.ok) {
-          const purchaseResult = await purchaseResponse.json()
-          setPurchaseStatus(purchaseResult)
-          
-          // If purchased, fetch full prediction
-          if (purchaseResult.isPurchased) {
-            await fetchFullPrediction()
-            setShowFullAnalysis(true)
-          }
+      const purchasePromise = (async () => {
+        if (!isAuthenticated) {
+          setPurchaseStatus({ isPurchased: false, isAuthenticated: false, quickPurchaseId: null, purchaseDate: null })
+          return
         }
-      } else {
-        setPurchaseStatus({ isPurchased: false, isAuthenticated: false, quickPurchaseId: null, purchaseDate: null })
-      }
+        const resp = await fetch(`/api/match/${matchId}/purchase-status`)
+        if (!resp.ok) return
+        const purchaseResult = await resp.json()
+        setPurchaseStatus(purchaseResult)
+        if (purchaseResult.isPurchased) {
+          fetchFullPrediction()
+          setShowFullAnalysis(true)
+        }
+      })()
+
+      await Promise.allSettled([matchPromise, purchasePromise])
+
+      // Fire-and-forget warm-up
+      try {
+        fetch('/api/predictions/warm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ match_id: Number(matchId) }),
+          keepalive: true,
+        }).catch(() => {})
+      } catch {}
     } catch (err) {
       console.error('Error fetching match details:', err)
       setError(err instanceof Error ? err.message : 'Failed to load match details')
@@ -176,6 +190,13 @@ export default function MatchDetailPage() {
 
   const fetchFullPrediction = async () => {
     try {
+      // First check if predictionData is already available from quickPurchaseInfo
+      if (quickPurchaseInfo?.predictionData) {
+        setFullPrediction(quickPurchaseInfo.predictionData)
+        return
+      }
+
+      // Otherwise, fetch from /predict API
       const response = await fetch('/api/predictions/predict', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -350,11 +371,11 @@ export default function MatchDetailPage() {
                 </div>
               </div>
 
-              {/* Odds */}
+              {/* Odds + Consensus vs Best */}
               {matchData.odds?.novig_current && (
                 <div className="border-t lg:border-t-0 lg:border-l border-slate-700 pt-6 lg:pt-0 lg:pl-6">
                   <div className="text-center lg:text-right">
-                    <div className="text-slate-400 text-sm mb-3">Current Odds</div>
+                    <div className="text-slate-400 text-sm mb-3">Current Odds (Consensus no‑vig)</div>
                     <div className="grid grid-cols-3 gap-3">
                       <div className="flex flex-col items-center gap-1">
                         <div className="text-xs text-slate-400 uppercase">Home</div>
@@ -375,6 +396,11 @@ export default function MatchDetailPage() {
                         </div>
                       </div>
                     </div>
+                    {matchData.odds?.books && (
+                      <div className="mt-4">
+                        <ConsensusRow novig={matchData.odds.novig_current as any} books={matchData.odds.books as any} />
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -382,8 +408,10 @@ export default function MatchDetailPage() {
           </div>
         </Card>
 
-        {/* Predictions Tier Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        {/* Predictions + Sidebar (Bookmakers) */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+          {/* Main column */}
+          <div className="lg:col-span-2 space-y-6">
           {/* V1 Free Prediction */}
           {v1Model && (
             <Card className="bg-slate-800/60 border-slate-700">
@@ -494,110 +522,21 @@ export default function MatchDetailPage() {
               </div>
             </Card>
           )}
-        </div>
+          {/* Preview Card - Hybrid Option */}
+          {!isPurchased && quickPurchaseInfo && (
+            <PredictionCard
+              mode="preview"
+              prediction={null}
+              matchData={matchData}
+              isPurchased={false}
+              quickPurchaseInfo={quickPurchaseInfo}
+              onPurchaseClick={handlePurchaseClick}
+              purchaseSource="match_detail"
+            />
+          )}
 
-        {/* Purchase/Access CTA Section */}
-        {!isPurchased && quickPurchaseInfo && (
-          <Card className="bg-gradient-to-r from-emerald-500/10 to-blue-500/10 border-emerald-500/20 mb-6">
-            <div className="p-6">
-              <div className="text-center mb-6">
-                <h3 className="text-2xl font-bold text-white mb-2">Get Full Prediction Analysis</h3>
-                <p className="text-slate-300 mb-4">Unlock complete AI-powered insights and betting recommendations</p>
-                <div className="flex flex-col items-center gap-2 mb-6">
-                  <div className="text-3xl font-bold text-emerald-400">
-                    {quickPurchaseInfo.country.currencySymbol}{quickPurchaseInfo.price}
-                  </div>
-                  {quickPurchaseInfo.originalPrice && quickPurchaseInfo.originalPrice !== quickPurchaseInfo.price && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-400 line-through text-lg">
-                        {quickPurchaseInfo.country.currencySymbol}{quickPurchaseInfo.originalPrice}
-                      </span>
-                      <Badge className="bg-red-500/20 text-red-400 border-red-500/40 text-xs">
-                        {Math.round(((quickPurchaseInfo.originalPrice - quickPurchaseInfo.price) / quickPurchaseInfo.originalPrice) * 100)}% OFF
-                      </Badge>
-                    </div>
-                  )}
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div className="bg-slate-800/60 rounded-lg p-4 border border-slate-700">
-                  <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
-                    <Target className="h-5 w-5 text-emerald-400" />
-                    What's Included
-                  </h4>
-                  <ul className="space-y-2 text-slate-300 text-sm">
-                    <li className="flex items-start gap-2">
-                      <CheckCircle className="h-4 w-4 text-emerald-400 mt-0.5 flex-shrink-0" />
-                      <span>Full V2 AI Analysis</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <CheckCircle className="h-4 w-4 text-emerald-400 mt-0.5 flex-shrink-0" />
-                      <span>Team Analysis (Strengths/Weaknesses)</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <CheckCircle className="h-4 w-4 text-emerald-400 mt-0.5 flex-shrink-0" />
-                      <span>Advanced Markets (Totals, BTTS, Handicaps)</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <CheckCircle className="h-4 w-4 text-emerald-400 mt-0.5 flex-shrink-0" />
-                      <span>Risk Assessment & Factors</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <CheckCircle className="h-4 w-4 text-emerald-400 mt-0.5 flex-shrink-0" />
-                      <span>Betting Recommendations</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <CheckCircle className="h-4 w-4 text-emerald-400 mt-0.5 flex-shrink-0" />
-                      <span>Model Performance Metrics</span>
-                    </li>
-                  </ul>
-                </div>
-                <div className="bg-slate-800/60 rounded-lg p-4 border border-slate-700">
-                  <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
-                    <Shield className="h-5 w-5 text-blue-400" />
-                    Why Choose Premium?
-                  </h4>
-                  <ul className="space-y-2 text-slate-300 text-sm">
-                    <li className="flex items-start gap-2">
-                      <TrendingUp className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
-                      <span>More accurate predictions with advanced ML models</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <Brain className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
-                      <span>Comprehensive analysis not available in free tier</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <Target className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
-                      <span>Actionable betting recommendations</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <Shield className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
-                      <span>Risk-adjusted insights for better decisions</span>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-
-              <div className="flex justify-center">
-                <Button
-                  onClick={handlePurchaseClick}
-                  size="lg"
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-6 text-lg font-semibold"
-                >
-                  {isAuthenticated ? (
-                    <>Purchase Full Prediction</>
-                  ) : (
-                    <>Sign In to Purchase</>
-                  )}
-                </Button>
-              </div>
-            </div>
-          </Card>
-        )}
-
-        {/* Purchase Success Message */}
-        {isPurchased && !showFullAnalysis && (
+          {/* Purchase Success Message */}
+          {isPurchased && !showFullAnalysis && (
           <Card className="bg-emerald-500/10 border-emerald-500/20 mb-6">
             <div className="p-6 text-center">
               <CheckCircle className="h-12 w-12 text-emerald-400 mx-auto mb-4" />
@@ -625,10 +564,10 @@ export default function MatchDetailPage() {
               </div>
             </div>
           </Card>
-        )}
+          )}
 
-        {/* Full Analysis Section (After Purchase) */}
-        {isPurchased && showFullAnalysis && fullPrediction && (
+          {/* Full Analysis Section (After Purchase) */}
+          {isPurchased && showFullAnalysis && fullPrediction && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-bold text-white">Complete Analysis</h2>
@@ -640,12 +579,27 @@ export default function MatchDetailPage() {
                 View in My Tips
               </Button>
             </div>
-            <FullAnalysisSection 
+            <PredictionCard
+              mode="full"
               prediction={fullPrediction}
               matchData={matchData}
+              isPurchased={true}
+              purchaseSource="match_detail"
             />
           </div>
         )}
+
+          </div>
+
+          {/* Sidebar column */}
+          <div className="lg:col-span-1">
+            {matchData.odds?.books && Object.keys(matchData.odds.books).length > 0 && (
+              <div className="lg:sticky lg:top-6">
+                <BookmakerOdds books={matchData.odds.books as any} matchData={matchData} />
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* Purchase Modal */}
         {showPurchaseModal && quickPurchaseInfo && (

@@ -9,11 +9,57 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status') || 'upcoming'
     const limit = searchParams.get('limit') || '10'
     const leagueId = searchParams.get('league')
+    const matchId = searchParams.get('match_id')
+    const includeV2 = searchParams.get('include_v2') // Support for V1-only mode
 
+    // Single match request - fastest path
+    if (matchId) {
+      const url = `${BASE_URL}/market?match_id=${matchId}${includeV2 === 'false' ? '&include_v2=false' : ''}`
+      console.log(`Fetching single match: ${url}`)
+      
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${API_KEY}`,
+        },
+        next: { 
+          revalidate: 60,
+          tags: ['market-data', `market-${matchId}`]
+        }
+      })
+
+      if (!response.ok) {
+        console.error(`Backend API error: ${response.status} ${response.statusText}`)
+        return NextResponse.json(
+          { 
+            matches: [],
+            total_count: 0
+          },
+          { 
+            status: 200,
+            headers: {
+              'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120'
+            }
+          }
+        )
+      }
+
+      const data = await response.json()
+      return NextResponse.json(data, {
+        headers: {
+          'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120',
+        }
+      })
+    }
+
+    // Multi-match request
     let url = `${BASE_URL}/market?status=${status}&limit=${limit}`
     
     if (leagueId) {
       url += `&league=${leagueId}`
+    }
+    
+    if (includeV2 === 'false') {
+      url += '&include_v2=false' // 50% faster V1-only mode
     }
 
     console.log(`Fetching from: ${url}`)

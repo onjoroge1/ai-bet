@@ -20,82 +20,8 @@ export async function GET(
     const { match_id: matchId } = await params
     const session = await getServerSession(authOptions)
 
-    // Fetch match data from market API
-    const marketUrl = `${BASE_URL}/market?status=upcoming&limit=100`
-    const marketResponse = await fetch(marketUrl, {
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-      },
-      next: { revalidate: 60 }
-    })
-
+    // First, try to get from database via QuickPurchase (faster than API call)
     let matchData = null
-    if (marketResponse.ok) {
-      const marketData = await marketResponse.json()
-      matchData = marketData.matches?.find((m: any) => 
-        m.match_id?.toString() === matchId.toString()
-      )
-    }
-
-    // If not found in market API, try to get from database via QuickPurchase
-    if (!matchData) {
-      const quickPurchase = await prisma.quickPurchase.findFirst({
-        where: {
-          matchId: matchId,
-          type: { in: ['prediction', 'tip'] },
-          isActive: true
-        },
-        include: {
-          country: true
-        }
-      })
-
-      if (quickPurchase) {
-        const matchDataFromQP = quickPurchase.matchData as any
-        if (matchDataFromQP) {
-          matchData = {
-            match_id: matchId,
-            status: 'UPCOMING',
-            kickoff_at: matchDataFromQP.date || new Date().toISOString(),
-            league: {
-              id: null,
-              name: matchDataFromQP.league || null
-            },
-            home: {
-              name: matchDataFromQP.home_team || 'Home Team',
-              team_id: null,
-              logo_url: null
-            },
-            away: {
-              name: matchDataFromQP.away_team || 'Away Team',
-              team_id: null,
-              logo_url: null
-            },
-            odds: {
-              novig_current: {
-                home: 0.33,
-                draw: 0.33,
-                away: 0.34
-              }
-            },
-            models: {
-              v1_consensus: quickPurchase.predictionData ? {
-                pick: quickPurchase.predictionType || 'home',
-                confidence: (quickPurchase.confidenceScore || 0) / 100,
-                probs: {
-                  home: 0.33,
-                  draw: 0.33,
-                  away: 0.34
-                }
-              } : null,
-              v2_lightgbm: null
-            }
-          }
-        }
-      }
-    }
-
-    // Get QuickPurchase info for this match (for pricing and purchase)
     let quickPurchaseInfo = null
     let userCountryCode = 'US' // Default fallback
     
@@ -137,57 +63,6 @@ export async function GET(
       } else if (quickPurchases.length > 0) {
         quickPurchaseInfo = quickPurchases[0]
       }
-
-      if (quickPurchaseInfo) {
-        const matchDataFromQP = quickPurchaseInfo.matchData as any
-        const predictionDataFromQP = quickPurchaseInfo.predictionData as any
-        
-        // Enrich match data with QuickPurchase data if market API didn't return it
-        if (!matchData || matchData.home?.name === 'Home Team') {
-          if (matchDataFromQP) {
-            matchData = {
-              ...matchData,
-              home: {
-                ...matchData?.home,
-                name: matchDataFromQP.home_team || matchData?.home?.name || 'Home Team'
-              },
-              away: {
-                ...matchData?.away,
-                name: matchDataFromQP.away_team || matchData?.away?.name || 'Away Team'
-              },
-              league: {
-                ...matchData?.league,
-                name: matchDataFromQP.league || matchData?.league?.name
-              }
-            }
-          }
-        }
-
-        // Apply country-specific pricing from PackageCountryPrice table
-        try {
-          const packageType = quickPurchaseInfo.type === 'prediction' || quickPurchaseInfo.type === 'tip' 
-            ? 'prediction' 
-            : 'prediction' // Default to prediction for all match-related purchases
-          
-          const countryPricing = await getDbCountryPricing(userCountryCode, packageType)
-          
-          // Override price and currency with country-specific pricing
-          quickPurchaseInfo = {
-            ...quickPurchaseInfo,
-            price: countryPricing.price,
-            originalPrice: countryPricing.originalPrice || countryPricing.price,
-            country: {
-              currencyCode: countryPricing.currencyCode,
-              currencySymbol: countryPricing.currencySymbol,
-              code: userCountryCode,
-              ...(user?.country || {})
-            }
-          }
-        } catch (error) {
-          console.error('Error getting country-specific pricing:', error)
-          // Fallback to QuickPurchase price if country pricing lookup fails
-        }
-      }
     } else {
       // For unauthenticated users, still get QuickPurchase info but use default pricing
       const quickPurchases = await prisma.quickPurchase.findMany({
@@ -207,24 +82,111 @@ export async function GET(
 
       if (quickPurchases.length > 0) {
         quickPurchaseInfo = quickPurchases[0]
-        
-        // Try to get default US pricing for unauthenticated users
-        try {
-          const countryPricing = await getDbCountryPricing('US', 'prediction')
-          quickPurchaseInfo = {
-            ...quickPurchaseInfo,
-            price: countryPricing.price,
-            originalPrice: countryPricing.originalPrice || countryPricing.price,
-            country: {
-              currencyCode: countryPricing.currencyCode,
-              currencySymbol: countryPricing.currencySymbol,
-              code: 'US',
-              ...(quickPurchaseInfo.country || {})
+      }
+    }
+
+    // Use QuickPurchase data to build matchData if available
+    if (quickPurchaseInfo) {
+      const matchDataFromQP = quickPurchaseInfo.matchData as any
+      if (matchDataFromQP) {
+        matchData = {
+          match_id: matchId,
+          status: 'UPCOMING',
+          kickoff_at: matchDataFromQP.date || new Date().toISOString(),
+          league: {
+            id: null,
+            name: matchDataFromQP.league || null
+          },
+          home: {
+            name: matchDataFromQP.home_team || 'Home Team',
+            team_id: null,
+            logo_url: null
+          },
+          away: {
+            name: matchDataFromQP.away_team || 'Away Team',
+            team_id: null,
+            logo_url: null
+          },
+          odds: {
+            novig_current: {
+              home: 0.33,
+              draw: 0.33,
+              away: 0.34
             }
+          },
+          models: {
+            v1_consensus: quickPurchaseInfo.predictionData ? {
+              pick: quickPurchaseInfo.predictionType || 'home',
+              confidence: (quickPurchaseInfo.confidenceScore || 0) / 100,
+              probs: {
+                home: 0.33,
+                draw: 0.33,
+                away: 0.34
+              }
+            } : null,
+            v2_lightgbm: null
           }
-        } catch (error) {
-          console.error('Error getting default pricing for unauthenticated user:', error)
         }
+      }
+    }
+
+    // If not found in QuickPurchase, fetch from market API as fallback
+    // Use new match_id parameter for 33% faster single-match lookup
+    if (!matchData) {
+      const marketUrl = `${BASE_URL}/market?match_id=${matchId}`
+      const marketResponse = await fetch(marketUrl, {
+        headers: {
+          Authorization: `Bearer ${API_KEY}`,
+        },
+        next: { revalidate: 60 }
+      })
+
+      if (marketResponse.ok) {
+        const marketData = await marketResponse.json()
+        matchData = marketData.matches?.[0] // Single match returned, get first element
+      }
+    }
+
+    // Apply country-specific pricing if quickPurchaseInfo is available
+    if (quickPurchaseInfo && session?.user) {
+      try {
+        const packageType = quickPurchaseInfo.type === 'prediction' || quickPurchaseInfo.type === 'tip' 
+          ? 'prediction' 
+          : 'prediction'
+        
+        const countryPricing = await getDbCountryPricing(userCountryCode, packageType)
+        
+        quickPurchaseInfo = {
+          ...quickPurchaseInfo,
+          price: countryPricing.price,
+          originalPrice: countryPricing.originalPrice || countryPricing.price,
+          country: {
+            currencyCode: countryPricing.currencyCode,
+            currencySymbol: countryPricing.currencySymbol,
+            code: userCountryCode,
+            ...(quickPurchaseInfo.country || {})
+          }
+        }
+      } catch (error) {
+        console.error('Error getting country-specific pricing:', error)
+      }
+    } else if (quickPurchaseInfo && !session?.user) {
+      // For unauthenticated users, try to get default US pricing
+      try {
+        const countryPricing = await getDbCountryPricing('US', 'prediction')
+        quickPurchaseInfo = {
+          ...quickPurchaseInfo,
+          price: countryPricing.price,
+          originalPrice: countryPricing.originalPrice || countryPricing.price,
+          country: {
+            currencyCode: countryPricing.currencyCode,
+            currencySymbol: countryPricing.currencySymbol,
+            code: 'US',
+            ...(quickPurchaseInfo.country || {})
+          }
+        }
+      } catch (error) {
+        console.error('Error getting default pricing for unauthenticated user:', error)
       }
     }
 
@@ -247,6 +209,7 @@ export async function GET(
         predictionType: quickPurchaseInfo.predictionType,
         valueRating: quickPurchaseInfo.valueRating,
         analysisSummary: quickPurchaseInfo.analysisSummary,
+        predictionData: quickPurchaseInfo.predictionData, // Include full prediction data
         country: quickPurchaseInfo.country || {
           currencyCode: 'USD',
           currencySymbol: '$',

@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Loader2, ArrowRight, TrendingUp, Radio, ChevronDown } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
+import { Loader2, ArrowRight, TrendingUp, Radio, ChevronDown, ChevronRight, Info } from "lucide-react"
 import type { MarketMatch, BookKey, MatchSide } from "@/lib/market/types"
 import {
   formatKickoffTime,
@@ -57,7 +58,7 @@ export function OddsPredictionTable({
       // Use Next.js API route instead of direct backend call
       // Fetch more matches for upcoming to enable date filtering
       const fetchLimit = status === "upcoming" ? 50 : limit
-      let url = `/api/market?status=${status}&limit=${fetchLimit}`
+      let url = `/api/market?status=${status}&limit=${fetchLimit}&include_v2=false` // V1-only for 50% faster loading
       if (leagueId) {
         url += `&league=${leagueId}`
       }
@@ -90,30 +91,23 @@ export function OddsPredictionTable({
       // If no valid matches found, fallback to showing TBD matches with placeholder names
       let matchesToProcess = validMatches
       if (validMatches.length === 0 && rawMatches.length > 0) {
-        console.log(`⚠️ No valid matches found, falling back to TBD matches with placeholders`)
-        console.log(`📊 Raw matches count: ${rawMatches.length}`)
         matchesToProcess = rawMatches.map((match: any) => {
           const homeName = `Team ${match.match_id || 'Home'}`
           const awayName = `Team ${(match.match_id || 0) + 1}`
-          console.log(`Creating placeholder: ${homeName} vs ${awayName}`)
           return {
             ...match,
             home: { ...match.home, name: homeName },
             away: { ...match.away, name: awayName }
           }
         })
-        console.log(`✅ Created ${matchesToProcess.length} matches with placeholders`)
       }
       
-      console.log(`Processing ${matchesToProcess.length} matches (${validMatches.length} valid, ${rawMatches.length} total)`)
-      
       const adaptedMatches = matchesToProcess.map((match: any): MarketMatch => {
-        console.log("Processing match:", match)
-        
         // Extract odds from novig_current
         const novigOdds = match.odds?.novig_current
         const normalizedOdds: any = {}
         let primaryBook: BookKey | undefined
+        let booksCount = 0
         
         if (novigOdds) {
           // Convert probabilities to decimal odds
@@ -123,6 +117,11 @@ export function OddsPredictionTable({
             away: novigOdds.away ? Number((1 / novigOdds.away).toFixed(2)) : 0,
           }
           primaryBook = "pinnacle"
+        }
+        
+        // Count bookmakers from odds.books
+        if (match.odds?.books && typeof match.odds.books === 'object') {
+          booksCount = Object.keys(match.odds.books).length
         }
 
         // Extract predictions from models - prefer V2 over V1 if available
@@ -137,8 +136,6 @@ export function OddsPredictionTable({
           const pick = v2Model.pick?.toLowerCase() // 'home', 'away', or 'draw'
           const confidence = Math.round((v2Model.confidence || 0) * 100) // Convert 0-1 to 0-100
           
-          console.log(`Match ${match.match_id || match.id}: Using V2 (Premium), confidence: ${confidence}%, pick: ${pick}`)
-          
           predictions.premium = {
             side: pick as MatchSide,
             confidence: confidence || 0,
@@ -151,17 +148,11 @@ export function OddsPredictionTable({
           const pick = v1Model.pick?.toLowerCase() // 'home', 'away', or 'draw'
           const confidence = Math.round((v1Model.confidence || 0) * 100) // Convert 0-1 to 0-100
           
-          console.log(`Match ${match.match_id || match.id}: Using V1 (Free), confidence: ${confidence}%, pick: ${pick}`)
-          
           predictions.free = {
             side: pick as MatchSide,
             confidence: confidence || 0,
             model: 'v1_consensus' as const
           } as any // Type assertion to include model field
-        }
-        
-        if (!v2Model && !v1Model) {
-          console.log(`Match ${match.match_id || match.id}: No prediction model available`)
         }
 
         return {
@@ -187,16 +178,13 @@ export function OddsPredictionTable({
           },
           odds: normalizedOdds,
           primaryBook,
+          booksCount,
           predictions,
           link: `/match/${match.match_id || match.id}`,
         }
       })
       
       // Store all matches
-      console.log(`Setting allMatches to ${adaptedMatches.length} matches`)
-      adaptedMatches.forEach((m: MarketMatch, i: number) => {
-        console.log(`Match ${i + 1}: ${m.home.name} vs ${m.away.name} on ${m.kickoff_utc}`)
-      })
       setAllMatches(adaptedMatches)
     } catch (err) {
       console.error("Error loading matches:", err)
@@ -215,9 +203,6 @@ export function OddsPredictionTable({
     const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000)
     const dayAfter = new Date(today.getTime() + 48 * 60 * 60 * 1000)
 
-    console.log(`Filtering matches - selectedDate: ${selectedDate}, allMatches: ${allMatches.length}`)
-    console.log(`Today: ${today.toISOString()}, Tomorrow: ${tomorrow.toISOString()}`)
-
     const filtered = allMatches.filter((m) => {
       const matchDate = new Date(m.kickoff_utc)
       const matchDateOnly = new Date(matchDate.getFullYear(), matchDate.getMonth(), matchDate.getDate())
@@ -235,7 +220,6 @@ export function OddsPredictionTable({
       return matchDateOnly.getTime() >= today.getTime()
     })
     
-    console.log(`Filtered to ${filtered.length} matches for selectedDate: ${selectedDate}`)
     return filtered
   }, [allMatches, status, selectedDate])
 
@@ -344,6 +328,7 @@ export function OddsPredictionTable({
   }
 
   return (
+    <TooltipProvider delayDuration={200} skipDelayDuration={100}>
     <div className="space-y-4">
       {/* Date tabs for upcoming matches */}
       {status === "upcoming" && (
@@ -439,8 +424,56 @@ export function OddsPredictionTable({
                 <th className="text-left py-3 px-4 min-w-[280px]">Match</th>
                 <th className="text-left py-3 px-4 w-[150px]">League</th>
                 <th className="text-left py-3 px-4 w-[90px]">Time</th>
-                <th className="text-center py-3 px-4 min-w-[280px]">Odds (1X2)</th>
-                <th className="text-right py-3 px-4 w-[210px]">Prediction</th>
+                <th className="text-center py-3 px-4 min-w-[280px]">
+                  <div className="flex items-center justify-center gap-1">
+                    Consensus Odds (no-vig)
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="w-3.5 h-3.5 text-slate-400 hover:text-slate-200 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent 
+                        className="max-w-xs bg-slate-800 border-slate-700 text-white normal-case"
+                        side="top"
+                        sideOffset={8}
+                      >
+                        <div className="space-y-2">
+                          <p className="font-semibold">Consensus Odds Explained</p>
+                          <p className="text-xs">
+                            These are "no-vig" odds derived by removing the bookmaker's margin from multiple sportsbooks. 
+                            They represent the true market probability and help you identify value bets.
+                          </p>
+                          <p className="text-xs text-slate-400">
+                            Consensus = Average market odds after removing vigorish (bookmaker margin)
+                          </p>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </th>
+                <th className="text-right py-3 px-4 w-[210px]">
+                  <div className="flex items-center justify-end gap-1">
+                    <span>Prediction</span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="w-3.5 h-3.5 text-slate-400 hover:text-slate-200 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent 
+                        className="max-w-xs bg-slate-800 border-slate-700 text-white normal-case"
+                        side="top"
+                        sideOffset={8}
+                      >
+                        <div className="space-y-2">
+                          <p className="font-semibold">AI Prediction Confidence</p>
+                          <div className="text-xs space-y-1">
+                            <p><span className="text-emerald-400 font-semibold">80-100%:</span> Very high confidence</p>
+                            <p><span className="text-yellow-400 font-semibold">60-79%:</span> High confidence</p>
+                            <p><span className="text-red-400 font-semibold">&lt;60%:</span> Lower confidence</p>
+                          </div>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </th>
                 <th className="text-right py-3 px-4 w-[44px]"></th>
               </tr>
             </thead>
@@ -460,6 +493,7 @@ export function OddsPredictionTable({
         ))}
       </div>
     </div>
+    </TooltipProvider>
   )
 }
 
@@ -517,9 +551,9 @@ function MatchTableRow({ match }: { match: MarketMatch }) {
             </div>
             {isLive && match.score && (
               <div className="flex items-center gap-2 mt-1">
-                <Badge className="bg-emerald-500/10 text-emerald-300 border border-emerald-600/40 px-2 py-0.5 text-xs">
-                  LIVE
-                </Badge>
+                <div className="flex items-center gap-1">
+                  <Radio className="w-3 h-3 text-red-500 fill-red-500 animate-pulse" />
+                </div>
                 <span className="text-emerald-400 font-semibold">
                   {formatScore(match.score)}
                 </span>
@@ -555,6 +589,7 @@ function MatchTableRow({ match }: { match: MarketMatch }) {
       </td>
       <td className="py-3 px-4">
         {homeOdds ? (
+          <div className="flex flex-col items-center gap-2">
           <div className="flex items-center justify-center gap-2">
             <div className="flex flex-col items-center gap-1">
               <div className="text-xs text-slate-400 uppercase">Home</div>
@@ -574,6 +609,25 @@ function MatchTableRow({ match }: { match: MarketMatch }) {
                 {typeof homeOdds.away === 'number' ? homeOdds.away.toFixed(2) : homeOdds.away}
               </div>
             </div>
+            </div>
+            {match.booksCount && match.booksCount > 0 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="text-xs text-slate-500 hover:text-slate-300 cursor-help transition">
+                    Based on {match.booksCount === 1 ? '1 bookmaker' : `${match.booksCount} bookmakers`}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent 
+                  className="bg-slate-800 border-slate-700 text-white normal-case"
+                  side="top"
+                  sideOffset={6}
+                >
+                  <p className="text-xs">
+                    Consensus odds aggregated from {match.booksCount} sportsbook{match.booksCount > 1 ? 's' : ''} with margin removed
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
         ) : (
           <span className="text-slate-500 text-sm">N/A</span>
@@ -602,9 +656,9 @@ function MatchTableRow({ match }: { match: MarketMatch }) {
         ) : null}
       </td>
       <td className="py-3 px-4">
-        <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition">
-          <ArrowRight className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center justify-end">
+          <ChevronRight className="h-5 w-5 text-slate-500 group-hover:text-slate-300 transition" />
+        </div>
       </td>
     </tr>
   )
@@ -642,9 +696,10 @@ function MatchCard({ match }: { match: MarketMatch }) {
           <span className="text-slate-400 text-sm">{match.league.name}</span>
         </div>
         {isLive && match.minute ? (
-          <Badge className="bg-emerald-500/10 text-emerald-300 border border-emerald-600/40 px-2 py-0.5 text-xs">
-            LIVE {formatMinute(match.minute)}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Radio className="w-3 h-3 text-red-500 fill-red-500 animate-pulse" />
+            <span className="text-emerald-400 font-semibold text-xs">{formatMinute(match.minute)}</span>
+          </div>
         ) : (
           <span className="text-slate-500 text-xs">
             {formatKickoffTime(match.kickoff_utc)} {formatDate(match.kickoff_utc)}
@@ -712,6 +767,26 @@ function MatchCard({ match }: { match: MarketMatch }) {
               </div>
             </div>
           </div>
+          {match.booksCount && match.booksCount > 0 && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="text-xs text-slate-500 text-center hover:text-slate-300 cursor-help transition">
+                    Based on {match.booksCount === 1 ? '1 bookmaker' : `${match.booksCount} bookmakers`}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent 
+                  className="bg-slate-800 border-slate-700 text-white normal-case"
+                  side="top"
+                  sideOffset={6}
+                >
+                  <p className="text-xs">
+                    Consensus odds aggregated from {match.booksCount} sportsbook{match.booksCount > 1 ? 's' : ''} with margin removed
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
       )}
 

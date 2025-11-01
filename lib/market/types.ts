@@ -55,6 +55,8 @@ export interface MarketMatch {
   
   odds: Partial<Record<BookKey, OddsSet>>;
   primaryBook?: BookKey;
+  /** Number of bookmakers contributing to consensus odds (novig_current) */
+  booksCount?: number;
   
   predictions?: MatchPredictions;
   
