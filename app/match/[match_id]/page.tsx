@@ -5,65 +5,24 @@ import { useParams, useRouter } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Calendar, MapPin, Trophy, Target, TrendingUp, Shield, Lock, Unlock, ArrowLeft, CheckCircle, Brain } from "lucide-react"
+import { Loader2, Calendar, MapPin, Trophy, Target, TrendingUp, Shield, Lock, Unlock, ArrowLeft, CheckCircle, Brain, Star, Zap } from "lucide-react"
 import ConsensusRow from "./ConsensusRow"
 import BookmakerOdds from "./BookmakerOdds"
 import { useAuth } from "@/components/auth-provider"
 import { QuickPurchaseModal } from "@/components/quick-purchase-modal"
 import type { QuickPurchaseItem } from "@/components/quick-purchase-modal"
 import { PredictionCard } from "@/components/predictions/PredictionCard"
+import { useLiveMatchWebSocket, mergeDeltaUpdate } from "@/hooks/use-live-match-websocket"
+import { LiveScoreCard } from "@/components/live/LiveScoreCard"
+import { MomentumIndicator } from "@/components/live/MomentumIndicator"
+import { LiveMarketsCard } from "@/components/live/LiveMarketsCard"
+import { LiveMatchStats } from "@/components/live/LiveMatchStats"
+import { PremiumBettingIntelligence } from "@/components/live/PremiumBettingIntelligence"
+import { FreeVsPremiumComparison } from "@/components/live/FreeVsPremiumComparison"
+import type { EnhancedMatchData } from "@/types/live-match"
 
-interface MatchData {
-  match_id: string | number
-  status: string
-  kickoff_at: string
-  league?: {
-    id: number | null
-    name: string | null
-  }
-  home: {
-    name: string
-    team_id?: number | null
-    logo_url?: string | null
-  }
-  away: {
-    name: string
-    team_id?: number | null
-    logo_url?: string | null
-  }
-  odds?: {
-    novig_current?: {
-      home: number
-      draw: number
-      away: number
-    }
-    books?: any
-  }
-  models?: {
-    v1_consensus?: {
-      pick: string
-      confidence: number
-      probs?: {
-        home: number
-        draw: number
-        away: number
-      }
-    } | null
-    v2_lightgbm?: {
-      pick: string
-      confidence: number
-      probs?: {
-        home: number
-        draw: number
-        away: number
-      }
-    } | null
-  }
-  score?: {
-    home: number
-    away: number
-  }
-}
+// Using EnhancedMatchData for live match support
+type MatchData = EnhancedMatchData
 
 interface QuickPurchaseInfo {
   id: string
@@ -133,6 +92,21 @@ export default function MatchDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [showPurchaseModal, setShowPurchaseModal] = useState(false)
   const [showFullAnalysis, setShowFullAnalysis] = useState(false)
+
+  // WebSocket integration for live matches
+  // Check if match is live - also check for live data indicators (momentum, model_markets) even if status isn't exactly "LIVE"
+  const isLive = matchData?.status === 'LIVE' || 
+                 (matchData?.momentum !== undefined || matchData?.model_markets !== undefined)
+  const { delta, isConnected, clearDelta } = useLiveMatchWebSocket(matchId, isLive || false)
+
+  // Merge WebSocket delta updates into matchData
+  useEffect(() => {
+    if (delta && matchData) {
+      const updated = mergeDeltaUpdate(matchData, delta)
+      setMatchData(updated)
+      clearDelta()
+    }
+  }, [delta, matchData, clearDelta])
 
   useEffect(() => {
     if (!authLoading) {
@@ -408,6 +382,42 @@ export default function MatchDetailPage() {
           </div>
         </Card>
 
+        {/* Live Match Components - Only when status=LIVE */}
+        {isLive && (
+          <>
+            {/* Live Score Card - use momentum.minute and score if live_data not available */}
+            {(matchData.live_data || (matchData.momentum && matchData.score)) && (
+              <LiveScoreCard
+                score={
+                  matchData.live_data?.current_score || 
+                  { home: matchData.score?.home || 0, away: matchData.score?.away || 0 }
+                }
+                minute={matchData.live_data?.minute || matchData.momentum?.minute || 0}
+                period={matchData.live_data?.period || 'Live'}
+                status={matchData.status}
+              />
+            )}
+            
+            {/* Momentum Indicator */}
+            {matchData.momentum && (
+              <MomentumIndicator 
+                momentum={matchData.momentum}
+                homeTeamName={matchData.home.name}
+                awayTeamName={matchData.away.name}
+              />
+            )}
+            
+            {/* Live Match Statistics */}
+            {matchData.live_data && matchData.live_data.statistics && (
+              <LiveMatchStats
+                liveData={matchData.live_data}
+                homeTeamName={matchData.home.name}
+                awayTeamName={matchData.away.name}
+              />
+            )}
+          </>
+        )}
+
         {/* Predictions + Sidebar (Bookmakers) */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           {/* Main column */}
@@ -522,6 +532,25 @@ export default function MatchDetailPage() {
               </div>
             </Card>
           )}
+          {/* Free vs Premium Comparison */}
+          {!isPurchased && (
+            <FreeVsPremiumComparison
+              isPurchased={false}
+              onPurchaseClick={handlePurchaseClick}
+            />
+          )}
+
+          {/* Premium Betting Intelligence - Value Proposition */}
+          {!isPurchased && quickPurchaseInfo && quickPurchaseInfo.predictionData && (
+            <PremiumBettingIntelligence
+              matchData={matchData}
+              isPurchased={false}
+              onPurchaseClick={handlePurchaseClick}
+              quickPurchaseInfo={quickPurchaseInfo}
+              predictionData={quickPurchaseInfo.predictionData}
+            />
+          )}
+
           {/* Preview Card - Hybrid Option */}
           {!isPurchased && quickPurchaseInfo && (
             <PredictionCard
@@ -588,6 +617,11 @@ export default function MatchDetailPage() {
             />
           </div>
         )}
+
+          {/* Live Markets Card - Show when we have model_markets data */}
+          {matchData.model_markets && (
+            <LiveMarketsCard markets={matchData.model_markets} />
+          )}
 
           </div>
 

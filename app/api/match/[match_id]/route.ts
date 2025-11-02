@@ -4,8 +4,13 @@ import prisma from '@/lib/db'
 import { authOptions } from '@/lib/auth'
 import { getDbCountryPricing } from '@/lib/server-pricing-service'
 
-const BASE_URL = process.env.BACKEND_URL || process.env.BACKEND_API_URL || "http://localhost:8000"
+// Use BACKEND_API_URL from environment (no hardcoded fallback)
+const BASE_URL = process.env.BACKEND_API_URL || process.env.BACKEND_URL
 const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY || "betgenius_secure_key_2024"
+
+if (!BASE_URL) {
+  console.error('[Match API] BACKEND_API_URL or BACKEND_URL environment variable is not set')
+}
 
 /**
  * Get match details by match_id
@@ -85,8 +90,93 @@ export async function GET(
       }
     }
 
-    // Use QuickPurchase data to build matchData if available
-    if (quickPurchaseInfo) {
+    // Always fetch from backend API FIRST to get latest data (especially for live matches)
+    // This ensures we get live data, momentum, model_markets even if QuickPurchase exists
+    let backendMatchData = null
+    
+    if (!BASE_URL) {
+      console.error(`[Match API] Cannot fetch match ${matchId}: BACKEND_API_URL not configured`)
+    } else {
+      // First try with status=live to get enhanced live data if match is live
+      const liveMarketUrl = `${BASE_URL}/market?match_id=${matchId}&status=live`
+      console.log(`[Match API] Fetching live match from: ${liveMarketUrl}`)
+      
+      try {
+        const liveMarketResponse = await fetch(liveMarketUrl, {
+          headers: {
+            Authorization: `Bearer ${API_KEY}`,
+          },
+          next: { revalidate: 5 } // 5 seconds for faster live updates
+        })
+
+        if (liveMarketResponse.ok) {
+          const liveData = await liveMarketResponse.json()
+          console.log(`[Match API] Live match response:`, { 
+            hasData: !!liveData.matches?.[0], 
+            status: liveData.matches?.[0]?.status,
+            hasMomentum: !!liveData.matches?.[0]?.momentum,
+            hasModelMarkets: !!liveData.matches?.[0]?.model_markets
+          })
+          if (liveData.matches?.[0]) {
+            backendMatchData = liveData.matches[0]
+          }
+        } else {
+          console.log(`[Match API] Live match fetch failed: ${liveMarketResponse.status} ${liveMarketResponse.statusText}`)
+        }
+      } catch (error) {
+        console.error(`[Match API] Error fetching live match:`, error)
+      }
+
+      // If not found as live, try without status filter (for upcoming/finished)
+      if (!backendMatchData) {
+        const marketUrl = `${BASE_URL}/market?match_id=${matchId}`
+        console.log(`[Match API] Fetching match from: ${marketUrl}`)
+        
+        try {
+          const marketResponse = await fetch(marketUrl, {
+            headers: {
+              Authorization: `Bearer ${API_KEY}`,
+            },
+            next: { revalidate: 60 }
+          })
+
+          if (marketResponse.ok) {
+            const marketData = await marketResponse.json()
+            console.log(`[Match API] Match response:`, { 
+              hasData: !!marketData.matches?.[0], 
+              status: marketData.matches?.[0]?.status 
+            })
+            backendMatchData = marketData.matches?.[0] // Single match returned, get first element
+          } else {
+            console.log(`[Match API] Match fetch failed: ${marketResponse.status} ${marketResponse.statusText}`)
+          }
+        } catch (error) {
+          console.error(`[Match API] Error fetching match:`, error)
+        }
+      }
+    }
+
+    // Use backend data if available (it's more up-to-date with live data)
+    if (backendMatchData) {
+      matchData = backendMatchData
+      
+      // Normalize predictions structure (backend uses predictions.v1/v2, frontend expects models.v1_consensus/v2_lightgbm)
+      if (matchData.predictions && !matchData.models) {
+        matchData.models = {
+          v1_consensus: matchData.predictions.v1 ? {
+            pick: matchData.predictions.v1.pick,
+            confidence: matchData.predictions.v1.confidence,
+            probs: matchData.predictions.v1.probs
+          } : null,
+          v2_lightgbm: matchData.predictions.v2 ? {
+            pick: matchData.predictions.v2.pick,
+            confidence: matchData.predictions.v2.confidence,
+            probs: matchData.predictions.v2.probs
+          } : null
+        }
+      }
+    } else if (quickPurchaseInfo) {
+      // Fallback to QuickPurchase data only if backend API fails
       const matchDataFromQP = quickPurchaseInfo.matchData as any
       if (matchDataFromQP) {
         matchData = {
@@ -127,23 +217,6 @@ export async function GET(
             v2_lightgbm: null
           }
         }
-      }
-    }
-
-    // If not found in QuickPurchase, fetch from market API as fallback
-    // Use new match_id parameter for 33% faster single-match lookup
-    if (!matchData) {
-      const marketUrl = `${BASE_URL}/market?match_id=${matchId}`
-      const marketResponse = await fetch(marketUrl, {
-        headers: {
-          Authorization: `Bearer ${API_KEY}`,
-        },
-        next: { revalidate: 60 }
-      })
-
-      if (marketResponse.ok) {
-        const marketData = await marketResponse.json()
-        matchData = marketData.matches?.[0] // Single match returned, get first element
       }
     }
 
@@ -191,9 +264,13 @@ export async function GET(
     }
 
     if (!matchData) {
+      const errorMessage = BASE_URL 
+        ? 'Match not found' 
+        : 'Backend API not configured. Please set BACKEND_API_URL environment variable.'
+      
       return NextResponse.json(
-        { error: 'Match not found' },
-        { status: 404 }
+        { error: errorMessage },
+        { status: BASE_URL ? 404 : 500 }
       )
     }
 

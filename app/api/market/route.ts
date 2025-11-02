@@ -1,9 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const BASE_URL = process.env.BACKEND_URL || process.env.BACKEND_API_URL || "http://localhost:8000"
+// Use BACKEND_API_URL from environment (no hardcoded fallback)
+const BASE_URL = process.env.BACKEND_API_URL || process.env.BACKEND_URL
 const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY || "betgenius_secure_key_2024"
 
+if (!BASE_URL) {
+  console.error('[Market API] BACKEND_API_URL or BACKEND_URL environment variable is not set')
+}
+
 export async function GET(request: NextRequest) {
+  if (!BASE_URL) {
+    return NextResponse.json(
+      { 
+        error: 'Backend API not configured',
+        message: 'Please set BACKEND_API_URL or BACKEND_URL environment variable',
+        matches: [],
+        total_count: 0
+      },
+      { status: 500 }
+    )
+  }
+  
   try {
     const searchParams = request.nextUrl.searchParams
     const status = searchParams.get('status') || 'upcoming'
