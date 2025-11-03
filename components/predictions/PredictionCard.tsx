@@ -5,7 +5,7 @@ import Link from "next/link"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Trophy, TrendingUp, Target, Shield, Brain, ChevronDown, ChevronUp, Lock, Unlock, ExternalLink } from "lucide-react"
+import { Trophy, TrendingUp, Target, Shield, Brain, ChevronDown, ChevronUp, Lock, Unlock, ExternalLink, CheckCircle, X } from "lucide-react"
 
 interface PredictionCardProps {
   mode: 'preview' | 'compact' | 'full'
@@ -174,7 +174,7 @@ export function PredictionCard({
   // Full mode: Complete analysis display
   return (
     <div className="space-y-6">
-      {/* Hero Section */}
+      {/* Hero Section - Recommended Bet (only for non-finished matches) */}
       {prediction.predictions?.recommended_bet && (
         <Card className="bg-gradient-to-r from-emerald-800/30 to-blue-800/30 border-emerald-500/30">
           <div className="p-6">
@@ -365,6 +365,22 @@ function FullAnalysisDisplay({ prediction, matchData }: { prediction: any, match
                   </ul>
                 </div>
               )}
+              {prediction.analysis.betting_recommendations.avoid_bets && prediction.analysis.betting_recommendations.avoid_bets.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-slate-700">
+                  <div className="text-red-400 font-medium mb-2 flex items-center">
+                    <Shield className="w-4 h-4 mr-2" />
+                    Bets to Avoid:
+                  </div>
+                  <ul className="space-y-1">
+                    {prediction.analysis.betting_recommendations.avoid_bets.map((bet: string, index: number) => (
+                      <li key={index} className="text-slate-300 text-sm flex items-start">
+                        <span className="text-red-400 mr-2">⚠</span>
+                        {bet}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
         </Card>
@@ -503,12 +519,40 @@ function AdditionalMarketsDisplay({ markets, matchData }: { markets: any; matchD
               <div>
                 <div className="text-slate-300 text-sm font-medium mb-2">{matchData.home.name}</div>
                 <div className="space-y-1">
-                  {Object.entries(markets.asian_handicap.home).map(([key, value]: [string, any]) => (
-                    <div key={key} className="flex justify-between text-xs">
-                      <span className="text-slate-400">{key.replace('_', ' ')}:</span>
-                      <span className="text-green-400 font-medium">{(value * 100).toFixed(1)}%</span>
-                    </div>
-                  ))}
+                  {Object.entries(markets.asian_handicap.home).map(([key, value]: [string, any]) => {
+                    // Handle both object format {win, lose, push} and direct number format
+                    const handicap = key.replace('_minus_', '-').replace('_plus_', '+').replace('_', '.')
+                    const isObject = typeof value === 'object' && value !== null && !Array.isArray(value)
+                    
+                    if (isObject && (value.win !== undefined || value.lose !== undefined)) {
+                      // Object format with win/lose/push
+                      const winProb = typeof value.win === 'number' ? (value.win * 100).toFixed(0) : 'N/A'
+                      const loseProb = typeof value.lose === 'number' ? (value.lose * 100).toFixed(0) : 'N/A'
+                      const pushProb = typeof value.push === 'number' ? (value.push * 100).toFixed(0) : null
+                      
+                      return (
+                        <div key={key} className="flex justify-between items-center text-xs">
+                          <span className="text-slate-300">{handicap}</span>
+                          <div className="flex space-x-2">
+                            <span className="text-green-400">W: {winProb}%</span>
+                            {pushProb && <span className="text-yellow-400">P: {pushProb}%</span>}
+                            <span className="text-red-400">L: {loseProb}%</span>
+                          </div>
+                        </div>
+                      )
+                    } else {
+                      // Direct number format
+                      const numValue = typeof value === 'number' ? value : typeof value === 'string' ? parseFloat(value) : 0
+                      if (isNaN(numValue) || numValue === 0) return null
+                      
+                      return (
+                        <div key={key} className="flex justify-between text-xs">
+                          <span className="text-slate-400">{handicap}:</span>
+                          <span className="text-green-400 font-medium">{(numValue * 100).toFixed(1)}%</span>
+                        </div>
+                      )
+                    }
+                  })}
                 </div>
               </div>
             )}
@@ -516,12 +560,40 @@ function AdditionalMarketsDisplay({ markets, matchData }: { markets: any; matchD
               <div>
                 <div className="text-slate-300 text-sm font-medium mb-2">{matchData.away.name}</div>
                 <div className="space-y-1">
-                  {Object.entries(markets.asian_handicap.away).map(([key, value]: [string, any]) => (
-                    <div key={key} className="flex justify-between text-xs">
-                      <span className="text-slate-400">{key.replace('_', ' ')}:</span>
-                      <span className="text-green-400 font-medium">{(value * 100).toFixed(1)}%</span>
-                    </div>
-                  ))}
+                  {Object.entries(markets.asian_handicap.away).map(([key, value]: [string, any]) => {
+                    // Handle both object format {win, lose, push} and direct number format
+                    const handicap = key.replace('_minus_', '-').replace('_plus_', '+').replace('_', '.')
+                    const isObject = typeof value === 'object' && value !== null && !Array.isArray(value)
+                    
+                    if (isObject && (value.win !== undefined || value.lose !== undefined)) {
+                      // Object format with win/lose/push
+                      const winProb = typeof value.win === 'number' ? (value.win * 100).toFixed(0) : 'N/A'
+                      const loseProb = typeof value.lose === 'number' ? (value.lose * 100).toFixed(0) : 'N/A'
+                      const pushProb = typeof value.push === 'number' ? (value.push * 100).toFixed(0) : null
+                      
+                      return (
+                        <div key={key} className="flex justify-between items-center text-xs">
+                          <span className="text-slate-300">{handicap}</span>
+                          <div className="flex space-x-2">
+                            <span className="text-green-400">W: {winProb}%</span>
+                            {pushProb && <span className="text-yellow-400">P: {pushProb}%</span>}
+                            <span className="text-red-400">L: {loseProb}%</span>
+                          </div>
+                        </div>
+                      )
+                    } else {
+                      // Direct number format
+                      const numValue = typeof value === 'number' ? value : typeof value === 'string' ? parseFloat(value) : 0
+                      if (isNaN(numValue) || numValue === 0) return null
+                      
+                      return (
+                        <div key={key} className="flex justify-between text-xs">
+                          <span className="text-slate-400">{handicap}:</span>
+                          <span className="text-green-400 font-medium">{(numValue * 100).toFixed(1)}%</span>
+                        </div>
+                      )
+                    }
+                  })}
                 </div>
               </div>
             )}

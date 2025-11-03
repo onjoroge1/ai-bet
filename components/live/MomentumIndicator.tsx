@@ -29,21 +29,21 @@ export function MomentumIndicator({ momentum, homeTeamName, awayTeamName }: Mome
   const isBalanced = Math.abs(home - away) < 10
 
   return (
-    <Card className="bg-slate-800/60 border-slate-700 mb-6">
-      <div className="p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-white flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-emerald-400" />
+    <Card className="bg-slate-800/60 border-slate-700 mb-4">
+      <div className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-base font-bold text-white flex items-center gap-1.5">
+            <TrendingUp className="w-4 h-4 text-emerald-400" />
             Live Momentum
           </h3>
-          <Badge variant="secondary" className="bg-slate-700 text-slate-300">
+          <Badge variant="secondary" className="bg-slate-700 text-slate-300 text-xs px-2 py-0.5">
             Min {momentum.minute}'
           </Badge>
         </div>
 
         {/* Momentum Bar */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+        <div className="mb-4">
+          <div className="flex items-center justify-between text-xs text-slate-400 mb-1.5">
             <span className="font-medium">Team Momentum</span>
             <span>{home} - {away}</span>
           </div>
@@ -98,9 +98,9 @@ export function MomentumIndicator({ momentum, homeTeamName, awayTeamName }: Mome
 
         {/* Driver Summary Badges */}
         {driver_summary && Object.keys(driver_summary).length > 0 && (
-          <div className="border-t border-slate-700 pt-4">
-            <div className="text-xs text-slate-400 mb-2">Momentum Drivers</div>
-            <div className="flex flex-wrap gap-2">
+          <div className="border-t border-slate-700 pt-3 mt-3">
+            <div className="text-xs text-slate-400 mb-1.5">Momentum Drivers</div>
+            <div className="flex flex-wrap gap-1.5">
               {driver_summary.shots_on_target && (
                 <Badge
                   variant="outline"
@@ -144,4 +144,7 @@ export function MomentumIndicator({ momentum, homeTeamName, awayTeamName }: Mome
     </Card>
   )
 }
+
+
+
 

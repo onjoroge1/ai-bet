@@ -2,8 +2,9 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { Share2, Download, Target, Star, Shield, Brain, Calendar, CreditCard, CheckCircle } from "lucide-react"
+import { Share2, Download, Target, Star, Shield, Brain, Calendar, CreditCard, CheckCircle, ExternalLink } from "lucide-react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 
 interface TipReceiptProps {
   tip: {
@@ -21,6 +22,7 @@ interface TipReceiptProps {
     currencyCode: string
     purchaseDate: string
     paymentMethod: string
+    matchId?: string | null
     homeTeam?: string
     awayTeam?: string
     matchDate?: string | null
@@ -34,6 +36,8 @@ interface TipReceiptProps {
 }
 
 export function TipReceipt({ tip, onClose }: TipReceiptProps) {
+  const router = useRouter()
+  
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -232,6 +236,19 @@ export function TipReceipt({ tip, onClose }: TipReceiptProps) {
         <Button variant="outline" onClick={onClose} className="border-slate-600 text-slate-300">
           Close
         </Button>
+        {tip.matchId && (
+          <Button
+            variant="outline"
+            onClick={() => {
+              onClose()
+              router.push(`/match/${tip.matchId}`)
+            }}
+            className="border-blue-600 text-blue-400 hover:bg-blue-600/10"
+          >
+            <ExternalLink className="w-4 h-4 mr-2" />
+            View Match Page
+          </Button>
+        )}
         <Link href="/dashboard/my-tips" passHref legacyBehavior>
           <Button asChild className="bg-emerald-600 hover:bg-emerald-700">
             <a>View My Tips</a>

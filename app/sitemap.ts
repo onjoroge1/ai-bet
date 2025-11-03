@@ -26,5 +26,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: currentDate,
       changeFrequency: 'hourly' as const, // News sitemap updates frequently
     },
+    {
+      url: `${baseUrl}/sitemap-matches.xml`,
+      lastModified: currentDate,
+      changeFrequency: 'daily' as const, // Finished matches sitemap
+    },
   ]
 } 

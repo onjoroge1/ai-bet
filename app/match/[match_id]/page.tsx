@@ -10,7 +10,7 @@ import ConsensusRow from "./ConsensusRow"
 import BookmakerOdds from "./BookmakerOdds"
 import { useAuth } from "@/components/auth-provider"
 import { QuickPurchaseModal } from "@/components/quick-purchase-modal"
-import type { QuickPurchaseItem } from "@/components/quick-purchase-modal"
+// QuickPurchaseItem type defined inline below
 import { PredictionCard } from "@/components/predictions/PredictionCard"
 import { useLiveMatchWebSocket, mergeDeltaUpdate } from "@/hooks/use-live-match-websocket"
 import { LiveScoreCard } from "@/components/live/LiveScoreCard"
@@ -19,6 +19,8 @@ import { LiveMarketsCard } from "@/components/live/LiveMarketsCard"
 import { LiveMatchStats } from "@/components/live/LiveMatchStats"
 import { PremiumBettingIntelligence } from "@/components/live/PremiumBettingIntelligence"
 import { FreeVsPremiumComparison } from "@/components/live/FreeVsPremiumComparison"
+import { RealtimeAdvancedMarkets } from "@/components/live/RealtimeAdvancedMarkets"
+import { FinishedMatchStats } from "@/components/match/FinishedMatchStats"
 import type { EnhancedMatchData } from "@/types/live-match"
 
 // Using EnhancedMatchData for live match support
@@ -70,6 +72,7 @@ interface FullPrediction {
       alternative_bets?: string[]
       risk_level?: string
       suggested_stake?: string
+      avoid_bets?: string[]
     }
   }
   additional_markets?: any
@@ -93,20 +96,40 @@ export default function MatchDetailPage() {
   const [showPurchaseModal, setShowPurchaseModal] = useState(false)
   const [showFullAnalysis, setShowFullAnalysis] = useState(false)
 
-  // WebSocket integration for live matches
-  // Check if match is live - also check for live data indicators (momentum, model_markets) even if status isn't exactly "LIVE"
-  const isLive = matchData?.status === 'LIVE' || 
-                 (matchData?.momentum !== undefined || matchData?.model_markets !== undefined)
+  // Check match status
+  const isFinished = matchData?.status === 'FINISHED' || matchData?.final_result !== undefined
+  const isLive = !isFinished && (matchData?.status === 'LIVE' || 
+                 (matchData?.momentum !== undefined || matchData?.model_markets !== undefined))
   const { delta, isConnected, clearDelta } = useLiveMatchWebSocket(matchId, isLive || false)
 
-  // Merge WebSocket delta updates into matchData
+  // Merge WebSocket delta updates into matchData (including odds changes)
   useEffect(() => {
     if (delta && matchData) {
       const updated = mergeDeltaUpdate(matchData, delta)
       setMatchData(updated)
       clearDelta()
+      // Real-time Advanced Markets component will automatically recalculate with new odds
+      // because it uses useMemo with odds as dependency
     }
   }, [delta, matchData, clearDelta])
+  
+  // Auto-load predictionData when quickPurchaseInfo is available and purchased OR when match is finished
+  useEffect(() => {
+    // For finished matches, always show prediction data (blog mode)
+    if (matchData && (matchData.status === 'FINISHED' || matchData.final_result !== undefined)) {
+      if (quickPurchaseInfo?.predictionData && !fullPrediction) {
+        console.log('[Match Detail] Auto-loading predictionData for finished match')
+        setFullPrediction(quickPurchaseInfo.predictionData)
+        setShowFullAnalysis(true)
+      }
+    } 
+    // For purchased matches, show prediction data
+    else if (quickPurchaseInfo?.predictionData && purchaseStatus?.isPurchased && !fullPrediction) {
+      console.log('[Match Detail] Auto-loading predictionData from QuickPurchase')
+      setFullPrediction(quickPurchaseInfo.predictionData)
+      setShowFullAnalysis(true)
+    }
+  }, [matchData, quickPurchaseInfo?.predictionData, purchaseStatus?.isPurchased, fullPrediction])
 
   useEffect(() => {
     if (!authLoading) {
@@ -126,6 +149,11 @@ export default function MatchDetailPage() {
         const json = await resp.json()
         setMatchData(json.match)
         setQuickPurchaseInfo(json.quickPurchase)
+        
+        // If we have predictionData in quickPurchase and user is authenticated, check if purchased
+        if (json.quickPurchase?.predictionData && isAuthenticated) {
+          // Will be handled by purchasePromise, but we can pre-load it
+        }
       })()
 
       const purchasePromise = (async () => {
@@ -138,14 +166,17 @@ export default function MatchDetailPage() {
         const purchaseResult = await resp.json()
         setPurchaseStatus(purchaseResult)
         if (purchaseResult.isPurchased) {
-          fetchFullPrediction()
+          // Automatically show full analysis when purchased
           setShowFullAnalysis(true)
+          // Fetch prediction data
+          fetchFullPrediction()
         }
       })()
 
       await Promise.allSettled([matchPromise, purchasePromise])
 
-      // Fire-and-forget warm-up
+      // Fire-and-forget warm-up (only for non-finished matches)
+      // The useEffect hook will handle loading prediction data for finished matches
       try {
         fetch('/api/predictions/warm', {
           method: 'POST',
@@ -166,8 +197,26 @@ export default function MatchDetailPage() {
     try {
       // First check if predictionData is already available from quickPurchaseInfo
       if (quickPurchaseInfo?.predictionData) {
+        console.log('[Match Detail] Using predictionData from QuickPurchase:', quickPurchaseInfo.predictionData)
         setFullPrediction(quickPurchaseInfo.predictionData)
         return
+      }
+
+      // If purchased, try to get from purchase record
+      if (purchaseStatus?.isPurchased && purchaseStatus?.quickPurchaseId) {
+        try {
+          const purchaseResponse = await fetch(`/api/my-tips?latest=1&quickPurchaseId=${purchaseStatus.quickPurchaseId}`)
+          if (purchaseResponse.ok) {
+            const purchaseData = await purchaseResponse.json()
+            if (purchaseData.tips && purchaseData.tips[0]?.predictionData) {
+              console.log('[Match Detail] Using predictionData from purchase record')
+              setFullPrediction(purchaseData.tips[0].predictionData)
+              return
+            }
+          }
+        } catch (err) {
+          console.error('Error fetching from purchase record:', err)
+        }
       }
 
       // Otherwise, fetch from /predict API
@@ -196,7 +245,7 @@ export default function MatchDetailPage() {
       return
     }
 
-    const purchaseItem: QuickPurchaseItem = {
+    const purchaseItem: any = {
       id: quickPurchaseInfo.id,
       name: quickPurchaseInfo.name,
       price: quickPurchaseInfo.price,
@@ -239,7 +288,10 @@ export default function MatchDetailPage() {
     } else if (modalWasOpen && !showPurchaseModal) {
       // Modal was closed after being open - refresh data after delay for webhook processing
       const timer = setTimeout(() => {
-        fetchMatchDetails().then(() => setModalWasOpen(false))
+        fetchMatchDetails().then(() => {
+          setModalWasOpen(false)
+          // Check if purchase was completed - fetchFullPrediction will be called by purchasePromise
+        })
       }, 2000)
       return () => clearTimeout(timer)
     }
@@ -316,62 +368,71 @@ export default function MatchDetailPage() {
         </Button>
 
         {/* Match Overview Section */}
-        <Card className="bg-slate-800/60 border-slate-700 mb-6">
-          <div className="p-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card className="bg-slate-800/60 border-slate-700 mb-4">
+          <div className="p-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* Teams */}
               <div className="lg:col-span-2">
-                <div className="text-center lg:text-left mb-4">
-                  <h1 className="text-3xl lg:text-4xl font-bold text-white mb-2">
+                <div className="text-center lg:text-left">
+                  <h1 className="text-2xl lg:text-3xl font-bold text-white mb-1">
                     {matchData.home.name} vs {matchData.away.name}
                   </h1>
-                  {matchData.league?.name && (
-                    <div className="flex items-center justify-center lg:justify-start gap-2 text-slate-400">
-                      <Trophy className="h-4 w-4" />
-                      <span>{matchData.league.name}</span>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-center lg:justify-start gap-4 text-slate-400 mt-2">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      <span className="text-sm">{formatKickoffTime(matchData.kickoff_at)}</span>
+                  <div className="flex items-center justify-center lg:justify-start gap-3 text-slate-400 text-sm">
+                    {matchData.league?.name && (
+                      <div className="flex items-center gap-1.5">
+                        <Trophy className="h-3.5 w-3.5" />
+                        <span>{matchData.league.name}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1.5">
+                      <Calendar className="h-3.5 w-3.5" />
+                      <span>{formatKickoffTime(matchData.kickoff_at)}</span>
                     </div>
                     {matchData.status === 'LIVE' && matchData.score && (
-                      <div className="text-emerald-400 font-bold text-lg">
+                      <div className="text-emerald-400 font-semibold">
                         LIVE: {matchData.score.home} - {matchData.score.away}
                       </div>
                     )}
+                    {isFinished && (() => {
+                      const score = matchData.final_result?.score || matchData.score
+                      if (!score || score.home === undefined || score.away === undefined) return null
+                      return (
+                        <div className="text-slate-300 font-semibold">
+                          FT: {score.home} - {score.away}
+                        </div>
+                      )
+                    })()}
                   </div>
                 </div>
               </div>
 
               {/* Odds + Consensus vs Best */}
               {matchData.odds?.novig_current && (
-                <div className="border-t lg:border-t-0 lg:border-l border-slate-700 pt-6 lg:pt-0 lg:pl-6">
+                <div className="border-t lg:border-t-0 lg:border-l border-slate-700 pt-4 lg:pt-0 lg:pl-4">
                   <div className="text-center lg:text-right">
-                    <div className="text-slate-400 text-sm mb-3">Current Odds (Consensus no‑vig)</div>
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="flex flex-col items-center gap-1">
+                    <div className="text-slate-400 text-xs mb-2">Current Odds (Consensus no‑vig)</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="flex flex-col items-center gap-0.5">
                         <div className="text-xs text-slate-400 uppercase">Home</div>
-                        <div className="px-3 py-2 rounded-md border border-slate-700 text-slate-200 text-lg font-semibold">
+                        <div className="px-2 py-1.5 rounded-md border border-slate-700 text-slate-200 text-base font-semibold">
                           {(1 / matchData.odds.novig_current.home).toFixed(2)}
                         </div>
                       </div>
-                      <div className="flex flex-col items-center gap-1">
+                      <div className="flex flex-col items-center gap-0.5">
                         <div className="text-xs text-slate-400 uppercase">Draw</div>
-                        <div className="px-3 py-2 rounded-md border border-slate-700 text-slate-200 text-lg font-semibold">
+                        <div className="px-2 py-1.5 rounded-md border border-slate-700 text-slate-200 text-base font-semibold">
                           {(1 / matchData.odds.novig_current.draw).toFixed(2)}
                         </div>
                       </div>
-                      <div className="flex flex-col items-center gap-1">
+                      <div className="flex flex-col items-center gap-0.5">
                         <div className="text-xs text-slate-400 uppercase">Away</div>
-                        <div className="px-3 py-2 rounded-md border border-slate-700 text-slate-200 text-lg font-semibold">
+                        <div className="px-2 py-1.5 rounded-md border border-slate-700 text-slate-200 text-base font-semibold">
                           {(1 / matchData.odds.novig_current.away).toFixed(2)}
                         </div>
                       </div>
                     </div>
                     {matchData.odds?.books && (
-                      <div className="mt-4">
+                      <div className="mt-3">
                         <ConsensusRow novig={matchData.odds.novig_current as any} books={matchData.odds.books as any} />
                       </div>
                     )}
@@ -382,8 +443,33 @@ export default function MatchDetailPage() {
           </div>
         </Card>
 
-        {/* Live Match Components - Only when status=LIVE */}
-        {isLive && (
+        {/* Finished Match Banner */}
+        {isFinished && (
+          <Card className="bg-gradient-to-r from-emerald-900/40 to-blue-900/40 border-emerald-500/50 mb-6">
+            <div className="p-4">
+              <div className="flex items-center justify-center gap-3">
+                <Trophy className="w-6 h-6 text-emerald-400" />
+                <div className="text-center">
+                  <div className="text-white font-bold text-lg">Match Finished</div>
+                  <div className="text-slate-300 text-sm">This match has been completed</div>
+                </div>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Finished Match Components */}
+        {isFinished && (
+          <div className="mb-6">
+            <FinishedMatchStats
+              matchData={matchData as any}
+              predictionData={quickPurchaseInfo?.predictionData || fullPrediction}
+            />
+          </div>
+        )}
+
+        {/* Live Match Components - Only when status=LIVE and not finished */}
+        {isLive && !isFinished && (
           <>
             {/* Live Score Card - use momentum.minute and score if live_data not available */}
             {(matchData.live_data || (matchData.momentum && matchData.score)) && (
@@ -422,8 +508,8 @@ export default function MatchDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           {/* Main column */}
           <div className="lg:col-span-2 space-y-6">
-          {/* V1 Free Prediction */}
-          {v1Model && (
+          {/* V1 Free Prediction - Hide for finished matches */}
+          {v1Model && !isFinished && (
             <Card className="bg-slate-800/60 border-slate-700">
               <div className="p-6">
                 <div className="flex items-center justify-between mb-4">
@@ -464,8 +550,8 @@ export default function MatchDetailPage() {
             </Card>
           )}
 
-          {/* V2 Premium Prediction */}
-          {hasV2 && (
+          {/* V2 Premium Prediction - Hide for finished matches */}
+          {hasV2 && !isFinished && (
             <Card className={`bg-slate-800/60 border-2 ${isPurchased ? 'border-emerald-500/50' : 'border-amber-500/50'}`}>
               <div className="p-6">
                 <div className="flex items-center justify-between mb-4">
@@ -532,40 +618,65 @@ export default function MatchDetailPage() {
               </div>
             </Card>
           )}
-          {/* Free vs Premium Comparison */}
-          {!isPurchased && (
-            <FreeVsPremiumComparison
-              isPurchased={false}
-              onPurchaseClick={handlePurchaseClick}
-            />
+
+          {/* For Finished Matches: Always show full prediction data (blog mode) */}
+          {isFinished && (quickPurchaseInfo?.predictionData || fullPrediction) && (
+            <div className="space-y-6 mt-6">
+              <h2 className="text-2xl font-bold text-white">Match Analysis & Prediction</h2>
+              <PredictionCard
+                mode="full"
+                prediction={quickPurchaseInfo?.predictionData || fullPrediction || null}
+                matchData={matchData}
+                isPurchased={true}
+                purchaseSource="match_detail"
+              />
+            </div>
           )}
 
-          {/* Premium Betting Intelligence - Value Proposition */}
-          {!isPurchased && quickPurchaseInfo && quickPurchaseInfo.predictionData && (
-            <PremiumBettingIntelligence
-              matchData={matchData}
-              isPurchased={false}
-              onPurchaseClick={handlePurchaseClick}
-              quickPurchaseInfo={quickPurchaseInfo}
-              predictionData={quickPurchaseInfo.predictionData}
-            />
+          {/* For Upcoming/Live Matches: Show purchase prompts */}
+          {!isFinished && (
+            <>
+              {/* Preview Card - Hybrid Option */}
+              {!isPurchased && quickPurchaseInfo && (
+                <PredictionCard
+                  mode="preview"
+                  prediction={null}
+                  matchData={matchData}
+                  isPurchased={false}
+                  quickPurchaseInfo={quickPurchaseInfo}
+                  onPurchaseClick={handlePurchaseClick}
+                  purchaseSource="match_detail"
+                />
+              )}
+
+              {/* Premium Betting Intelligence - Value Proposition */}
+              {!isPurchased && matchData && (
+                <PremiumBettingIntelligence
+                  matchData={matchData}
+                  isPurchased={false}
+                  onPurchaseClick={handlePurchaseClick}
+                  quickPurchaseInfo={quickPurchaseInfo || {
+                    price: 0,
+                    currencySymbol: '$',
+                    analysisSummary: null,
+                    country: { currencySymbol: '$' }
+                  }}
+                  predictionData={quickPurchaseInfo?.predictionData || null}
+                />
+              )}
+
+              {/* Free vs Premium Comparison */}
+              {!isPurchased && (
+                <FreeVsPremiumComparison
+                  isPurchased={false}
+                  onPurchaseClick={handlePurchaseClick}
+                />
+              )}
+            </>
           )}
 
-          {/* Preview Card - Hybrid Option */}
-          {!isPurchased && quickPurchaseInfo && (
-            <PredictionCard
-              mode="preview"
-              prediction={null}
-              matchData={matchData}
-              isPurchased={false}
-              quickPurchaseInfo={quickPurchaseInfo}
-              onPurchaseClick={handlePurchaseClick}
-              purchaseSource="match_detail"
-            />
-          )}
-
-          {/* Purchase Success Message */}
-          {isPurchased && !showFullAnalysis && (
+          {/* Purchase Success Message - Only for non-finished matches */}
+          {!isFinished && isPurchased && !showFullAnalysis && (
           <Card className="bg-emerald-500/10 border-emerald-500/20 mb-6">
             <div className="p-6 text-center">
               <CheckCircle className="h-12 w-12 text-emerald-400 mx-auto mb-4" />
@@ -595,8 +706,8 @@ export default function MatchDetailPage() {
           </Card>
           )}
 
-          {/* Full Analysis Section (After Purchase) */}
-          {isPurchased && showFullAnalysis && fullPrediction && (
+          {/* Full Analysis Section (After Purchase) - Only for non-finished matches */}
+          {!isFinished && isPurchased && showFullAnalysis && fullPrediction && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-bold text-white">Complete Analysis</h2>
@@ -616,7 +727,24 @@ export default function MatchDetailPage() {
               purchaseSource="match_detail"
             />
           </div>
-        )}
+          )}
+
+          {/* Real-time Advanced Markets (For Live Matches with Purchase) */}
+          {isPurchased && isLive && matchData.odds?.novig_current && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-white">Real-time Advanced Markets</h2>
+                <Badge className="bg-green-500 text-white animate-pulse">LIVE</Badge>
+              </div>
+              <RealtimeAdvancedMarkets
+                odds={matchData.odds.novig_current}
+                currentScore={matchData.live_data?.current_score}
+                minute={matchData.live_data?.minute ?? null}
+                homeTeamName={matchData.home.name}
+                awayTeamName={matchData.away.name}
+              />
+            </div>
+          )}
 
           {/* Live Markets Card - Show when we have model_markets data */}
           {matchData.model_markets && (
@@ -662,7 +790,7 @@ export default function MatchDetailPage() {
               matchData: {
                 home_team: matchData.home.name,
                 away_team: matchData.away.name,
-                league: matchData.league?.name || undefined,
+                league: (matchData.league?.name ?? '') as string,
                 date: matchData.kickoff_at
               },
               country: quickPurchaseInfo.country,

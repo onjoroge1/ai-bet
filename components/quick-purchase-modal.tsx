@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
-import { CreditCard, Smartphone, CheckCircle, Clock, Shield, Zap, Star, Crown, Gift, Brain, TrendingUp, Target, Loader2, Info } from "lucide-react"
+import { CreditCard, Smartphone, CheckCircle, Clock, Shield, Zap, Star, Crown, Gift, Brain, TrendingUp, Target, Loader2, Info, XCircle } from "lucide-react"
 import { useUserCountry } from "@/contexts/user-country-context"
 import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
@@ -34,6 +34,7 @@ interface QuickPurchaseItem {
   discountPercentage?: number
   targetLink?: string
   confidenceScore?: number
+  matchId?: string | null
   matchData?: {
     home_team: string
     away_team: string
@@ -112,6 +113,12 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
   const [clientSecret, setClientSecret] = useState<string>('')
   const [isLoading, setIsLoading] = useState(false)
   const [userCountryCode, setUserCountryCode] = useState(userCountry || 'US')
+  
+  // Check if Stripe key is configured (runtime check)
+  const hasStripeKey = typeof window !== 'undefined' && 
+    !!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY &&
+    (process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY.trim().startsWith('pk_test_') || 
+     process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY.trim().startsWith('pk_live_'))
 
   useEffect(() => {
     if (isOpen) {
@@ -226,6 +233,7 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
         currencyCode: item?.country?.currencyCode || 'USD',
         purchaseDate: new Date().toISOString(),
         paymentMethod: selectedPaymentMethod || 'card',
+        matchId: item?.matchId || null,
         // Use the current item's match data instead of fetching from database
         homeTeam: item?.matchData?.home_team,
         awayTeam: item?.matchData?.away_team,
@@ -514,12 +522,28 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
           </div>
         ) : (
           <div className="space-y-4">
-            {clientSecret ? (
+            {!hasStripeKey && (
+              <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-4 mb-4">
+                <div className="flex items-center space-x-2">
+                  <XCircle className="w-5 h-5 text-red-400" />
+                  <div>
+                    <p className="text-red-300 font-medium">Stripe Configuration Error</p>
+                    <p className="text-red-400 text-sm mt-1">
+                      Stripe publishable key is missing or invalid. Please check your .env.local file.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            {clientSecret && hasStripeKey ? (
               <Elements 
-                stripe={stripePromise} 
+                stripe={stripePromise}
                 options={{ 
                   clientSecret,
                   loader: 'auto',
+                  onReady: () => {
+                    console.log('[QuickPurchaseModal] ✅ Stripe Elements initialized successfully')
+                  },
                   appearance: {
                     theme: 'night',
                     variables: {
@@ -568,8 +592,6 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
                     applePay: 'auto',
                     googlePay: 'auto',
                   },
-                  // Additional configuration for better digital wallet support
-                  loader: 'auto',
                 }}
               >
                 <PaymentForm
@@ -584,9 +606,20 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
                   onCancel={handlePaymentCancel}
                 />
               </Elements>
+            ) : clientSecret && !hasStripeKey ? (
+              <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-6">
+                <div className="text-center">
+                  <XCircle className="w-8 h-8 text-red-500 mx-auto mb-4" />
+                  <h4 className="text-white font-medium mb-2">Payment System Unavailable</h4>
+                  <p className="text-red-400 text-sm">
+                    Stripe is not configured. Please contact support.
+                  </p>
+                </div>
+              </div>
             ) : (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
+                <span className="ml-3 text-slate-400">Initializing payment...</span>
               </div>
             )}
           </div>

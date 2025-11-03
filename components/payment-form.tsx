@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { useStripe, useElements, PaymentElement } from "@stripe/react-stripe-js"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Loader2, CreditCard, CheckCircle, XCircle, Shield, Zap, Clock } from "lucide-react"
+import { Loader2, CreditCard, CheckCircle, XCircle, Shield, Zap, Clock, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 
 interface PaymentFormProps {
@@ -36,6 +36,60 @@ export function PaymentForm({
   const [paymentStatus, setPaymentStatus] = useState<'pending' | 'processing' | 'success' | 'error'>('pending')
   const [paymentIntentId, setPaymentIntentId] = useState<string>('')
   const [pollingAttempts, setPollingAttempts] = useState(0)
+  const [stripeReady, setStripeReady] = useState(false)
+  const [stripeError, setStripeError] = useState<string | null>(null)
+  
+  // Check if Stripe is loaded
+  useEffect(() => {
+    // Log stripe state for debugging
+    console.log('[PaymentForm] Stripe state:', { 
+      stripe: stripe ? 'loaded' : stripe === null ? 'null (failed)' : 'loading',
+      elements: elements ? 'loaded' : 'not loaded',
+      hasKey: !!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+    })
+    
+    // If stripe is null, it means loading failed or Elements received a rejected promise
+    if (stripe === null) {
+      const hasKey = typeof window !== 'undefined' && !!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+      const errorMsg = hasKey
+        ? 'Stripe.js failed to load from CDN. This may be due to network issues, ad blockers, or firewall restrictions. Please try refreshing the page or check your browser console.'
+        : 'Stripe publishable key is missing. Please check your configuration.'
+      setStripeError(errorMsg)
+      setStripeReady(false)
+      console.error('[PaymentForm] Stripe is null. Possible causes:', {
+        hasKey,
+        networkIssue: 'Check if js.stripe.com is accessible',
+        adBlocker: 'Ad blockers may block Stripe.js',
+        cdnAccess: 'Verify network connectivity to Stripe CDN'
+      })
+      return
+    }
+    
+    if (stripe && elements) {
+      setStripeReady(true)
+      setStripeError(null)
+      console.log('[PaymentForm] ✅ Stripe ready!')
+    } else if (stripe === undefined && elements === undefined) {
+      // Still loading - this is normal initially
+      setStripeReady(false)
+      setStripeError(null)
+    } else {
+      // Partial state - might still be loading (e.g., stripe loaded but elements not yet)
+      setStripeReady(false)
+    }
+  }, [stripe, elements])
+  
+  // Add timeout for Stripe loading
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (!stripeReady && stripe === undefined) {
+        console.warn('[PaymentForm] Stripe loading timeout - taking longer than 10 seconds')
+        setStripeError('Stripe is taking too long to load. This may be due to slow network or CDN issues. Please try refreshing the page.')
+      }
+    }, 15000) // 15 second timeout (increased from 10s)
+    
+    return () => clearTimeout(timeout)
+  }, [stripeReady, stripe])
 
   // Ensure amount is a number
   const numericAmount = typeof amount === 'string' ? parseFloat(amount) : 
@@ -236,46 +290,72 @@ export function PaymentForm({
           </div>
         )}
 
-        {/* Payment Form with Accordion Layout */}
-        <form onSubmit={handleSubmit} className="space-y-6" aria-label="Stripe payment form">
-          <div className="bg-slate-900/50 rounded-xl p-6 border border-slate-700/50">
-            <PaymentElement 
-              options={{
-                layout: {
-                  type: 'accordion',
-                  defaultCollapsed: false,
-                  radios: true,
-                  spacedAccordionItems: false
-                },
-                paymentMethodOrder: selectedPaymentMethod ? [selectedPaymentMethod] : ['apple_pay', 'google_pay', 'card'],
-                wallets: {
-                  applePay: 'auto',
-                  googlePay: 'auto',
-                },
-                fields: {
-                  billingDetails: {
-                    name: 'auto',
-                    email: 'auto',
-                    address: {
-                      country: 'auto',
-                      line1: 'auto',
-                      line2: 'auto',
-                      city: 'auto',
-                      state: 'auto',
-                      postalCode: 'auto',
-                    },
-                  },
-                },
-                // Enhanced configuration for better digital wallet support
-                terms: {
-                  card: 'auto',
-                },
-                business: {
-                  name: 'SnapBet AI',
-                },
-              }}
-            />
+        {/* Stripe Loading or Error State */}
+        {!stripeReady && (
+          <div className={`bg-slate-900/50 rounded-xl p-6 border ${
+            stripeError ? 'border-red-500/50' : 'border-slate-700/50'
+          }`}>
+            <div className="text-center space-y-4">
+              {stripeError ? (
+                <>
+                  <XCircle className="w-8 h-8 text-red-500 mx-auto" />
+                  <div>
+                    <h4 className="text-white font-medium mb-2">Payment System Error</h4>
+                    <p className="text-red-400 text-sm mb-4">{stripeError}</p>
+                    <p className="text-slate-400 text-xs">
+                      Please check your browser console for more details or contact support.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Loader2 className="w-8 h-8 animate-spin text-emerald-500 mx-auto" />
+                  <div>
+                    <h4 className="text-white font-medium mb-2">Loading Payment Form...</h4>
+                    <p className="text-slate-400 text-sm">
+                      Please wait while we initialize secure payment processing
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
+        )}
+
+        {/* Payment Form with Accordion Layout */}
+        {stripeReady && (
+          <form onSubmit={handleSubmit} className="space-y-6" aria-label="Stripe payment form">
+            <div className="bg-slate-900/50 rounded-xl p-6 border border-slate-700/50">
+              <PaymentElement 
+                options={{
+                  layout: {
+                    type: 'accordion',
+                    defaultCollapsed: false,
+                    radios: true,
+                    spacedAccordionItems: false
+                  },
+                  // Prioritize selected payment method, but show all available options
+                  paymentMethodOrder: selectedPaymentMethod 
+                    ? [selectedPaymentMethod, ...(['apple_pay', 'google_pay', 'card'].filter(m => m !== selectedPaymentMethod))]
+                    : ['apple_pay', 'google_pay', 'card'],
+                  wallets: {
+                    applePay: selectedPaymentMethod === 'apple_pay' ? 'always' : 'auto',
+                    googlePay: selectedPaymentMethod === 'google_pay' ? 'always' : 'auto',
+                  },
+                  fields: {
+                    // billingDetails can only be 'never' or 'auto' in current Stripe API version
+                    billingDetails: 'auto',
+                  },
+                  // Enhanced configuration for better digital wallet support
+                  terms: {
+                    card: 'auto',
+                  },
+                  business: {
+                    name: 'SnapBet AI',
+                  },
+                }}
+              />
+            </div>
           
           <div className="flex space-x-3">
             <Button
@@ -307,6 +387,7 @@ export function PaymentForm({
             </Button>
           </div>
         </form>
+        )}
 
         {/* Security Notice */}
         <div className="bg-slate-900/30 border border-slate-700/50 rounded-lg p-4">

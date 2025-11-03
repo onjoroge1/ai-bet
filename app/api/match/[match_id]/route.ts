@@ -106,16 +106,29 @@ export async function GET(
           headers: {
             Authorization: `Bearer ${API_KEY}`,
           },
-          next: { revalidate: 5 } // 5 seconds for faster live updates
+          cache: 'no-store' // Disable caching for live matches to get real-time data
         })
 
         if (liveMarketResponse.ok) {
           const liveData = await liveMarketResponse.json()
+          const match = liveData.matches?.[0]
+          const matchDate = match?.kickoff_at ? new Date(match.kickoff_at) : null
+          const now = new Date()
+          const hoursSinceKickoff = matchDate ? (now.getTime() - matchDate.getTime()) / (1000 * 60 * 60) : null
+          const isLikelyFinished = hoursSinceKickoff !== null && hoursSinceKickoff > 3 // More than 3 hours old
+          
           console.log(`[Match API] Live match response:`, { 
-            hasData: !!liveData.matches?.[0], 
-            status: liveData.matches?.[0]?.status,
-            hasMomentum: !!liveData.matches?.[0]?.momentum,
-            hasModelMarkets: !!liveData.matches?.[0]?.model_markets
+            hasData: !!match, 
+            status: match?.status,
+            hasMomentum: !!match?.momentum,
+            hasModelMarkets: !!match?.model_markets,
+            currentScore: match?.live_data?.current_score,
+            minute: match?.live_data?.minute,
+            kickoff_at: match?.kickoff_at,
+            hoursSinceKickoff: hoursSinceKickoff?.toFixed(1),
+            isLikelyFinished: isLikelyFinished,
+            warning: isLikelyFinished && match?.status === 'LIVE' ? 'Match likely finished but status still LIVE' : null,
+            timestamp: new Date().toISOString()
           })
           if (liveData.matches?.[0]) {
             backendMatchData = liveData.matches[0]
@@ -127,7 +140,36 @@ export async function GET(
         console.error(`[Match API] Error fetching live match:`, error)
       }
 
-      // If not found as live, try without status filter (for upcoming/finished)
+      // If not found as live, try finished matches first (more specific)
+      if (!backendMatchData) {
+        const finishedMarketUrl = `${BASE_URL}/market?match_id=${matchId}&status=finished`
+        console.log(`[Match API] Fetching finished match from: ${finishedMarketUrl}`)
+        
+        try {
+          const finishedResponse = await fetch(finishedMarketUrl, {
+            headers: {
+              Authorization: `Bearer ${API_KEY}`,
+            },
+            next: { revalidate: 3600 } // Cache finished matches for 1 hour
+          })
+
+          if (finishedResponse.ok) {
+            const finishedData = await finishedResponse.json()
+            console.log(`[Match API] Finished match response:`, { 
+              hasData: !!finishedData.matches?.[0], 
+              status: finishedData.matches?.[0]?.status,
+              final_result: finishedData.matches?.[0]?.final_result 
+            })
+            if (finishedData.matches?.[0]) {
+              backendMatchData = finishedData.matches[0]
+            }
+          }
+        } catch (error) {
+          console.error(`[Match API] Error fetching finished match:`, error)
+        }
+      }
+
+      // If not found as live or finished, try without status filter (for upcoming)
       if (!backendMatchData) {
         const marketUrl = `${BASE_URL}/market?match_id=${matchId}`
         console.log(`[Match API] Fetching match from: ${marketUrl}`)

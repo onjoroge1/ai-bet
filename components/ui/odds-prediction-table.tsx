@@ -195,10 +195,29 @@ export function OddsPredictionTable({
   }
 
   // Filter by selected date for upcoming matches
+  // Filter by time from kickoff for live matches (exclude matches > 3 hours past kickoff)
   const filteredMatches = useMemo(() => {
-    if (status !== "upcoming") return allMatches
-    
     const now = new Date()
+    
+    // For live matches: filter out matches that are too old (past 3 hours from kickoff)
+    if (status === "live") {
+      const MAX_LIVE_HOURS = 3 // Don't show live matches older than 3 hours from kickoff
+      const maxLiveTime = MAX_LIVE_HOURS * 60 * 60 * 1000 // 3 hours in milliseconds
+      
+      return allMatches.filter((m) => {
+        // Only filter if we have kickoff time
+        if (!m.kickoff_utc) return true // Keep if no kickoff time (can't determine age)
+        
+        const kickoffTime = new Date(m.kickoff_utc).getTime()
+        const timeSinceKickoff = now.getTime() - kickoffTime
+        
+        // Keep match if it's within the time limit (3 hours)
+        // Negative time means match hasn't started yet (shouldn't happen for live, but safe check)
+        return timeSinceKickoff >= 0 && timeSinceKickoff <= maxLiveTime
+      })
+    }
+    
+    // For upcoming matches: filter by selected date
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000)
     const dayAfter = new Date(today.getTime() + 48 * 60 * 60 * 1000)
@@ -850,4 +869,3 @@ function SkeletonLoader() {
     </Card>
   )
 }
-

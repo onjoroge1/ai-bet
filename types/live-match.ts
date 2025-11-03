@@ -94,6 +94,11 @@ export interface EnhancedMatchData {
   match_id: string | number
   status: 'UPCOMING' | 'LIVE' | 'FINISHED'
   kickoff_at: string
+  final_result?: {
+    score: { home: number; away: number }
+    outcome: string
+    outcome_text: string
+  }
   league?: {
     id: number | null
     name: string | null
@@ -177,4 +182,6 @@ export interface EnhancedMatchData {
   momentum?: Momentum
   model_markets?: ModelMarkets
 }
+
+
 

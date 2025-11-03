@@ -59,7 +59,15 @@ export function useLiveMatchWebSocket(matchId: string, isLive: boolean) {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data) as LiveMatchDelta
-          console.log('[WebSocket] Received delta update:', data)
+          console.log('[WebSocket] Received delta update:', {
+            match_id: data.match_id,
+            minute: data.minute,
+            score: data.live_data?.current_score,
+            hasLiveData: !!data.live_data,
+            hasMomentum: !!data.momentum,
+            hasModelMarkets: !!data.model_markets,
+            timestamp: new Date().toISOString()
+          })
           setDelta(data)
         } catch (error) {
           console.error('[WebSocket] Failed to parse message:', error)
@@ -109,11 +117,18 @@ export function useLiveMatchWebSocket(matchId: string, isLive: boolean) {
       if (!shouldConnectRef.current) return
 
       try {
-        const response = await fetch(`/api/match/${matchId}`)
+        const response = await fetch(`/api/match/${matchId}?t=${Date.now()}`) // Cache bust
         if (!response.ok) {
           throw new Error('Polling failed')
         }
         const data = await response.json()
+        
+        console.log('[WebSocket] HTTP Polling update:', {
+          match_id: matchId,
+          score: data.match?.live_data?.current_score,
+          minute: data.match?.live_data?.minute,
+          timestamp: new Date().toISOString()
+        })
         
         // Convert match data to delta format
         const deltaUpdate: LiveMatchDelta = {
@@ -128,7 +143,7 @@ export function useLiveMatchWebSocket(matchId: string, isLive: boolean) {
       } catch (error) {
         console.error('[WebSocket] Polling error:', error)
       }
-    }, 30000) // 30 seconds for faster live updates
+    }, 10000) // 10 seconds for faster live updates
   }, [matchId])
 
   /**
@@ -232,4 +247,6 @@ export function mergeDeltaUpdate(
 
   return updated
 }
+
+
 

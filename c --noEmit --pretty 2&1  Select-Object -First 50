@@ -1,0 +1,22 @@
+ COMPREHENSIVE_IMPLEMENTATION_COMPLETE.md    | 342 [32m++++++++++++++++++[m
+ EXECUTIVE_SUMMARY_OCTOBER_31.md             | 104 [32m++++++[m
+ FINAL_IMPLEMENTATION_SUMMARY.md             | 266 [32m++++++++++++++[m
+ LAYOUT_OPTIONS_EXPLANATION.md               | 267 [32m++++++++++++++[m
+ MATCH_DETAIL_PREDICTION_DISPLAY_ANALYSIS.md | 316 [32m++++++++++++++++[m
+ PERFORMANCE_OPTIMIZATION_COMPLETE.md        | 331 [32m+++++++++++++++++[m
+ PREDICTION_CARD_IMPLEMENTATION_SUMMARY.md   | 219 [32m++++++++++++[m
+ SESSION_COMPLETE_OCTOBER_31_2025.md         | 321 [32m+++++++++++++++++[m
+ SESSION_SUMMARY_OCTOBER_30_2025.md          | 294 [32m+++++++++++++++[m
+ app/api/market/route.ts                     |  46 [32m+++[m
+ app/api/match/[match_id]/route.ts           | 245 [32m++++++[m[31m-------[m
+ app/api/predictions/warm/route.ts           |  43 [32m+++[m
+ app/match/[match_id]/BookmakerOdds.tsx      |  94 [32m+++++[m
+ app/match/[match_id]/ConsensusRow.tsx       |  61 [32m++++[m
+ app/match/[match_id]/page.tsx               | 224 [32m+++++[m[31m-------[m
+ components/predictions/PredictionCard.tsx   | 534 [32m++++++++++++++++++++++++++++[m
+ components/ui/odds-prediction-table.tsx     | 149 [32m++++++[m[31m--[m
+ lib/market/types.ts                         |   2 [32m+[m
+ lib/odds.ts                                 |  34 [32m++[m
+ package-lock.json                           |  22 [32m++[m
+ package.json                                |   2 [32m+[m
+ 21 files changed, 3603 insertions(+), 313 deletions(-)

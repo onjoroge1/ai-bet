@@ -1,8 +1,9 @@
 "use client"
 
 import { Card } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Check, X, Zap, Brain, Shield, TrendingUp, Target, BarChart3 } from "lucide-react"
+import { Check, X, Zap, Target, TrendingUp, Shield, Brain, BarChart3, DollarSign, AlertTriangle } from "lucide-react"
 
 interface FreeVsPremiumComparisonProps {
   isPurchased: boolean
@@ -11,164 +12,158 @@ interface FreeVsPremiumComparisonProps {
 
 /**
  * Free vs Premium Comparison Component
- * Shows what bettors get for free vs premium
- * Creates clear value differentiation
+ * Side-by-side feature comparison to showcase premium value
  */
-export function FreeVsPremiumComparison({ 
-  isPurchased, 
-  onPurchaseClick 
-}: FreeVsPremiumComparisonProps) {
+export function FreeVsPremiumComparison({ isPurchased, onPurchaseClick }: FreeVsPremiumComparisonProps) {
   if (isPurchased) return null
 
   const features = [
     {
-      feature: "AI Prediction",
+      name: "AI Prediction",
       free: true,
       premium: true,
-      premiumNote: "Advanced V2 Model"
+      premiumBadge: "Advanced V2 Model"
     },
     {
-      feature: "Confidence Score",
+      name: "Confidence Score",
       free: true,
       premium: true,
-      premiumNote: "Enhanced Accuracy"
+      premiumBadge: "Enhanced Accuracy"
     },
     {
-      feature: "Basic Probabilities",
+      name: "Basic Probabilities",
       free: true,
       premium: true,
-      premiumNote: "Detailed Breakdown"
+      premiumBadge: "Detailed Breakdown"
     },
     {
-      feature: "Betting Recommendations",
+      name: "Betting Recommendations",
       free: false,
       premium: true,
       icon: Target
     },
     {
-      feature: "Value Bet Identification",
+      name: "Value Bet Identification",
       free: false,
       premium: true,
       icon: TrendingUp
     },
     {
-      feature: "Risk Analysis",
+      name: "Risk Analysis",
       free: false,
       premium: true,
       icon: Shield
     },
     {
-      feature: "Team Strengths/Weaknesses",
+      name: "Team Strengths/Weaknesses",
       free: false,
       premium: true,
       icon: Brain
     },
     {
-      feature: "Advanced Markets (BTTS, Handicaps)",
+      name: "Advanced Markets (BTTS, Handicaps)",
       free: false,
       premium: true,
       icon: BarChart3
     },
     {
-      feature: "Stake Recommendations",
+      name: "Stake Recommendations",
       free: false,
       premium: true,
       icon: Zap
     },
     {
-      feature: "Bets to Avoid List",
+      name: "Bets to Avoid List",
       free: false,
       premium: true,
-      icon: Shield
+      icon: AlertTriangle
     }
   ]
 
   return (
-    <Card className="bg-slate-800/60 border-slate-700 mb-6">
+    <Card className="bg-gradient-to-br from-slate-800/90 to-slate-900/90 border-slate-700 mb-6">
       <div className="p-6">
         <div className="text-center mb-6">
-          <h3 className="text-xl font-bold text-white mb-2">Free vs Premium</h3>
-          <p className="text-sm text-slate-400">
-            See what intelligence you're missing
-          </p>
+          <h2 className="text-2xl font-bold text-white mb-2">Free vs Premium</h2>
+          <p className="text-slate-400 text-sm">See what intelligence you're missing</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Free Column */}
-          <div className="bg-slate-700/30 rounded-lg p-5 border border-slate-600">
-            <div className="flex items-center justify-between mb-4">
-              <h4 className="text-lg font-semibold text-white">Free (V1)</h4>
-              <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/40">Basic</Badge>
-            </div>
-            <div className="space-y-3">
-              {features.map((item, index) => (
-                <div key={index} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 flex-1">
-                    {item.free ? (
-                      <Check className="w-4 h-4 text-emerald-400" />
-                    ) : (
-                      <X className="w-4 h-4 text-slate-600" />
-                    )}
-                    <span className={`text-sm ${item.free ? 'text-slate-300' : 'text-slate-600'}`}>
-                      {item.feature}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Premium Column */}
-          <div className="bg-gradient-to-br from-amber-900/20 to-purple-900/20 rounded-lg p-5 border-2 border-amber-500/30 relative overflow-hidden">
-            <div className="absolute top-0 right-0 bg-amber-500/20 px-3 py-1 rounded-bl-lg">
-              <Badge className="bg-amber-500/30 text-amber-300 border-amber-500/50 text-xs">
-                <Zap className="w-3 h-3 mr-1" />
-                Premium
-              </Badge>
-            </div>
-            
-            <div className="flex items-center justify-between mb-4 mt-1">
-              <h4 className="text-lg font-semibold text-white">Premium (V2)</h4>
-              <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40">AI-Powered</Badge>
-            </div>
-            <div className="space-y-3">
-              {features.map((item, index) => (
-                <div key={index} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 flex-1">
-                    {item.premium ? (
-                      <Check className="w-4 h-4 text-emerald-400" />
-                    ) : (
-                      <X className="w-4 h-4 text-red-500" />
-                    )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Free (V1) Column */}
+          <Card className="bg-slate-800/60 border-slate-700">
+            <div className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-white">Free (V1)</h3>
+                <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/40 text-xs">Basic</Badge>
+              </div>
+              
+              <div className="space-y-3">
+                {features.map((feature, index) => (
+                  <div key={index} className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-2 flex-1">
-                      {item.icon && <item.icon className="w-4 h-4 text-amber-400" />}
-                      <span className="text-sm text-white font-medium">
-                        {item.feature}
+                      {feature.free ? (
+                        <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
+                      ) : (
+                        <X className="w-4 h-4 text-slate-600 flex-shrink-0" />
+                      )}
+                      <span className={`text-sm ${feature.free ? 'text-slate-200' : 'text-slate-500'}`}>
+                        {feature.name}
                       </span>
                     </div>
                   </div>
-                  {item.premiumNote && (
-                    <Badge variant="outline" className="bg-emerald-500/10 border-emerald-500/30 text-emerald-400 text-xs ml-2">
-                      {item.premiumNote}
-                    </Badge>
-                  )}
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
+          </Card>
 
-            {/* CTA */}
-            <div className="mt-6 pt-4 border-t border-amber-500/20">
-              <button
+          {/* Premium (V2) Column */}
+          <Card className="bg-gradient-to-br from-amber-500/10 via-purple-500/10 to-amber-500/10 border-amber-500/30 relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent animate-pulse"></div>
+            <div className="p-5 relative z-10">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-white">Premium (V2)</h3>
+                <div className="flex flex-col gap-1">
+                  <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0 text-xs px-2 py-0.5">
+                    <Zap className="w-3 h-3 mr-1 inline" />
+                    Premium
+                  </Badge>
+                  <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/40 text-xs px-2 py-0.5">
+                    AI-Powered
+                  </Badge>
+                </div>
+              </div>
+              
+              <div className="space-y-3 mb-4">
+                {features.map((feature, index) => (
+                  <div key={index} className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2 flex-1">
+                      <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm text-slate-200">{feature.name}</span>
+                        {feature.premiumBadge && (
+                          <Badge className="bg-green-500/20 text-green-300 border-green-500/40 text-xs px-1.5 py-0">
+                            {feature.premiumBadge}
+                          </Badge>
+                        )}
+                        {feature.icon && (
+                          <feature.icon className="w-4 h-4 text-amber-400" />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <Button
                 onClick={onPurchaseClick}
-                className="w-full bg-gradient-to-r from-amber-500 to-purple-500 hover:from-amber-600 hover:to-purple-600 text-white font-semibold py-2.5 rounded-lg transition-all shadow-lg hover:shadow-xl"
+                className="w-full bg-gradient-to-r from-orange-500 to-purple-600 hover:from-orange-600 hover:to-purple-700 text-white font-semibold py-2.5 shadow-lg shadow-orange-500/20"
               >
                 Upgrade to Premium
-              </button>
+              </Button>
             </div>
-          </div>
+          </Card>
         </div>
       </div>
     </Card>
   )
 }
-
