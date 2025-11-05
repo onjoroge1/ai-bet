@@ -17,10 +17,11 @@ import { LiveScoreCard } from "@/components/live/LiveScoreCard"
 import { MomentumIndicator } from "@/components/live/MomentumIndicator"
 import { LiveMarketsCard } from "@/components/live/LiveMarketsCard"
 import { LiveMatchStats } from "@/components/live/LiveMatchStats"
-import { PremiumBettingIntelligence } from "@/components/live/PremiumBettingIntelligence"
-import { FreeVsPremiumComparison } from "@/components/live/FreeVsPremiumComparison"
+import { UnifiedPremiumValue } from "@/components/match/UnifiedPremiumValue"
 import { RealtimeAdvancedMarkets } from "@/components/live/RealtimeAdvancedMarkets"
 import { FinishedMatchStats } from "@/components/match/FinishedMatchStats"
+import { BettingIntelligence } from "@/components/match/BettingIntelligence"
+import { edgeEV } from "@/lib/odds"
 import type { EnhancedMatchData } from "@/types/live-match"
 
 // Using EnhancedMatchData for live match support
@@ -356,97 +357,228 @@ export default function MatchDetailPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      <div className="max-w-6xl mx-auto px-4 py-8">
+      <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
         {/* Back Button */}
         <Button
           onClick={() => router.push('/')}
           variant="ghost"
-          className="mb-6 text-slate-300 hover:text-white"
+          className="text-slate-300 hover:text-white"
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Homepage
         </Button>
 
         {/* Match Overview Section */}
-        <Card className="bg-slate-800/60 border-slate-700 mb-4">
-          <div className="p-4">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* Teams */}
-              <div className="lg:col-span-2">
-                <div className="text-center lg:text-left">
-                  <h1 className="text-2xl lg:text-3xl font-bold text-white mb-1">
-                    {matchData.home.name} vs {matchData.away.name}
-                  </h1>
-                  <div className="flex items-center justify-center lg:justify-start gap-3 text-slate-400 text-sm">
-                    {matchData.league?.name && (
-                      <div className="flex items-center gap-1.5">
-                        <Trophy className="h-3.5 w-3.5" />
-                        <span>{matchData.league.name}</span>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-1.5">
-                      <Calendar className="h-3.5 w-3.5" />
-                      <span>{formatKickoffTime(matchData.kickoff_at)}</span>
-                    </div>
-                    {matchData.status === 'LIVE' && matchData.score && (
-                      <div className="text-emerald-400 font-semibold">
-                        LIVE: {matchData.score.home} - {matchData.score.away}
-                      </div>
-                    )}
-                    {isFinished && (() => {
-                      const score = matchData.final_result?.score || matchData.score
-                      if (!score || score.home === undefined || score.away === undefined) return null
-                      return (
-                        <div className="text-slate-300 font-semibold">
-                          FT: {score.home} - {score.away}
-                        </div>
-                      )
-                    })()}
+        <Card className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 border-slate-700">
+          <div className="p-6">
+            {/* Top Row: League, Date, Status */}
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-700">
+              <div className="flex items-center gap-4 flex-wrap">
+                {matchData.league?.name && (
+                  <div className="flex items-center gap-2">
+                    <Trophy className="h-4 w-4 text-amber-400" />
+                    <span className="text-slate-300 font-medium">{matchData.league.name}</span>
                   </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-blue-400" />
+                  <span className="text-slate-300 text-sm">{formatKickoffTime(matchData.kickoff_at)}</span>
                 </div>
               </div>
-
-              {/* Odds + Consensus vs Best */}
-              {matchData.odds?.novig_current && (
-                <div className="border-t lg:border-t-0 lg:border-l border-slate-700 pt-4 lg:pt-0 lg:pl-4">
-                  <div className="text-center lg:text-right">
-                    <div className="text-slate-400 text-xs mb-2">Current Odds (Consensus no‑vig)</div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="flex flex-col items-center gap-0.5">
-                        <div className="text-xs text-slate-400 uppercase">Home</div>
-                        <div className="px-2 py-1.5 rounded-md border border-slate-700 text-slate-200 text-base font-semibold">
-                          {(1 / matchData.odds.novig_current.home).toFixed(2)}
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-center gap-0.5">
-                        <div className="text-xs text-slate-400 uppercase">Draw</div>
-                        <div className="px-2 py-1.5 rounded-md border border-slate-700 text-slate-200 text-base font-semibold">
-                          {(1 / matchData.odds.novig_current.draw).toFixed(2)}
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-center gap-0.5">
-                        <div className="text-xs text-slate-400 uppercase">Away</div>
-                        <div className="px-2 py-1.5 rounded-md border border-slate-700 text-slate-200 text-base font-semibold">
-                          {(1 / matchData.odds.novig_current.away).toFixed(2)}
-                        </div>
-                      </div>
-                    </div>
-                    {matchData.odds?.books && (
-                      <div className="mt-3">
-                        <ConsensusRow novig={matchData.odds.novig_current as any} books={matchData.odds.books as any} />
-                      </div>
+              {(matchData.status === 'LIVE' || isFinished) && (() => {
+                const score = isFinished 
+                  ? (matchData.final_result?.score || matchData.score)
+                  : matchData.score
+                if (!score || score.home === undefined || score.away === undefined) return null
+                return (
+                  <div className={`flex items-center gap-2 ${matchData.status === 'LIVE' ? 'text-emerald-400' : 'text-slate-300'}`}>
+                    {matchData.status === 'LIVE' && (
+                      <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+                    )}
+                    <span className="font-bold text-lg">
+                      {score.home} - {score.away}
+                    </span>
+                    {matchData.status === 'LIVE' && matchData.live_data?.minute && (
+                      <span className="text-slate-400 text-sm">
+                        {matchData.live_data.minute}'
+                      </span>
                     )}
                   </div>
-                </div>
-              )}
+                )
+              })()}
             </div>
+
+            {/* Main Content: Teams vs Odds */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Left: Home Team */}
+              <div className="flex flex-col items-center lg:items-start">
+                <div className="flex items-center gap-3 mb-2">
+                  {matchData.home?.logo_url && (
+                    <img 
+                      src={matchData.home.logo_url} 
+                      alt={matchData.home.name}
+                      className="w-12 h-12 object-contain"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none'
+                      }}
+                    />
+                  )}
+                  <h2 className="text-xl lg:text-2xl font-bold text-white text-center lg:text-left">
+                    {matchData.home.name}
+                  </h2>
+                </div>
+                {matchData.odds?.novig_current && matchData.odds?.books && (() => {
+                  const homeProb = matchData.odds.novig_current.home
+                  const homeOdds = (1 / homeProb).toFixed(2)
+                  const bestHome = Math.max(...Object.values(matchData.odds.books).map(b => b.home))
+                  const ev = edgeEV(homeProb, bestHome)
+                  const evColor = ev >= 0.02 ? 'text-emerald-400' : ev > 0 ? 'text-blue-400' : 'text-slate-400'
+                  return (
+                    <div className="w-full mt-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-slate-400 text-xs">Consensus Odds</span>
+                        <span className="text-white font-semibold text-lg">{homeOdds}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 text-xs">Best Available</span>
+                        <span className="text-slate-300 text-sm">{bestHome.toFixed(2)}</span>
+                      </div>
+                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-700">
+                        <span className="text-slate-400 text-xs">Expected Value</span>
+                        <span className={`font-semibold text-sm ${evColor}`}>
+                          {ev >= 0 ? '+' : ''}{(ev * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })()}
+              </div>
+
+              {/* Center: VS Badge + Match Info */}
+              <div className="flex flex-col items-center justify-center">
+                <div className="bg-slate-700/50 rounded-full px-4 py-2 mb-4">
+                  <span className="text-slate-400 font-semibold text-sm">VS</span>
+                </div>
+                {matchData.status === 'LIVE' && (
+                  <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/40 animate-pulse mb-2">
+                    LIVE
+                  </Badge>
+                )}
+                {isFinished && (
+                  <Badge className="bg-slate-500/20 text-slate-400 border-slate-500/40 mb-2">
+                    FINISHED
+                  </Badge>
+                )}
+              </div>
+
+              {/* Right: Away Team */}
+              <div className="flex flex-col items-center lg:items-end">
+                <div className="flex items-center gap-3 mb-2 flex-row-reverse lg:flex-row">
+                  <h2 className="text-xl lg:text-2xl font-bold text-white text-center lg:text-right">
+                    {matchData.away.name}
+                  </h2>
+                  {matchData.away?.logo_url && (
+                    <img 
+                      src={matchData.away.logo_url} 
+                      alt={matchData.away.name}
+                      className="w-12 h-12 object-contain"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none'
+                      }}
+                    />
+                  )}
+                </div>
+                {matchData.odds?.novig_current && matchData.odds?.books && (() => {
+                  const awayProb = matchData.odds.novig_current.away
+                  const awayOdds = (1 / awayProb).toFixed(2)
+                  const bestAway = Math.max(...Object.values(matchData.odds.books).map(b => b.away))
+                  const ev = edgeEV(awayProb, bestAway)
+                  const evColor = ev >= 0.02 ? 'text-emerald-400' : ev > 0 ? 'text-blue-400' : 'text-slate-400'
+                  return (
+                    <div className="w-full mt-3 text-right lg:text-right">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-white font-semibold text-lg">{awayOdds}</span>
+                        <span className="text-slate-400 text-xs">Consensus Odds</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-300 text-sm">{bestAway.toFixed(2)}</span>
+                        <span className="text-slate-400 text-xs">Best Available</span>
+                      </div>
+                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-700">
+                        <span className={`font-semibold text-sm ${evColor}`}>
+                          {ev >= 0 ? '+' : ''}{(ev * 100).toFixed(1)}%
+                        </span>
+                        <span className="text-slate-400 text-xs">Expected Value</span>
+                      </div>
+                    </div>
+                  )
+                })()}
+              </div>
+            </div>
+
+            {/* Draw Odds Row (if available) */}
+            {matchData.odds?.novig_current && matchData.odds?.books && (() => {
+              if (!matchData.odds.novig_current || !matchData.odds.books) return null
+              
+              const drawProb = matchData.odds.novig_current.draw
+              const drawOdds = (1 / drawProb).toFixed(2)
+              const books = matchData.odds.books
+              const bestDraw = Math.max(...Object.values(books).map(b => b.draw))
+              const drawEV = edgeEV(drawProb, bestDraw)
+              const drawEVColor = drawEV >= 0.02 ? 'text-emerald-400' : drawEV > 0 ? 'text-blue-400' : 'text-slate-400'
+              const bestDrawBookmaker = Object.keys(books).find(key => {
+                const bookOdds = books[key]
+                return bookOdds && bookOdds.draw === bestDraw
+              }) || '—'
+              
+              return (
+                <div className="mt-6 pt-6 border-t border-slate-700">
+                  <div className="flex items-center justify-center gap-6">
+                    <div className="text-center">
+                      <div className="text-slate-400 text-xs mb-1">Draw</div>
+                      <div className="text-white font-semibold text-lg mb-1">
+                        {drawOdds}
+                      </div>
+                      <div className="text-slate-500 text-xs">
+                        Consensus
+                      </div>
+                    </div>
+                    <div className="h-8 w-px bg-slate-700" />
+                    <div className="text-center">
+                      <div className="text-slate-400 text-xs mb-1">Best Available</div>
+                      <div className="text-slate-300 text-base mb-1">
+                        {bestDraw.toFixed(2)}
+                      </div>
+                      <div className="text-slate-500 text-xs">
+                        {bestDrawBookmaker}
+                      </div>
+                    </div>
+                    <div className="h-8 w-px bg-slate-700" />
+                    <div className="text-center">
+                      <div className="text-slate-400 text-xs mb-1">Expected Value</div>
+                      <div className={`font-semibold text-base mb-1 ${drawEVColor}`}>
+                        {drawEV >= 0 ? '+' : ''}{(drawEV * 100).toFixed(1)}%
+                      </div>
+                      <div className="text-slate-500 text-xs">EV</div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Enhanced Consensus Row (if available) */}
+            {matchData.odds?.books && matchData.odds?.novig_current && (
+              <div className="mt-6 pt-6 border-t border-slate-700">
+                <ConsensusRow novig={matchData.odds.novig_current as any} books={matchData.odds.books as any} />
+              </div>
+            )}
           </div>
         </Card>
 
         {/* Finished Match Banner */}
         {isFinished && (
-          <Card className="bg-gradient-to-r from-emerald-900/40 to-blue-900/40 border-emerald-500/50 mb-6">
-            <div className="p-4">
+          <Card className="bg-gradient-to-r from-emerald-900/40 to-blue-900/40 border-emerald-500/50">
+            <div className="p-6">
               <div className="flex items-center justify-center gap-3">
                 <Trophy className="w-6 h-6 text-emerald-400" />
                 <div className="text-center">
@@ -460,17 +592,15 @@ export default function MatchDetailPage() {
 
         {/* Finished Match Components */}
         {isFinished && (
-          <div className="mb-6">
-            <FinishedMatchStats
-              matchData={matchData as any}
-              predictionData={quickPurchaseInfo?.predictionData || fullPrediction}
-            />
-          </div>
+          <FinishedMatchStats
+            matchData={matchData as any}
+            predictionData={quickPurchaseInfo?.predictionData || fullPrediction}
+          />
         )}
 
         {/* Live Match Components - Only when status=LIVE and not finished */}
         {isLive && !isFinished && (
-          <>
+          <div className="space-y-6">
             {/* Live Score Card - use momentum.minute and score if live_data not available */}
             {(matchData.live_data || (matchData.momentum && matchData.score)) && (
               <LiveScoreCard
@@ -501,47 +631,180 @@ export default function MatchDetailPage() {
                 awayTeamName={matchData.away.name}
               />
             )}
-          </>
+          </div>
         )}
 
         {/* Predictions + Sidebar (Bookmakers) */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main column */}
           <div className="lg:col-span-2 space-y-6">
           {/* V1 Free Prediction - Hide for finished matches */}
           {v1Model && !isFinished && (
             <Card className="bg-slate-800/60 border-slate-700">
               <div className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-bold text-white">Free Prediction (V1)</h2>
-                  <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/40">V1</Badge>
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-xl font-bold text-white">Free Prediction (V1)</h2>
+                    <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/40">V1</Badge>
+                    {hasV2 && !isPurchased && (
+                      <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40 text-xs animate-pulse">
+                        <Star className="w-3 h-3 mr-1 inline" />
+                        V2 Available
+                      </Badge>
+                    )}
+                  </div>
+                  {hasV2 && !isPurchased && (
+                    <Button
+                      onClick={handlePurchaseClick}
+                      variant="outline"
+                      size="sm"
+                      className="border-amber-500/50 text-amber-300 hover:bg-amber-500/20"
+                    >
+                      <Zap className="w-3 h-3 mr-1" />
+                      Upgrade to V2
+                    </Button>
+                  )}
                 </div>
-                <div className="space-y-4">
-                  <div>
-                    <div className="text-slate-400 text-sm mb-2">Our Prediction</div>
-                    <div className="text-white font-semibold text-lg">
-                      {getSideName(v1Model.pick, matchData)}
+                
+                {/* Two-column layout: Prediction on left, Probabilities on right */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Left: Main Prediction */}
+                  <div className="space-y-4">
+                    <div>
+                      <div className="text-slate-400 text-sm mb-2">Our Prediction</div>
+                      <div className="text-white font-semibold text-xl mb-1">
+                        {getSideName(v1Model.pick, matchData)}
+                      </div>
+                      <div className="text-slate-500 text-xs">
+                        {v1Model.pick === 'home' && 'Home team to win'}
+                        {v1Model.pick === 'away' && 'Away team to win'}
+                        {v1Model.pick === 'draw' && 'Match to end in a draw'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-slate-400 text-sm">Confidence Score (V1)</div>
+                        {hasV2 && !isPurchased && v2Model && (
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-slate-500">V2:</span>
+                            <span className="text-amber-400 font-semibold">
+                              {Math.round(v2Model.confidence * 100)}%
+                            </span>
+                            <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40 text-[10px] px-1.5 py-0">
+                              +{Math.round((v2Model.confidence - v1Model.confidence) * 100)}%
+                            </Badge>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-baseline gap-2">
+                        <div className={`text-4xl font-bold ${getConfidenceColorClass(v1Model.confidence * 100)}`}>
+                          {Math.round(v1Model.confidence * 100)}
+                        </div>
+                        <div className="text-slate-400 text-lg">%</div>
+                      </div>
+                      {/* Confidence bar */}
+                      <div className="mt-2 h-2 bg-slate-700 rounded-full overflow-hidden relative">
+                        <div 
+                          className={`h-full ${
+                            v1Model.confidence * 100 >= 80 ? 'bg-emerald-500' :
+                            v1Model.confidence * 100 >= 60 ? 'bg-yellow-500' :
+                            'bg-red-500'
+                          }`}
+                          style={{ width: `${Math.min(v1Model.confidence * 100, 100)}%` }}
+                        />
+                        {/* V2 confidence indicator if available */}
+                        {hasV2 && !isPurchased && v2Model && (
+                          <div 
+                            className="absolute top-0 h-full border-r-2 border-amber-400/60"
+                            style={{ left: `${Math.min(v2Model.confidence * 100, 100)}%` }}
+                            title={`V2 Confidence: ${Math.round(v2Model.confidence * 100)}%`}
+                          />
+                        )}
+                      </div>
+                      {hasV2 && !isPurchased && (
+                        <div className="mt-2 text-xs text-slate-500">
+                          V2 model provides enhanced accuracy with deeper analysis
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div>
-                    <div className="text-slate-400 text-sm mb-2">Confidence</div>
-                    <div className={`text-3xl font-bold ${getConfidenceColorClass(v1Model.confidence * 100)}`}>
-                      {Math.round(v1Model.confidence * 100)}%
-                    </div>
-                  </div>
+
+                  {/* Right: Probability Breakdown */}
                   {v1Model.probs && (
-                    <div className="grid grid-cols-3 gap-3 pt-4 border-t border-slate-700">
-                      <div className="text-center">
-                        <div className="text-slate-400 text-xs mb-1">Home Win</div>
-                        <div className="text-slate-300 font-medium">{(v1Model.probs.home * 100).toFixed(1)}%</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-slate-400 text-xs mb-1">Draw</div>
-                        <div className="text-slate-300 font-medium">{(v1Model.probs.draw * 100).toFixed(1)}%</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-slate-400 text-xs mb-1">Away Win</div>
-                        <div className="text-slate-300 font-medium">{(v1Model.probs.away * 100).toFixed(1)}%</div>
+                    <div className="space-y-4">
+                      <div className="text-slate-400 text-sm mb-3">Win Probability</div>
+                      <div className="space-y-3">
+                        {/* Home Win */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <div className="flex items-center gap-2">
+                              {matchData.home?.logo_url && (
+                                <img 
+                                  src={matchData.home.logo_url} 
+                                  alt={matchData.home.name}
+                                  className="w-5 h-5 object-contain"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).style.display = 'none'
+                                  }}
+                                />
+                              )}
+                              <span className="text-slate-300 text-sm font-medium">{matchData.home.name}</span>
+                            </div>
+                            <span className={`text-sm font-semibold ${v1Model.pick === 'home' ? 'text-emerald-400' : 'text-slate-400'}`}>
+                              {(v1Model.probs.home * 100).toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                            <div 
+                              className={`h-full ${v1Model.pick === 'home' ? 'bg-emerald-500' : 'bg-slate-600'}`}
+                              style={{ width: `${(v1Model.probs.home * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Draw */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-slate-300 text-sm font-medium">Draw</span>
+                            <span className={`text-sm font-semibold ${v1Model.pick === 'draw' ? 'text-emerald-400' : 'text-slate-400'}`}>
+                              {(v1Model.probs.draw * 100).toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                            <div 
+                              className={`h-full ${v1Model.pick === 'draw' ? 'bg-emerald-500' : 'bg-slate-600'}`}
+                              style={{ width: `${(v1Model.probs.draw * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Away Win */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <div className="flex items-center gap-2">
+                              {matchData.away?.logo_url && (
+                                <img 
+                                  src={matchData.away.logo_url} 
+                                  alt={matchData.away.name}
+                                  className="w-5 h-5 object-contain"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).style.display = 'none'
+                                  }}
+                                />
+                              )}
+                              <span className="text-slate-300 text-sm font-medium">{matchData.away.name}</span>
+                            </div>
+                            <span className={`text-sm font-semibold ${v1Model.pick === 'away' ? 'text-emerald-400' : 'text-slate-400'}`}>
+                              {(v1Model.probs.away * 100).toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                            <div 
+                              className={`h-full ${v1Model.pick === 'away' ? 'bg-emerald-500' : 'bg-slate-600'}`}
+                              style={{ width: `${(v1Model.probs.away * 100)}%` }}
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -550,82 +813,76 @@ export default function MatchDetailPage() {
             </Card>
           )}
 
-          {/* V2 Premium Prediction - Hide for finished matches */}
-          {hasV2 && !isFinished && (
-            <Card className={`bg-slate-800/60 border-2 ${isPurchased ? 'border-emerald-500/50' : 'border-amber-500/50'}`}>
+          {/* V2 Premium Prediction - Only show when purchased */}
+          {hasV2 && !isFinished && isPurchased && (
+            <Card className="bg-slate-800/60 border-2 border-emerald-500/50">
               <div className="p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-bold text-white">Premium Prediction (V2)</h2>
                   <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40">V2</Badge>
                 </div>
-                {isPurchased ? (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-emerald-400">
-                      <Unlock className="h-5 w-5" />
-                      <span className="font-semibold">Full Access Granted</span>
-                    </div>
-                    <div>
-                      <div className="text-slate-400 text-sm mb-2">Our Prediction</div>
-                      <div className="text-white font-semibold text-lg">
-                        {getSideName(v2Model.pick, matchData)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-slate-400 text-sm mb-2">Confidence</div>
-                      <div className={`text-3xl font-bold ${getConfidenceColorClass(v2Model.confidence * 100)}`}>
-                        {Math.round(v2Model.confidence * 100)}%
-                      </div>
-                    </div>
-                    {v2Model.probs && (
-                      <div className="grid grid-cols-3 gap-3 pt-4 border-t border-slate-700">
-                        <div className="text-center">
-                          <div className="text-slate-400 text-xs mb-1">Home Win</div>
-                          <div className="text-slate-300 font-medium">{(v2Model.probs.home * 100).toFixed(1)}%</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-slate-400 text-xs mb-1">Draw</div>
-                          <div className="text-slate-300 font-medium">{(v2Model.probs.draw * 100).toFixed(1)}%</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-slate-400 text-xs mb-1">Away Win</div>
-                          <div className="text-slate-300 font-medium">{(v2Model.probs.away * 100).toFixed(1)}%</div>
-                        </div>
-                      </div>
-                    )}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-emerald-400">
+                    <Unlock className="h-5 w-5" />
+                    <span className="font-semibold">Full Access Granted</span>
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-amber-400">
-                      <Lock className="h-5 w-5" />
-                      <span className="font-semibold">Premium Content</span>
-                    </div>
-                    <div>
-                      <div className="text-slate-400 text-sm mb-2">Our Prediction</div>
-                      <div className="text-white font-semibold text-lg">
-                        {getSideName(v2Model.pick, matchData)}
-                      </div>
-                    </div>
-                    <div>
-                      <Button
-                        onClick={handlePurchaseClick}
-                        className="w-full bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-semibold"
-                      >
-                        <Lock className="w-4 h-4 mr-2" />
-                        Unlock Premium
-                      </Button>
-                    </div>
-                    <div className="text-slate-400 text-sm pt-4 border-t border-slate-700">
-                      Advanced AI model with deeper analysis, team breakdown, risk assessment, and betting recommendations.
+                  <div>
+                    <div className="text-slate-400 text-sm mb-2">Our Prediction</div>
+                    <div className="text-white font-semibold text-lg">
+                      {getSideName(v2Model.pick, matchData)}
                     </div>
                   </div>
-                )}
+                  <div>
+                    <div className="text-slate-400 text-sm mb-2">Confidence</div>
+                    <div className={`text-3xl font-bold ${getConfidenceColorClass(v2Model.confidence * 100)}`}>
+                      {Math.round(v2Model.confidence * 100)}%
+                    </div>
+                  </div>
+                  {v2Model.probs && (
+                    <div className="grid grid-cols-3 gap-3 pt-4 border-t border-slate-700">
+                      <div className="text-center">
+                        <div className="text-slate-400 text-xs mb-1">Home Win</div>
+                        <div className="text-slate-300 font-medium">{(v2Model.probs.home * 100).toFixed(1)}%</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-slate-400 text-xs mb-1">Draw</div>
+                        <div className="text-slate-300 font-medium">{(v2Model.probs.draw * 100).toFixed(1)}%</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-slate-400 text-xs mb-1">Away Win</div>
+                        <div className="text-slate-300 font-medium">{(v2Model.probs.away * 100).toFixed(1)}%</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Betting Intelligence Section - Only show when purchased */}
+          {!isFinished && isPurchased && (
+            <Card className="bg-slate-800/60 border-2 border-emerald-500/50">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <Brain className="h-5 w-5 text-purple-400" />
+                    Betting Intelligence
+                  </h2>
+                  <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/40">Premium</Badge>
+                </div>
+                <BettingIntelligence 
+                  matchId={matchId} 
+                  bankroll={1000}
+                  model={hasV2 ? 'v2' : 'best'}
+                  showCard={false}
+                />
               </div>
             </Card>
           )}
 
           {/* For Finished Matches: Always show full prediction data (blog mode) */}
           {isFinished && (quickPurchaseInfo?.predictionData || fullPrediction) && (
-            <div className="space-y-6 mt-6">
+            <div className="space-y-6">
               <h2 className="text-2xl font-bold text-white">Match Analysis & Prediction</h2>
               <PredictionCard
                 mode="full"
@@ -637,51 +894,19 @@ export default function MatchDetailPage() {
             </div>
           )}
 
-          {/* For Upcoming/Live Matches: Show purchase prompts */}
-          {!isFinished && (
-            <>
-              {/* Preview Card - Hybrid Option */}
-              {!isPurchased && quickPurchaseInfo && (
-                <PredictionCard
-                  mode="preview"
-                  prediction={null}
-                  matchData={matchData}
-                  isPurchased={false}
-                  quickPurchaseInfo={quickPurchaseInfo}
-                  onPurchaseClick={handlePurchaseClick}
-                  purchaseSource="match_detail"
-                />
-              )}
-
-              {/* Premium Betting Intelligence - Value Proposition */}
-              {!isPurchased && matchData && (
-                <PremiumBettingIntelligence
-                  matchData={matchData}
-                  isPurchased={false}
-                  onPurchaseClick={handlePurchaseClick}
-                  quickPurchaseInfo={quickPurchaseInfo || {
-                    price: 0,
-                    currencySymbol: '$',
-                    analysisSummary: null,
-                    country: { currencySymbol: '$' }
-                  }}
-                  predictionData={quickPurchaseInfo?.predictionData || null}
-                />
-              )}
-
-              {/* Free vs Premium Comparison */}
-              {!isPurchased && (
-                <FreeVsPremiumComparison
-                  isPurchased={false}
-                  onPurchaseClick={handlePurchaseClick}
-                />
-              )}
-            </>
+          {/* Unified Premium Value Proposition - Shows all premium features in one section */}
+          {!isFinished && !isPurchased && (
+            <UnifiedPremiumValue
+              matchData={matchData}
+              quickPurchaseInfo={quickPurchaseInfo}
+              v2Model={v2Model}
+              onPurchaseClick={handlePurchaseClick}
+            />
           )}
 
           {/* Purchase Success Message - Only for non-finished matches */}
           {!isFinished && isPurchased && !showFullAnalysis && (
-          <Card className="bg-emerald-500/10 border-emerald-500/20 mb-6">
+          <Card className="bg-emerald-500/10 border-emerald-500/20">
             <div className="p-6 text-center">
               <CheckCircle className="h-12 w-12 text-emerald-400 mx-auto mb-4" />
               <h3 className="text-xl font-bold text-white mb-2">Full Access Granted</h3>
@@ -761,7 +986,11 @@ export default function MatchDetailPage() {
           <div className="lg:col-span-1">
             {matchData.odds?.books && Object.keys(matchData.odds.books).length > 0 && (
               <div className="lg:sticky lg:top-6">
-                <BookmakerOdds books={matchData.odds.books as any} matchData={matchData} />
+                <BookmakerOdds 
+                  books={matchData.odds.books as any} 
+                  matchData={matchData}
+                  novig={matchData.odds.novig_current}
+                />
               </div>
             )}
           </div>
@@ -812,10 +1041,12 @@ export default function MatchDetailPage() {
 // Full Analysis Component (Reused from my-tips page structure)
 function FullAnalysisSection({ 
   prediction, 
-  matchData 
+  matchData,
+  v1Model
 }: { 
   prediction: FullPrediction
   matchData: MatchData
+  v1Model?: any
 }) {
   return (
     <div className="space-y-6">
@@ -824,17 +1055,41 @@ function FullAnalysisSection({
         <Card className="bg-gradient-to-r from-emerald-800/30 to-blue-800/30 border-emerald-500/30">
           <div className="p-6">
             <div className="text-center">
-              <div className="text-slate-400 text-sm mb-2">Recommended Bet</div>
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <div className="text-slate-400 text-sm">Recommended Bet</div>
+                <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/40 text-xs">
+                  V2 Premium AI
+                </Badge>
+              </div>
               <div className="text-3xl font-bold text-emerald-400 mb-2">
                 {prediction.predictions.recommended_bet.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
               </div>
-              {prediction.predictions.confidence && (
-                <div className="text-slate-300">
-                  Confidence: <span className="text-emerald-400 font-bold">
-                    {(prediction.predictions.confidence * 100).toFixed(1)}%
-                  </span>
-                </div>
-              )}
+              <div className="flex items-center justify-center gap-4">
+                {prediction.predictions.confidence && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-300 text-sm">V2 Confidence:</span>
+                    <span className="text-emerald-400 font-bold text-lg">
+                      {(prediction.predictions.confidence * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                )}
+                {v1Model?.confidence && (
+                  <>
+                    <div className="h-4 w-px bg-slate-600" />
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-500 text-sm">V1:</span>
+                      <span className="text-slate-400 text-sm">
+                        {Math.round(v1Model.confidence * 100)}%
+                      </span>
+                      {prediction.predictions.confidence && (
+                        <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 text-[10px] px-1.5 py-0">
+                          +{Math.round((prediction.predictions.confidence - v1Model.confidence) * 100)}%
+                        </Badge>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </Card>
