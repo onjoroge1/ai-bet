@@ -2,6 +2,7 @@
 
 export interface Prediction {
   id: string
+  matchId?: string | null // For navigation to match detail page
   match: {
     id: string
     homeTeam: {
@@ -18,8 +19,14 @@ export interface Prediction {
     }
     matchDate: string
     status: string
-    homeScore?: number
-    awayScore?: number
+    homeScore?: number | null
+    awayScore?: number | null
+    statistics?: any // Match statistics for finished matches
+    final_result?: {
+      score: { home: number; away: number }
+      outcome: string
+      outcome_text: string
+    } | null
   }
   predictionType: string
   confidenceScore: number
@@ -38,7 +45,9 @@ export interface Prediction {
   potentialReturn?: number
   createdAt: string
   resultUpdatedAt?: string
-  result: 'won' | 'lost' | 'pending' | 'void'
+  result: 'won' | 'lost' | 'pending' | 'void' | 'pending_result'
+  predictionData?: any // Full prediction data for FinishedMatchStats
+  isFinished?: boolean // Whether match has finished
 }
 
 export interface PredictionsHistoryResponse {

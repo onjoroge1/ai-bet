@@ -241,7 +241,9 @@ export function TipReceipt({ tip, onClose }: TipReceiptProps) {
             variant="outline"
             onClick={() => {
               onClose()
+              // Navigate and refresh to show purchased content
               router.push(`/match/${tip.matchId}`)
+              router.refresh()
             }}
             className="border-blue-600 text-blue-400 hover:bg-blue-600/10"
           >

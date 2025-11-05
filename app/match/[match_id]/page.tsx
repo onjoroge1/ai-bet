@@ -606,9 +606,13 @@ export default function MatchDetailPage() {
                       </div>
                     </div>
                     <div>
-                      <Badge className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-3 py-1.5 text-sm font-semibold shadow-[0_0_8px_rgba(245,158,11,0.4)] w-full justify-center">
+                      <Button
+                        onClick={handlePurchaseClick}
+                        className="w-full bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-semibold"
+                      >
+                        <Lock className="w-4 h-4 mr-2" />
                         Unlock Premium
-                      </Badge>
+                      </Button>
                     </div>
                     <div className="text-slate-400 text-sm pt-4 border-t border-slate-700">
                       Advanced AI model with deeper analysis, team breakdown, risk assessment, and betting recommendations.

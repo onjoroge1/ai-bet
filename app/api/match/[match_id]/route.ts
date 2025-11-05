@@ -217,25 +217,72 @@ export async function GET(
           } : null
         }
       }
+      
+      // Ensure team names are populated - fallback to QuickPurchase if backend doesn't have them
+      if ((!matchData.home?.name || matchData.home.name === 'TBD' || matchData.home.name.trim() === '') ||
+          (!matchData.away?.name || matchData.away.name === 'TBD' || matchData.away.name.trim() === '')) {
+        
+        // Try to get from QuickPurchase
+        if (quickPurchaseInfo) {
+          const matchDataFromQP = quickPurchaseInfo.matchData as any
+          
+          // Extract team names from QuickPurchase name field (format: "Team A vs Team B")
+          const nameParts = quickPurchaseInfo.name.split(' vs ')
+          let homeTeamName = matchData.home?.name || 'TBD'
+          let awayTeamName = matchData.away?.name || 'TBD'
+          
+          if (nameParts.length === 2) {
+            homeTeamName = nameParts[0].trim() || homeTeamName
+            awayTeamName = nameParts[1].trim() || awayTeamName
+          } else if (matchDataFromQP) {
+            // Try matchData from QuickPurchase
+            homeTeamName = matchDataFromQP.home_team || matchDataFromQP.home?.name || homeTeamName
+            awayTeamName = matchDataFromQP.away_team || matchDataFromQP.away?.name || awayTeamName
+          }
+          
+          // Update matchData with extracted names if we got valid names
+          if (homeTeamName !== 'TBD' && awayTeamName !== 'TBD' && 
+              homeTeamName.trim() !== '' && awayTeamName.trim() !== '') {
+            if (!matchData.home) matchData.home = { name: '', team_id: null, logo_url: null }
+            if (!matchData.away) matchData.away = { name: '', team_id: null, logo_url: null }
+            matchData.home.name = homeTeamName
+            matchData.away.name = awayTeamName
+            console.log(`[Match API] Extracted team names from QuickPurchase: ${homeTeamName} vs ${awayTeamName}`)
+          }
+        }
+      }
     } else if (quickPurchaseInfo) {
       // Fallback to QuickPurchase data only if backend API fails
       const matchDataFromQP = quickPurchaseInfo.matchData as any
       if (matchDataFromQP) {
+        // Extract team names from QuickPurchase name field if matchData doesn't have them
+        let homeTeamName = matchDataFromQP.home_team || matchDataFromQP.home?.name || 'Home Team'
+        let awayTeamName = matchDataFromQP.away_team || matchDataFromQP.away?.name || 'Away Team'
+        
+        // If still default values, try to extract from QuickPurchase name (format: "Team A vs Team B")
+        if (homeTeamName === 'Home Team' || awayTeamName === 'Away Team') {
+          const nameParts = quickPurchaseInfo.name.split(' vs ')
+          if (nameParts.length === 2) {
+            homeTeamName = nameParts[0].trim() || homeTeamName
+            awayTeamName = nameParts[1].trim() || awayTeamName
+          }
+        }
+        
         matchData = {
           match_id: matchId,
           status: 'UPCOMING',
           kickoff_at: matchDataFromQP.date || new Date().toISOString(),
           league: {
             id: null,
-            name: matchDataFromQP.league || null
+            name: matchDataFromQP.league?.name || matchDataFromQP.league || null
           },
           home: {
-            name: matchDataFromQP.home_team || 'Home Team',
+            name: homeTeamName,
             team_id: null,
             logo_url: null
           },
           away: {
-            name: matchDataFromQP.away_team || 'Away Team',
+            name: awayTeamName,
             team_id: null,
             logo_url: null
           },

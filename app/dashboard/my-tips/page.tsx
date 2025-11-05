@@ -1,11 +1,12 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Calendar, MapPin, Trophy, Target, TrendingUp, Shield } from "lucide-react"
+import { Loader2, Calendar, MapPin, Trophy, Target, TrendingUp, Shield, ExternalLink } from "lucide-react"
 
 interface Tip {
   id: string
@@ -14,6 +15,8 @@ interface Tip {
   paymentMethod: string
   tipType: 'purchase' | 'credit_claim'
   creditsSpent?: number
+  // Match ID for navigation
+  matchId?: string | null
   // Match information
   homeTeam: string
   awayTeam: string
@@ -145,6 +148,7 @@ interface AnalysisMetadata {
 }
 
 export default function MyTipsPage() {
+  const router = useRouter()
   const [tips, setTips] = useState<Tip[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedTip, setSelectedTip] = useState<Tip | null>(null)
@@ -165,7 +169,11 @@ export default function MyTipsPage() {
       }
       const data = await response.json()
       console.log("🔍 DEBUG: Received tips data:", data.length, "tips")
-      console.log("🔍 DEBUG: First tip:", data[0])
+      if (data.length > 0) {
+        console.log("🔍 DEBUG: First tip:", data[0])
+        console.log("🔍 DEBUG: First tip matchId:", data[0]?.matchId)
+        console.log("🔍 DEBUG: First tip predictionData match_info:", (data[0]?.predictionData as any)?.match_info)
+      }
       setTips(data)
     } catch (error) {
       console.error("❌ DEBUG: Error fetching tips:", error)
@@ -261,6 +269,22 @@ export default function MyTipsPage() {
   // Component for upcoming match cards (full-size)
   const UpcomingMatchCard = ({ tip }: { tip: Tip }) => {
     const timeRemaining = getTimeRemaining(tip.matchDate)
+    
+    // Extract matchId from multiple possible sources
+    const matchId = tip.matchId || 
+                    (tip.predictionData as any)?.match_info?.match_id || 
+                    (tip.predictionData as any)?.match_info?.id ||
+                    (tip.predictionData as any)?.match_id ||
+                    null
+    
+    // Debug logging
+    if (!matchId) {
+      console.log('🔍 DEBUG: No matchId found for tip:', tip.id, {
+        tipMatchId: tip.matchId,
+        predictionDataMatchInfo: (tip.predictionData as any)?.match_info,
+        predictionDataMatchId: (tip.predictionData as any)?.match_id
+      })
+    }
 
   return (
             <Card 
@@ -327,15 +351,31 @@ export default function MyTipsPage() {
                   </div>
           </div>
 
-          <Button 
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
-            onClick={(e) => {
-              e.stopPropagation()
-              handleViewPrediction(tip)
-            }}
-          >
-            View Prediction
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+              onClick={(e) => {
+                e.stopPropagation()
+                handleViewPrediction(tip)
+              }}
+            >
+              View Prediction
+            </Button>
+            {matchId && (
+              <Button
+                variant="outline"
+                className="flex-1 border-blue-600 text-blue-400 hover:bg-blue-600/10"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  router.push(`/match/${matchId}`)
+                  router.refresh()
+                }}
+              >
+                <ExternalLink className="w-4 h-4 mr-2" />
+                View Match Page
+              </Button>
+            )}
+          </div>
         </div>
       </Card>
     )
@@ -343,6 +383,22 @@ export default function MyTipsPage() {
 
   // Component for completed match cards (compact)
   const CompletedMatchCard = ({ tip }: { tip: Tip }) => {
+    // Extract matchId from multiple possible sources
+    const matchId = tip.matchId || 
+                    (tip.predictionData as any)?.match_info?.match_id || 
+                    (tip.predictionData as any)?.match_info?.id ||
+                    (tip.predictionData as any)?.match_id ||
+                    null
+    
+    // Debug logging
+    if (!matchId) {
+      console.log('🔍 DEBUG: No matchId found for completed tip:', tip.id, {
+        tipMatchId: tip.matchId,
+        predictionDataMatchInfo: (tip.predictionData as any)?.match_info,
+        predictionDataMatchId: (tip.predictionData as any)?.match_id
+      })
+    }
+    
     return (
       <Card 
         className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm hover:border-slate-500/30 hover:bg-slate-800/70 transition-all duration-200 cursor-pointer"
@@ -389,16 +445,33 @@ export default function MyTipsPage() {
           )}
 
 
-                <Button 
-            size="sm"
-            className="w-full bg-slate-600 hover:bg-slate-700 text-white text-sm"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleViewPrediction(tip)
-                  }}
-                >
-            View Details
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    size="sm"
+                    className="flex-1 bg-slate-600 hover:bg-slate-700 text-white text-sm"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleViewPrediction(tip)
+                    }}
+                  >
+                    View Details
+                  </Button>
+                  {matchId && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1 border-blue-600 text-blue-400 hover:bg-blue-600/10 text-sm"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        router.push(`/match/${matchId}`)
+                        router.refresh()
+                      }}
+                    >
+                      <ExternalLink className="w-3 h-3 mr-1" />
+                      Match
+                    </Button>
+                  )}
+                </div>
               </div>
             </Card>
     )

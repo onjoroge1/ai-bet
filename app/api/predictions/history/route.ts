@@ -109,11 +109,46 @@ export async function GET(request: NextRequest) {
       
       // Extract team names from the QuickPurchase name (e.g., "Team A vs Team B")
       const teamNames = qp.name.split(' vs ')
-      const homeTeamName = teamNames[0] || matchData?.home_team?.name || 'Unknown Home'
-      const awayTeamName = teamNames[1] || matchData?.away_team?.name || 'Unknown Away'
+      const homeTeamName = teamNames[0] || matchData?.home_team?.name || matchData?.home_team || 'Unknown Home'
+      const awayTeamName = teamNames[1] || matchData?.away_team?.name || matchData?.away_team || 'Unknown Away'
+      
+      // Check if match is finished
+      const isFinished = matchData?.is_finished === true || 
+                        matchData?.status === 'finished' || 
+                        matchData?.status_short === 'FT' ||
+                        matchData?.status_short === 'AET' ||
+                        matchData?.status_short === 'PEN'
+      
+      // Get scores from multiple possible locations
+      const homeScore = matchData?.home_score ?? 
+                       matchData?.final_score?.home ?? 
+                       predictionData?.match?.home_score ?? 
+                       predictionData?.final_score?.home ?? null
+                       
+      const awayScore = matchData?.away_score ?? 
+                       matchData?.final_score?.away ?? 
+                       predictionData?.match?.away_score ?? 
+                       predictionData?.final_score?.away ?? null
+      
+      // Build final_result object for FinishedMatchStats component
+      let finalResult = null
+      if (isFinished && homeScore !== null && awayScore !== null && 
+          typeof homeScore === 'number' && typeof awayScore === 'number') {
+        const outcome = homeScore > awayScore ? 'H' : 
+                       awayScore > homeScore ? 'A' : 'D'
+        const outcomeText = outcome === 'H' ? 'Home Win' :
+                           outcome === 'A' ? 'Away Win' : 'Draw'
+        
+        finalResult = {
+          score: { home: homeScore, away: awayScore },
+          outcome,
+          outcome_text: outcomeText
+        }
+      }
       
       return {
         id: qp.id,
+        matchId: qp.matchId, // Include matchId for navigation
         match: {
           id: qp.matchId || qp.id,
           homeTeam: {
@@ -129,9 +164,12 @@ export async function GET(request: NextRequest) {
             name: matchData?.league?.name || matchData?.league || 'Unknown League'
           },
           matchDate: matchData?.date ? new Date(matchData.date).toISOString() : qp.createdAt.toISOString(),
-          status: matchData?.is_finished ? 'finished' : (matchData?.status || 'unknown'),
-          homeScore: matchData?.home_score || predictionData?.match?.home_score || null,
-          awayScore: matchData?.away_score || predictionData?.match?.away_score || null
+          status: isFinished ? 'finished' : (matchData?.status || 'unknown'),
+          homeScore,
+          awayScore,
+          // Include match statistics for finished matches
+          statistics: matchData?.live_data?.statistics || matchData?.statistics || null,
+          final_result: finalResult
         },
         predictionType: qp.predictionType || predictionData?.prediction_type || 'unknown',
         confidenceScore: qp.confidenceScore || predictionData?.confidence || 0,
@@ -149,7 +187,10 @@ export async function GET(request: NextRequest) {
         stake: null,
         potentialReturn: null,
         createdAt: qp.createdAt.toISOString(),
-        resultUpdatedAt: qp.updatedAt.toISOString()
+        resultUpdatedAt: qp.updatedAt.toISOString(),
+        // Include full prediction data for FinishedMatchStats
+        predictionData: predictionData || null,
+        isFinished
       }
     })
 

@@ -1,10 +1,15 @@
 "use client"
 
-import { Suspense } from "react"
+import { Suspense, lazy } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { TrendingUp, BarChart3, Package, Calendar, Download, Target } from "lucide-react"
-import PredictionsHistory from "@/components/predictions-history"
+
+// Lazy load to prevent chunk loading issues
+const PredictionsHistory = lazy(() => import("@/components/predictions-history").catch(() => {
+  // Fallback if import fails
+  return { default: () => <div className="text-center p-8 text-slate-400">Loading predictions history...</div> }
+}))
 
 // Loading component for the predictions history
 function PredictionsHistoryLoading() {

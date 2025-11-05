@@ -397,6 +397,11 @@ export async function GET(request: Request) {
         // Add tip type to distinguish between monetary and credit purchases
         tipType: purchase.paymentMethod === 'credits' ? 'credit_claim' : 'purchase',
         creditsSpent: purchase.paymentMethod === 'credits' ? 1 : null,
+        // Match ID for navigation - try multiple sources
+        matchId: qp.matchId || 
+                 (predictionPayload?.match_info?.match_id as string) || 
+                 (predictionPayload?.match_info?.id as string) ||
+                 null,
         // Match information from the matchData if available, fallback to prediction data
         homeTeam: (qp.matchData as any)?.home_team || predictionPayload?.match_info?.home_team || 'TBD',
         awayTeam: (qp.matchData as any)?.away_team || predictionPayload?.match_info?.away_team || 'TBD',

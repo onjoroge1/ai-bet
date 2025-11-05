@@ -79,9 +79,17 @@ export function SignInForm() {
       }
 
       if (result?.ok) {
-        logger.info("Sign in successful", { tags: ["auth", "signin"] })
-        router.push(callbackUrl)
-        router.refresh()
+        logger.info("Sign in successful", { tags: ["auth", "signin"], data: { callbackUrl } })
+        
+        // Wait for NextAuth session to update, then redirect
+        // Refresh the session to ensure auth state is updated
+        setTimeout(() => {
+          // Decode callbackUrl if it was encoded
+          const decodedUrl = decodeURIComponent(callbackUrl)
+          logger.info("Redirecting after signin", { tags: ["auth", "signin"], data: { decodedUrl } })
+          router.push(decodedUrl)
+          router.refresh()
+        }, 300)
       }
     } catch (err) {
       setError('An unexpected error occurred. Please try again.')

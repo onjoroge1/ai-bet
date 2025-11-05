@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -24,12 +25,21 @@ import {
   RefreshCw,
   Trophy,
   Calendar,
-  Zap
+  Zap,
+  ExternalLink
 } from "lucide-react"
 import { format } from "date-fns"
+import { lazy, Suspense } from "react"
 import { usePredictionsHistory, usePredictionsHistoryStats } from "./hooks/use-predictions-history"
 import { usePredictionsFilters } from "./hooks/use-predictions-filters"
 import { Prediction } from "./types"
+
+// Lazy load FinishedMatchStats to prevent chunk loading issues
+const FinishedMatchStats = lazy(() => import("@/components/match/FinishedMatchStats").then(module => ({
+  default: module.FinishedMatchStats
+})).catch(() => ({
+  default: () => <div className="text-center p-4 text-slate-400">Loading match stats...</div>
+})))
 
 export default function PredictionsHistory() {
   const { filters, updateFilters, resetFilters, setPage, toggleSort } = usePredictionsFilters()
@@ -301,6 +311,30 @@ export default function PredictionsHistory() {
                 </SelectContent>
               </Select>
             </div>
+            
+            {/* Date Range Filters */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-700">
+              <div>
+                <label className="text-sm text-slate-400 mb-2 block">From Date</label>
+                <Input
+                  type="date"
+                  value={filters.dateFrom || ''}
+                  onChange={(e) => updateFilters({ dateFrom: e.target.value || undefined })}
+                  className="bg-slate-900/50 border-slate-600 text-white"
+                  max={filters.dateTo || undefined}
+                />
+              </div>
+              <div>
+                <label className="text-sm text-slate-400 mb-2 block">To Date</label>
+                <Input
+                  type="date"
+                  value={filters.dateTo || ''}
+                  onChange={(e) => updateFilters({ dateTo: e.target.value || undefined })}
+                  className="bg-slate-900/50 border-slate-600 text-white"
+                  min={filters.dateFrom || undefined}
+                />
+              </div>
+            </div>
           </CardContent>
         )}
       </Card>
@@ -353,128 +387,235 @@ export default function PredictionsHistory() {
               <p className="text-sm mt-2">Only matches that occurred more than 24 hours ago are shown in the history</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {predictionsData.predictions.map((prediction) => (
-                <div key={prediction.id} className="border border-slate-700 rounded-lg p-4 space-y-3">
-                  {/* Header */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center">
-                        <Target className="h-4 w-4 text-slate-300" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-white">
-                          {prediction.match.homeTeam.name} vs {prediction.match.awayTeam.name}
-                        </p>
-                        <p className="text-sm text-slate-400">
-                          {prediction.match.league.name} • {format(new Date(prediction.createdAt), "PPP")}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {getResultIcon(prediction.result)}
-                      <Badge className={getResultColor(prediction.result)}>
-                        {prediction.result}
-                      </Badge>
-                      {prediction.isFeatured && (
-                        <Badge className="bg-purple-500/20 text-purple-400">
-                          Featured
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Match Info */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-white font-medium">
-                        {prediction.match.homeTeam.name} vs {prediction.match.awayTeam.name}
-                      </p>
-                      <p className="text-slate-400 text-sm">{prediction.match.league.name}</p>
-                      <p className="text-slate-400 text-sm">
-                        {format(new Date(prediction.match.matchDate), "PPP")}
-                      </p>
-                      {prediction.match.homeScore !== null && prediction.match.awayScore !== null && (
-                        <p className="text-white text-sm font-medium">
-                          Final Score: {prediction.match.homeScore} - {prediction.match.awayScore}
-                        </p>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400">Prediction:</span>
-                        <span className="text-white font-medium">
-                          {formatPredictionType(prediction.predictionType)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400">Confidence:</span>
-                        <Badge className="bg-slate-700 text-slate-300">
-                          {prediction.confidenceScore}%
-                        </Badge>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400">Odds:</span>
-                        <span className="text-white">{prediction.odds}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400">Value Rating:</span>
-                        <Badge className={getValueRatingColor(prediction.valueRating)}>
-                          {prediction.valueRating}
-                        </Badge>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-700">
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setSelectedPrediction(prediction)}
-                          className="border-slate-600 text-slate-300 hover:bg-slate-700"
-                        >
-                          <Eye className="w-4 h-4 mr-2" />
-                          View Details
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="bg-slate-800 border-slate-700">
-                        <DialogHeader>
-                          <DialogTitle className="text-white">Prediction Details</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-4">
+            <div className="space-y-6">
+              {predictionsData.predictions.map((prediction) => {
+                const isFinished = prediction.isFinished && prediction.match.final_result
+                
+                return (
+                  <Card key={prediction.id} className="bg-slate-800/50 border-slate-700">
+                    <CardContent className="p-6">
+                      {/* Header */}
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center">
+                            <Target className="h-4 w-4 text-slate-300" />
+                          </div>
                           <div>
-                            <p className="text-slate-300 text-sm">Match</p>
-                            <p className="text-white">
+                            <p className="font-medium text-white text-lg">
                               {prediction.match.homeTeam.name} vs {prediction.match.awayTeam.name}
                             </p>
-                          </div>
-                          <div>
-                            <p className="text-slate-300 text-sm">League</p>
-                            <p className="text-white">{prediction.match.league.name}</p>
-                          </div>
-                          <div>
-                            <p className="text-slate-300 text-sm">Prediction</p>
-                            <p className="text-white">{formatPredictionType(prediction.predictionType)}</p>
-                          </div>
-                          <div>
-                            <p className="text-slate-300 text-sm">Explanation</p>
-                            <p className="text-slate-400">{prediction.explanation || 'No explanation available'}</p>
-                          </div>
-                          <div>
-                            <p className="text-slate-300 text-sm">Result</p>
-                            <Badge className={getResultColor(prediction.result)}>
-                              {prediction.result}
-                            </Badge>
+                            <p className="text-sm text-slate-400">
+                              {prediction.match.league.name} • {format(new Date(prediction.createdAt), "PPP")}
+                            </p>
                           </div>
                         </div>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-                </div>
-              ))}
+                        <div className="flex items-center gap-2">
+                          {getResultIcon(prediction.result)}
+                          <Badge className={getResultColor(prediction.result)}>
+                            {prediction.result}
+                          </Badge>
+                          {prediction.isFeatured && (
+                            <Badge className="bg-purple-500/20 text-purple-400">
+                              Featured
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Finished Match Stats - Use FinishedMatchStats component for finished matches */}
+                      {isFinished && prediction.predictionData && (
+                        <div className="mb-4">
+                          <Suspense fallback={<div className="text-center p-4 text-slate-400">Loading match stats...</div>}>
+                            <FinishedMatchStats
+                              matchData={{
+                                home: { name: prediction.match.homeTeam.name },
+                                away: { name: prediction.match.awayTeam.name },
+                                final_result: prediction.match.final_result || undefined,
+                                score: prediction.match.final_result?.score || undefined,
+                                live_data: prediction.match.statistics ? {
+                                  statistics: prediction.match.statistics
+                                } : undefined
+                              }}
+                              predictionData={prediction.predictionData}
+                            />
+                          </Suspense>
+                        </div>
+                      )}
+
+                      {/* Match Info - Show for non-finished or if no stats available */}
+                      {!isFinished && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <p className="text-white font-medium">
+                              {prediction.match.homeTeam.name} vs {prediction.match.awayTeam.name}
+                            </p>
+                            <p className="text-slate-400 text-sm">{prediction.match.league.name}</p>
+                            <p className="text-slate-400 text-sm">
+                              {format(new Date(prediction.match.matchDate), "PPP")}
+                            </p>
+                            {prediction.match.homeScore !== null && prediction.match.awayScore !== null && (
+                              <p className="text-white text-sm font-medium mt-2">
+                                Final Score: {prediction.match.homeScore} - {prediction.match.awayScore}
+                              </p>
+                            )}
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-400">Prediction:</span>
+                              <span className="text-white font-medium">
+                                {formatPredictionType(prediction.predictionType)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-400">Confidence:</span>
+                              <Badge className="bg-slate-700 text-slate-300">
+                                {prediction.confidenceScore}%
+                              </Badge>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-400">Odds:</span>
+                              <span className="text-white">{prediction.odds || 'N/A'}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-400">Value Rating:</span>
+                              <Badge className={getValueRatingColor(prediction.valueRating)}>
+                                {prediction.valueRating}
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Prediction Summary - Always show */}
+                      {isFinished && (
+                        <div className="mb-4 p-4 bg-slate-900/50 rounded-lg">
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div>
+                              <p className="text-slate-400 text-xs mb-1">Prediction</p>
+                              <p className="text-white font-medium text-sm">
+                                {formatPredictionType(prediction.predictionType)}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-slate-400 text-xs mb-1">Confidence</p>
+                              <Badge className="bg-slate-700 text-slate-300">
+                                {prediction.confidenceScore}%
+                              </Badge>
+                            </div>
+                            <div>
+                              <p className="text-slate-400 text-xs mb-1">Odds</p>
+                              <p className="text-white font-medium text-sm">{prediction.odds || 'N/A'}</p>
+                            </div>
+                            <div>
+                              <p className="text-slate-400 text-xs mb-1">Value Rating</p>
+                              <Badge className={getValueRatingColor(prediction.valueRating)}>
+                                {prediction.valueRating}
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Actions */}
+                      <div className="flex items-center justify-end space-x-2 pt-4 border-t border-slate-700">
+                        {prediction.matchId && (
+                          <Link href={`/match/${prediction.matchId}`}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="border-blue-600 text-blue-400 hover:bg-blue-600/10"
+                            >
+                              <ExternalLink className="w-4 h-4 mr-2" />
+                              View Match Page
+                            </Button>
+                          </Link>
+                        )}
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setSelectedPrediction(prediction)}
+                              className="border-slate-600 text-slate-300 hover:bg-slate-700"
+                            >
+                              <Eye className="w-4 h-4 mr-2" />
+                              View Details
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="bg-slate-800 border-slate-700 max-w-2xl max-h-[90vh] overflow-y-auto">
+                            <DialogHeader>
+                              <DialogTitle className="text-white">Prediction Details</DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                              <div>
+                                <p className="text-slate-300 text-sm">Match</p>
+                                <p className="text-white">
+                                  {prediction.match.homeTeam.name} vs {prediction.match.awayTeam.name}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-slate-300 text-sm">League</p>
+                                <p className="text-white">{prediction.match.league.name}</p>
+                              </div>
+                              <div>
+                                <p className="text-slate-300 text-sm">Match Date</p>
+                                <p className="text-white">
+                                  {format(new Date(prediction.match.matchDate), "PPP 'at' p")}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-slate-300 text-sm">Prediction</p>
+                                <p className="text-white">{formatPredictionType(prediction.predictionType)}</p>
+                              </div>
+                              <div>
+                                <p className="text-slate-300 text-sm">Confidence</p>
+                                <Badge className="bg-slate-700 text-slate-300">
+                                  {prediction.confidenceScore}%
+                                </Badge>
+                              </div>
+                              <div>
+                                <p className="text-slate-300 text-sm">Odds</p>
+                                <p className="text-white">{prediction.odds || 'N/A'}</p>
+                              </div>
+                              <div>
+                                <p className="text-slate-300 text-sm">Value Rating</p>
+                                <Badge className={getValueRatingColor(prediction.valueRating)}>
+                                  {prediction.valueRating}
+                                </Badge>
+                              </div>
+                              <div>
+                                <p className="text-slate-300 text-sm">Explanation</p>
+                                <p className="text-slate-400 text-sm whitespace-pre-wrap">
+                                  {prediction.explanation || 'No explanation available'}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-slate-300 text-sm">Result</p>
+                                <Badge className={getResultColor(prediction.result)}>
+                                  {prediction.result}
+                                </Badge>
+                              </div>
+                              {prediction.matchId && (
+                                <div className="pt-4 border-t border-slate-700">
+                                  <Link href={`/match/${prediction.matchId}`}>
+                                    <Button
+                                      variant="outline"
+                                      className="w-full border-blue-600 text-blue-400 hover:bg-blue-600/10"
+                                    >
+                                      <ExternalLink className="w-4 h-4 mr-2" />
+                                      View Full Match Page
+                                    </Button>
+                                  </Link>
+                                </div>
+                              )}
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
             </div>
           )}
 
