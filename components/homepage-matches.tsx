@@ -66,14 +66,10 @@ export function HomepageMatches() {
       setLoading(true)
       setError(null)
 
-      // Fetch upcoming matches
+      // Use Next.js API route instead of direct backend call
+      // This ensures proper environment variable handling and avoids CORS issues
       const upcomingResponse = await fetch(
-        "http://localhost:8000/market?status=upcoming&limit=50",
-        {
-          headers: {
-            Authorization: "Bearer betgenius_secure_key_2024",
-          },
-        }
+        "/api/market?status=upcoming&limit=50"
       )
 
       if (!upcomingResponse.ok) {
@@ -81,16 +77,11 @@ export function HomepageMatches() {
       }
 
       const upcomingData: MatchesResponse = await upcomingResponse.json()
-      setUpcomingMatches(upcomingData.matches)
+      setUpcomingMatches(upcomingData.matches || [])
 
       // Fetch live matches
       const liveResponse = await fetch(
-        "http://localhost:8000/market?status=live&limit=50",
-        {
-          headers: {
-            Authorization: "Bearer betgenius_secure_key_2024",
-          },
-        }
+        "/api/market?status=live&limit=50"
       )
 
       if (!liveResponse.ok) {
@@ -98,7 +89,7 @@ export function HomepageMatches() {
       }
 
       const liveData: MatchesResponse = await liveResponse.json()
-      setLiveMatches(liveData.matches)
+      setLiveMatches(liveData.matches || [])
     } catch (err) {
       console.error("Error fetching matches:", err)
       setError(err instanceof Error ? err.message : "Failed to fetch matches")

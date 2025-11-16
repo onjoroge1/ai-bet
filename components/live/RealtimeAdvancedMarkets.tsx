@@ -5,6 +5,39 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { TrendingUp, Target, BarChart3 } from "lucide-react"
 
+interface BaselineMarkets {
+  totals?: {
+    [line: string]: {
+      over?: { probability?: number; odds?: number }
+      under?: { probability?: number; odds?: number }
+    }
+  }
+  team_totals?: {
+    home?: {
+      [line: string]: {
+        over?: { probability?: number; odds?: number }
+        under?: { probability?: number; odds?: number }
+      }
+    }
+    away?: {
+      [line: string]: {
+        over?: { probability?: number; odds?: number }
+        under?: { probability?: number; odds?: number }
+      }
+    }
+  }
+  btts?: {
+    yes?: { probability?: number; odds?: number }
+    no?: { probability?: number; odds?: number }
+  }
+  asian_handicap?: {
+    [handicap: string]: {
+      home?: { probability?: number; odds?: number }
+      away?: { probability?: number; odds?: number }
+    }
+  }
+}
+
 interface RealtimeAdvancedMarketsProps {
   odds: {
     home: number
@@ -18,6 +51,7 @@ interface RealtimeAdvancedMarketsProps {
   minute?: number | null
   homeTeamName: string
   awayTeamName: string
+  baselineMarkets?: BaselineMarkets | null
 }
 
 interface MarketCalculation {
@@ -38,7 +72,8 @@ export function RealtimeAdvancedMarkets({
   currentScore,
   minute,
   homeTeamName,
-  awayTeamName
+  awayTeamName,
+  baselineMarkets
 }: RealtimeAdvancedMarketsProps) {
   
   // Convert decimal odds to implied probability
@@ -88,99 +123,273 @@ export function RealtimeAdvancedMarkets({
     const totalExpectedGoals = homeGoals + awayGoals + remainingHomeExpected + remainingAwayExpected
 
     // Over/Under markets calculation
-    // Uses Poisson distribution approximation: P(over line) = 1 - e^(-lambda/(line+1))
-    // where lambda = expected total goals
-    const calculateOverUnder = (line: number): MarketCalculation => {
-      const lambda = Math.max(0.1, totalExpectedGoals)
+    // Uses baseline from QuickPurchase if available, then adjusts for live conditions
+    const calculateOverUnder = (line: string): MarketCalculation => {
+      const lineNum = parseFloat(line)
       
-      // Poisson approximation for probability of exceeding the line
-      const overProb = Math.max(0.01, Math.min(0.99, 1 - Math.exp(-lambda / (line + 1))))
-      const underProb = 1 - overProb
+      // Get baseline probability from predictionData if available
+      const baselineOver = baselineMarkets?.totals?.[line]?.over?.probability
+      const baselineUnder = baselineMarkets?.totals?.[line]?.under?.probability
+      
+      // Calculate live probability from odds
+      const lambda = Math.max(0.1, totalExpectedGoals)
+      const liveOverProb = Math.max(0.01, Math.min(0.99, 1 - Math.exp(-lambda / (lineNum + 1))))
+      const liveUnderProb = 1 - liveOverProb
+      
+      // Time decay: baseline matters less as match progresses (30-80% weight)
+      const baselineWeight = Math.max(0.3, Math.min(0.8, 0.8 - (timeElapsed / 90) * 0.5))
+      const liveWeight = 1 - baselineWeight
+      
+      // Score adjustment: if current score is different from expected, adjust
+      const expectedBaselineGoals = baselineMarkets?.totals?.[line] ? 
+        (baselineOver ? (1 / baselineOver - 1) * lineNum : totalExpectedGoals) : totalExpectedGoals
+      const scoreDiff = totalGoals - expectedBaselineGoals
+      const scoreAdjustment = scoreDiff * 0.05 // 5% per goal difference
+      
+      // Combine baseline and live probabilities
+      let adjustedOverProb: number
+      let adjustedUnderProb: number
+      
+      if (baselineOver !== undefined && baselineUnder !== undefined) {
+        // Use baseline as starting point
+        adjustedOverProb = (baselineOver * baselineWeight) + (liveOverProb * liveWeight) + scoreAdjustment
+        adjustedUnderProb = (baselineUnder * baselineWeight) + (liveUnderProb * liveWeight) - scoreAdjustment
+      } else {
+        // Fallback to live-only calculation
+        adjustedOverProb = liveOverProb
+        adjustedUnderProb = liveUnderProb
+      }
+      
+      // Ensure probabilities are valid
+      adjustedOverProb = Math.max(0.01, Math.min(0.99, adjustedOverProb))
+      adjustedUnderProb = Math.max(0.01, Math.min(0.99, adjustedUnderProb))
+      
+      // Normalize to sum to 1
+      const total = adjustedOverProb + adjustedUnderProb
+      adjustedOverProb = adjustedOverProb / total
+      adjustedUnderProb = adjustedUnderProb / total
       
       return {
-        over: totalGoals > line ? 1 : overProb,
-        under: totalGoals <= line ? 1 : underProb,
+        over: totalGoals > lineNum ? 1 : adjustedOverProb,
+        under: totalGoals <= lineNum ? 1 : adjustedUnderProb,
         probability: {
-          over: overProb * 100,
-          under: underProb * 100
+          over: adjustedOverProb * 100,
+          under: adjustedUnderProb * 100
         }
       }
     }
 
     // Team Total Goals markets
-    const calculateTeamTotals = (teamGoals: number, teamExpected: number, line: number): MarketCalculation => {
+    const calculateTeamTotals = (
+      teamGoals: number, 
+      teamExpected: number, 
+      line: string, 
+      isHome: boolean
+    ): MarketCalculation => {
+      const lineNum = parseFloat(line)
       const remainingExpected = teamExpected * timeFactor
       const totalExpected = teamGoals + remainingExpected
       
-      const overProb = Math.max(0.01, Math.min(0.99, 1 - Math.exp(-totalExpected / (line + 1))))
-      const underProb = 1 - overProb
+      // Get baseline from predictionData
+      const baselineData = isHome 
+        ? baselineMarkets?.team_totals?.home?.[line]
+        : baselineMarkets?.team_totals?.away?.[line]
+      const baselineOver = baselineData?.over?.probability
+      const baselineUnder = baselineData?.under?.probability
+      
+      // Calculate live probability
+      const liveOverProb = Math.max(0.01, Math.min(0.99, 1 - Math.exp(-totalExpected / (lineNum + 1))))
+      const liveUnderProb = 1 - liveOverProb
+      
+      // Time and score adjustments
+      const baselineWeight = Math.max(0.3, Math.min(0.8, 0.8 - (timeElapsed / 90) * 0.5))
+      const liveWeight = 1 - baselineWeight
+      
+      // Score adjustment: if team has scored more/less than expected
+      const expectedBaselineGoals = baselineData ? 
+        (baselineOver ? (1 / baselineOver - 1) * lineNum : totalExpected) : totalExpected
+      const scoreDiff = teamGoals - expectedBaselineGoals
+      const scoreAdjustment = scoreDiff * 0.08 // 8% per goal difference for team totals
+      
+      // Combine baseline and live
+      let adjustedOverProb: number
+      let adjustedUnderProb: number
+      
+      if (baselineOver !== undefined && baselineUnder !== undefined) {
+        adjustedOverProb = (baselineOver * baselineWeight) + (liveOverProb * liveWeight) + scoreAdjustment
+        adjustedUnderProb = (baselineUnder * baselineWeight) + (liveUnderProb * liveWeight) - scoreAdjustment
+      } else {
+        adjustedOverProb = liveOverProb
+        adjustedUnderProb = liveUnderProb
+      }
+      
+      // Ensure valid probabilities
+      adjustedOverProb = Math.max(0.01, Math.min(0.99, adjustedOverProb))
+      adjustedUnderProb = Math.max(0.01, Math.min(0.99, adjustedUnderProb))
+      
+      // Normalize
+      const total = adjustedOverProb + adjustedUnderProb
+      adjustedOverProb = adjustedOverProb / total
+      adjustedUnderProb = adjustedUnderProb / total
       
       return {
-        over: teamGoals > line ? 1 : overProb,
-        under: teamGoals <= line ? 1 : underProb,
+        over: teamGoals > lineNum ? 1 : adjustedOverProb,
+        under: teamGoals <= lineNum ? 1 : adjustedUnderProb,
         probability: {
-          over: overProb * 100,
-          under: underProb * 100
+          over: adjustedOverProb * 100,
+          under: adjustedUnderProb * 100
         }
       }
     }
 
     // Both Teams to Score
+    // Get baseline from predictionData
+    const baselineBttsYes = baselineMarkets?.btts?.yes?.probability
+    const baselineBttsNo = baselineMarkets?.btts?.no?.probability
+    
+    // Calculate live probabilities
     const homeScoreProb = Math.max(0.01, Math.min(0.99, normalizedHome * 0.7 + normalizedDraw * 0.5))
     const awayScoreProb = Math.max(0.01, Math.min(0.99, normalizedAway * 0.7 + normalizedDraw * 0.5))
-    const bttsYesProb = homeScoreProb * awayScoreProb
-    const bttsNoProb = 1 - bttsYesProb
+    const liveBttsYesProb = homeScoreProb * awayScoreProb
+    const liveBttsNoProb = 1 - liveBttsYesProb
+    
+    // Adjust based on current score: if one team already scored, BTTS Yes is more likely
+    let scoreAdjustment = 0
+    if (homeGoals > 0 && awayGoals === 0) {
+      scoreAdjustment = 0.15 // Away team more likely to score now
+    } else if (awayGoals > 0 && homeGoals === 0) {
+      scoreAdjustment = 0.15 // Home team more likely to score now
+    } else if (homeGoals > 0 && awayGoals > 0) {
+      scoreAdjustment = -0.1 // Already BTTS, less likely to change
+    }
+    
+    // Time decay
+    const baselineWeight = Math.max(0.3, Math.min(0.8, 0.8 - (timeElapsed / 90) * 0.5))
+    const liveWeight = 1 - baselineWeight
+    
+    // Combine baseline and live
+    let adjustedBttsYesProb: number
+    let adjustedBttsNoProb: number
+    
+    if (baselineBttsYes !== undefined && baselineBttsNo !== undefined) {
+      adjustedBttsYesProb = (baselineBttsYes * baselineWeight) + (liveBttsYesProb * liveWeight) + scoreAdjustment
+      adjustedBttsNoProb = (baselineBttsNo * baselineWeight) + (liveBttsNoProb * liveWeight) - scoreAdjustment
+    } else {
+      adjustedBttsYesProb = liveBttsYesProb + scoreAdjustment
+      adjustedBttsNoProb = liveBttsNoProb - scoreAdjustment
+    }
+    
+    // Ensure valid probabilities
+    adjustedBttsYesProb = Math.max(0.01, Math.min(0.99, adjustedBttsYesProb))
+    adjustedBttsNoProb = Math.max(0.01, Math.min(0.99, adjustedBttsNoProb))
+    
+    // Normalize
+    const total = adjustedBttsYesProb + adjustedBttsNoProb
+    adjustedBttsYesProb = adjustedBttsYesProb / total
+    adjustedBttsNoProb = adjustedBttsNoProb / total
 
     // Asian Handicap calculations
-    const calculateAsianHandicap = (handicap: number): { home: number; away: number } => {
-      // Simplified: handicap affects win probability
-      const adjustedHomeProb = normalizedHome + (handicap > 0 ? 0.1 : -0.1) * Math.abs(handicap)
-      const adjustedAwayProb = normalizedAway - (handicap > 0 ? 0.1 : -0.1) * Math.abs(handicap)
+    const calculateAsianHandicap = (handicap: string): { home: number; away: number } => {
+      const handicapNum = parseFloat(handicap)
+      
+      // Get baseline from predictionData
+      const baselineData = baselineMarkets?.asian_handicap?.[handicap]
+      const baselineHomeProb = baselineData?.home?.probability
+      const baselineAwayProb = baselineData?.away?.probability
+      
+      // Calculate live probability
+      const adjustedHomeProbLive = normalizedHome + (handicapNum > 0 ? 0.1 : -0.1) * Math.abs(handicapNum)
+      const adjustedAwayProbLive = normalizedAway - (handicapNum > 0 ? 0.1 : -0.1) * Math.abs(handicapNum)
+      
+      // Score adjustment: if current score already accounts for handicap, adjust
+      const currentScoreDiff = (homeGoals ?? 0) - (awayGoals ?? 0)
+      const handicapScoreDiff = currentScoreDiff - handicapNum
+      const scoreAdjustment = handicapScoreDiff * 0.05 // 5% per goal difference
+      
+      // Time decay
+      const baselineWeight = Math.max(0.3, Math.min(0.8, 0.8 - (timeElapsed / 90) * 0.5))
+      const liveWeight = 1 - baselineWeight
+      
+      // Combine baseline and live
+      let adjustedHomeProb: number
+      let adjustedAwayProb: number
+      
+      if (baselineHomeProb !== undefined && baselineAwayProb !== undefined) {
+        adjustedHomeProb = (baselineHomeProb * baselineWeight) + (adjustedHomeProbLive * liveWeight) + scoreAdjustment
+        adjustedAwayProb = (baselineAwayProb * baselineWeight) + (adjustedAwayProbLive * liveWeight) - scoreAdjustment
+      } else {
+        adjustedHomeProb = adjustedHomeProbLive + scoreAdjustment
+        adjustedAwayProb = adjustedAwayProbLive - scoreAdjustment
+      }
+      
+      // Ensure valid probabilities
+      adjustedHomeProb = Math.max(0.01, Math.min(0.99, adjustedHomeProb))
+      adjustedAwayProb = Math.max(0.01, Math.min(0.99, adjustedAwayProb))
+      
+      // Normalize
+      const total = adjustedHomeProb + adjustedAwayProb
+      adjustedHomeProb = adjustedHomeProb / total
+      adjustedAwayProb = adjustedAwayProb / total
       
       return {
-        home: Math.max(0.01, Math.min(0.99, adjustedHomeProb)) * 100,
-        away: Math.max(0.01, Math.min(0.99, adjustedAwayProb)) * 100
+        home: adjustedHomeProb * 100,
+        away: adjustedAwayProb * 100
       }
     }
 
     return {
       overUnder: {
-        "0.5": calculateOverUnder(0.5),
-        "1.5": calculateOverUnder(1.5),
-        "2.5": calculateOverUnder(2.5),
-        "3.5": calculateOverUnder(3.5),
-        "4.5": calculateOverUnder(4.5)
+        "0.5": calculateOverUnder("0.5"),
+        "1.5": calculateOverUnder("1.5"),
+        "2.5": calculateOverUnder("2.5"),
+        "3.5": calculateOverUnder("3.5"),
+        "4.5": calculateOverUnder("4.5")
       },
       teamTotals: {
         home: {
-          "0.5": calculateTeamTotals(homeGoals, homeExpectedGoals, 0.5),
-          "1.5": calculateTeamTotals(homeGoals, homeExpectedGoals, 1.5),
-          "2.5": calculateTeamTotals(homeGoals, homeExpectedGoals, 2.5)
+          "0.5": calculateTeamTotals(homeGoals, homeExpectedGoals, "0.5", true),
+          "1.5": calculateTeamTotals(homeGoals, homeExpectedGoals, "1.5", true),
+          "2.5": calculateTeamTotals(homeGoals, homeExpectedGoals, "2.5", true)
         },
         away: {
-          "0.5": calculateTeamTotals(awayGoals, awayExpectedGoals, 0.5),
-          "1.5": calculateTeamTotals(awayGoals, awayExpectedGoals, 1.5),
-          "2.5": calculateTeamTotals(awayGoals, awayExpectedGoals, 2.5)
+          "0.5": calculateTeamTotals(awayGoals, awayExpectedGoals, "0.5", false),
+          "1.5": calculateTeamTotals(awayGoals, awayExpectedGoals, "1.5", false),
+          "2.5": calculateTeamTotals(awayGoals, awayExpectedGoals, "2.5", false)
         }
       },
       btts: {
-        yes: bttsYesProb * 100,
-        no: bttsNoProb * 100
+        yes: adjustedBttsYesProb * 100,
+        no: adjustedBttsNoProb * 100
       },
       asianHandicap: {
-        "-1.5": calculateAsianHandicap(-1.5),
-        "-1": calculateAsianHandicap(-1),
-        "-0.5": calculateAsianHandicap(-0.5),
-        "0": { home: normalizedHome * 100, away: normalizedAway * 100 },
-        "0.5": calculateAsianHandicap(0.5),
-        "1": calculateAsianHandicap(1),
-        "1.5": calculateAsianHandicap(1.5)
+        "-1.5": calculateAsianHandicap("-1.5"),
+        "-1": calculateAsianHandicap("-1"),
+        "-0.5": calculateAsianHandicap("-0.5"),
+        "0": (() => {
+          const baselineData = baselineMarkets?.asian_handicap?.["0"]
+          const baselineHome = baselineData?.home?.probability
+          const baselineAway = baselineData?.away?.probability
+          const baselineWeight = Math.max(0.3, Math.min(0.8, 0.8 - (timeElapsed / 90) * 0.5))
+          const liveWeight = 1 - baselineWeight
+          
+          if (baselineHome !== undefined && baselineAway !== undefined) {
+            return {
+              home: (baselineHome * baselineWeight + normalizedHome * liveWeight) * 100,
+              away: (baselineAway * baselineWeight + normalizedAway * liveWeight) * 100
+            }
+          }
+          return { home: normalizedHome * 100, away: normalizedAway * 100 }
+        })(),
+        "0.5": calculateAsianHandicap("0.5"),
+        "1": calculateAsianHandicap("1"),
+        "1.5": calculateAsianHandicap("1.5")
       },
       totalExpectedGoals,
       homeExpectedGoals: homeGoals + remainingHomeExpected,
-      awayExpectedGoals: awayGoals + remainingAwayExpected
+      awayExpectedGoals: awayGoals + remainingAwayExpected,
+      hasBaseline: !!baselineMarkets
     }
-  }, [odds, currentScore, minute, homeTeamName, awayTeamName])
+  }, [odds, currentScore, minute, homeTeamName, awayTeamName, baselineMarkets])
 
   if (!calculateMarket || !odds) {
     return null
@@ -354,11 +563,15 @@ export function RealtimeAdvancedMarkets({
       </Card>
 
       {/* Live Update Indicator */}
-      <div className="text-center text-slate-500 text-xs flex items-center justify-center">
-        <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
-        Real-time calculations based on current odds
+      <div className="text-center text-slate-500 text-xs flex items-center justify-center gap-2">
+        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+        <span>
+          {calculateMarket.hasBaseline 
+            ? "Real-time calculations adjusted from pre-match analysis" 
+            : "Real-time calculations based on current odds"}
+        </span>
         {minute && (
-          <span className="ml-2">• {minute}'</span>
+          <span>• {minute}'</span>
         )}
       </div>
     </div>

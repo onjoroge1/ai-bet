@@ -118,7 +118,7 @@ export default function HomePage() {
   ]
 
   const platformStats: Stat[] = [
-    { value: "87%", label: "Average Prediction Accuracy", color: "text-emerald-400" },
+    { value: "65–75%", label: "Typical V2 Model Confidence Range", color: "text-emerald-400" },
     { value: "2.3x", label: "Average ROI Improvement", trend: "+23% this month", color: "text-blue-400" },
     { value: "1000+", label: "CLV Opportunities", trend: "Value opportunities identified", color: "text-purple-400" },
     { value: "450", label: "AI Predictions This Week", trend: "Soccer predictions generated", color: "text-orange-400" }
@@ -186,7 +186,7 @@ export default function HomePage() {
               size="lg" 
               variant="outline" 
               className="border-slate-600 text-white hover:bg-slate-800 px-6 sm:px-8 py-3 sm:py-4 text-base sm:text-lg w-full sm:w-auto"
-              onClick={() => router.push('/matches')}
+              onClick={() => router.push(isAuthenticated ? '/dashboard/matches' : '/matches')}
             >
               <Eye className="h-5 w-5 sm:h-6 sm:w-6 mr-2" />
               View Live Predictions

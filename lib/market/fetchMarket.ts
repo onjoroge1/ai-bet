@@ -1,6 +1,8 @@
 import { MarketMatch, MarketResponse } from "./types";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
+// Use Next.js API route instead of direct backend call
+// This ensures proper environment variable handling and avoids CORS issues
+const BASE_URL = "/api/market";
 const API_KEY = process.env.NEXT_PUBLIC_MARKET_KEY || "betgenius_secure_key_2024";
 
 export async function fetchMarket({
@@ -13,17 +15,15 @@ export async function fetchMarket({
   leagueId?: number;
 }): Promise<MarketMatch[]> {
   try {
-    let url = `${BASE_URL}/market`;
-    url += `?status=${status}&limit=${limit}`;
+    let url = `${BASE_URL}?status=${status}&limit=${limit}`;
     
     if (leagueId) {
       url += `&league=${leagueId}`;
     }
 
+    // No need for Authorization header when using Next.js API route
+    // The API route handles backend authentication internally
     const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-      },
       next: { revalidate: 60 }, // ISR hint for Next.js
     });
 

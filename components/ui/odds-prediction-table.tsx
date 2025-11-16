@@ -26,6 +26,65 @@ interface OddsPredictionTableProps {
   showStatusTabs?: boolean
 }
 
+type ConfidenceTier = "very-high" | "high" | "speculative"
+
+function getMatchConfidence(match: MarketMatch): number | null {
+  // Prefer free prediction for visibility; fall back to premium if needed
+  if (match.predictions?.free?.confidence) {
+    return match.predictions.free.confidence
+  }
+  if (match.predictions?.premium?.confidence) {
+    return match.predictions.premium.confidence
+  }
+  return null
+}
+
+function getConfidenceTier(confidence: number | null): ConfidenceTier | null {
+  if (confidence == null) return null
+  if (confidence >= 80) return "very-high"
+  if (confidence >= 65) return "high"
+  return "speculative"
+}
+
+function getTierLabel(tier: ConfidenceTier): string {
+  if (tier === "very-high") return "Very High Edge"
+  if (tier === "high") return "High Edge"
+  return "Speculative"
+}
+
+function getTierRowClasses(tier: ConfidenceTier | null, isLive: boolean): string {
+  if (!tier) {
+    return isLive
+      ? "hover:bg-slate-800/40"
+      : "hover:bg-slate-800/30"
+  }
+
+  if (tier === "very-high") {
+    return isLive
+      ? "bg-emerald-900/20 hover:bg-emerald-900/35 border-l-2 border-emerald-400/80"
+      : "bg-emerald-900/10 hover:bg-emerald-900/25 border-l-2 border-emerald-400/60"
+  }
+  if (tier === "high") {
+    return isLive
+      ? "bg-lime-900/10 hover:bg-lime-900/25 border-l-2 border-lime-400/70"
+      : "bg-lime-900/5 hover:bg-lime-900/15 border-l border-lime-400/50"
+  }
+  // speculative
+  return isLive
+    ? "hover:bg-slate-800/40 border-l border-slate-700/70"
+    : "hover:bg-slate-800/30 border-l border-slate-800"
+}
+
+function getTierBadgeClasses(tier: ConfidenceTier | null): string {
+  if (tier === "very-high") {
+    return "bg-emerald-500/15 text-emerald-300 border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.45)]"
+  }
+  if (tier === "high") {
+    return "bg-lime-400/15 text-lime-300 border-lime-400/40 shadow-[0_0_10px_rgba(190,242,100,0.35)]"
+  }
+  return "bg-slate-700/40 text-slate-300 border-slate-500/50"
+}
+
 export function OddsPredictionTable({
   status = "upcoming",
   limit = 10,
@@ -66,13 +125,24 @@ export function OddsPredictionTable({
       const response = await fetch(url)
       
       if (!response.ok) {
-        throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`)
+        const errorData = await response.json().catch(() => ({}))
+        const errorMessage = errorData.error || errorData.message || `Failed to fetch: ${response.status} ${response.statusText}`
+        console.error('API Error:', errorMessage, errorData)
+        throw new Error(errorMessage)
       }
       
       const data = await response.json()
       
+      // Check if there's an error in the response
+      if (data.error) {
+        console.error('Backend error:', data.error, data.message)
+        throw new Error(data.message || data.error)
+      }
+      
       // Adapt the raw API data to MarketMatch format
       const rawMatches = data.matches || []
+      
+      console.log(`Loaded ${rawMatches.length} raw matches, status: ${status}`)
       
       // Filter out matches with "TBD" team names or empty team names
       // But allow TBD matches if no valid matches exist (fallback behavior)
@@ -247,6 +317,29 @@ export function OddsPredictionTable({
     return sorted
   }, [filteredMatches, sortBy])
 
+  // Confidence tier summary for header
+  const tierSummary = useMemo(() => {
+    let veryHigh = 0
+    let high = 0
+    let speculative = 0
+
+    sortedMatches.forEach((m) => {
+      const confidence = getMatchConfidence(m)
+      const tier = getConfidenceTier(confidence)
+      if (!tier) return
+      if (tier === "very-high") veryHigh += 1
+      else if (tier === "high") high += 1
+      else speculative += 1
+    })
+
+    return {
+      total: sortedMatches.length,
+      veryHigh,
+      high,
+      speculative,
+    }
+  }, [sortedMatches])
+
   // Calculate match counts for each date tab
   const matchCounts = useMemo((): {
     all: number;
@@ -349,89 +442,117 @@ export function OddsPredictionTable({
   return (
     <TooltipProvider delayDuration={200} skipDelayDuration={100}>
     <div className="space-y-4">
-      {/* Date tabs for upcoming matches */}
-      {status === "upcoming" && (
-        <div className="space-y-3">
-          {/* Placeholder matches indicator */}
-          {allMatches.length > 0 && allMatches.some(m => m.home.name.startsWith('Team ')) && (
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></div>
-                <span className="text-amber-300 text-sm font-medium">
-                  Showing matches with placeholder team names
+      {/* Section summary + controls */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {/* Summary pill */}
+        <div
+          className={`flex items-center gap-3 rounded-xl px-3 py-2 text-xs sm:text-sm border ${
+            status === "live"
+              ? "bg-red-900/20 border-red-600/40 text-red-100"
+              : "bg-emerald-900/15 border-emerald-600/40 text-emerald-100"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {status === "live" ? (
+              <>
+                <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
+                <span className="font-semibold uppercase tracking-wide">Live Now</span>
+              </>
+            ) : (
+              <>
+                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                <span className="font-semibold uppercase tracking-wide">Upcoming</span>
+              </>
+            )}
+          </div>
+          {tierSummary.total > 0 && (
+            <div className="flex flex-wrap items-center gap-2 text-[11px] sm:text-xs">
+              <span className="text-slate-300/90">
+                {tierSummary.total} matches
+              </span>
+              {tierSummary.veryHigh > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-200 border border-emerald-500/40">
+                  {tierSummary.veryHigh} Very High Edge
                 </span>
-              </div>
-              <p className="text-amber-200/80 text-xs mt-1">
-                Real team names will be updated closer to match time
-              </p>
+              )}
+              {tierSummary.high > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-lime-400/15 text-lime-200 border border-lime-400/40">
+                  {tierSummary.high} High Edge
+                </span>
+              )}
             </div>
           )}
-          
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
-          <button
-            onClick={() => setSelectedDate("all")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition ${
-              selectedDate === "all"
-                ? "bg-slate-700 text-slate-100 border border-slate-600"
-                : "bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-750"
-            }`}
-          >
-            All {matchCounts.all > 0 && `(${matchCounts.all})`}
-          </button>
-          <button
-            onClick={() => setSelectedDate("today")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition ${
-              selectedDate === "today"
-                ? "bg-slate-700 text-slate-100 border border-slate-600"
-                : "bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-750"
-            }`}
-          >
-            Today {matchCounts.today > 0 && `(${matchCounts.today})`}
-          </button>
-          <button
-            onClick={() => setSelectedDate("tomorrow")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition ${
-              selectedDate === "tomorrow"
-                ? "bg-slate-700 text-slate-100 border border-slate-600"
-                : "bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-750"
-            }`}
-          >
-            Tomorrow {matchCounts.tomorrow > 0 && `(${matchCounts.tomorrow})`}
-          </button>
-          <button
-            onClick={() => setSelectedDate("dayafter")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition ${
-              selectedDate === "dayafter"
-                ? "bg-slate-700 text-slate-100 border border-slate-600"
-                : "bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-750"
-            }`}
-          >
-            Day After {matchCounts.dayafter > 0 && `(${matchCounts.dayafter})`}
-          </button>
-          <button
-            onClick={() => setSelectedDate("upcoming")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition ${
-              selectedDate === "upcoming"
-                ? "bg-slate-700 text-slate-100 border border-slate-600"
-                : "bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-750"
-            }`}
-          >
-            Future {matchCounts.upcoming > 0 && `(${matchCounts.upcoming})`}
-          </button>
         </div>
-        </div>
-      )}
 
-      {/* Header with sort */}
-      <div className="flex items-center justify-end">
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as "kickoff" | "confidence")}
-          className="bg-slate-800 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-300"
-        >
-          <option value="kickoff">Kickoff (asc)</option>
-          <option value="confidence">AI Confidence (desc)</option>
-        </select>
+        {/* Date tabs for upcoming matches + sort */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end w-full sm:w-auto">
+          {status === "upcoming" && (
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
+              <button
+                onClick={() => setSelectedDate("all")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition ${
+                  selectedDate === "all"
+                    ? "bg-slate-700 text-slate-100 border border-slate-600"
+                    : "bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-750"
+                }`}
+              >
+                All {matchCounts.all > 0 && `(${matchCounts.all})`}
+              </button>
+              <button
+                onClick={() => setSelectedDate("today")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition ${
+                  selectedDate === "today"
+                    ? "bg-slate-700 text-slate-100 border border-slate-600"
+                    : "bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-750"
+                }`}
+              >
+                Today {matchCounts.today > 0 && `(${matchCounts.today})`}
+              </button>
+              <button
+                onClick={() => setSelectedDate("tomorrow")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition ${
+                  selectedDate === "tomorrow"
+                    ? "bg-slate-700 text-slate-100 border border-slate-600"
+                    : "bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-750"
+                }`}
+              >
+                Tomorrow {matchCounts.tomorrow > 0 && `(${matchCounts.tomorrow})`}
+              </button>
+              <button
+                onClick={() => setSelectedDate("dayafter")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition ${
+                  selectedDate === "dayafter"
+                    ? "bg-slate-700 text-slate-100 border border-slate-600"
+                    : "bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-750"
+                }`}
+              >
+                Day After {matchCounts.dayafter > 0 && `(${matchCounts.dayafter})`}
+              </button>
+              <button
+                onClick={() => setSelectedDate("upcoming")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition ${
+                  selectedDate === "upcoming"
+                    ? "bg-slate-700 text-slate-100 border border-slate-600"
+                    : "bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-750"
+                }`}
+              >
+                Future {matchCounts.upcoming > 0 && `(${matchCounts.upcoming})`}
+              </button>
+            </div>
+          )}
+
+          {/* Sort select */}
+          <div className="flex items-center justify-end">
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as "kickoff" | "confidence")}
+              className="bg-slate-800 border border-slate-700 rounded-md px-3 py-1.5 text-xs sm:text-sm text-slate-300"
+            >
+              <option value="kickoff">Kickoff (asc)</option>
+              <option value="confidence">AI Confidence (desc)</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       {/* Desktop Table */}
@@ -520,6 +641,8 @@ function MatchTableRow({ match }: { match: MarketMatch }) {
   const router = useRouter()
   const isLive = match.status === "live"
   const homeOdds = match.odds[match.primaryBook || "bet365"]
+  const confidence = getMatchConfidence(match)
+  const tier = getConfidenceTier(confidence)
   
   const handleClick = () => {
     router.push(`/match/${match.id}`)
@@ -534,7 +657,7 @@ function MatchTableRow({ match }: { match: MarketMatch }) {
   return (
     <tr
       onClick={handleClick}
-      className="group hover:bg-slate-800/40 transition cursor-pointer h-16 lg:h-20"
+      className={`group transition cursor-pointer h-16 lg:h-20 ${getTierRowClasses(tier, isLive)}`}
     >
       <td className="py-3 px-4">
         <div className="flex items-center gap-3">
@@ -576,6 +699,11 @@ function MatchTableRow({ match }: { match: MarketMatch }) {
                 <span className="text-emerald-400 font-semibold">
                   {formatScore(match.score)}
                 </span>
+                {typeof match.minute === "number" && (
+                  <span className="text-xs text-slate-400">
+                    {formatMinute(match.minute)}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -659,7 +787,11 @@ function MatchTableRow({ match }: { match: MarketMatch }) {
             <span className="text-slate-300 text-sm">
               {getSideName(match.predictions.premium.side)}
             </span>
-            <Badge className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 text-xs font-semibold shadow-[0_0_8px_rgba(245,158,11,0.4)]">
+            <Badge
+              className={`px-2 py-0.5 text-xs font-semibold border ${getTierBadgeClasses(
+                tier,
+              )}`}
+            >
               Unlock Premium
             </Badge>
           </div>
@@ -668,9 +800,24 @@ function MatchTableRow({ match }: { match: MarketMatch }) {
             <span className="text-slate-300 text-sm">
               {getSideName(match.predictions.free.side)}
             </span>
-            <span className={`font-bold text-lg ${getConfidenceColorClass(match.predictions.free.confidence)}`}>
-              {match.predictions.free.confidence}%
-            </span>
+            <div className="flex items-center gap-2">
+              {tier && (
+                <Badge
+                  className={`hidden xl:inline-flex px-2 py-0.5 text-[10px] font-semibold border ${getTierBadgeClasses(
+                    tier,
+                  )}`}
+                >
+                  {getTierLabel(tier)}
+                </Badge>
+              )}
+              <span
+                className={`font-bold text-lg ${getConfidenceColorClass(
+                  match.predictions.free.confidence,
+                )}`}
+              >
+                {match.predictions.free.confidence}%
+              </span>
+            </div>
           </div>
         ) : null}
       </td>

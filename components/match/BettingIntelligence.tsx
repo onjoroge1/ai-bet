@@ -20,8 +20,10 @@ interface BettingIntelligenceData {
     kelly_sizing: {
       full_kelly: number
       fractional_kelly: number
-      recommended_stake_pct: number
+      recommended_stake_pct?: number
       max_stake_pct: number
+      bankroll_stake?: number
+      expected_value?: number
     }
   }
   home: {
@@ -119,10 +121,24 @@ export function BettingIntelligence({ matchId, bankroll = 1000, model = 'best', 
   const clvDraw = clv?.draw ?? 0
   const clvAway = clv?.away ?? 0
   
-  const recommendedStakePct = kelly_sizing?.recommended_stake_pct ?? 0
   const fullKelly = kelly_sizing?.full_kelly ?? 0
   const fractionalKelly = kelly_sizing?.fractional_kelly ?? 0
   const maxStakePct = kelly_sizing?.max_stake_pct ?? 0
+  
+  // Calculate recommended stake - use bankroll_stake if available (direct dollar amount)
+  // Otherwise calculate from recommended_stake_pct
+  const bankrollStake = kelly_sizing?.bankroll_stake
+  const recommendedStakePct = kelly_sizing?.recommended_stake_pct
+  
+  // If bankroll_stake is provided directly, use it; otherwise calculate from percentage
+  const stakeAmount = bankrollStake !== undefined 
+    ? bankrollStake 
+    : (recommendedStakePct !== undefined ? bankroll * (recommendedStakePct / 100) : 0)
+  
+  // Calculate percentage for display if we have bankroll_stake but not recommended_stake_pct
+  const displayStakePct = recommendedStakePct !== undefined 
+    ? recommendedStakePct 
+    : (bankrollStake !== undefined && bankroll > 0 ? (bankrollStake / bankroll) * 100 : 0)
 
   const getPickName = (pickValue: string) => {
     if (pickValue === 'home') return homeName
@@ -141,8 +157,6 @@ export function BettingIntelligence({ matchId, bankroll = 1000, model = 'best', 
     if (edgeValue >= 0.02) return 'text-blue-400'
     return 'text-yellow-400'
   }
-
-  const stakeAmount = bankroll * (recommendedStakePct / 100)
 
   const content = (
     <div className="space-y-6">
@@ -229,7 +243,7 @@ export function BettingIntelligence({ matchId, bankroll = 1000, model = 'best', 
                     ${stakeAmount.toFixed(2)}
                   </div>
                   <div className="text-slate-400 text-xs">
-                    {recommendedStakePct.toFixed(1)}% of ${bankroll.toLocaleString()}
+                    {displayStakePct.toFixed(1)}% of ${bankroll.toLocaleString()}
                   </div>
                 </div>
               </div>

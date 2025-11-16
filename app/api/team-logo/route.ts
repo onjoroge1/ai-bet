@@ -16,12 +16,19 @@ export async function GET(request: Request) {
     console.log(`Fetching logo for team: ${teamName}`)
 
     // Call our backend /teams endpoint
-    const backendUrl = process.env.BACKEND_API_URL || 'http://localhost:8000'
+    const backendUrl = process.env.BACKEND_API_URL || process.env.BACKEND_URL
+    if (!backendUrl) {
+      return NextResponse.json(
+        { error: "Backend API URL not configured. Please set BACKEND_API_URL or BACKEND_URL environment variable." },
+        { status: 500 }
+      )
+    }
     const searchParam = encodeURIComponent(teamName)
+    const apiKey = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY || 'betgenius_secure_key_2024'
     
     const response = await fetch(`${backendUrl}/teams?search=${searchParam}&has_logo=true&limit=10`, {
       headers: {
-        'Authorization': `Bearer ${process.env.BACKEND_API_KEY || 'betgenius_secure_key_2024'}`
+        'Authorization': `Bearer ${apiKey}`
       }
     })
 

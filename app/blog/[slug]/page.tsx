@@ -3,35 +3,30 @@ import { notFound } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { 
-  Calendar, 
-  Clock, 
-  User, 
-  Eye, 
-  Share2, 
+import {
+  Calendar,
+  Clock,
+  User,
+  Eye,
+  Share2,
   ArrowLeft,
-  BookOpen,
-  Zap,
-  Target,
-  TrendingUp,
-  CheckCircle,
-  BarChart3,
   Sparkles,
   ArrowRight,
   Heart,
   MessageCircle,
-  Bookmark
+  Bookmark,
+  Target,
+  TrendingUp,
 } from 'lucide-react'
 import Link from 'next/link'
 import { generateBlogMetadata } from '@/lib/seo-helpers'
-import { HreflangTags } from '@/components/hreflang-tags'
 import { NewsArticleSchema } from '@/components/schema-markup'
 import { BreakingNewsTicker } from '@/components/breaking-news-ticker'
-import { LivePredictionsTicker } from '@/components/live-predictions-ticker'
-import { TrendingTopics } from '@/components/trending-topics'
+import { UpcomingMatchesSpotlight } from '@/components/trending-topics'
 import { NewsletterSignup } from '@/components/newsletter-signup'
 import { BlogMediaDisplay } from '@/components/blog-media-display'
 import { BlogComments } from '@/components/blog-comments'
+import { BlogMatchSalesSidebar } from '@/components/blog-match-sales-sidebar'
 
 interface BlogMedia {
   id: string
@@ -66,18 +61,7 @@ interface BlogPost {
   isPublished: boolean
   isActive: boolean
   media?: BlogMedia[]
-}
-
-interface Prediction {
-  id: string
-  homeTeam: string
-  awayTeam: string
-  league: string
-  prediction: string
-  confidence: number
-  odds: number
-  matchTime: string
-  status: string
+  matchId?: string | null
 }
 
 // Generate metadata for each blog post
@@ -85,7 +69,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params
   
   try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'https://snapbet.bet'}/api/blogs?slug=${slug}`, {
+    const response = await fetch(`${process.env.NEXTAUTH_URL || 'https://www.snapbet.bet'}/api/blogs?slug=${slug}`, {
       next: { revalidate: 3600 }
     })
     
@@ -143,7 +127,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 // Generate static params for all blog posts
 export async function generateStaticParams() {
   try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'https://snapbet.bet'}/api/blogs?limit=100`, {
+    const response = await fetch(`${process.env.NEXTAUTH_URL || 'https://www.snapbet.bet'}/api/blogs?limit=100`, {
       next: { revalidate: 3600 }
     })
     
@@ -164,7 +148,7 @@ export async function generateStaticParams() {
 
 async function getBlogPost(slug: string): Promise<BlogPost | null> {
   try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'https://snapbet.bet'}/api/blogs?slug=${slug}`, {
+    const response = await fetch(`${process.env.NEXTAUTH_URL || 'https://www.snapbet.bet'}/api/blogs?slug=${slug}`, {
       next: { revalidate: 3600 }
     })
     
@@ -179,45 +163,6 @@ async function getBlogPost(slug: string): Promise<BlogPost | null> {
   }
 }
 
-async function getUpcomingPredictions(): Promise<Prediction[]> {
-  try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'https://snapbet.bet'}/api/predictions/upcoming?limit=6`, {
-      next: { revalidate: 300 } // 5 minutes cache
-    })
-    
-    if (!response.ok) {
-      return []
-    }
-    
-    const data = await response.json()
-    return data.success ? data.data : []
-  } catch (error) {
-    return []
-  }
-}
-
-async function getRelatedArticles(category: string, currentSlug: string): Promise<BlogPost[]> {
-  try {
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'https://snapbet.bet'}/api/blogs?limit=3`, {
-      next: { revalidate: 3600 }
-    })
-    
-    if (!response.ok) {
-      return []
-    }
-    
-    const data = await response.json()
-    const posts = data.success ? data.data : []
-    
-    // Filter out current post and get related by category
-    return posts
-      .filter((post: BlogPost) => post.slug !== currentSlug && post.isPublished)
-      .slice(0, 3)
-  } catch (error) {
-    return []
-  }
-}
-
 export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
   const post = await getBlogPost(slug)
@@ -226,24 +171,14 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
     notFound()
   }
 
-  // Fetch additional data
-  const [upcomingPredictions, relatedArticles] = await Promise.all([
-    getUpcomingPredictions(),
-    getRelatedArticles(post.category, slug)
-  ])
-
-  const baseUrl = process.env.NEXTAUTH_URL || 'https://snapbet.ai'
-  const currentUrl = `${baseUrl}/blog/${slug}`
+  const sanitizedContent = post.content
+    .replace(/<meta[^>]*>/gi, '')
+    .replace(/<title[^>]*>.*?<\/title>/gi, '')
+    .replace(/<h1(\s[^>]*)?>/gi, '<h2$1>')
+    .replace(/<\/h1>/gi, '</h2>')
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Hreflang Tags for SEO */}
-      <HreflangTags 
-        currentUrl={currentUrl}
-        slug={slug}
-        isBlogPost={true}
-      />
-      
       {/* News Article Schema for Google News */}
       <NewsArticleSchema 
         headline={post.title}
@@ -371,7 +306,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                   prose-pre:bg-slate-900 prose-pre:border prose-pre:border-slate-700
                   prose-a:text-emerald-400 prose-a:no-underline hover:prose-a:text-emerald-300
                   prose-img:rounded-lg prose-img:border prose-img:border-slate-700"
-                dangerouslySetInnerHTML={{ __html: post.content }}
+                dangerouslySetInnerHTML={{ __html: sanitizedContent }}
               />
 
               {/* Enhanced Call to Action */}
@@ -404,125 +339,12 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
           {/* Sidebar */}
           <div className="lg:col-span-1">
-            {/* Author Info */}
-            <Card className="bg-slate-800/50 border-slate-700 p-6 mb-6">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-lg text-white">About the Author</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center">
-                  <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <User className="w-8 h-8 text-emerald-400" />
-                  </div>
-                  <h4 className="text-white font-semibold mb-2">{post.author}</h4>
-                  <p className="text-slate-400 text-sm mb-4">
-                    Sports betting expert and AI prediction specialist
-                  </p>
-                  <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
-                    <BookOpen className="w-3 h-3" />
-                    <span>Expert Writer</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Tags */}
-            {post.tags && post.tags.length > 0 && (
-              <Card className="bg-slate-800/50 border-slate-700 p-6 mb-6">
-                <CardHeader className="pb-4">
-                  <CardTitle className="text-lg text-white">Tags</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-2">
-                    {post.tags.map((tag, index) => (
-                      <Badge key={index} variant="secondary" className="bg-slate-700 text-slate-300 border-slate-600">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Upcoming Predictions */}
-            {upcomingPredictions.length > 0 && (
-              <Card className="bg-slate-800/50 border-slate-700 p-6 mb-6">
-                <CardHeader className="pb-4">
-                  <CardTitle className="text-lg text-white flex items-center gap-2">
-                    <Zap className="w-5 h-5 text-emerald-400" />
-                    Upcoming Matches
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {upcomingPredictions.slice(0, 3).map((prediction) => (
-                      <div key={prediction.id} className="p-3 bg-slate-700/30 rounded-lg border border-slate-600">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs text-slate-400 uppercase tracking-wide">
-                            {prediction.league}
-                          </span>
-                          <Badge variant="secondary" className="text-xs">
-                            {prediction.status}
-                          </Badge>
-                        </div>
-                        <div className="text-sm text-white mb-2">
-                          <div className="font-medium">{prediction.homeTeam}</div>
-                          <div className="text-slate-400">vs</div>
-                          <div className="font-medium">{prediction.awayTeam}</div>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-slate-400">
-                            {new Date(prediction.matchTime).toLocaleDateString()}
-                          </span>
-                          <span className="text-emerald-400 font-medium">
-                            {prediction.confidence}%
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <Button asChild className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700">
-                    <Link href="/live-predictions">
-                      <ArrowRight className="w-4 h-4 mr-2" />
-                      View All
-                    </Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Related Articles */}
-            {relatedArticles.length > 0 && (
-              <Card className="bg-slate-800/50 border-slate-700 p-6">
-                <CardHeader className="pb-4">
-                  <CardTitle className="text-lg text-white">Related Articles</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {relatedArticles.map((article) => (
-                      <Link 
-                        key={article.id} 
-                        href={`/blog/${article.slug}`}
-                        className="block p-3 bg-slate-700/30 rounded-lg border border-slate-600 hover:bg-slate-700/50 transition-colors"
-                      >
-                        <h4 className="text-white font-medium mb-2 line-clamp-2">
-                          {article.title}
-                        </h4>
-                        <p className="text-slate-400 text-sm line-clamp-2 mb-2">
-                          {article.excerpt}
-                        </p>
-                        <div className="flex items-center gap-2 text-xs text-slate-500">
-                          <Calendar className="w-3 h-3" />
-                          <span>
-                            {new Date(article.publishedAt).toLocaleDateString()}
-                          </span>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            <BlogMatchSalesSidebar
+              title={post.title}
+              tags={post.tags}
+              matchId={post.matchId}
+              excerpt={post.excerpt}
+            />
           </div>
         </div>
       </div>
@@ -538,7 +360,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
       <NewsletterSignup />
 
       {/* Trending Topics */}
-      <TrendingTopics />
+      <UpcomingMatchesSpotlight />
     </div>
   )
 } 

@@ -25,8 +25,14 @@ export async function GET(request: Request) {
     console.log(`Fetching logos for teams: ${teamNames.join(', ')}`)
 
     // Call our backend /teams endpoint for each team in parallel
-    const backendUrl = process.env.BACKEND_API_URL || 'http://localhost:8000'
-    const apiKey = process.env.BACKEND_API_KEY || 'betgenius_secure_key_2024'
+    const backendUrl = process.env.BACKEND_API_URL || process.env.BACKEND_URL
+    if (!backendUrl) {
+      return NextResponse.json(
+        { error: "Backend API URL not configured. Please set BACKEND_API_URL or BACKEND_URL environment variable." },
+        { status: 500 }
+      )
+    }
+    const apiKey = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY || 'betgenius_secure_key_2024'
 
     const teamLogos = await Promise.all(
       teamNames.map(async (teamName) => {

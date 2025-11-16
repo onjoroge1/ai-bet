@@ -14,8 +14,119 @@ interface GenerateMetadataOptions {
   tags?: string[]
 }
 
+const BRAND_NAME = 'SnapBet AI'
+const DEFAULT_TITLE = 'AI-Powered Sports Predictions & Betting Tips'
+const DEFAULT_DESCRIPTION =
+  'Get winning sports predictions powered by AI. Join thousands of successful bettors with our data-driven football, basketball, and tennis tips. Start winning today with confidence scores and expert analysis!'
+const TITLE_MAX_LENGTH = 60
+const DESCRIPTION_MAX_LENGTH = 155
+
+const BASE_KEYWORDS = [
+  'sports predictions',
+  'AI betting tips',
+  'football predictions',
+  'basketball tips',
+  'tennis predictions',
+  'sports betting',
+  'AI tipster',
+  'winning predictions',
+  'betting advice',
+  'sports analysis',
+  'prediction accuracy',
+  'betting strategy',
+  'daily football tips',
+  'sports betting predictions',
+  'AI sports analysis',
+  'confident betting tips',
+  'professional sports predictions',
+  'winning betting strategy',
+]
+
+const resolveBaseUrl = (): string => {
+  const fallback = 'https://www.snapbet.bet'
+  const envUrl = process.env.NEXTAUTH_URL
+  if (!envUrl) {
+    return fallback
+  }
+
+  try {
+    return new URL(envUrl).origin
+  } catch {
+    return fallback
+  }
+}
+
+const stripHtmlTags = (value?: string): string => {
+  if (!value) {
+    return ''
+  }
+
+  return value.replace(/<[^>]*>/g, ' ')
+}
+
+const normalizeWhitespace = (value: string): string =>
+  value.replace(/\s+/g, ' ').trim()
+
+const clampText = (value: string, maxLength: number): string => {
+  const normalized = normalizeWhitespace(value)
+
+  if (normalized.length <= maxLength) {
+    return normalized
+  }
+
+  const truncated = normalized.slice(0, maxLength)
+  const lastSpace = truncated.lastIndexOf(' ')
+
+  if (lastSpace > maxLength * 0.6) {
+    return `${truncated.slice(0, lastSpace).trimEnd()}...`
+  }
+
+  return `${truncated.trimEnd()}...`
+}
+
+const formatTitle = (rawTitle?: string): string => {
+  const cleaned = normalizeWhitespace(
+    stripHtmlTags(rawTitle)?.replace(/\|\s*SnapBet AI/gi, '') ?? ''
+  )
+
+  const baseTitle = cleaned.length > 0 ? cleaned : DEFAULT_TITLE
+  const brandSuffix = ` | ${BRAND_NAME}`
+
+  if (baseTitle.toLowerCase().includes(BRAND_NAME.toLowerCase())) {
+    return clampText(baseTitle, TITLE_MAX_LENGTH)
+  }
+
+  const availableLength = Math.max(
+    TITLE_MAX_LENGTH - brandSuffix.length,
+    Math.floor(TITLE_MAX_LENGTH * 0.6)
+  )
+  const truncatedBase = clampText(baseTitle, availableLength)
+  return `${truncatedBase}${brandSuffix}`
+}
+
+const formatDescription = (rawDescription?: string): string => {
+  const sanitized = normalizeWhitespace(
+    stripHtmlTags(rawDescription) || DEFAULT_DESCRIPTION
+  )
+
+  return clampText(sanitized, DESCRIPTION_MAX_LENGTH)
+}
+
+const resolveAbsoluteUrl = (baseUrl: string, pathOrUrl?: string): string => {
+  if (!pathOrUrl) {
+    return baseUrl
+  }
+
+  try {
+    const maybeUrl = new URL(pathOrUrl)
+    return maybeUrl.toString()
+  } catch {
+    return new URL(pathOrUrl, baseUrl).toString()
+  }
+}
+
 export function generateMetadata(options: GenerateMetadataOptions): Metadata {
-  const baseUrl = process.env.NEXTAUTH_URL || 'https://snapbet.ai'
+  const baseUrl = resolveBaseUrl()
   const {
     title,
     description,
@@ -25,52 +136,43 @@ export function generateMetadata(options: GenerateMetadataOptions): Metadata {
     type = 'website',
     publishedTime,
     modifiedTime,
-    author = 'SnapBet AI Team',
+    author = `${BRAND_NAME} Team`,
     section,
-    tags = []
+    tags = [],
   } = options
 
-  const fullTitle = title 
-    ? `${title} | SnapBet AI`
-    : 'SnapBet AI - AI-Powered Sports Predictions & Betting Tips'
-  
-  const fullDescription = description || 
-    'Get winning sports predictions powered by AI. Join thousands of successful bettors with our data-driven football, basketball, and tennis tips. Start winning today with confidence scores and expert analysis!'
-  
-  const fullUrl = url ? `${baseUrl}${url}` : baseUrl
-  const fullImage = image.startsWith('http') ? image : `${baseUrl}${image}`
+  const formattedTitle = formatTitle(title)
+  const formattedDescription = formatDescription(description)
+  const absoluteUrl = resolveAbsoluteUrl(baseUrl, url)
+  const openGraphImage = resolveAbsoluteUrl(baseUrl, image)
+
+  const keywordSet = Array.from(new Set([...BASE_KEYWORDS, ...keywords]))
 
   const metadata: Metadata = {
-    title: fullTitle,
-    description: fullDescription,
-    keywords: [
-      'sports predictions', 'AI betting tips', 'football predictions', 
-      'basketball tips', 'tennis predictions', 'sports betting', 
-      'AI tipster', 'winning predictions', 'betting advice',
-      'sports analysis', 'prediction accuracy', 'betting strategy',
-      'daily football tips', 'sports betting predictions', 'AI sports analysis',
-      'confident betting tips', 'professional sports predictions', 'winning betting strategy',
-      ...keywords
-    ],
+    title: {
+      absolute: formattedTitle,
+    },
+    description: formattedDescription,
+    keywords: keywordSet,
     authors: [{ name: author }],
-    creator: 'SnapBet AI',
-    publisher: 'SnapBet AI',
+    creator: BRAND_NAME,
+    publisher: BRAND_NAME,
     category: 'Sports & Recreation',
     classification: 'Sports Betting',
     alternates: {
-      canonical: fullUrl,
+      canonical: absoluteUrl,
     },
     openGraph: {
-      title: fullTitle,
-      description: fullDescription,
-      url: fullUrl,
-      siteName: 'SnapBet AI',
+      title: formattedTitle,
+      description: formattedDescription,
+      url: absoluteUrl,
+      siteName: BRAND_NAME,
       images: [
         {
-          url: fullImage,
+          url: openGraphImage,
           width: 1200,
           height: 630,
-          alt: fullTitle,
+          alt: formattedTitle,
         },
       ],
       locale: 'en_US',
@@ -83,9 +185,9 @@ export function generateMetadata(options: GenerateMetadataOptions): Metadata {
     },
     twitter: {
       card: 'summary_large_image',
-      title: fullTitle,
-      description: fullDescription,
-      images: [fullImage],
+      title: formattedTitle,
+      description: formattedDescription,
+      images: [openGraphImage],
       creator: '@snapbet',
     },
     robots: {
@@ -129,8 +231,8 @@ export function generateBlogMetadata(
       'AI predictions blog',
       'football betting blog',
       'sports analysis blog',
-      ...tags
-    ]
+      ...tags,
+    ],
   })
 }
 
@@ -151,7 +253,7 @@ export function generateCountryMetadata(
       `${countryCode} football tips`,
       `${countryCode} betting predictions`,
       'local sports betting',
-      'country-specific betting tips'
-    ]
+      'country-specific betting tips',
+    ],
   })
-} 
+}

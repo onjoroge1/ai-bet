@@ -971,6 +971,7 @@ export default function MatchDetailPage() {
                 minute={matchData.live_data?.minute ?? null}
                 homeTeamName={matchData.home.name}
                 awayTeamName={matchData.away.name}
+                baselineMarkets={fullPrediction?.additional_markets_v2 || quickPurchaseInfo?.predictionData?.additional_markets_v2 || null}
               />
             </div>
           )}

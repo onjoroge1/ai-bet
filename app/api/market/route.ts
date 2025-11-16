@@ -10,6 +10,7 @@ if (!BASE_URL) {
 
 export async function GET(request: NextRequest) {
   if (!BASE_URL) {
+    console.error('[Market API] BACKEND_API_URL or BACKEND_URL not set')
     return NextResponse.json(
       { 
         error: 'Backend API not configured',
@@ -28,6 +29,8 @@ export async function GET(request: NextRequest) {
     const leagueId = searchParams.get('league')
     const matchId = searchParams.get('match_id')
     const includeV2 = searchParams.get('include_v2') // Support for V1-only mode
+    
+    console.log(`[Market API] Using backend: ${BASE_URL}`)
 
     // Single match request - fastest path
     if (matchId) {
@@ -93,14 +96,17 @@ export async function GET(request: NextRequest) {
     })
 
     if (!response.ok) {
-      console.error(`Backend API error: ${response.status} ${response.statusText}`)
+      const errorText = await response.text().catch(() => 'Unknown error')
+      console.error(`Backend API error: ${response.status} ${response.statusText}`, errorText)
       return NextResponse.json(
         { 
+          error: `Backend API error: ${response.status} ${response.statusText}`,
+          message: errorText,
           matches: [],
           total_count: 0
         },
         { 
-          status: 200,
+          status: response.status,
           headers: {
             'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120'
           }
@@ -109,7 +115,7 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json()
-    console.log(`Received ${data.matches?.length || 0} matches`)
+    console.log(`Received ${data.matches?.length || 0} matches from ${url}`)
     
     return NextResponse.json(data, {
       headers: {
@@ -118,13 +124,16 @@ export async function GET(request: NextRequest) {
     })
   } catch (error) {
     console.error('Error fetching market data:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json(
       { 
+        error: 'Failed to fetch market data',
+        message: errorMessage,
         matches: [],
         total_count: 0
       },
       { 
-        status: 200,
+        status: 500,
         headers: {
           'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120'
         }

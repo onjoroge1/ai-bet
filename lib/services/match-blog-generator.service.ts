@@ -931,7 +931,7 @@ export class MatchBlogGeneratorService {
           seoKeywords: blogData.seoKeywords,
           isPublished: blogData.isPublished,
           sourceUrl: blogData.sourceUrl,
-          aiGenerated: blogData.aiGenerated
+        aiGenerated: blogData.aiGenerated
         }
       })
 
