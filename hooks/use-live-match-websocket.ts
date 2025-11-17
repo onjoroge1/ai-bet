@@ -66,6 +66,7 @@ export function useLiveMatchWebSocket(matchId: string, isLive: boolean) {
             hasLiveData: !!data.live_data,
             hasMomentum: !!data.momentum,
             hasModelMarkets: !!data.model_markets,
+            hasAIAnalysis: !!data.ai_analysis,
             timestamp: new Date().toISOString()
           })
           setDelta(data)
@@ -136,7 +137,8 @@ export function useLiveMatchWebSocket(matchId: string, isLive: boolean) {
           minute: data.match?.live_data?.minute,
           live_data: data.match?.live_data,
           momentum: data.match?.momentum,
-          model_markets: data.match?.model_markets
+          model_markets: data.match?.model_markets,
+          ai_analysis: data.match?.ai_analysis
         }
         
         setDelta(deltaUpdate)
@@ -240,6 +242,11 @@ export function mergeDeltaUpdate(
     }
   }
 
+  // Update ai_analysis - replace entirely (new analysis replaces old)
+  if (delta.ai_analysis) {
+    updated.ai_analysis = delta.ai_analysis
+  }
+
   // Update score if minute is updated
   if (delta.minute !== undefined) {
     updated.minute = delta.minute
@@ -247,6 +254,7 @@ export function mergeDeltaUpdate(
 
   return updated
 }
+
 
 
 

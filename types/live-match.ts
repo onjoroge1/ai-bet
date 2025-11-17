@@ -85,6 +85,18 @@ export interface LiveMatchDelta {
   momentum?: Partial<Momentum>
   model_markets?: Partial<ModelMarkets>
   live_data?: Partial<LiveData>
+  ai_analysis?: {
+    minute: number
+    trigger: string
+    momentum: string
+    observations: string[]
+    betting_angles?: Array<{
+      market: string
+      reasoning: string
+      confidence: string
+    }>
+    generated_at: string
+  }
 }
 
 /**
@@ -181,6 +193,18 @@ export interface EnhancedMatchData {
   live_data?: LiveData
   momentum?: Momentum
   model_markets?: ModelMarkets
+  ai_analysis?: {
+    minute: number
+    trigger: string
+    momentum: string
+    observations: string[]
+    betting_angles?: Array<{
+      market: string
+      reasoning: string
+      confidence: string
+    }>
+    generated_at: string
+  }
 }
 
 

@@ -122,6 +122,7 @@ export async function GET(
             status: match?.status,
             hasMomentum: !!match?.momentum,
             hasModelMarkets: !!match?.model_markets,
+            hasAIAnalysis: !!match?.ai_analysis,
             currentScore: match?.live_data?.current_score,
             minute: match?.live_data?.minute,
             kickoff_at: match?.kickoff_at,
@@ -216,6 +217,16 @@ export async function GET(
             probs: matchData.predictions.v2.probs
           } : null
         }
+      }
+      
+      // Ensure ai_analysis is preserved (it should already be in backendMatchData, but explicitly log it)
+      if (matchData.ai_analysis) {
+        console.log(`[Match API] AI Analysis found:`, {
+          minute: matchData.ai_analysis.minute,
+          hasMomentum: !!matchData.ai_analysis.momentum,
+          observationsCount: matchData.ai_analysis.observations?.length || 0,
+          bettingAnglesCount: matchData.ai_analysis.betting_angles?.length || 0
+        })
       }
       
       // Ensure team names are populated - fallback to QuickPurchase if backend doesn't have them

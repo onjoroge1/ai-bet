@@ -17,6 +17,7 @@ import { LiveScoreCard } from "@/components/live/LiveScoreCard"
 import { MomentumIndicator } from "@/components/live/MomentumIndicator"
 import { LiveMarketsCard } from "@/components/live/LiveMarketsCard"
 import { LiveMatchStats } from "@/components/live/LiveMatchStats"
+import { LiveAIAnalysis } from "@/components/live/LiveAIAnalysis"
 import { UnifiedPremiumValue } from "@/components/match/UnifiedPremiumValue"
 import { RealtimeAdvancedMarkets } from "@/components/live/RealtimeAdvancedMarkets"
 import { FinishedMatchStats } from "@/components/match/FinishedMatchStats"
@@ -151,6 +152,17 @@ export default function MatchDetailPage() {
         setMatchData(json.match)
         setQuickPurchaseInfo(json.quickPurchase)
         
+        // Debug: Log AI analysis availability
+        if (json.match?.ai_analysis) {
+          console.log('[Match Detail] AI Analysis received from API:', {
+            minute: json.match.ai_analysis.minute,
+            hasMomentum: !!json.match.ai_analysis.momentum,
+            observationsCount: json.match.ai_analysis.observations?.length || 0
+          })
+        } else {
+          console.log('[Match Detail] No AI Analysis in match data')
+        }
+        
         // If we have predictionData in quickPurchase and user is authenticated, check if purchased
         if (json.quickPurchase?.predictionData && isAuthenticated) {
           // Will be handled by purchasePromise, but we can pre-load it
@@ -160,11 +172,16 @@ export default function MatchDetailPage() {
       const purchasePromise = (async () => {
         if (!isAuthenticated) {
           setPurchaseStatus({ isPurchased: false, isAuthenticated: false, quickPurchaseId: null, purchaseDate: null })
+          console.log('[Match Detail] User not authenticated, purchase status: false')
           return
         }
         const resp = await fetch(`/api/match/${matchId}/purchase-status`)
-        if (!resp.ok) return
+        if (!resp.ok) {
+          console.log('[Match Detail] Purchase status fetch failed:', resp.status)
+          return
+        }
         const purchaseResult = await resp.json()
+        console.log('[Match Detail] Purchase status:', purchaseResult)
         setPurchaseStatus(purchaseResult)
         if (purchaseResult.isPurchased) {
           // Automatically show full analysis when purchased
@@ -630,6 +647,63 @@ export default function MatchDetailPage() {
                 homeTeamName={matchData.home.name}
                 awayTeamName={matchData.away.name}
               />
+            )}
+
+            {/* AI Analysis - Live insights and observations (Premium - requires purchase) */}
+            {(() => {
+              const hasAIAnalysis = !!matchData.ai_analysis
+              const isPurchasedStatus = isPurchased
+              if (hasAIAnalysis && !isPurchasedStatus) {
+                console.log('[Match Detail] AI Analysis available but not purchased', {
+                  hasAIAnalysis,
+                  isPurchased: isPurchasedStatus,
+                  purchaseStatus
+                })
+              }
+              return matchData.ai_analysis && isPurchased && (
+                <LiveAIAnalysis aiAnalysis={matchData.ai_analysis} />
+              )
+            })()}
+
+            {/* AI Analysis Premium Teaser - Show when available but not purchased */}
+            {matchData.ai_analysis && !isPurchased && (
+              <Card className="bg-gradient-to-br from-purple-900/20 via-slate-800/60 to-slate-900/60 border-purple-500/30 border-2 border-dashed">
+                <div className="p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-purple-500/20 rounded-lg">
+                        <Brain className="w-5 h-5 text-purple-400" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold text-white">AI Live Analysis</h3>
+                        <p className="text-slate-400 text-sm mt-1">
+                          Real-time insights and betting angles
+                        </p>
+                      </div>
+                    </div>
+                    <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/40">
+                      <Lock className="w-3 h-3 mr-1" />
+                      Premium
+                    </Badge>
+                  </div>
+                  <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-600/50 mb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <TrendingUp className="w-4 h-4 text-emerald-400" />
+                      <span className="text-sm font-semibold text-emerald-400">Live Analysis Available</span>
+                    </div>
+                    <p className="text-slate-400 text-sm">
+                      Get real-time AI-powered momentum analysis, key observations, and betting angles as the match unfolds.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={handlePurchaseClick}
+                    className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white"
+                  >
+                    <Unlock className="w-4 h-4 mr-2" />
+                    Unlock AI Live Analysis
+                  </Button>
+                </div>
+              </Card>
             )}
           </div>
         )}
