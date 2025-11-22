@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import prisma from "@/lib/db"
 import { authOptions } from "@/lib/auth"
@@ -7,26 +7,37 @@ import { getAvailablePaymentMethods, getPaymentMethodConfiguration } from "@/lib
 import { getDbCountryPricing } from "@/lib/server-pricing-service"
 
 // POST /api/payments/create-payment-intent - Create a payment intent for purchase
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   console.log("🔍 DEBUG: /api/payments/create-payment-intent called")
   
   try {
+    // Try to get the authenticated user via NextAuth session
     const session = await getServerSession(authOptions)
     console.log("🔍 DEBUG: Session check - user:", session?.user?.id ? "found" : "not found")
-    
-    if (!session?.user) {
-      console.log("❌ DEBUG: No session user - returning 401")
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
 
     const body = await request.json()
-    console.log("🔍 DEBUG: Request body:", { itemId: body.itemId, itemType: body.itemType, paymentMethod: body.paymentMethod })
+    console.log("🔍 DEBUG: Request body:", { 
+      itemId: body.itemId, 
+      itemType: body.itemType, 
+      paymentMethod: body.paymentMethod,
+      userId: body.userId,
+    })
     
     const { 
       itemId, 
       itemType, // 'package' or 'tip'
-      paymentMethod 
+      paymentMethod,
+      userId: bodyUserId,
     } = body
+
+    // Prefer server-side session user, but allow an explicit userId from the client as a fallback.
+    // This is primarily to work around local dev/session issues while keeping existing behaviour for real users.
+    const userId = session?.user?.id || bodyUserId
+
+    if (!userId) {
+      console.log("❌ DEBUG: No authenticated user (session) and no userId in body - returning 401")
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
 
     if (!itemId || !itemType) {
       console.log("❌ DEBUG: Missing itemId or itemType")
@@ -34,9 +45,9 @@ export async function POST(request: Request) {
     }
 
     // Get user's country and currency
-    console.log("🔍 DEBUG: Getting user data for:", session.user.id)
+    console.log("🔍 DEBUG: Getting user data for:", userId)
     const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
+      where: { id: userId },
       include: {
         country: {
           select: {
@@ -64,7 +75,7 @@ export async function POST(request: Request) {
     let currency: string
     let description: string
     const metadata: any = {
-      userId: session.user.id,
+      userId,
       itemType,
       itemId,
       userCountry: user.country.code

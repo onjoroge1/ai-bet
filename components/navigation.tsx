@@ -1,20 +1,34 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Menu, X, TrendingUp, User, LogOut, MapPin, BookOpen, Target, Crown, Radio, HelpCircle, BarChart3, Gift, RefreshCw, Activity } from "lucide-react"
 import { useUserCountry } from "@/contexts/user-country-context"
 import { useAuth } from "@/components/auth-provider"
+import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 
 export function Navigation() {
   const [isOpen, setIsOpen] = useState(false)
+  const pathname = usePathname()
   const { countryData, isLoading } = useUserCountry()
   const { user, isAuthenticated, logout } = useAuth()
+  const { data: session } = useSession() // 🔥 Use session directly for fresh user data
   const router = useRouter()
   const navRef = useRef<HTMLDivElement>(null)
+  
+  // 🔥 SECURITY: Never show authenticated state on /signin page
+  // This prevents the nav bar from showing "logged in" when user visits /signin
+  // The /signin page will auto-logout, but we also prevent UI from showing auth state
+  const isOnSignInPage = pathname === '/signin'
+  const shouldShowAuthenticated = isAuthenticated && !isOnSignInPage
+  
+  // 🔥 Use session data directly for user name to avoid stale data from profile cache
+  // Session data is always fresh and updates immediately when user switches
+  const displayName = session?.user?.name || user?.name || session?.user?.email?.split('@')[0] || "Dashboard"
 
   const handleSignOut = async () => {
     setIsOpen(false) // Close mobile menu first
@@ -51,7 +65,7 @@ export function Navigation() {
 
   // Core navigation links - simplified and focused
   const navLinks = [
-    { href: isAuthenticated ? "/dashboard/matches" : "/matches", text: "Matches", icon: Target },
+    { href: shouldShowAuthenticated ? "/dashboard/matches" : "/matches", text: "Matches", icon: Target },
     { href: "/blog", text: "Blog", icon: BookOpen },
     { href: "/tips-history", text: "History", icon: BarChart3 },
     { href: "/dashboard/support", text: "Support", icon: HelpCircle },
@@ -92,7 +106,7 @@ export function Navigation() {
             ))}
             
             {/* Authenticated user links */}
-            {isAuthenticated && authenticatedNavLinks.map((link) => (
+            {shouldShowAuthenticated && authenticatedNavLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
@@ -134,7 +148,7 @@ export function Navigation() {
 
             {/* Auth Section - Cleaner buttons */}
             <div className="hidden md:flex items-center space-x-2">
-              {isAuthenticated ? (
+              {shouldShowAuthenticated ? (
                 <>
                   <Button 
                     variant="ghost" 
@@ -143,7 +157,7 @@ export function Navigation() {
                   >
                     <Link href="/dashboard" className="flex items-center">
                       <User className="w-4 h-4 mr-2" />
-                      {user?.name || "Dashboard"}
+                      {displayName}
                     </Link>
                   </Button>
                   <Button
@@ -227,7 +241,7 @@ export function Navigation() {
                 ))}
 
                 {/* Authenticated user links on mobile */}
-                {isAuthenticated && authenticatedNavLinks.map((link) => (
+                {shouldShowAuthenticated && authenticatedNavLinks.map((link) => (
                   <Link
                     key={link.href}
                     href={link.href}
@@ -250,7 +264,7 @@ export function Navigation() {
               {/* Mobile Auth Buttons - Cleaner separation */}
               <div className="pt-3 border-t border-slate-800 mx-3">
                 <div className="space-y-2">
-                  {isAuthenticated ? (
+                  {shouldShowAuthenticated ? (
                     <>
                       <Button 
                         variant="ghost" 

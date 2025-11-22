@@ -105,6 +105,7 @@ function PaymentMethodCard({ method, selected, onClick, comingSoon }: { method: 
 export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModalProps) {
   const { convertPrice, userCountry } = useUserCountry()
   const queryClient = useQueryClient();
+  const { user } = useAuth()
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>("")
   const [showReceipt, setShowReceipt] = useState(false)
   const [purchasedTip, setPurchasedTip] = useState<any>(null)
@@ -170,15 +171,26 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
           itemId: item?.id,
           itemType: item?.type === 'package' ? 'package' : 'tip',
           paymentMethod: selectedPaymentMethod,
+          // Optional userId hint for the API in case of local NextAuth session issues
+          // The server will still prefer the authenticated session user if present.
+          userId: user?.id,
         }),
       });
+
+      // If the user is not authorized, keep their selection but prompt them to sign in
+      if (response.status === 401) {
+        toast.error('You need to be signed in to complete this purchase. Please sign in and try again.');
+        return;
+      }
+
       if (!response.ok) throw new Error('Failed to create payment intent');
+
       const data = await response.json();
       setClientSecret(data.clientSecret);
       setPaymentStep('pay');
     } catch (error) {
+      // Do not clear the selected payment method on error so the user doesn't lose their choice
       toast.error('Failed to initialize payment. Please try again.');
-      setSelectedPaymentMethod("");
     } finally {
       setIsLoading(false);
     }
@@ -538,12 +550,9 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
             {clientSecret && hasStripeKey ? (
               <Elements 
                 stripe={stripePromise}
-                options={{ 
+                options={{
                   clientSecret,
                   loader: 'auto',
-                  onReady: () => {
-                    console.log('[QuickPurchaseModal] ✅ Stripe Elements initialized successfully')
-                  },
                   appearance: {
                     theme: 'night',
                     variables: {

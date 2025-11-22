@@ -7,9 +7,12 @@ import CredentialsProvider from "next-auth/providers/credentials"
 import prisma from "@/lib/db"
 
 // Use environment variables for secrets
-const JWT_SECRET = process.env.JWT_SECRET
+// NextAuth can use either NEXTAUTH_SECRET or JWT_SECRET, but prefers NEXTAUTH_SECRET
+const JWT_SECRET = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET
+const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET
+
 if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET environment variable is not set')
+  throw new Error('JWT_SECRET or NEXTAUTH_SECRET environment variable must be set')
 }
 
 export async function verifyToken(token: string): Promise<boolean> {
@@ -40,6 +43,11 @@ interface TokenPayload {
   [key: string]: string
 }
 
+/**
+ * @deprecated This function is for legacy/API-only use, not for web session auth.
+ * For web authentication, use NextAuth's signIn() which handles token generation automatically.
+ * This helper may be used for stateless API tokens or other non-web flows.
+ */
 export async function generateToken(payload: TokenPayload): Promise<string> {
   const encoder = new TextEncoder()
   const secretKey = encoder.encode(JWT_SECRET)
@@ -66,6 +74,11 @@ export async function getTokenPayload(token: string): Promise<TokenPayload | nul
   }
 }
 
+/**
+ * @deprecated This function is for legacy/API-only use, not for web session auth.
+ * For web authentication, NextAuth handles cookie setting automatically via its session system.
+ * This helper may be used for stateless API tokens or other non-web flows.
+ */
 export function setTokenCookie(response: NextResponse, token: string): NextResponse {
   response.cookies.set({
     name: 'token',
@@ -100,13 +113,28 @@ declare module "next-auth" {
 }
 
 export const authOptions = {
-  secret: JWT_SECRET,
+  secret: NEXTAUTH_SECRET,
   session: {
     strategy: "jwt" as const,
     maxAge: 24 * 60 * 60, // 24 hours
+    updateAge: 60 * 60, // Update session every hour
   },
   jwt: {
     maxAge: 24 * 60 * 60, // 24 hours
+  },
+  cookies: {
+    sessionToken: {
+      name: process.env.NODE_ENV === 'production' 
+        ? '__Secure-next-auth.session-token' 
+        : 'next-auth.session-token',
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 24 * 60 * 60, // 24 hours
+      },
+    },
   },
   pages: {
     signIn: "/signin",
@@ -123,13 +151,39 @@ export const authOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
+        // Explicit validation: ensure credentials exist and are not empty strings
         if (!credentials?.email || !credentials.password) {
+          console.log('NextAuth authorize: Missing credentials', { 
+            hasEmail: !!credentials?.email, 
+            hasPassword: !!credentials?.password 
+          })
           return null
         }
 
+        // Trim and validate email/password are not just whitespace
+        const trimmedEmail = credentials.email.trim()
+        const trimmedPassword = credentials.password.trim()
+
+        if (!trimmedEmail || !trimmedPassword) {
+          console.log('NextAuth authorize: Empty credentials after trim', { 
+            emailLength: trimmedEmail.length, 
+            passwordLength: trimmedPassword.length 
+          })
+          return null
+        }
+
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        if (!emailRegex.test(trimmedEmail)) {
+          console.log('NextAuth authorize: Invalid email format', { email: trimmedEmail })
+          return null
+        }
+
+        console.log('NextAuth authorize: Validating credentials for user', { email: trimmedEmail })
+
         const user = await prisma.user.findUnique({
           where: {
-            email: credentials.email,
+            email: trimmedEmail,
           },
           select: {
             id: true,
@@ -146,15 +200,22 @@ export const authOptions = {
         })
 
         if (!user || !user.password) {
+          console.log('NextAuth authorize: User not found or no password', { 
+            userFound: !!user, 
+            hasPassword: !!user?.password 
+          })
           return null
         }
 
         try {
-          const isPasswordValid = await bcrypt.compare(credentials.password, user.password)
+          console.log('NextAuth authorize: Comparing password for user', { userId: user.id, email: user.email })
+          const isPasswordValid = await bcrypt.compare(trimmedPassword, user.password)
           if (!isPasswordValid) {
+            console.log('NextAuth authorize: Password mismatch for user', { userId: user.id, email: user.email })
             return null
           }
 
+          console.log('NextAuth authorize: Authentication successful', { userId: user.id, email: user.email, role: user.role })
           return {
             id: user.id,
             email: user.email,
@@ -173,21 +234,49 @@ export const authOptions = {
     async jwt({ token, user, account }: { token: any; user: any; account: any }) {
       if (user) {
         // Initial sign in
+        console.log('NextAuth JWT callback - Creating new token for user', {
+          userId: user.id,
+          email: user.email,
+          role: user.role,
+          timestamp: new Date().toISOString()
+        })
         token.id = user.id
         token.email = user.email
         token.name = user.name
         token.role = user.role
         token.referralCode = user.referralCode
+      } else if (token) {
+        // Token refresh - existing token being used
+        console.log('NextAuth JWT callback - Refreshing existing token', {
+          userId: token.id,
+          email: token.email,
+          role: token.role,
+          exp: token.exp,
+          iat: token.iat,
+          timestamp: new Date().toISOString()
+        })
       }
       return token
     },
     async session({ session, token }: { session: any; token: any }) {
       if (token) {
+        console.log('NextAuth Session callback - Creating session from token', {
+          userId: token.id,
+          email: token.email,
+          role: token.role,
+          exp: token.exp,
+          expiresIn: token.exp ? `${Math.floor((token.exp * 1000 - Date.now()) / 1000)}s` : null,
+          timestamp: new Date().toISOString()
+        })
         session.user.id = token.id
         session.user.email = token.email
         session.user.name = token.name
         session.user.role = token.role
         session.user.referralCode = token.referralCode
+      } else {
+        console.log('NextAuth Session callback - No token available', {
+          timestamp: new Date().toISOString()
+        })
       }
       return session
     },

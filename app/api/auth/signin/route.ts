@@ -7,6 +7,22 @@ import { generateToken } from "@/lib/auth"
 const prisma = new PrismaClient()
 
 export async function POST(request: NextRequest) {
+  // ⚠️ DEPRECATED: This route uses custom JWT tokens and should NOT be used
+  // The signin form should use NextAuth's signIn() which calls /api/auth/[...nextauth]
+  // This route is kept for legacy/API-only use only
+  
+  logger.warn("⚠️ DEPRECATED: /api/auth/signin route called - This should use NextAuth instead", {
+    tags: ["auth", "signin", "deprecated"],
+    data: { 
+      email: request.body ? "present" : "missing",
+      userAgent: request.headers.get("user-agent"),
+      referer: request.headers.get("referer"),
+      timestamp: new Date().toISOString()
+    }
+  })
+  console.warn("⚠️ DEPRECATED: /api/auth/signin route called - This creates custom JWT tokens, not NextAuth sessions!")
+  console.warn("⚠️ The signin form should use NextAuth's signIn() instead")
+  
   try {
     const { email, password } = await request.json()
     
@@ -15,8 +31,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Email and password are required" }, { status: 400 })
     }
 
-    logger.info("Attempting sign in", {
-      tags: ["auth", "signin"],
+    logger.info("⚠️ DEPRECATED: Attempting sign in via legacy route", {
+      tags: ["auth", "signin", "deprecated"],
       data: { email },
     })
 

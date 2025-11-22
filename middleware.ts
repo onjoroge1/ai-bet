@@ -213,9 +213,54 @@ export async function middleware(request: NextRequest) {
     }
 
     // Get the token using next-auth
+    // Use NEXTAUTH_SECRET if available, fallback to JWT_SECRET
+    const authSecret = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET
+    
+    // Log all cookies to see what's being sent
+    const allCookies = request.cookies.getAll()
+    const sessionCookie = request.cookies.get('next-auth.session-token') || request.cookies.get('__Secure-next-auth.session-token')
+    const legacyTokenCookie = request.cookies.get('token')
+    const authTokenCookie = request.cookies.get('auth_token')
+    
+    // ⚠️ WARNING: If we have legacy tokens, they shouldn't be used with NextAuth
+    if (legacyTokenCookie || authTokenCookie) {
+      logger.warn('⚠️ Middleware - Found legacy auth cookies (should use NextAuth only)', {
+        tags: ['middleware', 'auth', 'cookies', 'warning'],
+        data: {
+          pathname,
+          hasLegacyToken: !!legacyTokenCookie,
+          hasAuthToken: !!authTokenCookie,
+          hasNextAuthSession: !!sessionCookie,
+          cookieNames: allCookies.map(c => c.name),
+          message: 'Legacy token cookies found - these should be cleared. Only NextAuth session cookies should be used.'
+        }
+      })
+      console.warn('⚠️ Middleware - Found legacy auth cookies:', {
+        hasLegacyToken: !!legacyTokenCookie,
+        hasAuthToken: !!authTokenCookie,
+        hasNextAuthSession: !!sessionCookie
+      })
+    }
+    
+    logger.debug('Middleware - Cookie check', {
+      tags: ['middleware', 'auth', 'cookies'],
+      data: {
+        pathname,
+        totalCookies: allCookies.length,
+        cookieNames: allCookies.map(c => c.name),
+        hasSessionCookie: !!sessionCookie,
+        hasLegacyToken: !!legacyTokenCookie,
+        hasAuthToken: !!authTokenCookie,
+        sessionCookieName: sessionCookie?.name,
+        sessionCookieValue: sessionCookie ? `${sessionCookie.value.substring(0, 20)}...` : null,
+        usingNextAuth: !!sessionCookie,
+        usingLegacyAuth: !!(legacyTokenCookie || authTokenCookie),
+      }
+    })
+    
     const token = await getToken({ 
       req: request,
-      secret: process.env.JWT_SECRET,
+      secret: authSecret,
       secureCookie: process.env.NODE_ENV === 'production'
     })
 
@@ -229,8 +274,13 @@ export async function middleware(request: NextRequest) {
         countryFromPath,
         // Only log non-sensitive token data
         tokenData: token ? { 
+          id: token.id,
+          email: token.email,
           role: token.role,
-          exp: token.exp
+          exp: token.exp,
+          iat: token.iat,
+          tokenAge: token.exp && token.iat ? `${token.exp - token.iat}s` : null,
+          expiresIn: token.exp ? `${Math.floor((token.exp * 1000 - Date.now()) / 1000)}s` : null,
         } : null
       }
     })
@@ -241,11 +291,9 @@ export async function middleware(request: NextRequest) {
     const isAdminPath = isAdminOnlyPath(pathname)
     const isPublicPath = publicPaths.some(p => pathname.startsWith(p))
 
-    // If user is authenticated and tries to access signin/signup, redirect to dashboard
-    if (token && (pathname === '/signin' || pathname === '/signup')) {
-      const response = NextResponse.redirect(new URL('/dashboard', request.url))
-      return addSecurityHeaders(response)
-    }
+    // Allow access to signin/signup pages even if authenticated
+    // This lets users log in as a different user or test the login flow
+    // The signin form itself can show a message if user is already logged in
 
     // If path requires authentication and no token exists, redirect to signin
     if ((isProtectedPath || isAdminPath || isAuthenticatedPath) && !token) {

@@ -39,7 +39,7 @@ export function useDashboardData(): UseDashboardDataReturn {
     retry: 1, // Reduced retries to prevent excessive calls
     retryDelay: 2000, // Increased delay between retries
     refetchOnWindowFocus: false, // Prevent refetch on window focus
-    refetchOnMount: false, // Prevent refetch on component mount if data exists
+    refetchOnMount: true, // 🔥 CRITICAL: Refetch on mount when user changes (user ID in query key handles this)
   })
 
   return {

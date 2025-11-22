@@ -31,38 +31,24 @@ export const stripePromise = (() => {
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore - window is available at runtime but TypeScript doesn't see it here
   if (typeof window === 'undefined') {
-    return new Promise<Stripe | null>(() => {}) // Never resolves
+    return new Promise<Stripe | null>(() => {}) // Never resolves on server
   }
 
   // Client-side: get the key and initialize Stripe
   const stripeKey = getStripeKey()
 
   if (!stripeKey) {
-    console.error('[Stripe] Cannot initialize - publishable key is missing')
-    console.error('[Stripe] Make sure NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set in .env.local')
-    return Promise.resolve(null)
+    console.error('[Stripe] Publishable key is missing or invalid, trying to load anyway')
+    // Always call loadStripe, even with an empty key - Elements expects a Promise from loadStripe
+    return loadStripe('')
   }
 
-  console.log('[Stripe] Initializing Stripe.js with key:', stripeKey.substring(0, 20) + '...')
+  console.log('[Stripe] Loading Stripe.js with key:', stripeKey.substring(0, 20) + '...')
   
   return loadStripe(stripeKey, {
     betas: [],
     locale: 'en',
-  }).then((stripe) => {
-        if (stripe) {
-          console.log('[Stripe] ✅ Stripe.js loaded successfully')
-        } else {
-          console.error('[Stripe] ⚠️ Stripe.js failed to load - returned null')
-          console.error('[Stripe] Possible causes: network issues, ad blockers, or CSP restrictions')
-          console.error('[Stripe] Check browser console and network tab for blocked requests to js.stripe.com')
-        }
-        return stripe
-      }).catch((error) => {
-        // Catch any errors during loading (though loadStripe shouldn't throw)
-        console.error('[Stripe] ❌ Error loading Stripe.js:', error)
-        // Return null on error - Elements handles null gracefully
-        return null
-      })
+  })
 })()
 
 // Payment method types we support
