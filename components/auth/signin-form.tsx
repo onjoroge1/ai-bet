@@ -3,7 +3,7 @@
 import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { signIn } from "next-auth/react"
+import { signIn, useSession } from "next-auth/react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,6 +16,7 @@ import { logger } from "@/lib/logger"
 export function SignInForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { update } = useSession()
 
   const rawCallbackUrl = searchParams.get("callbackUrl") || "/dashboard"
   // Sanitize callbackUrl: never allow API routes or external URLs
@@ -175,7 +176,7 @@ export function SignInForm() {
       }
 
       if (result?.ok) {
-        logger.info("Sign in successful - redirecting", { 
+        logger.info("Sign in successful - updating session and redirecting", { 
           tags: ["auth", "signin"], 
           data: { 
             callbackUrl,
@@ -183,15 +184,24 @@ export function SignInForm() {
           } 
         })
         
-        // 🔥 CRITICAL: NextAuth has set the session cookie
-        // The cookie is HttpOnly, so we can't check it via JavaScript
-        // But NextAuth has already set it server-side
-        // We need to ensure the cookie is fully propagated before redirect
-        const target = result?.url ?? callbackUrl
+        // 🔥 CRITICAL: Force useSession() to refetch the session
+        // This ensures the client-side session is synced with the server
+        try {
+          await update()
+          logger.info("Session updated successfully", {
+            tags: ["auth", "signin"],
+          })
+        } catch (updateError) {
+          logger.warn("Session update failed, but continuing with redirect", {
+            tags: ["auth", "signin"],
+            error: updateError instanceof Error ? updateError : undefined,
+          })
+        }
         
-        // Wait a bit longer to ensure cookie is fully set and propagated
-        // This is especially important for HttpOnly cookies
-        await new Promise(resolve => setTimeout(resolve, 300))
+        // Wait a bit to ensure session is fully propagated
+        await new Promise(resolve => setTimeout(resolve, 200))
+        
+        const target = result?.url ?? callbackUrl
         
         // Hard redirect ensures full page reload
         // SessionProvider will automatically fetch session from /api/auth/session

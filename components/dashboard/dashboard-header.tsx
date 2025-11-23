@@ -9,11 +9,11 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from "@/components/auth-provider"
 import { useDashboardData } from "@/hooks/use-dashboard-data"
 import { NotificationBell } from "@/components/notifications/NotificationBell"
+import { LogoutButton } from "@/components/auth/logout-button"
 
 export function DashboardHeader() {
   const [showCelebration, setShowCelebration] = useState(false)
   const router = useRouter()
-  const { logout } = useAuth()
   const { data, isLoading, error } = useDashboardData()
 
   // Use data from API or fallback to auth user data
@@ -29,9 +29,6 @@ export function DashboardHeader() {
     }
   }, [streak])
 
-  const handleSignOut = async () => {
-    await logout() // This will handle the redirect
-  }
 
   // Loading state
   if (isLoading) {
@@ -133,7 +130,7 @@ export function DashboardHeader() {
           >
             <Settings className="w-4 h-4" />
           </Button>
-          <Button onClick={handleSignOut}>Sign Out</Button>
+          <LogoutButton />
         </div>
       </div>
 

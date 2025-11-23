@@ -4,10 +4,10 @@ import { useState, useEffect, useRef } from "react"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Menu, X, TrendingUp, User, LogOut, MapPin, BookOpen, Target, Crown, Radio, HelpCircle, BarChart3, Gift, RefreshCw, Activity } from "lucide-react"
+import { Menu, X, TrendingUp, User, MapPin, BookOpen, Target, Crown, Radio, HelpCircle, BarChart3, Gift, RefreshCw, Activity } from "lucide-react"
 import { useUserCountry } from "@/contexts/user-country-context"
-import { useAuth } from "@/components/auth-provider"
 import { useSession } from "next-auth/react"
+import { LogoutButton } from "@/components/auth/logout-button"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 
@@ -15,24 +15,23 @@ export function Navigation() {
   const [isOpen, setIsOpen] = useState(false)
   const pathname = usePathname()
   const { countryData, isLoading } = useUserCountry()
-  const { user, isAuthenticated, logout } = useAuth()
-  const { data: session } = useSession() // 🔥 Use session directly for fresh user data
+  // 🔥 Use useSession() directly - it's the single source of truth for NextAuth
+  // This ensures nav bar updates immediately when user logs out
+  const { data: session, status } = useSession()
   const router = useRouter()
   const navRef = useRef<HTMLDivElement>(null)
   
   // 🔥 SECURITY: Never show authenticated state on /signin page
   // This prevents the nav bar from showing "logged in" when user visits /signin
-  // The /signin page will auto-logout, but we also prevent UI from showing auth state
   const isOnSignInPage = pathname === '/signin'
+  const isAuthenticated = status === 'authenticated' && !!session?.user
   const shouldShowAuthenticated = isAuthenticated && !isOnSignInPage
   
-  // 🔥 Use session data directly for user name to avoid stale data from profile cache
-  // Session data is always fresh and updates immediately when user switches
-  const displayName = session?.user?.name || user?.name || session?.user?.email?.split('@')[0] || "Dashboard"
+  // 🔥 Use session data directly for user name - always fresh
+  const displayName = session?.user?.name || session?.user?.email?.split('@')[0] || "Dashboard"
 
-  const handleSignOut = async () => {
-    setIsOpen(false) // Close mobile menu first
-    await logout() // This will handle the redirect
+  const handleMobileMenuClose = () => {
+    setIsOpen(false)
   }
 
   const handleCountryRefresh = () => {
@@ -160,15 +159,11 @@ export function Navigation() {
                       {displayName}
                     </Link>
                   </Button>
-                  <Button
+                  <LogoutButton 
                     variant="outline"
                     size="sm"
                     className="border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white"
-                    onClick={handleSignOut}
-                  >
-                    <LogOut className="w-4 h-4 mr-2" />
-                    Sign Out
-                  </Button>
+                  />
                 </>
               ) : (
                 <>
@@ -269,21 +264,19 @@ export function Navigation() {
                       <Button 
                         variant="ghost" 
                         className="w-full text-slate-300 hover:text-white hover:bg-slate-800/50"
-                        onClick={() => setIsOpen(false)}
+                        onClick={handleMobileMenuClose}
                       >
                         <Link href="/dashboard" className="flex items-center justify-center w-full">
                           <User className="w-4 h-4 mr-2" />
                           Dashboard
                         </Link>
                       </Button>
-                      <Button
-                        variant="outline"
-                        className="w-full border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white"
-                        onClick={handleSignOut}
-                      >
-                        <LogOut className="w-4 h-4 mr-2" />
-                        Sign Out
-                      </Button>
+                      <div onClick={handleMobileMenuClose}>
+                        <LogoutButton 
+                          variant="outline"
+                          className="w-full border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white"
+                        />
+                      </div>
                     </>
                   ) : (
                     <>

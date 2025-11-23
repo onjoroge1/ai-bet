@@ -84,8 +84,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       })
       // Clear all queries to remove cached user data
-      queryClient.invalidateQueries({ queryKey: [] })
-      queryClient.removeQueries({ queryKey: [] })
+      queryClient.invalidateQueries()
+      queryClient.removeQueries()
       previousUserId.current = undefined
     }
 
@@ -100,8 +100,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       })
       // Clear all queries first, then invalidate to force refetch
-      queryClient.invalidateQueries({ queryKey: [] })
-      queryClient.removeQueries({ queryKey: [] })
+      queryClient.invalidateQueries()
+      queryClient.removeQueries()
     }
 
     previousUserId.current = currentUserId
@@ -140,7 +140,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: false,
         isLoading: true,
         logout: async () => {
-          await signOut({ redirect: true, callbackUrl: '/signin' })
+          // Clear cache and sign out
+          queryClient.invalidateQueries()
+          queryClient.removeQueries()
+          previousUserId.current = undefined
+          await signOut({ redirect: false })
+          window.location.href = '/signin'
         },
       }
     }
@@ -173,18 +178,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: true, // Set immediately - no waiting for profile fetch
         isLoading: false,
         logout: async () => {
-          // 🔥 CRITICAL: Clear all cached data BEFORE signing out
-          // This prevents showing stale data from the previous user
-          logger.info('Logging out - clearing all cached data', {
-            tags: ['auth', 'provider', 'logout', 'cache'],
+          // 🔥 Use NextAuth's signOut() directly - it handles everything
+          // - Clears HttpOnly session cookie
+          // - Broadcasts logout to all tabs (so useSession() updates everywhere)
+          // - Redirects to callbackUrl
+          // No manual cache clearing needed - NextAuth handles session destruction
+          logger.info('AuthProvider logout - calling NextAuth signOut', {
+            tags: ['auth', 'provider', 'logout'],
             data: { userId: (session!.user as any).id, email: session!.user.email }
           })
-          queryClient.invalidateQueries({ queryKey: [] }) // Invalidate all queries
-          queryClient.removeQueries({ queryKey: [] }) // Remove all queries from cache
-          previousUserId.current = undefined // Reset user ID tracking
-          
-          // Then sign out and redirect
-          await signOut({ redirect: true, callbackUrl: '/signin' })
+          await signOut({ callbackUrl: '/signin' })
         },
       }
     }

@@ -2,36 +2,45 @@
 
 import { useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
+import { LogoutButton } from "@/components/auth/logout-button"
 
 export default function AuthDebugPage() {
-  const { data: session, status } = useSession()
+  const { data: session, status, update } = useSession()
   const [apiSession, setApiSession] = useState<any>(null)
-  const [cookies, setCookies] = useState<string>("")
 
   useEffect(() => {
     console.log("[DEBUG] useSession()", { status, session })
   }, [status, session])
 
   useEffect(() => {
-    // Fetch session from API
-    ;(async () => {
+    // Fetch session from API with no cache to get fresh data
+    const fetchSession = async () => {
       try {
-        const res = await fetch("/api/auth/session")
+        const res = await fetch("/api/auth/session", { cache: "no-store" })
         const json = await res.json()
         console.log("[DEBUG] /api/auth/session", json)
         setApiSession(json)
+        
+        // 🔥 CRITICAL: If API has a session but useSession() doesn't, force a refetch
+        if (json?.user && status === "unauthenticated") {
+          console.log("[DEBUG] Mismatch detected: API has session but useSession() doesn't - forcing refetch")
+          // Force useSession() to refetch by calling update()
+          await update()
+        }
       } catch (error) {
         console.error("[DEBUG] Error fetching /api/auth/session", error)
         setApiSession({ error: String(error) })
       }
-    })()
-
-    // Get cookies
-    if (typeof document !== "undefined") {
-      setCookies(document.cookie)
-      console.log("[DEBUG] document.cookie", document.cookie)
     }
-  }, [])
+    
+    fetchSession()
+    
+    // Set up interval to refetch session periodically (every 2 seconds)
+    // This helps catch session changes after logout and sync issues
+    const interval = setInterval(fetchSession, 2000)
+    
+    return () => clearInterval(interval)
+  }, [status, update]) // Refetch when session status changes
 
   return (
     <div className="min-h-screen bg-slate-900 p-8">
@@ -55,14 +64,6 @@ export default function AuthDebugPage() {
             </pre>
           </div>
 
-          {/* Cookies */}
-          <div className="bg-slate-800 p-4 rounded-lg">
-            <h2 className="text-lg font-semibold text-white mb-2">document.cookie</h2>
-            <pre className="text-xs text-yellow-400 overflow-auto break-all">
-              {cookies || "No cookies"}
-            </pre>
-          </div>
-
           {/* Quick Status Summary */}
           <div className="bg-slate-800 p-4 rounded-lg">
             <h2 className="text-lg font-semibold text-white mb-2">Quick Status</h2>
@@ -75,8 +76,8 @@ export default function AuthDebugPage() {
               </div>
               <div className="text-white">
                 <span className="font-semibold">Has session:</span>{" "}
-                <span className={session ? "text-green-400" : "text-red-400"}>
-                  {session ? "Yes" : "No"}
+                <span className={session?.user ? "text-green-400" : "text-red-400"}>
+                  {session?.user ? "Yes" : "No"}
                 </span>
               </div>
               <div className="text-white">
@@ -97,13 +98,12 @@ export default function AuthDebugPage() {
                   {apiSession?.user?.email || "N/A"}
                 </span>
               </div>
-              <div className="text-white">
-                <span className="font-semibold">Has session cookie:</span>{" "}
-                <span className={cookies.includes("next-auth.session-token") ? "text-green-400" : "text-red-400"}>
-                  {cookies.includes("next-auth.session-token") ? "Yes" : "No"}
-                </span>
-              </div>
             </div>
+            {status === "authenticated" && (
+              <div className="mt-4 pt-4 border-t border-slate-700">
+                <LogoutButton label="Test Logout" />
+              </div>
+            )}
           </div>
         </div>
       </div>

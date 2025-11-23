@@ -21,9 +21,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <SessionProvider
-        refetchInterval={5 * 60} // Refetch session every 5 minutes
+        refetchInterval={30} // Refetch session every 30 seconds to keep it in sync
         refetchOnWindowFocus={true} // Refetch when window regains focus
-        basePath="/api/auth" // Ensure correct base path for NextAuth
+        // basePath is not needed - NextAuth defaults to /api/auth
       >
         <ThemeProvider
           attribute="class"
