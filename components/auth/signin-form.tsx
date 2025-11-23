@@ -3,7 +3,7 @@
 import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { signIn, useSession } from "next-auth/react"
+import { signIn } from "next-auth/react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,7 +16,6 @@ import { logger } from "@/lib/logger"
 export function SignInForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { update } = useSession()
 
   const rawCallbackUrl = searchParams.get("callbackUrl") || "/dashboard"
   // Sanitize callbackUrl: never allow API routes or external URLs
@@ -176,7 +175,7 @@ export function SignInForm() {
       }
 
       if (result?.ok) {
-        logger.info("Sign in successful - updating session and redirecting", { 
+        logger.info("Sign in successful - verifying session and redirecting", { 
           tags: ["auth", "signin"], 
           data: { 
             callbackUrl,
@@ -184,28 +183,51 @@ export function SignInForm() {
           } 
         })
         
-        // 🔥 CRITICAL: Force useSession() to refetch the session
-        // This ensures the client-side session is synced with the server
+        // 🔥 SIMPLIFIED: Direct /api/auth/session check for immediate verification
+        // This is faster (~30-100ms) than waiting for useSession() to poll/update
         try {
-          await update()
-          logger.info("Session updated successfully", {
+          const verifySession = async (maxRetries = 3): Promise<boolean> => {
+            for (let i = 0; i < maxRetries; i++) {
+              const res = await fetch("/api/auth/session", {
+                cache: "no-store",
+                credentials: "include",
+              })
+              const session = await res.json()
+              
+              if (session?.user) {
+                logger.info("Session verified successfully after login", {
+                  tags: ["auth", "signin"],
+                  data: { attempt: i + 1, email: session.user.email },
+                })
+                return true
+              }
+              
+              // Wait a bit before retry (cookie propagation might take a moment)
+              if (i < maxRetries - 1) {
+                await new Promise(resolve => setTimeout(resolve, 100))
+              }
+            }
+            return false
+          }
+          
+          const sessionVerified = await verifySession(3)
+          if (!sessionVerified) {
+            logger.warn("Session verification failed, but continuing with redirect", {
+              tags: ["auth", "signin"],
+            })
+            // Still redirect - the session exists server-side, useSession() will catch up
+          }
+        } catch (verifyError) {
+          logger.warn("Session verification error, but continuing with redirect", {
             tags: ["auth", "signin"],
+            error: verifyError instanceof Error ? verifyError : undefined,
           })
-        } catch (updateError) {
-          logger.warn("Session update failed, but continuing with redirect", {
-            tags: ["auth", "signin"],
-            error: updateError instanceof Error ? updateError : undefined,
-          })
+          // Still redirect - don't block user from proceeding
         }
-        
-        // Wait a bit to ensure session is fully propagated
-        await new Promise(resolve => setTimeout(resolve, 200))
         
         const target = result?.url ?? callbackUrl
         
-        // Hard redirect ensures full page reload
-        // SessionProvider will automatically fetch session from /api/auth/session
-        // which will read the HttpOnly cookie
+        // Hard redirect - useSession() will automatically sync on page load
         window.location.href = target
         return
       }
