@@ -31,69 +31,65 @@ export function LogoutButton({
   const queryClient = useQueryClient()
   
   const handleLogout = async () => {
-    logger.info("LogoutButton clicked - clearing cache and calling NextAuth signOut", {
+    logger.info("LogoutButton clicked - killing session (server-side first)", {
       tags: ["auth", "logout"],
       data: { 
         timestamp: new Date().toISOString(),
         userId: (session?.user as any)?.id,
-        email: session?.user?.email
+        email: session?.user?.email,
+        architecture: "server-side-first"
       }
     })
     
     try {
-      // 🔥 Step 1: Clear all React Query cache to prevent stale data
+      // 🔥 NEW ARCHITECTURE: Server-side first logout
+      // 1. Clear React Query cache
+      // 2. Kill session server-side
+      // 3. Verify session cleared (optional)
+      // 4. Redirect immediately
+      
+      // Step 1: Clear all React Query cache to prevent stale data
       queryClient.invalidateQueries()
       queryClient.removeQueries()
       logger.info("React Query cache cleared", {
         tags: ["auth", "logout", "cache"],
       })
       
-      // 🔥 Step 2: Clear server-side session cookie
+      // Step 2: Kill session server-side
       await signOut({ redirect: false })
       
-      // 🔥 SIMPLIFIED: Direct /api/auth/session check for immediate verification
-      // This is faster (~30-100ms) than waiting for useSession() to poll/update
+      // Step 3: Verify session is cleared (optional but recommended)
       try {
-        const verifySessionCleared = async (maxRetries = 3): Promise<boolean> => {
-          for (let i = 0; i < maxRetries; i++) {
-            const res = await fetch("/api/auth/session", {
-              cache: "no-store",
-              credentials: "include",
-            })
-            const session = await res.json()
-            
-            if (!session?.user) {
-              logger.info("Session cleared verified successfully after logout", {
-                tags: ["auth", "logout"],
-                data: { attempt: i + 1 },
-              })
-              return true
-            }
-            
-            // Wait a bit before retry (cookie clearing might take a moment)
-            if (i < maxRetries - 1) {
-              await new Promise(resolve => setTimeout(resolve, 100))
-            }
-          }
-          return false
-        }
+        const res = await fetch("/api/auth/session", {
+          cache: "no-store",
+          credentials: "include",
+        })
+        const session = await res.json()
         
-        const sessionCleared = await verifySessionCleared(3)
-        if (!sessionCleared) {
-          logger.warn("Session clear verification failed, but continuing with redirect", {
+        if (!session?.user) {
+          logger.info("Session killed successfully - verified server-side", {
+            tags: ["auth", "logout"],
+            data: { architecture: "server-side-first" },
+          })
+        } else {
+          logger.warn("Session still exists after signOut, but continuing with redirect", {
             tags: ["auth", "logout"],
           })
-          // Still redirect - the session is cleared server-side, useSession() will catch up
+          // Still redirect - signOut() clears cookie, might just need a moment
         }
       } catch (verifyError) {
-        logger.warn("Session clear verification error, but continuing with redirect", {
+        logger.warn("Session verification error, but continuing with redirect", {
           tags: ["auth", "logout"],
           error: verifyError instanceof Error ? verifyError : undefined,
         })
         // Still redirect - don't block user from proceeding
       }
       
-      // 🔥 Step 3: Hard redirect - useSession() will automatically sync on page load
+      // Step 4: Immediate redirect - signin page will check server-side session
+      logger.info("Redirecting to signin - session killed server-side", {
+        tags: ["auth", "logout"],
+        data: { architecture: "server-side-first" },
+      })
       window.location.href = "/signin"
     } catch (error) {
       logger.error("Error during logout", {

@@ -2,10 +2,17 @@
 
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import dynamic from 'next/dynamic'
-import { Suspense, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense } from 'react'
 import { Loader2 } from 'lucide-react'
-import { useAuth } from "@/components/auth-provider"
+
+/**
+ * DashboardPage - Server-Side First Architecture
+ * 
+ * 🔥 REMOVED: Duplicate auth check (layout already handles server-side auth)
+ * - DashboardLayout checks /api/auth/session and only renders children if authenticated
+ * - This page trusts the layout's auth check
+ * - useAuth() is used only for user data (non-blocking)
+ */
 
 // Dynamically import heavy components
 const StatsOverview = dynamic(() => import('@/components/dashboard/stats-overview').then(mod => mod.StatsOverview), {
@@ -58,35 +65,12 @@ const ReferralBanner = dynamic(() => import('@/components/referral-banner'), {
 })
 
 export default function DashboardPage() {
-  const router = useRouter()
-  const { isLoading: authLoading, isAuthenticated } = useAuth()
-
-  // Redirect to signin if not authenticated (with callbackUrl to return here)
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      const callbackUrl = encodeURIComponent('/dashboard')
-      router.push(`/signin?callbackUrl=${callbackUrl}`)
-    }
-  }, [authLoading, isAuthenticated, router])
-
-  // Show loading state while auth is initializing or redirecting
-  if (authLoading || !isAuthenticated) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-center h-96">
-          <div className="text-center">
-            <Loader2 className="h-12 w-12 animate-spin text-emerald-500 mx-auto mb-4" />
-            <p className="text-slate-300 text-lg">
-              {authLoading ? 'Loading dashboard...' : 'Redirecting to sign in...'}
-            </p>
-          </div>
-        </div>
-      </div>
-    )
-  }
+  // 🔥 REMOVED: Duplicate auth check - DashboardLayout already handles server-side auth
+  // The layout checks /api/auth/session and only renders children if authenticated
+  // This page trusts the layout's auth check and renders content immediately
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
+    <div className="max-w-7xl mx-auto px-4 py-8 min-h-screen">
       <DashboardHeader />
 
       {/* Top Row: Stats and Package Credits */}

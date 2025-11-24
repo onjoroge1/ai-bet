@@ -1,35 +1,82 @@
 "use client"
 
-import { useEffect, type ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
-import { useSession } from "next-auth/react"
 import { logger } from "@/lib/logger"
 import { Loader2 } from "lucide-react"
 
+type AuthStatus = 'checking' | 'authenticated' | 'unauthenticated'
+
+/**
+ * DashboardLayout - Server-Side First Authentication
+ * 
+ * 🔥 NEW ARCHITECTURE: Uses /api/auth/session as primary source of truth
+ * - Checks server-side session directly (no waiting for useSession() sync)
+ * - Fast and reliable authentication decisions
+ * - useSession() syncs in background for UI components
+ */
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const router = useRouter()
-  const { data: session, status } = useSession()
+  const [authStatus, setAuthStatus] = useState<AuthStatus>('checking')
 
   useEffect(() => {
-    // 🔥 CRITICAL: Trust useSession() directly, not useAuth()
-    // useSession() is the single source of truth for NextAuth authentication
-    // Only redirect if we're CERTAIN the user is not authenticated (not loading, and no session)
-    // Wait for status to be determined (not 'loading') before making decisions
-    if (status !== 'loading' && status === 'unauthenticated') {
-      logger.info("User not authenticated, redirecting to signin from dashboard layout", {
-        tags: ["auth", "dashboard", "redirect"],
-        data: {
-          nextAuthStatus: status,
-          hasSession: !!session,
-        },
-      })
-      console.log("[DEBUG] DashboardLayout - redirecting to signin because status is unauthenticated (after loading)")
-      router.replace("/signin")
+    const checkAuth = async () => {
+      try {
+        logger.info("DashboardLayout - Checking server-side session", {
+          tags: ["auth", "dashboard", "server-side-check"],
+          data: { architecture: "server-side-first" },
+        })
+        
+        const res = await fetch('/api/auth/session', {
+          cache: 'no-store',
+          credentials: 'include',
+        })
+        
+        if (!res.ok) {
+          logger.warn("DashboardLayout - Session check failed", {
+            tags: ["auth", "dashboard"],
+            data: { status: res.status },
+          })
+          setAuthStatus('unauthenticated')
+          router.replace('/signin')
+          return
+        }
+        
+        const session = await res.json()
+        
+        if (session?.user) {
+          logger.info("DashboardLayout - User authenticated (server-side)", {
+            tags: ["auth", "dashboard"],
+            data: {
+              email: session.user.email,
+              userId: session.user.id,
+              architecture: "server-side-first",
+            },
+          })
+          setAuthStatus('authenticated')
+        } else {
+          logger.info("DashboardLayout - User not authenticated, redirecting to signin", {
+            tags: ["auth", "dashboard", "redirect"],
+            data: { architecture: "server-side-first" },
+          })
+          setAuthStatus('unauthenticated')
+          router.replace('/signin')
+        }
+      } catch (error) {
+        logger.error("DashboardLayout - Auth check error", {
+          tags: ["auth", "dashboard", "error"],
+          error: error instanceof Error ? error : undefined,
+        })
+        setAuthStatus('unauthenticated')
+        router.replace('/signin')
+      }
     }
-  }, [status, router, session])
+    
+    checkAuth()
+  }, [router])
 
-  // Show loading state while NextAuth is determining session status
-  if (status === 'loading') {
+  // Show loading state while checking authentication
+  if (authStatus === 'checking') {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-900">
         <Loader2 className="h-12 w-12 animate-spin text-emerald-500" />
@@ -38,10 +85,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     )
   }
 
-  // Only render children if authenticated
-  if (status !== 'authenticated' || !session?.user) {
-    return null // Don't render anything while redirecting
+  // Don't render anything while redirecting
+  if (authStatus === 'unauthenticated') {
+    return null
   }
 
+  // Render dashboard content - user is authenticated (verified server-side)
   return <>{children}</>
 }

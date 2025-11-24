@@ -3,7 +3,7 @@
 import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { signIn } from "next-auth/react"
+import { signIn, useSession } from "next-auth/react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,6 +16,7 @@ import { logger } from "@/lib/logger"
 export function SignInForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { update } = useSession() // Get update function for background sync
 
   const rawCallbackUrl = searchParams.get("callbackUrl") || "/dashboard"
   // Sanitize callbackUrl: never allow API routes or external URLs
@@ -175,47 +176,47 @@ export function SignInForm() {
       }
 
       if (result?.ok) {
-        logger.info("Sign in successful - verifying session and redirecting", { 
+        logger.info("Sign in successful - triggering background sync and redirecting", { 
           tags: ["auth", "signin"], 
           data: { 
             callbackUrl,
             resultUrl: result?.url,
+            architecture: "server-side-first"
           } 
         })
         
-        // 🔥 SIMPLIFIED: Direct /api/auth/session check for immediate verification
-        // This is faster (~30-100ms) than waiting for useSession() to poll/update
+        // 🔥 NEW ARCHITECTURE: Server-side first, background sync
+        // 1. Trigger background useSession() sync (non-blocking)
+        // 2. Verify server-side session exists (fast check)
+        // 3. Redirect immediately (dashboard will check server-side session)
+        
+        // Step 1: Trigger background sync for useSession() (non-blocking)
+        update().catch((err) => {
+          logger.warn("Background useSession() sync failed (non-critical)", {
+            tags: ["auth", "signin"],
+            error: err instanceof Error ? err : undefined,
+          })
+          // Don't block - this is background sync only
+        })
+        
+        // Step 2: Quick server-side session verification (optional but recommended)
         try {
-          const verifySession = async (maxRetries = 3): Promise<boolean> => {
-            for (let i = 0; i < maxRetries; i++) {
-              const res = await fetch("/api/auth/session", {
-                cache: "no-store",
-                credentials: "include",
-              })
-              const session = await res.json()
-              
-              if (session?.user) {
-                logger.info("Session verified successfully after login", {
-                  tags: ["auth", "signin"],
-                  data: { attempt: i + 1, email: session.user.email },
-                })
-                return true
-              }
-              
-              // Wait a bit before retry (cookie propagation might take a moment)
-              if (i < maxRetries - 1) {
-                await new Promise(resolve => setTimeout(resolve, 100))
-              }
-            }
-            return false
-          }
+          const res = await fetch("/api/auth/session", {
+            cache: "no-store",
+            credentials: "include",
+          })
+          const session = await res.json()
           
-          const sessionVerified = await verifySession(3)
-          if (!sessionVerified) {
-            logger.warn("Session verification failed, but continuing with redirect", {
+          if (session?.user) {
+            logger.info("Server-side session verified - ready for redirect", {
+              tags: ["auth", "signin"],
+              data: { email: session.user.email },
+            })
+          } else {
+            logger.warn("Server-side session not found yet, but continuing with redirect", {
               tags: ["auth", "signin"],
             })
-            // Still redirect - the session exists server-side, useSession() will catch up
+            // Still redirect - NextAuth sets cookie synchronously, might just need a moment
           }
         } catch (verifyError) {
           logger.warn("Session verification error, but continuing with redirect", {
@@ -225,10 +226,18 @@ export function SignInForm() {
           // Still redirect - don't block user from proceeding
         }
         
+        // Step 3: Immediate redirect - dashboard will check server-side session
         const target = result?.url ?? callbackUrl
         
-        // Hard redirect - useSession() will automatically sync on page load
-        window.location.href = target
+        logger.info("Redirecting to dashboard - using server-side session check", {
+          tags: ["auth", "signin"],
+          data: { target, architecture: "server-side-first" },
+        })
+        
+        // Use router.push() for better Next.js integration
+        // Dashboard layout will check /api/auth/session directly
+        router.push(target)
+        router.refresh() // Force refresh to ensure fresh session check
         return
       }
 
