@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import React, { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -29,10 +29,9 @@ import {
   LineChart
 } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@/components/auth-provider"
 
 interface Feature {
-  icon: JSX.Element
+  icon: React.ReactElement
   title: string
   description: string
   highlight?: string
@@ -54,7 +53,7 @@ interface Testimonial {
 }
 
 interface MatchExperience {
-  icon: JSX.Element
+  icon: React.ReactElement
   title: string
   description: string
   outcomes: string[]
@@ -78,14 +77,39 @@ interface ValueStack {
   activation: string
 }
 
+/**
+ * SalesPage - Server-Side First Authentication
+ * 
+ * 🔥 NEW ARCHITECTURE: Uses /api/auth/session for auth decisions
+ * - Checks server-side session for CTA button (fast, reliable)
+ * - No blocking on useSession() sync
+ */
 export default function SalesPage() {
   const router = useRouter()
-  const { isAuthenticated } = useAuth()
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false) // Server-side auth state
   const [liveStats, setLiveStats] = useState({
     activeOpportunities: 47,
     avgConfidence: 82,
     liveMatches: 23
   })
+
+  // 🔥 NEW: Check server-side session on mount (fast, non-blocking)
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const res = await fetch('/api/auth/session', {
+          cache: 'no-store',
+          credentials: 'include',
+        })
+        const session = await res.json()
+        setIsAuthenticated(!!session?.user)
+      } catch (error) {
+        console.error('[SalesPage] Auth check error:', error)
+        setIsAuthenticated(false)
+      }
+    }
+    checkAuth()
+  }, [])
 
   // Simulate live stats updates
   useEffect(() => {
@@ -100,10 +124,23 @@ export default function SalesPage() {
     return () => clearInterval(interval)
   }, [])
 
-  const handleCTAClick = (source: string) => {
-    if (isAuthenticated) {
-      router.push('/dashboard')
-    } else {
+  const handleCTAClick = async (source: string) => {
+    // 🔥 NEW: Check server-side session for immediate auth decision
+    try {
+      const res = await fetch('/api/auth/session', {
+        cache: 'no-store',
+        credentials: 'include',
+      })
+      const session = await res.json()
+      const serverIsAuthenticated = !!session?.user
+      
+      if (serverIsAuthenticated) {
+        router.push('/dashboard')
+      } else {
+        router.push(`/signup?source=${source}`)
+      }
+    } catch (error) {
+      console.error('[SalesPage] Auth check error in handleCTAClick:', error)
       router.push(`/signup?source=${source}`)
     }
   }

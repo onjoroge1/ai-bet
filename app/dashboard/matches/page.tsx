@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Calendar, MapPin, Trophy, Target, TrendingUp, Eye, CheckCircle, Loader2, Search, Filter, X, CreditCard } from "lucide-react"
-import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
 import { decodeQuickPurchasesData } from "@/lib/optimized-data-decoder"
 import { QuickPurchaseModal } from "@/components/quick-purchase-modal"
@@ -61,7 +60,7 @@ interface MatchFilters {
   sortBy: string
 }
 
-// Add QuickPurchaseItem type for modal
+// Add QuickPurchaseItem type for modal (matches QuickPurchaseModal interface)
 interface QuickPurchaseItem {
   id: string
   name: string
@@ -78,7 +77,12 @@ interface QuickPurchaseItem {
   isPopular?: boolean
   discountPercentage?: number
   confidenceScore?: number
-  matchData?: MatchData
+  matchData?: {
+    home_team: string
+    away_team: string
+    league: string
+    date: string
+  }
   country?: {
     currencyCode: string
     currencySymbol: string
@@ -90,8 +94,15 @@ interface QuickPurchaseItem {
   analysisSummary?: string
 }
 
+/**
+ * MatchesPage - Server-Side First Authentication
+ * 
+ * 🔥 NEW ARCHITECTURE: Uses /api/auth/session as primary source of truth
+ * - Checks server-side session directly (no waiting for useSession() sync)
+ * - Fast and reliable authentication decisions
+ * - No blocking on client-side auth sync
+ */
 export default function MatchesPage() {
-  const { isAuthenticated, isLoading: authLoading, user } = useAuth()
   const router = useRouter()
   const [matches, setMatches] = useState<Match[]>([])
   const [filteredMatches, setFilteredMatches] = useState<Match[]>([])
@@ -100,6 +111,7 @@ export default function MatchesPage() {
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null)
   const [modalItem, setModalItem] = useState<QuickPurchaseItem | null>(null)
   const [showPurchaseModal, setShowPurchaseModal] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false) // Server-side auth state
   const [filters, setFilters] = useState<MatchFilters>({
     search: "",
     status: "all",
@@ -108,34 +120,34 @@ export default function MatchesPage() {
     sortBy: "date"
   })
 
-  console.log('MatchesPage render - authLoading:', authLoading, 'isAuthenticated:', isAuthenticated, 'user:', user?.id, 'loading:', loading, 'matches count:', matches.length, 'filtered count:', filteredMatches.length, 'error:', error)
-
-  // Redirect unauthenticated users to public matches page
+  // 🔥 NEW: Check server-side session on mount (fast, non-blocking)
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      router.push('/matches')
+    const checkAuth = async () => {
+      try {
+        const res = await fetch('/api/auth/session', {
+          cache: 'no-store',
+          credentials: 'include',
+        })
+        const session = await res.json()
+        const serverIsAuthenticated = !!session?.user
+        setIsAuthenticated(serverIsAuthenticated)
+        
+        if (!serverIsAuthenticated) {
+          router.push('/matches')
+          return
+        }
+        
+        // Fetch matches immediately if authenticated
+        fetchMatches()
+      } catch (error) {
+        console.error('[MatchesPage] Auth check error:', error)
+        setIsAuthenticated(false)
+        router.push('/matches')
+      }
     }
-  }, [authLoading, isAuthenticated, router])
-
-  // Show loading while checking authentication
-  if (authLoading) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <Loader2 className="h-8 w-8 animate-spin text-emerald-400 mx-auto mb-4" />
-            <div className="text-white text-lg font-semibold mb-2">Loading...</div>
-            <div className="text-slate-400 text-sm">Checking authentication...</div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Don't render anything if not authenticated (will redirect)
-  if (!isAuthenticated) {
-    return null
-  }
+    checkAuth()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]) // Only check on mount
 
   const applyFilters = useCallback(() => {
     let filtered = [...matches]
@@ -211,12 +223,8 @@ export default function MatchesPage() {
     setFilteredMatches(filtered)
   }, [matches, filters])
 
-  useEffect(() => {
-    console.log('MatchesPage useEffect - fetching matches, isAuthenticated:', isAuthenticated)
-    if (isAuthenticated) {
-      fetchMatches()
-    }
-  }, [isAuthenticated])
+  // 🔥 REMOVED: No longer blocking on isAuthenticated from useAuth()
+  // Matches are fetched immediately after server-side auth check
 
   useEffect(() => {
     console.log('MatchesPage useEffect - applying filters')
@@ -371,7 +379,12 @@ export default function MatchesPage() {
       isPopular: match.isPopular || false,
       discountPercentage: match.discountPercentage,
       confidenceScore: match.confidenceScore,
-      matchData: match.matchData,
+      matchData: match.matchData ? {
+        home_team: match.matchData.home_team || '',
+        away_team: match.matchData.away_team || '',
+        league: match.matchData.league || '',
+        date: match.matchData.date || new Date().toISOString()
+      } : undefined,
       country: match.country,
       tipCount: match.tipCount,
       predictionType: match.predictionType,
@@ -383,18 +396,8 @@ export default function MatchesPage() {
     setShowPurchaseModal(true)
   }
 
-  // Check authentication first
-  if (authLoading) {
-    console.log('MatchesPage - authLoading is true, showing loading state')
-    return (
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
-          <span className="ml-2 text-slate-300">Checking authentication...</span>
-        </div>
-      </div>
-    )
-  }
+  // 🔥 REMOVED: No longer blocking on authLoading
+  // Server-side auth check happens on mount, page loads immediately
 
   if (!isAuthenticated) {
     console.log('MatchesPage - not authenticated, showing auth required state')

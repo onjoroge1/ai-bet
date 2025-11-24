@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import React, { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -29,13 +29,12 @@ import {
   LineChart
 } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@/components/auth-provider"
 import { QuizSection } from "@/components/quiz-section"
 import { OddsPredictionTable } from "@/components/ui/odds-prediction-table"
 import { MarqueeTicker } from "@/components/marquee-ticker"
 
 interface Feature {
-  icon: JSX.Element
+  icon: React.ReactElement
   title: string
   description: string
   highlight?: string
@@ -48,14 +47,40 @@ interface Stat {
   color: string
 }
 
+/**
+ * HomePage - Server-Side First Authentication
+ * 
+ * 🔥 NEW ARCHITECTURE: Uses /api/auth/session for customer-facing auth decisions
+ * - Checks server-side session directly (no waiting for useSession() sync)
+ * - Fast and reliable authentication decisions
+ * - Maintains good customer flow (no sign-off gaps)
+ */
 export default function HomePage() {
   const router = useRouter()
-  const { isAuthenticated } = useAuth()
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false) // Server-side auth state
   const [liveStats, setLiveStats] = useState({
     activeOpportunities: 47,
     avgConfidence: 82,
     liveMatches: 23
   })
+
+  // 🔥 NEW: Check server-side session on mount (fast, non-blocking)
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const res = await fetch('/api/auth/session', {
+          cache: 'no-store',
+          credentials: 'include',
+        })
+        const session = await res.json()
+        setIsAuthenticated(!!session?.user)
+      } catch (error) {
+        console.error('[HomePage] Auth check error:', error)
+        setIsAuthenticated(false)
+      }
+    }
+    checkAuth()
+  }, [])
 
   // Simulate live stats updates
   useEffect(() => {
@@ -70,10 +95,23 @@ export default function HomePage() {
     return () => clearInterval(interval)
   }, [])
 
-  const handleCTAClick = (source: string) => {
-    if (isAuthenticated) {
-      router.push('/dashboard')
-    } else {
+  const handleCTAClick = async (source: string) => {
+    // 🔥 NEW: Check server-side session for immediate auth decision
+    try {
+      const res = await fetch('/api/auth/session', {
+        cache: 'no-store',
+        credentials: 'include',
+      })
+      const session = await res.json()
+      const serverIsAuthenticated = !!session?.user
+      
+      if (serverIsAuthenticated) {
+        router.push('/dashboard')
+      } else {
+        router.push(`/signup?source=${source}`)
+      }
+    } catch (error) {
+      console.error('[HomePage] Auth check error in handleCTAClick:', error)
       router.push(`/signup?source=${source}`)
     }
   }
@@ -186,7 +224,14 @@ export default function HomePage() {
               size="lg" 
               variant="outline" 
               className="border-slate-600 text-white hover:bg-slate-800 px-6 sm:px-8 py-3 sm:py-4 text-base sm:text-lg w-full sm:w-auto"
-              onClick={() => router.push(isAuthenticated ? '/dashboard/matches' : '/matches')}
+              onClick={() => {
+                // Check auth state for navigation
+                if (isAuthenticated) {
+                  router.push('/dashboard/matches')
+                } else {
+                  router.push('/matches')
+                }
+              }}
             >
               <Eye className="h-5 w-5 sm:h-6 sm:w-6 mr-2" />
               View Live Predictions

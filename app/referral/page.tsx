@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { useSession } from 'next-auth/react'
 import { motion } from 'framer-motion'
 import { 
   Users, 
@@ -48,18 +47,49 @@ interface ReferralData {
   recentReferrals: ReferralRecord[]
 }
 
+/**
+ * ReferralPage - Server-Side First Authentication
+ * 
+ * 🔥 NEW ARCHITECTURE: Uses /api/auth/session as primary source of truth
+ * - Checks server-side session directly (no waiting for useSession() sync)
+ * - Fast and reliable authentication decisions
+ * - No blocking on client-side auth sync
+ */
 export default function ReferralPage() {
-  const { data: session } = useSession()
   const [referralData, setReferralData] = useState<ReferralData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false) // Server-side auth state
 
+  // 🔥 NEW: Check server-side session on mount and fetch data immediately
   useEffect(() => {
-    if (session?.user?.id) {
-      fetchReferralData()
+    const checkAuthAndFetch = async () => {
+      try {
+        const res = await fetch('/api/auth/session', {
+          cache: 'no-store',
+          credentials: 'include',
+        })
+        const session = await res.json()
+        const serverIsAuthenticated = !!session?.user
+        setIsAuthenticated(serverIsAuthenticated)
+        
+        if (serverIsAuthenticated && session?.user?.id) {
+          fetchReferralData()
+        } else {
+          setLoading(false)
+          setError('Authentication required')
+        }
+      } catch (error) {
+        console.error('[ReferralPage] Auth check error:', error)
+        setIsAuthenticated(false)
+        setLoading(false)
+        setError('Failed to check authentication')
+      }
     }
-  }, [session])
+    checkAuthAndFetch()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Only check on mount
 
   const fetchReferralData = async () => {
     try {

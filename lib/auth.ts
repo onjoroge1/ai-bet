@@ -233,50 +233,37 @@ export const authOptions = {
   callbacks: {
     async jwt({ token, user, account }: { token: any; user: any; account: any }) {
       if (user) {
-        // Initial sign in
-        console.log('NextAuth JWT callback - Creating new token for user', {
-          userId: user.id,
-          email: user.email,
-          role: user.role,
-          timestamp: new Date().toISOString()
-        })
+        // Initial sign in - only log in development
+        if (process.env.NODE_ENV === 'development') {
+          console.log('NextAuth JWT callback - Creating new token for user', {
+            userId: user.id,
+            email: user.email,
+            role: user.role,
+          })
+        }
         token.id = user.id
         token.email = user.email
         token.name = user.name
         token.role = user.role
         token.referralCode = user.referralCode
-      } else if (token) {
-        // Token refresh - existing token being used
-        console.log('NextAuth JWT callback - Refreshing existing token', {
-          userId: token.id,
-          email: token.email,
-          role: token.role,
-          exp: token.exp,
-          iat: token.iat,
-          timestamp: new Date().toISOString()
-        })
       }
+      // Token refresh - no logging (happens frequently, expected behavior)
       return token
     },
     async session({ session, token }: { session: any; token: any }) {
       if (token) {
-        console.log('NextAuth Session callback - Creating session from token', {
-          userId: token.id,
-          email: token.email,
-          role: token.role,
-          exp: token.exp,
-          expiresIn: token.exp ? `${Math.floor((token.exp * 1000 - Date.now()) / 1000)}s` : null,
-          timestamp: new Date().toISOString()
-        })
+        // Session callback runs on every /api/auth/session call (expected with server-side first architecture)
+        // Only log errors or important events, not every invocation
         session.user.id = token.id
         session.user.email = token.email
         session.user.name = token.name
         session.user.role = token.role
         session.user.referralCode = token.referralCode
       } else {
-        console.log('NextAuth Session callback - No token available', {
-          timestamp: new Date().toISOString()
-        })
+        // Only log if there's an issue (no token when expected)
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('NextAuth Session callback - No token available (user may not be authenticated)')
+        }
       }
       return session
     },

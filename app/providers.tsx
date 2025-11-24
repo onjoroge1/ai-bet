@@ -21,10 +21,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <SessionProvider
-        refetchInterval={10} // Refetch session every 10 seconds to keep it in sync (reduced from 30 for faster sync)
-        refetchOnWindowFocus={true} // Refetch when window regains focus
-        refetchOnMount={true} // Refetch when component mounts for fresh session
+        refetchInterval={60} // Refetch session every 60 seconds (6x less frequent - optimized for performance)
+        refetchOnWindowFocus={false} // Only when needed (reduces excessive API calls)
         // basePath is not needed - NextAuth defaults to /api/auth
+        // 🔥 OPTIMIZED: Reduced refetch frequency to improve performance
+        // Critical auth decisions use /api/auth/session directly (server-side first)
+        // useSession() is used only for UI display (non-blocking)
       >
         <ThemeProvider
           attribute="class"
