@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge"
 import { Loader2, Calendar, MapPin, Trophy, Target, TrendingUp, Shield, Lock, Unlock, ArrowLeft, CheckCircle, Brain, Star, Zap } from "lucide-react"
 import ConsensusRow from "./ConsensusRow"
 import BookmakerOdds from "./BookmakerOdds"
-import { useAuth } from "@/components/auth-provider"
 import { QuickPurchaseModal } from "@/components/quick-purchase-modal"
 // QuickPurchaseItem type defined inline below
 import { PredictionCard } from "@/components/predictions/PredictionCard"
@@ -83,10 +82,17 @@ interface FullPrediction {
   data_freshness?: any
 }
 
+/**
+ * MatchDetailPage - Server-Side First Authentication
+ * 
+ * 🔥 NEW ARCHITECTURE: Uses /api/auth/session as primary source of truth
+ * - Checks server-side session directly (no waiting for useSession() sync)
+ * - Fast and reliable authentication decisions
+ * - No blocking on client-side auth sync
+ */
 export default function MatchDetailPage() {
   const params = useParams()
   const router = useRouter()
-  const { isAuthenticated, isLoading: authLoading } = useAuth()
   const matchId = params.match_id as string
 
   const [matchData, setMatchData] = useState<MatchData | null>(null)
@@ -97,6 +103,7 @@ export default function MatchDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [showPurchaseModal, setShowPurchaseModal] = useState(false)
   const [showFullAnalysis, setShowFullAnalysis] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false) // Server-side auth state
 
   // Check match status
   const isFinished = matchData?.status === 'FINISHED' || matchData?.final_result !== undefined
@@ -115,6 +122,24 @@ export default function MatchDetailPage() {
     }
   }, [delta, matchData, clearDelta])
   
+  // 🔥 NEW: Check server-side session on mount (fast, non-blocking)
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const res = await fetch('/api/auth/session', {
+          cache: 'no-store',
+          credentials: 'include',
+        })
+        const session = await res.json()
+        setIsAuthenticated(!!session?.user)
+      } catch (error) {
+        console.error('[Match Detail] Auth check error:', error)
+        setIsAuthenticated(false)
+      }
+    }
+    checkAuth()
+  }, [])
+
   // Auto-load predictionData when quickPurchaseInfo is available and purchased OR when match is finished
   useEffect(() => {
     // For finished matches, always show prediction data (blog mode)
@@ -133,16 +158,31 @@ export default function MatchDetailPage() {
     }
   }, [matchData, quickPurchaseInfo?.predictionData, purchaseStatus?.isPurchased, fullPrediction])
 
+  // 🔥 NEW: Fetch match details immediately (no blocking on authLoading)
   useEffect(() => {
-    if (!authLoading) {
-      fetchMatchDetails()
-    }
-  }, [matchId, isAuthenticated, authLoading])
+    fetchMatchDetails()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchId]) // Only re-fetch when matchId changes
 
   const fetchMatchDetails = async (): Promise<void> => {
     try {
       setLoading(true)
       setError(null)
+
+      // 🔥 NEW: Check server-side session first (fast, reliable)
+      let serverIsAuthenticated = false
+      try {
+        const authRes = await fetch('/api/auth/session', {
+          cache: 'no-store',
+          credentials: 'include',
+        })
+        const session = await authRes.json()
+        serverIsAuthenticated = !!session?.user
+        setIsAuthenticated(serverIsAuthenticated)
+      } catch (authError) {
+        console.error('[Match Detail] Auth check error:', authError)
+        serverIsAuthenticated = false
+      }
 
       // Run match and purchase-status in parallel
       const matchPromise = (async () => {
@@ -162,20 +202,19 @@ export default function MatchDetailPage() {
         } else {
           console.log('[Match Detail] No AI Analysis in match data')
         }
-        
-        // If we have predictionData in quickPurchase and user is authenticated, check if purchased
-        if (json.quickPurchase?.predictionData && isAuthenticated) {
-          // Will be handled by purchasePromise, but we can pre-load it
-        }
       })()
 
+      // 🔥 NEW: Use server-side auth check for purchase status
       const purchasePromise = (async () => {
-        if (!isAuthenticated) {
+        if (!serverIsAuthenticated) {
           setPurchaseStatus({ isPurchased: false, isAuthenticated: false, quickPurchaseId: null, purchaseDate: null })
-          console.log('[Match Detail] User not authenticated, purchase status: false')
+          console.log('[Match Detail] User not authenticated (server-side check), purchase status: false')
           return
         }
-        const resp = await fetch(`/api/match/${matchId}/purchase-status`)
+        const resp = await fetch(`/api/match/${matchId}/purchase-status`, {
+          cache: 'no-store',
+          credentials: 'include',
+        })
         if (!resp.ok) {
           console.log('[Match Detail] Purchase status fetch failed:', resp.status)
           return
@@ -252,8 +291,25 @@ export default function MatchDetailPage() {
     }
   }
 
-  const handlePurchaseClick = () => {
-    if (!isAuthenticated) {
+  const handlePurchaseClick = async () => {
+    // 🔥 NEW: Check server-side session for immediate auth decision
+    try {
+      const res = await fetch('/api/auth/session', {
+        cache: 'no-store',
+        credentials: 'include',
+      })
+      const session = await res.json()
+      const serverIsAuthenticated = !!session?.user
+      
+      if (!serverIsAuthenticated) {
+        router.push(`/signin?callbackUrl=/match/${matchId}`)
+        return
+      }
+      
+      // Update local state
+      setIsAuthenticated(true)
+    } catch (error) {
+      console.error('[Match Detail] Auth check error in handlePurchaseClick:', error)
       router.push(`/signin?callbackUrl=/match/${matchId}`)
       return
     }
@@ -305,7 +361,21 @@ export default function MatchDetailPage() {
       setModalWasOpen(true)
     } else if (modalWasOpen && !showPurchaseModal) {
       // Modal was closed after being open - refresh data after delay for webhook processing
-      const timer = setTimeout(() => {
+      // 🔥 NEW: Refresh auth state and purchase status after purchase
+      const timer = setTimeout(async () => {
+        // Refresh server-side auth state
+        try {
+          const res = await fetch('/api/auth/session', {
+            cache: 'no-store',
+            credentials: 'include',
+          })
+          const session = await res.json()
+          setIsAuthenticated(!!session?.user)
+        } catch (error) {
+          console.error('[Match Detail] Auth refresh error:', error)
+        }
+        
+        // Refresh match details (includes purchase status)
         fetchMatchDetails().then(() => {
           setModalWasOpen(false)
           // Check if purchase was completed - fetchFullPrediction will be called by purchasePromise
