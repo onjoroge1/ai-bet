@@ -246,10 +246,11 @@ export function SignInForm() {
           data: { target, architecture: "server-side-first" },
         })
         
-        // Use router.push() for better Next.js integration
-        // Dashboard layout will check /api/auth/session directly
-        router.push(target)
-        router.refresh() // Force refresh to ensure fresh session check
+        // ✅ FIX: Use window.location for production reliability
+        // router.push() can sometimes have issues with cookie propagation in production
+        // window.location ensures a full page reload with fresh cookies
+        // Dashboard layout will check /api/auth/session directly with a small delay
+        window.location.href = target
         return
       }
 

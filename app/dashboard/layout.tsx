@@ -24,6 +24,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       const maxRetries = 3
       const baseDelay = 1000 // 1 second
       
+      // ✅ FIX: Add small delay on first check to allow session cookie to propagate after redirect
+      // This is especially important in production where cookie propagation might take a moment
+      if (retryCount === 0) {
+        await new Promise(resolve => setTimeout(resolve, 100)) // 100ms delay for cookie propagation
+      }
+      
       try {
         logger.info("DashboardLayout - Checking server-side session", {
           tags: ["auth", "dashboard", "server-side-check"],

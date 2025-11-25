@@ -20,8 +20,10 @@ interface UseDashboardDataReturn {
 export function useDashboardData(): UseDashboardDataReturn {
   const [userId, setUserId] = useState<string | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
+  const [sessionUser, setSessionUser] = useState<{ name?: string | null; email?: string } | null>(null)
 
   // 🔥 NEW: Check server-side session to get user ID immediately
+  // ✅ FIX: Also store session user data to use as fallback while dashboard data loads
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -33,14 +35,21 @@ export function useDashboardData(): UseDashboardDataReturn {
         if (session?.user?.id) {
           setUserId(session.user.id)
           setIsAuthenticated(true)
+          // ✅ FIX: Store session user data for immediate use (prevents showing "User" fallback)
+          setSessionUser({
+            name: session.user.name,
+            email: session.user.email,
+          })
         } else {
           setUserId(null)
           setIsAuthenticated(false)
+          setSessionUser(null)
         }
       } catch (error) {
         console.error('[useDashboardData] Auth check error:', error)
         setUserId(null)
         setIsAuthenticated(false)
+        setSessionUser(null)
       }
     }
     checkAuth()
@@ -76,8 +85,30 @@ export function useDashboardData(): UseDashboardDataReturn {
     refetchOnMount: true, // 🔥 CRITICAL: Refetch on mount when user changes (user ID in query key handles this)
   })
 
+  // ✅ FIX: Merge session user data as fallback when dashboard data is loading or unavailable
+  // This prevents showing "User" fallback - uses session name immediately
+  const mergedData: DashboardResponse | null = data ? data : (sessionUser && userId ? {
+    user: {
+      id: userId,
+      email: sessionUser.email || '',
+      fullName: sessionUser.name || null,
+      role: 'user',
+      memberSince: 'Recently',
+      winStreak: 0,
+      country: null,
+    },
+    dashboard: {
+      level: 1,
+      progressToNextLevel: 0,
+      predictionAccuracy: '0%',
+      monthlySuccess: '0%',
+      vipExpiryDate: null,
+      subscriptionPlan: null,
+    },
+  } : null)
+
   return {
-    data: data || null,
+    data: mergedData,
     isLoading,
     error: error ? (error as Error).message : null,
     refetch: async () => {
