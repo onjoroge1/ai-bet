@@ -21,13 +21,29 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const checkAuth = async (retryCount = 0) => {
-      const maxRetries = 3
+      const maxRetries = 5 // ✅ INCREASED: More retries for initial load after redirect
       const baseDelay = 1000 // 1 second
       
-      // ✅ FIX: Add small delay on first check to allow session cookie to propagate after redirect
-      // This is especially important in production where cookie propagation might take a moment
+      // ✅ FIX: Longer delay on first check to allow session cookie to propagate after redirect
+      // This is especially important in production where cookie propagation can take 300-500ms
+      // Also check if we're coming from signin (document.referrer contains /signin)
+      const isFromSignin = typeof window !== 'undefined' && 
+        (document.referrer.includes('/signin') || 
+         window.location.search.includes('from=signin') ||
+         sessionStorage.getItem('justSignedIn') === 'true')
+      
       if (retryCount === 0) {
-        await new Promise(resolve => setTimeout(resolve, 100)) // 100ms delay for cookie propagation
+        // ✅ INCREASED: Longer delay if coming from signin, shorter otherwise
+        const initialDelay = isFromSignin ? 500 : 100 // 500ms for signin redirect, 100ms otherwise
+        logger.info("DashboardLayout - Initial auth check", {
+          tags: ["auth", "dashboard"],
+          data: { isFromSignin, initialDelay },
+        })
+        await new Promise(resolve => setTimeout(resolve, initialDelay))
+        // Clear the flag after first check
+        if (isFromSignin && typeof window !== 'undefined') {
+          sessionStorage.removeItem('justSignedIn')
+        }
       }
       
       try {
@@ -64,9 +80,25 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         }
         
         if (!res.ok) {
+          // ✅ FIX: If coming from signin and getting 401/403, retry a few times
+          // Cookie might not be propagated yet, especially in production
+          const isFromSignin = typeof window !== 'undefined' && 
+            (document.referrer.includes('/signin') || 
+             sessionStorage.getItem('justSignedIn') === 'true')
+          
+          if (isFromSignin && (res.status === 401 || res.status === 403) && retryCount < 3) {
+            const delay = 300 * (retryCount + 1) // 300ms, 600ms, 900ms
+            logger.warn("DashboardLayout - Session check failed after signin, retrying", {
+              tags: ["auth", "dashboard", "retry"],
+              data: { status: res.status, retryCount: retryCount + 1, delay },
+            })
+            await new Promise(resolve => setTimeout(resolve, delay))
+            return checkAuth(retryCount + 1)
+          }
+          
           logger.warn("DashboardLayout - Session check failed", {
             tags: ["auth", "dashboard"],
-            data: { status: res.status },
+            data: { status: res.status, retryCount },
           })
           setAuthStatus('unauthenticated')
           router.replace('/signin')

@@ -246,10 +246,16 @@ export function SignInForm() {
           data: { target, architecture: "server-side-first" },
         })
         
+        // ✅ FIX: Set flag to indicate we're coming from signin
+        // This helps DashboardLayout know to wait longer for cookie propagation
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('justSignedIn', 'true')
+        }
+        
         // ✅ FIX: Use window.location for production reliability
         // router.push() can sometimes have issues with cookie propagation in production
         // window.location ensures a full page reload with fresh cookies
-        // Dashboard layout will check /api/auth/session directly with a small delay
+        // Dashboard layout will check /api/auth/session directly with a longer delay after signin
         window.location.href = target
         return
       }
