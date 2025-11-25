@@ -55,10 +55,35 @@ export function LogoutButton({
         tags: ["auth", "logout", "cache"],
       })
       
-      // Step 2: Kill session server-side
+      // Step 2: Clear Redis session cache (BEFORE signOut)
+      try {
+        const cacheResponse = await fetch('/api/auth/signout', {
+          method: 'POST',
+          credentials: 'include',
+        })
+        
+        if (cacheResponse.ok) {
+          logger.info("Redis session cache cleared", {
+            tags: ["auth", "logout", "cache"],
+          })
+        } else {
+          logger.warn("Failed to clear Redis session cache, but continuing with logout", {
+            tags: ["auth", "logout", "cache"],
+            data: { status: cacheResponse.status },
+          })
+        }
+      } catch (cacheError) {
+        // Don't block logout if cache clearing fails
+        logger.warn("Error clearing Redis session cache, but continuing with logout", {
+          tags: ["auth", "logout", "cache"],
+          error: cacheError instanceof Error ? cacheError : undefined,
+        })
+      }
+      
+      // Step 3: Kill session server-side (NextAuth)
       await signOut({ redirect: false })
       
-      // Step 3: Verify session is cleared (optional but recommended)
+      // Step 4: Verify session is cleared (optional but recommended)
       try {
         const res = await fetch("/api/auth/session", {
           cache: "no-store",
@@ -85,7 +110,7 @@ export function LogoutButton({
         // Still redirect - don't block user from proceeding
       }
       
-      // Step 4: Immediate redirect - signin page will check server-side session
+      // Step 5: Immediate redirect - signin page will check server-side session
       logger.info("Redirecting to signin - session killed server-side", {
         tags: ["auth", "logout"],
         data: { architecture: "server-side-first" },

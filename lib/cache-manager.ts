@@ -191,6 +191,7 @@ class CacheManager {
     SYSTEM_HEALTH: { ttl: 300, prefix: 'health' }, // 5 minutes
     CLAIMED_TIPS: { ttl: 1800, prefix: 'claimed-tips' }, // 30 minutes default
     CREDIT_BALANCE: { ttl: 300, prefix: 'credits' }, // 5 minutes
+    SESSION: { ttl: 5, prefix: 'auth' }, // 5 seconds - short TTL to prevent rate limits while staying fresh
   } as const
 }
 
