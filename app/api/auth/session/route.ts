@@ -34,16 +34,24 @@ export async function GET(request: NextRequest) {
       if (cached) {
         const responseTime = Date.now() - startTime
         const cachedSession = cached as any // Type assertion for cached session
+        
+        // ✅ FIX: Validate cached session structure before returning
+        // Ensure it has NextAuth-compatible format
+        const validSession = (cachedSession && typeof cachedSession === 'object' && 'user' in cachedSession)
+          ? cachedSession
+          : { user: null, expires: null }
+        
         logger.debug('Session API - Cache hit', {
           tags: ['auth', 'session-api', 'cache-hit'],
           data: {
             responseTime,
-            userId: cachedSession?.user?.id,
-            email: cachedSession?.user?.email,
+            userId: validSession?.user?.id,
+            email: validSession?.user?.email,
+            isValidStructure: cachedSession && typeof cachedSession === 'object' && 'user' in cachedSession,
           },
         })
         
-        return NextResponse.json(cached, {
+        return NextResponse.json(validSession, {
           headers: {
             'X-Session-Source': 'cache',
             'X-Response-Time': `${responseTime}ms`,
@@ -55,6 +63,10 @@ export async function GET(request: NextRequest) {
     // ✅ Cache miss - Generate session using NextAuth
     const session = await getServerSession(authOptions)
     const responseTime = Date.now() - startTime
+    
+    // ✅ FIX: Ensure session has NextAuth-compatible structure
+    // getServerSession() can return null, but NextAuth expects { user: null, expires: null }
+    const nextAuthSession = session || { user: null, expires: null }
     
     // ✅ PHASE 1: Cache the session if valid
     if (sessionToken && session?.user) {
@@ -77,7 +89,8 @@ export async function GET(request: NextRequest) {
       },
     })
     
-    return NextResponse.json(session, {
+    // ✅ FIX: Always return NextAuth-compatible format
+    return NextResponse.json(nextAuthSession, {
       headers: {
         'X-Session-Source': 'nextauth',
         'X-Response-Time': `${responseTime}ms`,
@@ -92,8 +105,12 @@ export async function GET(request: NextRequest) {
       data: { responseTime },
     })
     
-    // Return empty session on error (NextAuth behavior)
-    return NextResponse.json({}, {
+    // Return NextAuth-compatible empty session on error
+    // NextAuth expects { user: null, expires: null } format, not {}
+    return NextResponse.json({
+      user: null,
+      expires: null,
+    }, {
       status: 200, // NextAuth returns 200 even when no session
       headers: {
         'X-Session-Source': 'error',
