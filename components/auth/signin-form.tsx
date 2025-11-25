@@ -200,23 +200,35 @@ export function SignInForm() {
         })
         
         // Step 2: Quick server-side session verification (optional but recommended)
+        // ✅ FIX: Add small delay before checking to avoid rate limits immediately after login
+        await new Promise(resolve => setTimeout(resolve, 200)) // 200ms delay
+        
         try {
           const res = await fetch("/api/auth/session", {
             cache: "no-store",
             credentials: "include",
           })
-          const session = await res.json()
           
-          if (session?.user) {
-            logger.info("Server-side session verified - ready for redirect", {
-              tags: ["auth", "signin"],
-              data: { email: session.user.email },
+          // ✅ FIX: Handle 429 gracefully - don't block redirect
+          if (res.status === 429) {
+            logger.warn("Session verification rate limited (429), but continuing with redirect", {
+              tags: ["auth", "signin", "rate-limit"],
             })
-          } else {
-            logger.warn("Server-side session not found yet, but continuing with redirect", {
-              tags: ["auth", "signin"],
-            })
-            // Still redirect - NextAuth sets cookie synchronously, might just need a moment
+            // Still redirect - dashboard will handle rate limits with retry logic
+          } else if (res.ok) {
+            const session = await res.json()
+            
+            if (session?.user) {
+              logger.info("Server-side session verified - ready for redirect", {
+                tags: ["auth", "signin"],
+                data: { email: session.user.email },
+              })
+            } else {
+              logger.warn("Server-side session not found yet, but continuing with redirect", {
+                tags: ["auth", "signin"],
+              })
+              // Still redirect - NextAuth sets cookie synchronously, might just need a moment
+            }
           }
         } catch (verifyError) {
           logger.warn("Session verification error, but continuing with redirect", {

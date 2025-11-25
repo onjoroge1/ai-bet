@@ -33,13 +33,31 @@ export function Navigation() {
   
   // 🔥 NEW: Check server-side session on mount and route changes for immediate auth state
   useEffect(() => {
-    const checkAuth = async () => {
+    const checkAuth = async (retryCount = 0) => {
+      const maxRetries = 2 // Navigation doesn't need as many retries
+      const baseDelay = 500 // 500ms base delay
+      
       setIsCheckingAuth(true)
       try {
         const res = await fetch('/api/auth/session', {
           cache: 'no-store',
           credentials: 'include',
         })
+        
+        // ✅ FIX: Handle 429 (rate limit) specially - retry with exponential backoff
+        if (res.status === 429) {
+          if (retryCount < maxRetries) {
+            const delay = baseDelay * Math.pow(2, retryCount) // Exponential backoff: 500ms, 1s
+            console.warn(`[Navigation] Rate limited (429), retrying in ${delay}ms...`, { retryCount: retryCount + 1 })
+            await new Promise(resolve => setTimeout(resolve, delay))
+            return checkAuth(retryCount + 1)
+          } else {
+            console.warn('[Navigation] Rate limited (429) after max retries, using cached state')
+            // Don't clear session on rate limit - keep existing state
+            setIsCheckingAuth(false)
+            return
+          }
+        }
         
         // ✅ FIX: Validate response before parsing
         if (!res.ok) {

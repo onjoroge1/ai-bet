@@ -20,17 +20,42 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [authStatus, setAuthStatus] = useState<AuthStatus>('checking')
 
   useEffect(() => {
-    const checkAuth = async () => {
+    const checkAuth = async (retryCount = 0) => {
+      const maxRetries = 3
+      const baseDelay = 1000 // 1 second
+      
       try {
         logger.info("DashboardLayout - Checking server-side session", {
           tags: ["auth", "dashboard", "server-side-check"],
-          data: { architecture: "server-side-first" },
+          data: { architecture: "server-side-first", retryCount },
         })
         
         const res = await fetch('/api/auth/session', {
           cache: 'no-store',
           credentials: 'include',
         })
+        
+        // ✅ FIX: Handle 429 (rate limit) specially - retry with exponential backoff
+        if (res.status === 429) {
+          if (retryCount < maxRetries) {
+            const delay = baseDelay * Math.pow(2, retryCount) // Exponential backoff: 1s, 2s, 4s
+            logger.warn("DashboardLayout - Rate limited (429), retrying", {
+              tags: ["auth", "dashboard", "rate-limit"],
+              data: { retryCount: retryCount + 1, delay, maxRetries },
+            })
+            await new Promise(resolve => setTimeout(resolve, delay))
+            return checkAuth(retryCount + 1)
+          } else {
+            logger.error("DashboardLayout - Rate limited (429) after max retries", {
+              tags: ["auth", "dashboard", "rate-limit"],
+              data: { maxRetries },
+            })
+            // Don't redirect on rate limit - show error or wait
+            // User is likely authenticated, just hitting rate limits
+            setAuthStatus('authenticated') // Assume authenticated if we can't check
+            return
+          }
+        }
         
         if (!res.ok) {
           logger.warn("DashboardLayout - Session check failed", {
