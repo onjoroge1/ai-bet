@@ -204,10 +204,10 @@ export function SignInForm() {
         await new Promise(resolve => setTimeout(resolve, 200)) // 200ms delay
         
         try {
-          const res = await fetch("/api/auth/session", {
-            cache: "no-store",
-            credentials: "include",
-          })
+              const res = await fetch("/api/auth/session", {
+                cache: "no-store",
+                credentials: "include",
+              })
           
           // ✅ FIX: Handle 429 gracefully - don't block redirect
           if (res.status === 429) {
@@ -216,16 +216,16 @@ export function SignInForm() {
             })
             // Still redirect - dashboard will handle rate limits with retry logic
           } else if (res.ok) {
-            const session = await res.json()
-            
-            if (session?.user) {
+              const session = await res.json()
+              
+              if (session?.user) {
               logger.info("Server-side session verified - ready for redirect", {
                 tags: ["auth", "signin"],
                 data: { email: session.user.email },
               })
             } else {
               logger.warn("Server-side session not found yet, but continuing with redirect", {
-                tags: ["auth", "signin"],
+                  tags: ["auth", "signin"],
               })
               // Still redirect - NextAuth sets cookie synchronously, might just need a moment
             }
@@ -239,11 +239,38 @@ export function SignInForm() {
         }
         
         // Step 3: Immediate redirect - dashboard will check server-side session
-        const target = result?.url ?? callbackUrl
+        // ✅ FIX: Validate result.url - in production, NextAuth sometimes returns CSRF endpoint instead of callbackUrl
+        // If result.url points to /api/auth/signin or contains csrf=true, ignore it and use callbackUrl
+        let target = callbackUrl
+        if (result?.url) {
+          const resultUrl = result.url
+          const isCSRFEndpoint = resultUrl.includes('/api/auth/signin') || resultUrl.includes('csrf=true')
+          const isInvalidRedirect = resultUrl.includes('/api/') && !resultUrl.includes('/dashboard')
+          
+          if (isCSRFEndpoint || isInvalidRedirect) {
+            logger.warn("SignInForm - NextAuth returned invalid redirect URL, using callbackUrl instead", {
+              tags: ["auth", "signin", "redirect"],
+              data: {
+                resultUrl,
+                callbackUrl,
+                reason: isCSRFEndpoint ? "CSRF endpoint" : "Invalid API route",
+              },
+            })
+            target = callbackUrl
+          } else {
+            // ✅ Valid redirect URL - use it
+            target = resultUrl
+          }
+        }
         
         logger.info("Redirecting to dashboard - using server-side session check", {
           tags: ["auth", "signin"],
-          data: { target, architecture: "server-side-first" },
+          data: { 
+            target, 
+            resultUrl: result?.url,
+            callbackUrl,
+            architecture: "server-side-first" 
+          },
         })
         
         // ✅ FIX: Set flag to indicate we're coming from signin

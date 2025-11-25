@@ -110,12 +110,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         if (session?.user) {
           logger.info("DashboardLayout - User authenticated (server-side)", {
             tags: ["auth", "dashboard"],
-            data: {
+        data: {
               email: session.user.email,
               userId: session.user.id,
               architecture: "server-side-first",
-            },
-          })
+        },
+      })
           setAuthStatus('authenticated')
         } else {
           logger.info("DashboardLayout - User not authenticated, redirecting to signin", {
@@ -132,7 +132,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         })
         setAuthStatus('unauthenticated')
         router.replace('/signin')
-      }
+    }
     }
     
     checkAuth()
