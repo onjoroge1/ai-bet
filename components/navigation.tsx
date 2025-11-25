@@ -11,24 +11,96 @@ import { LogoutButton } from "@/components/auth/logout-button"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 
+/**
+ * Navigation - Server-Side First Authentication
+ * 
+ * 🔥 NEW ARCHITECTURE: Uses server-side session check for immediate auth state
+ * - Checks /api/auth/session directly (no waiting for useSession() sync)
+ * - useSession() updates in background for logout detection
+ * - Fast and reliable authentication display
+ */
 export function Navigation() {
   const [isOpen, setIsOpen] = useState(false)
   const pathname = usePathname()
   const { countryData, isLoading } = useUserCountry()
-  // 🔥 Use useSession() directly - it's the single source of truth for NextAuth
-  // This ensures nav bar updates immediately when user logs out
-  const { data: session, status } = useSession()
+  const { data: session, status } = useSession() // Still use for background updates
   const router = useRouter()
   const navRef = useRef<HTMLDivElement>(null)
+  
+  // 🔥 NEW: Server-side session state (primary source of truth)
+  const [serverSession, setServerSession] = useState<any>(null)
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
+  
+  // 🔥 NEW: Check server-side session on mount and route changes for immediate auth state
+  useEffect(() => {
+    const checkAuth = async () => {
+      setIsCheckingAuth(true)
+      try {
+        const res = await fetch('/api/auth/session', {
+          cache: 'no-store',
+          credentials: 'include',
+        })
+        
+        // ✅ FIX: Validate response before parsing
+        if (!res.ok) {
+          console.warn('[Navigation] Session check failed:', res.status)
+          setServerSession(null)
+          setIsCheckingAuth(false)
+          return
+        }
+        
+        const sessionData = await res.json()
+        
+        // ✅ FIX: Validate session structure before setting
+        if (sessionData?.user) {
+          setServerSession(sessionData)
+        } else {
+          setServerSession(null)
+        }
+      } catch (error) {
+        console.error('[Navigation] Auth check error:', error)
+        setServerSession(null)
+      } finally {
+        setIsCheckingAuth(false)
+      }
+    }
+    checkAuth()
+  }, [pathname]) // ✅ FIX: Re-check when route changes
+  
+  // 🔥 NEW: Sync with useSession() updates (for logout detection)
+  // ✅ FIX: Improved sync logic - always update when useSession() is authenticated
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      // User logged out - clear server session state
+      setServerSession(null)
+    } else if (status === 'authenticated' && session?.user) {
+      // ✅ FIX: Always update if useSession() is authenticated (even if serverSession exists)
+      // This ensures navigation stays in sync with useSession() background updates
+      setServerSession(session)
+    }
+  }, [status, session]) // ✅ FIX: Removed serverSession from deps to allow updates
   
   // 🔥 SECURITY: Never show authenticated state on /signin page
   // This prevents the nav bar from showing "logged in" when user visits /signin
   const isOnSignInPage = pathname === '/signin'
-  const isAuthenticated = status === 'authenticated' && !!session?.user
-  const shouldShowAuthenticated = isAuthenticated && !isOnSignInPage
   
-  // 🔥 Use session data directly for user name - always fresh
-  const displayName = session?.user?.name || session?.user?.email?.split('@')[0] || "Dashboard"
+  // 🔥 NEW: Use server-side session as primary, fallback to useSession() for updates
+  // This ensures immediate correct state, but also updates when useSession() syncs
+  const serverIsAuthenticated = !!serverSession?.user
+  const clientIsAuthenticated = status === 'authenticated' && !!session?.user
+  const isAuthenticated = serverIsAuthenticated || clientIsAuthenticated
+  
+  // ✅ FIX: Smart auth state determination
+  // - While checking: Use useSession() optimistically (if authenticated, show authenticated state)
+  // - After checking: Use server-side result (more reliable)
+  // - This prevents showing "Login" prematurely while still being responsive
+  const shouldShowAuthenticated = isCheckingAuth
+    ? (clientIsAuthenticated && !isOnSignInPage)  // While checking, use client state optimistically
+    : (isAuthenticated && !isOnSignInPage)  // After checking, use server-side result
+  
+  // 🔥 Use server session data first, fallback to client session
+  const activeSession = serverSession || session
+  const displayName = activeSession?.user?.name || activeSession?.user?.email?.split('@')[0] || "Dashboard"
 
   const handleMobileMenuClose = () => {
     setIsOpen(false)

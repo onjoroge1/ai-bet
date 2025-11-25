@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Settings, TrendingUp, Zap, FlameIcon as Fire, Target, Loader2, Brain, Sparkles } from "lucide-react"
 import { useRouter } from 'next/navigation'
-import { useAuth } from "@/components/auth-provider"
 import { useDashboardData } from "@/hooks/use-dashboard-data"
 import { NotificationBell } from "@/components/notifications/NotificationBell"
 import { LogoutButton } from "@/components/auth/logout-button"

@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { History, TrendingUp, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react"
 import Link from "next/link"
-import { useAuth } from "@/components/auth-provider"
 
 interface TipHistoryItem {
   id: string
@@ -22,11 +21,36 @@ interface TipHistoryItem {
   }
 }
 
+/**
+ * TipsHistoryWidget - Server-Side First Authentication
+ * 
+ * 🔥 NEW ARCHITECTURE: Uses /api/auth/session for user check
+ * - Checks server-side session directly (no waiting for useSession() sync)
+ * - Fast and reliable authentication check
+ */
 export function TipsHistoryWidget() {
   const [recentTips, setRecentTips] = useState<TipHistoryItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const { user } = useAuth()
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
+
+  // 🔥 NEW: Check server-side session for authentication
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const res = await fetch('/api/auth/session', {
+          cache: 'no-store',
+          credentials: 'include',
+        })
+        const session = await res.json()
+        setIsAuthenticated(!!session?.user)
+      } catch (error) {
+        console.error('[TipsHistoryWidget] Auth check error:', error)
+        setIsAuthenticated(false)
+      }
+    }
+    checkAuth()
+  }, [])
 
   useEffect(() => {
     const fetchRecentTips = async () => {
@@ -47,10 +71,10 @@ export function TipsHistoryWidget() {
       }
     }
 
-    if (user) {
+    if (isAuthenticated) {
       fetchRecentTips()
     }
-  }, [user])
+  }, [isAuthenticated])
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -87,7 +111,7 @@ export function TipsHistoryWidget() {
     })
   }
 
-  if (!user) {
+  if (!isAuthenticated) {
     return null
   }
 

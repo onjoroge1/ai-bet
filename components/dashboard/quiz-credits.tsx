@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Brain, Trophy, Gift, ArrowDownLeft, ArrowUpRight, Sparkles, Zap, Target, Copy, Share2 } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@/components/auth-provider"
 import Link from "next/link"
 
 interface UserPointsData {
@@ -36,16 +35,44 @@ interface ReferralData {
   }
 }
 
+/**
+ * QuizCredits - Server-Side First Authentication
+ * 
+ * 🔥 NEW ARCHITECTURE: Uses /api/auth/session for user data
+ * - Gets user ID from server-side session (no waiting for useSession() sync)
+ * - Fast and reliable user data access
+ */
 export function QuizCredits() {
   const [pointsData, setPointsData] = useState<UserPointsData | null>(null)
   const [referralData, setReferralData] = useState<ReferralData | null>(null)
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [userReferralCode, setUserReferralCode] = useState<string | null>(null)
   const router = useRouter()
-  const { user } = useAuth()
+
+  // 🔥 NEW: Get user data from server-side session
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const res = await fetch('/api/auth/session', {
+          cache: 'no-store',
+          credentials: 'include',
+        })
+        const session = await res.json()
+        if (session?.user) {
+          setUserId(session.user.id)
+          setUserReferralCode((session.user as any).referralCode || null)
+        }
+      } catch (error) {
+        console.error('[QuizCredits] Error fetching user data:', error)
+      }
+    }
+    fetchUserData()
+  }, [])
 
   // Generate referral link based on user's actual referral code
-  const referralCode = referralData?.referralCode || user?.referralCode || user?.id?.slice(-8).toUpperCase() || "SNAP"
+  const referralCode = referralData?.referralCode || userReferralCode || userId?.slice(-8).toUpperCase() || "SNAP"
   const referralLink = `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}/snapbet-quiz?ref=${referralCode}`
 
   useEffect(() => {

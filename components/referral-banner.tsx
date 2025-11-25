@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useSession } from 'next-auth/react'
 import { motion } from 'framer-motion'
 import { Gift, Users, ArrowRight } from 'lucide-react'
 import Link from 'next/link'
@@ -21,16 +20,42 @@ interface ReferralData {
   stats: ReferralStats
 }
 
+/**
+ * ReferralBanner - Server-Side First Authentication
+ * 
+ * 🔥 NEW ARCHITECTURE: Uses /api/auth/session for user check
+ * - Checks server-side session directly (no waiting for useSession() sync)
+ * - Fast and reliable authentication check
+ */
 export default function ReferralBanner() {
-  const { data: session } = useSession()
   const [referralData, setReferralData] = useState<ReferralData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [userId, setUserId] = useState<string | null>(null)
+
+  // 🔥 NEW: Check server-side session for user ID
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const res = await fetch('/api/auth/session', {
+          cache: 'no-store',
+          credentials: 'include',
+        })
+        const session = await res.json()
+        if (session?.user?.id) {
+          setUserId(session.user.id)
+        }
+      } catch (error) {
+        console.error('[ReferralBanner] Auth check error:', error)
+      }
+    }
+    checkAuth()
+  }, [])
 
   useEffect(() => {
-    if (session?.user?.id) {
+    if (userId) {
       fetchReferralData()
     }
-  }, [session])
+  }, [userId])
 
   const fetchReferralData = async () => {
     try {

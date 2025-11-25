@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ShoppingBag, TrendingUp, Clock, CheckCircle, XCircle, AlertCircle, Target } from "lucide-react"
 import Link from "next/link"
-import { useAuth } from "@/components/auth-provider"
 
 interface PurchasedTip {
   id: string
@@ -35,11 +34,36 @@ interface PurchasedTip {
   currencyCode: string
 }
 
+/**
+ * MyTipsWidget - Server-Side First Authentication
+ * 
+ * 🔥 NEW ARCHITECTURE: Uses /api/auth/session for user check
+ * - Checks server-side session directly (no waiting for useSession() sync)
+ * - Fast and reliable authentication check
+ */
 export function MyTipsWidget() {
   const [purchasedTips, setPurchasedTips] = useState<PurchasedTip[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const { user } = useAuth()
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
+
+  // 🔥 NEW: Check server-side session for authentication
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const res = await fetch('/api/auth/session', {
+          cache: 'no-store',
+          credentials: 'include',
+        })
+        const session = await res.json()
+        setIsAuthenticated(!!session?.user)
+      } catch (error) {
+        console.error('[MyTipsWidget] Auth check error:', error)
+        setIsAuthenticated(false)
+      }
+    }
+    checkAuth()
+  }, [])
 
   useEffect(() => {
     const fetchPurchasedTips = async () => {
@@ -61,10 +85,10 @@ export function MyTipsWidget() {
       }
     }
 
-    if (user) {
+    if (isAuthenticated) {
       fetchPurchasedTips()
     }
-  }, [user])
+  }, [isAuthenticated])
 
   const getMatchStatusIcon = (status: string | null) => {
     if (!status) return <Clock className="w-4 h-4 text-yellow-500" />
@@ -118,7 +142,7 @@ export function MyTipsWidget() {
     })
   }
 
-  if (!user) {
+  if (!isAuthenticated) {
     return null
   }
 

@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Trophy, Gift, Target, CheckCircle, AlertCircle, Loader2 } from "lucide-react"
-import { useAuth } from "@/components/auth-provider"
 import { toast } from "sonner"
 
 interface QuizParticipation {
@@ -22,27 +21,53 @@ interface QuizParticipation {
   claimedAt: string | null
 }
 
+/**
+ * QuizCreditClaim - Server-Side First Authentication
+ * 
+ * 🔥 NEW ARCHITECTURE: Uses /api/auth/session for user ID
+ * - Gets user ID from server-side session (no waiting for useSession() sync)
+ * - Fast and reliable user data access
+ */
 export default function QuizCreditClaim() {
-  const { user } = useAuth()
+  const [userId, setUserId] = useState<string | null>(null)
   const [participations, setParticipations] = useState<QuizParticipation[]>([])
   const [loading, setLoading] = useState(true)
   const [claiming, setClaiming] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [lastClaimDate, setLastClaimDate] = useState<Date | null>(null)
 
+  // 🔥 NEW: Get user ID from server-side session
   useEffect(() => {
-    if (user?.id) {
+    const fetchUserData = async () => {
+      try {
+        const res = await fetch('/api/auth/session', {
+          cache: 'no-store',
+          credentials: 'include',
+        })
+        const session = await res.json()
+        if (session?.user?.id) {
+          setUserId(session.user.id)
+        }
+      } catch (error) {
+        console.error('[QuizCreditClaim] Error fetching user data:', error)
+      }
+    }
+    fetchUserData()
+  }, [])
+
+  useEffect(() => {
+    if (userId) {
       fetchQuizParticipations()
       checkLastClaimDate()
     }
-  }, [user?.id])
+  }, [userId])
 
   const fetchQuizParticipations = async () => {
-    if (!user?.id) return
+    if (!userId) return
     
     try {
       setLoading(true)
-      const response = await fetch(`/api/quiz/participations?userId=${user.id}`)
+      const response = await fetch(`/api/quiz/participations?userId=${userId}`)
       if (!response.ok) throw new Error("Failed to fetch quiz participations")
       
       const data = await response.json()
@@ -55,10 +80,10 @@ export default function QuizCreditClaim() {
   }
 
   const checkLastClaimDate = async () => {
-    if (!user?.id) return
+    if (!userId) return
     
     try {
-      const response = await fetch(`/api/quiz/participations?userId=${user.id}&checkLastClaim=true`)
+      const response = await fetch(`/api/quiz/participations?userId=${userId}&checkLastClaim=true`)
       if (response.ok) {
         const data = await response.json()
         if (data.lastClaimDate) {
@@ -93,7 +118,7 @@ export default function QuizCreditClaim() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           participationId,
-          userId: user?.id
+          userId: userId
         })
       })
       
