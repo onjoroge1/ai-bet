@@ -116,7 +116,13 @@ export async function middleware(request: NextRequest) {
     const isApiPath = pathname.startsWith('/api/')
     const isAuthPath = pathname.includes('/auth/')
     
-    const config = isAuthPath ? rateLimitConfig.auth : 
+    // ✅ FIX: Exclude /api/auth/session from strict auth rate limiting
+    // Session endpoint is read-only and cached - multiple components legitimately call it
+    // Use API rate limit (1000/min) instead of auth rate limit (5/min)
+    const isSessionEndpoint = pathname === '/api/auth/session'
+    const shouldUseStrictAuthLimit = isAuthPath && !isSessionEndpoint
+    
+    const config = shouldUseStrictAuthLimit ? rateLimitConfig.auth : 
                    isApiPath ? rateLimitConfig.api : 
                    rateLimitConfig.default
     

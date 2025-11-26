@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState, useEffect } from 'react'
 import { DashboardResponse } from '@/types/dashboard'
+import { getSession } from '@/lib/session-request-manager'
 
 interface UseDashboardDataReturn {
   data: DashboardResponse | null
@@ -23,15 +24,13 @@ export function useDashboardData(): UseDashboardDataReturn {
   const [sessionUser, setSessionUser] = useState<{ name?: string | null; email?: string } | null>(null)
 
   // 🔥 NEW: Check server-side session to get user ID immediately
+  // ✅ Use session request manager for deduplication and caching
   // ✅ FIX: Also store session user data to use as fallback while dashboard data loads
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const res = await fetch('/api/auth/session', {
-          cache: 'no-store',
-          credentials: 'include',
-        })
-        const session = await res.json()
+        // ✅ Use session request manager - deduplicates requests with DashboardLayout
+        const session = await getSession()
         if (session?.user?.id) {
           setUserId(session.user.id)
           setIsAuthenticated(true)

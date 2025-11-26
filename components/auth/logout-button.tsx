@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { LogOut } from "lucide-react"
 import { logger } from "@/lib/logger"
+import { clearSessionCache } from "@/lib/session-request-manager"
 
 interface LogoutButtonProps {
   label?: string
@@ -52,6 +53,12 @@ export function LogoutButton({
       queryClient.invalidateQueries()
       queryClient.removeQueries()
       logger.info("React Query cache cleared", {
+        tags: ["auth", "logout", "cache"],
+      })
+      
+      // Step 1.5: Clear session request manager cache (BEFORE signOut)
+      clearSessionCache()
+      logger.info("Session request manager cache cleared", {
         tags: ["auth", "logout", "cache"],
       })
       

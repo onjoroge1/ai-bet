@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { logger } from "@/lib/logger"
 import { Loader2 } from "lucide-react"
+import { getSession } from "@/lib/session-request-manager"
 
 type AuthStatus = 'checking' | 'authenticated' | 'unauthenticated'
 
@@ -49,63 +50,13 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       try {
         logger.info("DashboardLayout - Checking server-side session", {
           tags: ["auth", "dashboard", "server-side-check"],
-          data: { architecture: "server-side-first", retryCount },
+          data: { architecture: "server-side-first", retryCount, usingManager: true },
         })
         
-        const res = await fetch('/api/auth/session', {
-          cache: 'no-store',
-          credentials: 'include',
-        })
-        
-        // ✅ FIX: Handle 429 (rate limit) specially - retry with exponential backoff
-        if (res.status === 429) {
-          if (retryCount < maxRetries) {
-            const delay = baseDelay * Math.pow(2, retryCount) // Exponential backoff: 1s, 2s, 4s
-            logger.warn("DashboardLayout - Rate limited (429), retrying", {
-              tags: ["auth", "dashboard", "rate-limit"],
-              data: { retryCount: retryCount + 1, delay, maxRetries },
-            })
-            await new Promise(resolve => setTimeout(resolve, delay))
-            return checkAuth(retryCount + 1)
-          } else {
-            logger.error("DashboardLayout - Rate limited (429) after max retries", {
-              tags: ["auth", "dashboard", "rate-limit"],
-              data: { maxRetries },
-            })
-            // Don't redirect on rate limit - show error or wait
-            // User is likely authenticated, just hitting rate limits
-            setAuthStatus('authenticated') // Assume authenticated if we can't check
-            return
-          }
-        }
-        
-        if (!res.ok) {
-          // ✅ FIX: If coming from signin and getting 401/403, retry a few times
-          // Cookie might not be propagated yet, especially in production
-          const isFromSignin = typeof window !== 'undefined' && 
-            (document.referrer.includes('/signin') || 
-             sessionStorage.getItem('justSignedIn') === 'true')
-          
-          if (isFromSignin && (res.status === 401 || res.status === 403) && retryCount < 3) {
-            const delay = 300 * (retryCount + 1) // 300ms, 600ms, 900ms
-            logger.warn("DashboardLayout - Session check failed after signin, retrying", {
-              tags: ["auth", "dashboard", "retry"],
-              data: { status: res.status, retryCount: retryCount + 1, delay },
-            })
-            await new Promise(resolve => setTimeout(resolve, delay))
-            return checkAuth(retryCount + 1)
-          }
-          
-          logger.warn("DashboardLayout - Session check failed", {
-            tags: ["auth", "dashboard"],
-            data: { status: res.status, retryCount },
-          })
-          setAuthStatus('unauthenticated')
-          router.replace('/signin')
-          return
-        }
-        
-        const session = await res.json()
+        // ✅ Use session request manager for deduplication and caching
+        // This prevents multiple simultaneous requests and provides 5-second caching
+        // Errors (including 429 rate limits) will be caught by catch block below
+        const session = await getSession()
         
         if (session?.user) {
           logger.info("DashboardLayout - User authenticated (server-side)", {
