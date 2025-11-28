@@ -456,6 +456,8 @@ model User {
 
   passwordResetExpires  DateTime?
 
+  passwordResetAt       DateTime?           // Track when password was last reset (for session invalidation)
+
   
 
   totalCreditsEarned    Int                 @default(0)

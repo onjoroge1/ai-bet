@@ -9,7 +9,15 @@ export async function GET() {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        {
+          status: 401,
+          headers: {
+            'Cache-Control': 'private, no-cache, no-store, must-revalidate',
+          },
+        }
+      )
     }
 
     // Fetch user with country data
@@ -39,7 +47,15 @@ export async function GET() {
     })
 
     if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 })
+      return NextResponse.json(
+        { error: "User not found" },
+        {
+          status: 404,
+          headers: {
+            'Cache-Control': 'private, no-cache, no-store, must-revalidate',
+          },
+        }
+      )
     }
 
     // Calculate total prediction accuracy
@@ -95,10 +111,24 @@ export async function GET() {
         totalSpent: purchaseMetrics.totalSpent,
         averageConfidence: purchaseMetrics.averageConfidence
       }
+    }, {
+      headers: {
+        'Cache-Control': 'private, no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      },
     })
   } catch (error) {
     console.error("Error fetching dashboard data:", error)
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      {
+        status: 500,
+        headers: {
+          'Cache-Control': 'private, no-cache, no-store, must-revalidate',
+        },
+      }
+    )
   }
 }
 

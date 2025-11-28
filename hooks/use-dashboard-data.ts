@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState, useEffect } from 'react'
 import { DashboardResponse } from '@/types/dashboard'
 import { getSession } from '@/lib/session-request-manager'
+import { logger } from '@/lib/logger'
 
 interface UseDashboardDataReturn {
   data: DashboardResponse | null
@@ -26,33 +27,59 @@ export function useDashboardData(): UseDashboardDataReturn {
   // 🔥 NEW: Check server-side session to get user ID immediately
   // ✅ Use session request manager for deduplication and caching
   // ✅ FIX: Also store session user data to use as fallback while dashboard data loads
+  // ✅ CRITICAL FIX: Re-check session periodically to catch user changes
   useEffect(() => {
     const checkAuth = async () => {
       try {
         // ✅ Use session request manager - deduplicates requests with DashboardLayout
         const session = await getSession()
         if (session?.user?.id) {
-          setUserId(session.user.id)
-          setIsAuthenticated(true)
-          // ✅ FIX: Store session user data for immediate use (prevents showing "User" fallback)
-          setSessionUser({
-            name: session.user.name,
-            email: session.user.email,
-          })
+          const newUserId = session.user.id
+          // ✅ CRITICAL FIX: Only update state if userId actually changed
+          // This prevents unnecessary re-renders and ensures we catch user switches
+          if (newUserId !== userId) {
+            setUserId(newUserId)
+            setIsAuthenticated(true)
+            // ✅ FIX: Store session user data for immediate use (prevents showing "User" fallback)
+            setSessionUser({
+              name: session.user.name,
+              email: session.user.email,
+            })
+            logger.info("useDashboardData - User ID updated", {
+              tags: ["dashboard", "session"],
+              data: {
+                newUserId,
+                previousUserId: userId,
+                email: session.user.email,
+              },
+            })
+          }
         } else {
+          if (userId !== null || isAuthenticated) {
+            setUserId(null)
+            setIsAuthenticated(false)
+            setSessionUser(null)
+          }
+        }
+      } catch (error) {
+        console.error('[useDashboardData] Auth check error:', error)
+        if (userId !== null || isAuthenticated) {
           setUserId(null)
           setIsAuthenticated(false)
           setSessionUser(null)
         }
-      } catch (error) {
-        console.error('[useDashboardData] Auth check error:', error)
-        setUserId(null)
-        setIsAuthenticated(false)
-        setSessionUser(null)
       }
     }
+    
+    // Initial check
     checkAuth()
-  }, [])
+    
+    // ✅ CRITICAL FIX: Re-check session every 2 seconds to catch user switches
+    // This ensures we detect when a new user logs in
+    const interval = setInterval(checkAuth, 2000)
+    
+    return () => clearInterval(interval)
+  }, []) // Empty deps - interval runs continuously to detect user switches
 
   const {
     data,

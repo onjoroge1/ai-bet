@@ -27,98 +27,18 @@ export function Navigation() {
   const router = useRouter()
   const navRef = useRef<HTMLDivElement>(null)
   
-  // 🔥 NEW: Server-side session state (primary source of truth)
-  const [serverSession, setServerSession] = useState<any>(null)
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
-  
-  // 🔥 NEW: Check server-side session on mount and route changes for immediate auth state
-  useEffect(() => {
-    const checkAuth = async (retryCount = 0) => {
-      const maxRetries = 2 // Navigation doesn't need as many retries
-      const baseDelay = 500 // 500ms base delay
-      
-      setIsCheckingAuth(true)
-      try {
-        const res = await fetch('/api/auth/session', {
-          cache: 'no-store',
-          credentials: 'include',
-        })
-        
-        // ✅ FIX: Handle 429 (rate limit) specially - retry with exponential backoff
-        if (res.status === 429) {
-          if (retryCount < maxRetries) {
-            const delay = baseDelay * Math.pow(2, retryCount) // Exponential backoff: 500ms, 1s
-            console.warn(`[Navigation] Rate limited (429), retrying in ${delay}ms...`, { retryCount: retryCount + 1 })
-            await new Promise(resolve => setTimeout(resolve, delay))
-            return checkAuth(retryCount + 1)
-          } else {
-            console.warn('[Navigation] Rate limited (429) after max retries, using cached state')
-            // Don't clear session on rate limit - keep existing state
-            setIsCheckingAuth(false)
-            return
-          }
-        }
-        
-        // ✅ FIX: Validate response before parsing
-        if (!res.ok) {
-          console.warn('[Navigation] Session check failed:', res.status)
-          setServerSession(null)
-          setIsCheckingAuth(false)
-          return
-        }
-        
-        const sessionData = await res.json()
-        
-        // ✅ FIX: Validate session structure before setting
-        if (sessionData?.user) {
-          setServerSession(sessionData)
-        } else {
-          setServerSession(null)
-        }
-      } catch (error) {
-        console.error('[Navigation] Auth check error:', error)
-        setServerSession(null)
-      } finally {
-        setIsCheckingAuth(false)
-      }
-    }
-    checkAuth()
-  }, [pathname]) // ✅ FIX: Re-check when route changes
-  
-  // 🔥 NEW: Sync with useSession() updates (for logout detection)
-  // ✅ FIX: Improved sync logic - always update when useSession() is authenticated
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      // User logged out - clear server session state
-      setServerSession(null)
-    } else if (status === 'authenticated' && session?.user) {
-      // ✅ FIX: Always update if useSession() is authenticated (even if serverSession exists)
-      // This ensures navigation stays in sync with useSession() background updates
-      setServerSession(session)
-    }
-  }, [status, session]) // ✅ FIX: Removed serverSession from deps to allow updates
+  // ✅ OPTIMIZED: Use useSession() as single source of truth
+  // refetchOnMount={true} ensures fresh session check on page load
+  // This eliminates timing conflicts and provides consistent auth state
   
   // 🔥 SECURITY: Never show authenticated state on /signin page
   // This prevents the nav bar from showing "logged in" when user visits /signin
   const isOnSignInPage = pathname === '/signin'
   
-  // 🔥 NEW: Use server-side session as primary, fallback to useSession() for updates
-  // This ensures immediate correct state, but also updates when useSession() syncs
-  const serverIsAuthenticated = !!serverSession?.user
-  const clientIsAuthenticated = status === 'authenticated' && !!session?.user
-  const isAuthenticated = serverIsAuthenticated || clientIsAuthenticated
-  
-  // ✅ FIX: Smart auth state determination
-  // - While checking: Use useSession() optimistically (if authenticated, show authenticated state)
-  // - After checking: Use server-side result (more reliable)
-  // - This prevents showing "Login" prematurely while still being responsive
-  const shouldShowAuthenticated = isCheckingAuth
-    ? (clientIsAuthenticated && !isOnSignInPage)  // While checking, use client state optimistically
-    : (isAuthenticated && !isOnSignInPage)  // After checking, use server-side result
-  
-  // 🔥 Use server session data first, fallback to client session
-  const activeSession = serverSession || session
-  const displayName = activeSession?.user?.name || activeSession?.user?.email?.split('@')[0] || "Dashboard"
+  // ✅ OPTIMIZED: Single source of truth - useSession() only
+  // refetchOnMount ensures session is checked on page load, eliminating delays
+  const isAuthenticated = status === 'authenticated' && !!session?.user && !isOnSignInPage
+  const displayName = session?.user?.name || session?.user?.email?.split('@')[0] || "Dashboard"
 
   const handleMobileMenuClose = () => {
     setIsOpen(false)
@@ -135,6 +55,7 @@ export function Navigation() {
     window.location.href = url.toString()
   }
 
+  // ✅ FIX: Move useEffect BEFORE early return to prevent React Hooks violation
   // Close mobile menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -152,9 +73,35 @@ export function Navigation() {
     }
   }, [isOpen])
 
+  // ✅ FIX: Show loading skeleton while checking auth to prevent flicker
+  // This must come AFTER all hooks to maintain hook order
+  if (status === 'loading') {
+    return (
+      <nav ref={navRef} className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="flex items-center justify-between h-16">
+            {/* Logo skeleton */}
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-slate-700 rounded-lg animate-pulse" />
+              <div className="h-6 w-24 bg-slate-700 rounded animate-pulse" />
+            </div>
+            {/* Right side skeleton */}
+            <div className="flex items-center space-x-3">
+              <div className="hidden md:flex space-x-2">
+                <div className="h-8 w-20 bg-slate-700 rounded animate-pulse" />
+                <div className="h-8 w-20 bg-slate-700 rounded animate-pulse" />
+              </div>
+              <div className="h-8 w-24 bg-slate-700 rounded animate-pulse" />
+            </div>
+          </div>
+        </div>
+      </nav>
+    )
+  }
+
   // Core navigation links - simplified and focused
   const navLinks = [
-    { href: shouldShowAuthenticated ? "/dashboard/matches" : "/matches", text: "Matches", icon: Target },
+    { href: isAuthenticated ? "/dashboard/matches" : "/matches", text: "Matches", icon: Target },
     { href: "/blog", text: "Blog", icon: BookOpen },
     { href: "/tips-history", text: "History", icon: BarChart3 },
     { href: "/dashboard/support", text: "Support", icon: HelpCircle },
@@ -195,7 +142,7 @@ export function Navigation() {
             ))}
             
             {/* Authenticated user links */}
-            {shouldShowAuthenticated && authenticatedNavLinks.map((link) => (
+            {isAuthenticated && authenticatedNavLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
@@ -237,7 +184,7 @@ export function Navigation() {
 
             {/* Auth Section - Cleaner buttons */}
             <div className="hidden md:flex items-center space-x-2">
-              {shouldShowAuthenticated ? (
+              {isAuthenticated ? (
                 <>
                   <Button 
                     variant="ghost" 
@@ -246,7 +193,7 @@ export function Navigation() {
                   >
                     <Link href="/dashboard" className="flex items-center">
                       <User className="w-4 h-4 mr-2" />
-                      {displayName}
+                      {session?.user?.name || session?.user?.email?.split('@')[0] || "Dashboard"}
                     </Link>
                   </Button>
                   <LogoutButton 
@@ -326,7 +273,7 @@ export function Navigation() {
                 ))}
 
                 {/* Authenticated user links on mobile */}
-                {shouldShowAuthenticated && authenticatedNavLinks.map((link) => (
+                {isAuthenticated && authenticatedNavLinks.map((link) => (
                   <Link
                     key={link.href}
                     href={link.href}
@@ -349,7 +296,7 @@ export function Navigation() {
               {/* Mobile Auth Buttons - Cleaner separation */}
               <div className="pt-3 border-t border-slate-800 mx-3">
                 <div className="space-y-2">
-                  {shouldShowAuthenticated ? (
+                  {isAuthenticated ? (
                     <>
                       <Button 
                         variant="ghost" 

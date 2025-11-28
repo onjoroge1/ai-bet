@@ -147,3 +147,43 @@ export function getSessionTokenFromCookies(cookies: {
   return productionToken || devToken || null
 }
 
+/**
+ * Clear all session caches (for password reset)
+ * 
+ * This invalidates all Redis session cache entries by pattern.
+ * Since we cache by session token, we use a pattern match to clear
+ * all sessions.
+ * 
+ * Note: This is a best-effort approach. NextAuth sessions will naturally
+ * expire, and the passwordResetAt timestamp can be checked during session validation
+ * to invalidate sessions created before password reset.
+ * 
+ * @returns Number of cache keys cleared
+ */
+export async function clearAllSessionCaches(): Promise<number> {
+  try {
+    const { cacheManager } = await import('@/lib/cache-manager')
+    
+    // Clear all session caches using pattern matching
+    // Pattern: auth:session:*
+    const pattern = `${SESSION_CACHE_PREFIX}:session:*`
+    const keysDeleted = await cacheManager.invalidatePattern(pattern)
+    
+    logger.info('All session caches cleared', {
+      tags: ['auth', 'session-cache', 'clear-all'],
+      data: {
+        keysDeleted,
+        pattern,
+      },
+    })
+    
+    return keysDeleted
+  } catch (error) {
+    logger.error('Error clearing all session caches', {
+      tags: ['auth', 'session-cache', 'error'],
+      error: error instanceof Error ? error : undefined,
+    })
+    return 0
+  }
+}
+

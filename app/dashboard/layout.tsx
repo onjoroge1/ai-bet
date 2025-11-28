@@ -1,96 +1,116 @@
 "use client"
 
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { logger } from "@/lib/logger"
 import { Loader2 } from "lucide-react"
 import { getSession } from "@/lib/session-request-manager"
 
-type AuthStatus = 'checking' | 'authenticated' | 'unauthenticated'
-
 /**
- * DashboardLayout - Server-Side First Authentication
+ * DashboardLayout - Optimized Hybrid Authentication
  * 
- * 🔥 NEW ARCHITECTURE: Uses /api/auth/session as primary source of truth
- * - Checks server-side session directly (no waiting for useSession() sync)
- * - Fast and reliable authentication decisions
- * - useSession() syncs in background for UI components
+ * 🔥 OPTIMIZED ARCHITECTURE:
+ * - Fast route protection: Direct API check (~100ms) for immediate auth decision
+ * - Reliable UI sync: useSession() for reactive updates (non-blocking)
+ * - Best of both worlds: Fast + Consistent
  */
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const router = useRouter()
-  const [authStatus, setAuthStatus] = useState<AuthStatus>('checking')
+  const { data: session, status } = useSession()
 
+  // ✅ OPTIMIZED: Coordinate with useSession() for reliable auth checks
+  // This prevents race conditions and redirect loops
   useEffect(() => {
-    const checkAuth = async (retryCount = 0) => {
-      const maxRetries = 5 // ✅ INCREASED: More retries for initial load after redirect
-      const baseDelay = 1000 // 1 second
+    const checkAuth = async () => {
+      // Wait for useSession() to sync first (refetchOnMount handles this)
+      let attempts = 0
+      const maxWaitAttempts = 20 // 2 seconds max wait
+      const waitInterval = 100
       
-      // ✅ FIX: Longer delay on first check to allow session cookie to propagate after redirect
-      // This is especially important in production where cookie propagation can take 300-500ms
-      // Also check if we're coming from signin (document.referrer contains /signin)
-      const isFromSignin = typeof window !== 'undefined' && 
-        (document.referrer.includes('/signin') || 
-         window.location.search.includes('from=signin') ||
-         sessionStorage.getItem('justSignedIn') === 'true')
+      // Wait for useSession() to finish loading
+      while (status === 'loading' && attempts < maxWaitAttempts) {
+        await new Promise(resolve => setTimeout(resolve, waitInterval))
+        attempts++
+      }
       
-      if (retryCount === 0) {
-        // ✅ INCREASED: Longer delay if coming from signin, shorter otherwise
-        const initialDelay = isFromSignin ? 500 : 100 // 500ms for signin redirect, 100ms otherwise
-        logger.info("DashboardLayout - Initial auth check", {
+      // If useSession() shows authenticated, trust it
+      if (status === 'authenticated' && session?.user) {
+        logger.debug("DashboardLayout - Authenticated via useSession()", {
           tags: ["auth", "dashboard"],
-          data: { isFromSignin, initialDelay },
+          data: { email: session.user.email }
         })
-        await new Promise(resolve => setTimeout(resolve, initialDelay))
-        // Clear the flag after first check
-        if (isFromSignin && typeof window !== 'undefined') {
-          sessionStorage.removeItem('justSignedIn')
+        return // User is authenticated, no need to check server
+      }
+      
+      // If useSession() shows unauthenticated, verify server-side
+      if (status === 'unauthenticated') {
+        // Small delay for cookie propagation
+        await new Promise(resolve => setTimeout(resolve, 200))
+        
+        try {
+          logger.debug("DashboardLayout - Verifying server-side session", {
+            tags: ["auth", "dashboard"],
+          })
+          
+          const serverSession = await getSession()
+          if (!serverSession?.user) {
+            logger.info("DashboardLayout - User not authenticated, redirecting to signin", {
+              tags: ["auth", "dashboard", "redirect"],
+            })
+            router.replace('/signin')
+            return
+          } else {
+            // Server has session but useSession() doesn't - wait for sync
+            logger.warn("DashboardLayout - Server has session but useSession() doesn't, waiting for sync", {
+              tags: ["auth", "dashboard", "sync"],
+            })
+            // Wait a bit more for useSession() to sync
+            await new Promise(resolve => setTimeout(resolve, 500))
+            // If still unauthenticated after wait, trust server and redirect will be handled by useSession()
+            return
+          }
+        } catch (error) {
+          logger.error("DashboardLayout - Auth check error", {
+            tags: ["auth", "dashboard", "error"],
+            error: error instanceof Error ? error : undefined,
+          })
+          router.replace('/signin')
+          return
         }
       }
       
-      try {
-        logger.info("DashboardLayout - Checking server-side session", {
-          tags: ["auth", "dashboard", "server-side-check"],
-          data: { architecture: "server-side-first", retryCount, usingManager: true },
+      // If still loading after max wait, check server-side
+      if (status === 'loading') {
+        logger.warn("DashboardLayout - useSession() still loading after max wait, checking server", {
+          tags: ["auth", "dashboard"],
         })
         
-        // ✅ Use session request manager for deduplication and caching
-        // This prevents multiple simultaneous requests and provides 5-second caching
-        // Errors (including 429 rate limits) will be caught by catch block below
-        const session = await getSession()
-        
-        if (session?.user) {
-          logger.info("DashboardLayout - User authenticated (server-side)", {
+        try {
+          const serverSession = await getSession()
+          if (!serverSession?.user) {
+            router.replace('/signin')
+            return
+          }
+          // Server has session, wait for useSession() to sync
+          logger.debug("DashboardLayout - Server has session, waiting for useSession() sync", {
             tags: ["auth", "dashboard"],
-        data: {
-              email: session.user.email,
-              userId: session.user.id,
-              architecture: "server-side-first",
-        },
-      })
-          setAuthStatus('authenticated')
-        } else {
-          logger.info("DashboardLayout - User not authenticated, redirecting to signin", {
-            tags: ["auth", "dashboard", "redirect"],
-            data: { architecture: "server-side-first" },
           })
-          setAuthStatus('unauthenticated')
+        } catch (error) {
+          logger.error("DashboardLayout - Auth check error", {
+            tags: ["auth", "dashboard", "error"],
+            error: error instanceof Error ? error : undefined,
+          })
           router.replace('/signin')
         }
-      } catch (error) {
-        logger.error("DashboardLayout - Auth check error", {
-          tags: ["auth", "dashboard", "error"],
-          error: error instanceof Error ? error : undefined,
-        })
-        setAuthStatus('unauthenticated')
-        router.replace('/signin')
-    }
+      }
     }
     
     checkAuth()
-  }, [router])
+  }, [router, status, session])
 
   // Show loading state while checking authentication
-  if (authStatus === 'checking') {
+  if (status === 'loading') {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-900">
         <Loader2 className="h-12 w-12 animate-spin text-emerald-500" />
@@ -99,11 +119,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     )
   }
 
-  // Don't render anything while redirecting
-  if (authStatus === 'unauthenticated') {
-    return null
+  // Redirect if not authenticated (useSession() will have synced by now with refetchOnMount)
+  if (status === 'unauthenticated' || !session?.user) {
+    return null // Will redirect via useEffect above
   }
 
-  // Render dashboard content - user is authenticated (verified server-side)
+  // Render dashboard content - user is authenticated
+  // useSession() provides reactive updates for UI components
   return <>{children}</>
 }

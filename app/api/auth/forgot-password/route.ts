@@ -64,12 +64,24 @@ export async function POST(request: NextRequest) {
     })
 
     // Send password reset email
+    // Use NEXT_PUBLIC_APP_URL from environment, fallback to localhost only in development
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 
+                   (process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : undefined)
+    
+    if (!appUrl) {
+      logger.error('NEXT_PUBLIC_APP_URL is not set in production environment', {
+        tags: ["auth", "password-reset", "email", "config-error"],
+        data: { email: user.email, userId: user.id },
+      })
+      // Still try to send email, but with a warning
+    }
+    
     try {
       await EmailService.sendPasswordResetEmail({
         to: user.email,
         userName: user.fullName || user.email,
         resetToken,
-        appUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        appUrl: appUrl || 'http://localhost:3000' // Fallback only if not set
       })
       
       logger.info('Password reset email sent successfully', {

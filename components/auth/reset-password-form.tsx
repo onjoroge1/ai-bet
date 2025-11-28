@@ -12,6 +12,7 @@ import Link from "next/link"
 import { logger } from "@/lib/logger"
 import { checkPasswordStrength, PASSWORD_REQUIREMENTS } from "@/lib/auth/password"
 import { Progress } from "@/components/ui/progress"
+import { clearSessionCache } from "@/lib/session-request-manager"
 
 export function ResetPasswordForm() {
   const router = useRouter()
@@ -92,8 +93,14 @@ export function ResetPasswordForm() {
         throw new Error(data.error || 'Something went wrong')
       }
 
+      // Clear client-side session cache after successful password reset
+      // This ensures no stale session data remains cached
+      clearSessionCache()
+      logger.info('Password reset successful - session cache cleared', { 
+        tags: ['auth', 'password-reset', 'cache-clear'] 
+      })
+
       setSuccess(true)
-      logger.info('Password reset successful', { tags: ['auth', 'password-reset'] })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
       logger.error('Password reset error', { 

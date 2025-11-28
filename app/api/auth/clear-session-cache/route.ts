@@ -1,9 +1,10 @@
 /**
- * Custom Signout API Route
+ * Clear Session Cache API Route
  * 
  * Clears Redis session cache before NextAuth destroys the session token.
  * This ensures no stale session data remains in cache after logout.
  * 
+ * This route is separate from NextAuth's signout endpoint to avoid conflicts.
  * Called by logout button BEFORE NextAuth's signOut() to ensure
  * cache is cleared before the session token is destroyed.
  */
@@ -25,8 +26,8 @@ export async function POST(request: NextRequest) {
       secureCookie: process.env.NODE_ENV === 'production',
     })
     
-    logger.info('Signout API - Clearing session cache', {
-      tags: ['auth', 'signout', 'cache'],
+    logger.info('Clear Session Cache API - Clearing Redis cache', {
+      tags: ['auth', 'logout', 'cache'],
       data: {
         userId: token?.id,
         email: token?.email,
@@ -39,37 +40,37 @@ export async function POST(request: NextRequest) {
       const cleared = await clearCachedSession(sessionToken)
       
       if (cleared) {
-        logger.info('Signout API - Session cache cleared successfully', {
-          tags: ['auth', 'signout', 'cache'],
+        logger.info('Clear Session Cache API - Session cache cleared successfully', {
+          tags: ['auth', 'logout', 'cache'],
           data: {
             userId: token?.id,
             sessionToken: sessionToken.substring(0, 20) + '...',
           },
         })
       } else {
-        logger.warn('Signout API - Failed to clear session cache', {
-          tags: ['auth', 'signout', 'cache', 'warning'],
+        logger.warn('Clear Session Cache API - Failed to clear session cache', {
+          tags: ['auth', 'logout', 'cache', 'warning'],
           data: {
             userId: token?.id,
           },
         })
       }
     } else {
-      logger.warn('Signout API - No session token found to clear', {
-        tags: ['auth', 'signout', 'cache', 'warning'],
+      logger.warn('Clear Session Cache API - No session token found to clear', {
+        tags: ['auth', 'logout', 'cache', 'warning'],
       })
     }
     
     // Return success
     // Note: NextAuth's signOut() will handle the actual session token destruction
-    // This route only clears the cache
+    // This route only clears the Redis cache
     return NextResponse.json({ 
       success: true,
       cacheCleared: !!sessionToken,
     })
   } catch (error) {
-    logger.error('Signout API - Error clearing session cache', {
-      tags: ['auth', 'signout', 'cache', 'error'],
+    logger.error('Clear Session Cache API - Error clearing session cache', {
+      tags: ['auth', 'logout', 'cache', 'error'],
       error: error instanceof Error ? error : undefined,
     })
     

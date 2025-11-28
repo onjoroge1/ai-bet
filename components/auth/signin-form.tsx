@@ -4,6 +4,7 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { signIn, useSession } from "next-auth/react"
+import { useQueryClient } from "@tanstack/react-query"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,11 +13,13 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { TrendingUp, Mail, Lock } from "lucide-react"
 import Link from "next/link"
 import { logger } from "@/lib/logger"
+import { clearSessionCache } from "@/lib/session-request-manager"
 
 export function SignInForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { update } = useSession() // Get update function for background sync
+  const queryClient = useQueryClient() // Get queryClient to clear cache
 
   const rawCallbackUrl = searchParams.get("callbackUrl") || "/dashboard"
   // Sanitize callbackUrl: never allow API routes or external URLs
@@ -176,69 +179,125 @@ export function SignInForm() {
       }
 
       if (result?.ok) {
-        logger.info("Sign in successful - triggering background sync and redirecting", { 
+        logger.info("Sign in successful - syncing session before redirect", { 
           tags: ["auth", "signin"], 
           data: { 
             callbackUrl,
             resultUrl: result?.url,
-            architecture: "server-side-first"
+            architecture: "useSession-optimized"
           } 
         })
         
-        // 🔥 NEW ARCHITECTURE: Server-side first, background sync
-        // 1. Trigger background useSession() sync (non-blocking)
-        // 2. Verify server-side session exists (fast check)
-        // 3. Redirect immediately (dashboard will check server-side session)
-        
-        // Step 1: Trigger background sync for useSession() (non-blocking)
-        update().catch((err) => {
-          logger.warn("Background useSession() sync failed (non-critical)", {
-            tags: ["auth", "signin"],
-            error: err instanceof Error ? err : undefined,
-          })
-          // Don't block - this is background sync only
-        })
-        
-        // Step 2: Quick server-side session verification (optional but recommended)
-        // ✅ FIX: Add small delay before checking to avoid rate limits immediately after login
-        await new Promise(resolve => setTimeout(resolve, 200)) // 200ms delay
-        
+        // 🔥 CRITICAL FIX: Clear all caches before sync to prevent stale data
+        // This ensures dashboard components load fresh data for the new user
         try {
-              const res = await fetch("/api/auth/session", {
-                cache: "no-store",
-                credentials: "include",
-              })
-          
-          // ✅ FIX: Handle 429 gracefully - don't block redirect
-          if (res.status === 429) {
-            logger.warn("Session verification rate limited (429), but continuing with redirect", {
-              tags: ["auth", "signin", "rate-limit"],
-            })
-            // Still redirect - dashboard will handle rate limits with retry logic
-          } else if (res.ok) {
-              const session = await res.json()
-              
-              if (session?.user) {
-              logger.info("Server-side session verified - ready for redirect", {
-                tags: ["auth", "signin"],
-                data: { email: session.user.email },
-              })
-            } else {
-              logger.warn("Server-side session not found yet, but continuing with redirect", {
-                  tags: ["auth", "signin"],
-              })
-              // Still redirect - NextAuth sets cookie synchronously, might just need a moment
-            }
-          }
-        } catch (verifyError) {
-          logger.warn("Session verification error, but continuing with redirect", {
-            tags: ["auth", "signin"],
-            error: verifyError instanceof Error ? verifyError : undefined,
+          // Step 1: Clear session request manager cache
+          clearSessionCache()
+          logger.info("SignInForm - Session request manager cache cleared", {
+            tags: ["auth", "signin", "cache"],
           })
-          // Still redirect - don't block user from proceeding
+          
+          // Step 2: Clear all React Query cache to prevent showing previous user's data
+          queryClient.invalidateQueries()
+          queryClient.removeQueries()
+          logger.info("SignInForm - React Query cache cleared", {
+            tags: ["auth", "signin", "cache"],
+          })
+        } catch (cacheError) {
+          logger.warn("SignInForm - Failed to clear caches, but continuing", {
+            tags: ["auth", "signin", "cache"],
+            error: cacheError instanceof Error ? cacheError : undefined,
+          })
         }
         
-        // Step 3: Immediate redirect - dashboard will check server-side session
+        // 🔥 OPTIMIZED: Wait for useSession() to sync before redirect
+        // This ensures session is ready and prevents redirect loops
+        // 1. Wait for useSession() update to complete (blocking)
+        // 2. Small delay for state propagation
+        // 3. Redirect with confidence that session is synced
+        
+        // Step 1: Wait for useSession() to sync (blocking to ensure session is ready)
+        logger.info("SignInForm - Waiting for useSession() to sync", {
+          tags: ["auth", "signin", "session-sync"],
+        })
+        
+        try {
+          await update()
+          logger.info("SignInForm - useSession() sync completed", {
+            tags: ["auth", "signin", "session-sync"],
+          })
+        } catch (updateError) {
+          logger.warn("SignInForm - useSession() update failed, but continuing with verification", {
+            tags: ["auth", "signin", "session-sync"],
+            error: updateError instanceof Error ? updateError : undefined,
+          })
+          // Continue with verification - will check server-side session
+        }
+        
+        // Step 2: Verify session is actually authenticated before redirect (CRITICAL FIX)
+        // This prevents redirect loops on slow networks
+        let sessionVerified = false
+        let attempts = 0
+        const maxAttempts = 15 // 15 attempts = 1.5 seconds max wait
+        const pollInterval = 100 // Check every 100ms
+        
+        logger.info("SignInForm - Verifying session before redirect", {
+          tags: ["auth", "signin", "session-verification"],
+        })
+        
+        while (!sessionVerified && attempts < maxAttempts) {
+          try {
+            const sessionCheck = await fetch('/api/auth/session', {
+              credentials: 'include',
+              cache: 'no-store'
+            })
+            
+            if (sessionCheck.ok) {
+              const session = await sessionCheck.json()
+              if (session?.user) {
+                sessionVerified = true
+                logger.info("SignInForm - Session verified before redirect", {
+                  tags: ["auth", "signin", "session-verification"],
+                  data: { 
+                    attempts: attempts + 1,
+                    email: session.user.email 
+                  }
+                })
+                break
+              }
+            }
+            
+            attempts++
+            if (attempts < maxAttempts) {
+              await new Promise(resolve => setTimeout(resolve, pollInterval))
+            }
+          } catch (error) {
+            logger.warn("SignInForm - Session verification error during polling", {
+              tags: ["auth", "signin", "session-verification"],
+              error: error instanceof Error ? error : undefined,
+              data: { attempts: attempts + 1 }
+            })
+            attempts++
+            if (attempts < maxAttempts) {
+              await new Promise(resolve => setTimeout(resolve, pollInterval))
+            }
+          }
+        }
+        
+        if (!sessionVerified) {
+          logger.error("SignInForm - Session verification timeout, redirecting anyway (fallback)", {
+            tags: ["auth", "signin", "session-verification", "warning"],
+            data: { attempts }
+          })
+          // Fallback: redirect anyway, DashboardLayout will handle verification
+        }
+        
+        logger.info("SignInForm - Session verified, ready for redirect", {
+          tags: ["auth", "signin"],
+          data: { sessionVerified, attempts }
+        })
+        
+        // Step 3: Redirect - session is now synced, refetchOnMount will ensure fresh check
         // ✅ FIX: Validate result.url - in production, NextAuth sometimes returns CSRF endpoint instead of callbackUrl
         // If result.url points to /api/auth/signin or contains csrf=true, ignore it and use callbackUrl
         let target = callbackUrl
@@ -263,27 +322,20 @@ export function SignInForm() {
           }
         }
         
-        logger.info("Redirecting to dashboard - using server-side session check", {
+        logger.info("Redirecting to dashboard - session synced via useSession()", {
           tags: ["auth", "signin"],
           data: { 
             target, 
             resultUrl: result?.url,
             callbackUrl,
-            architecture: "server-side-first" 
+            architecture: "useSession-optimized" 
           },
         })
         
-        // ✅ FIX: Set flag to indicate we're coming from signin
-        // This helps DashboardLayout know to wait longer for cookie propagation
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem('justSignedIn', 'true')
-        }
-        
-        // ✅ FIX: Use window.location for production reliability
-        // router.push() can sometimes have issues with cookie propagation in production
-        // window.location ensures a full page reload with fresh cookies
-        // Dashboard layout will check /api/auth/session directly with a longer delay after signin
-        window.location.href = target
+        // ✅ OPTIMIZED: Use router.push() since session is already synced
+        // Session is synced via update(), so we can use client-side navigation
+        // This provides faster navigation than window.location.href
+        router.push(target)
         return
       }
 
@@ -450,3 +502,4 @@ export function SignInForm() {
     </div>
   )
 }
+

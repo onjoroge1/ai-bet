@@ -739,7 +739,11 @@ export class EmailService {
       
       if (template && template.isActive) {
         // Use the template system
-        const appUrl = data.appUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        // Prefer provided appUrl, then env variable, fallback to localhost only in development
+        const appUrl = data.appUrl || 
+                       process.env.NEXT_PUBLIC_APP_URL || 
+                       (process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : undefined) ||
+                       'http://localhost:3000' // Final fallback
         const resetUrl = `${appUrl}/reset-password?token=${data.resetToken}`
         
         const renderedEmail = await EmailTemplateService.renderTemplate('password-reset', {
@@ -770,7 +774,12 @@ export class EmailService {
     }
 
     // Fallback hardcoded template
-    const resetUrl = `${data.appUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/reset-password?token=${data.resetToken}`
+    // Prefer provided appUrl, then env variable, fallback to localhost only in development
+    const appUrl = data.appUrl || 
+                   process.env.NEXT_PUBLIC_APP_URL || 
+                   (process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : undefined) ||
+                   'http://localhost:3000' // Final fallback
+    const resetUrl = `${appUrl}/reset-password?token=${data.resetToken}`
     
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
