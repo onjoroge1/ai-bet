@@ -1146,6 +1146,18 @@ export default function MatchDetailPage() {
           <QuickPurchaseModal
             isOpen={showPurchaseModal}
             onClose={() => setShowPurchaseModal(false)}
+            onViewTipHere={async () => {
+              // Wait a bit for modal to close and webhook to process
+              await new Promise(resolve => setTimeout(resolve, 1500))
+              // Refresh match details to update purchase status
+              await fetchMatchDetails()
+              // Show full analysis
+              setShowFullAnalysis(true)
+              // Fetch prediction if not already loaded
+              if (!fullPrediction) {
+                fetchFullPrediction()
+              }
+            }}
             item={{
               id: quickPurchaseInfo.id,
               name: quickPurchaseInfo.name,

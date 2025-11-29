@@ -33,9 +33,10 @@ interface TipReceiptProps {
     valueRating?: string | null
   }
   onClose: () => void
+  onViewTipHere?: () => void // Optional callback to view tip on the same page
 }
 
-export function TipReceipt({ tip, onClose }: TipReceiptProps) {
+export function TipReceipt({ tip, onClose, onViewTipHere }: TipReceiptProps) {
   const router = useRouter()
   
   const formatDate = (dateString: string) => {
@@ -232,30 +233,51 @@ export function TipReceipt({ tip, onClose }: TipReceiptProps) {
         </div>
       </Card>
 
-      <div className="flex justify-end space-x-4">
+      <div className="flex flex-col sm:flex-row justify-end gap-3">
         <Button variant="outline" onClick={onClose} className="border-slate-600 text-slate-300">
           Close
         </Button>
-        {tip.matchId && (
-          <Button
-            variant="outline"
-            onClick={() => {
-              onClose()
-              // Navigate and refresh to show purchased content
-              router.push(`/match/${tip.matchId}`)
-              router.refresh()
-            }}
-            className="border-blue-600 text-blue-400 hover:bg-blue-600/10"
-          >
-            <ExternalLink className="w-4 h-4 mr-2" />
-            View Match Page
-          </Button>
+        {onViewTipHere ? (
+          <>
+            <Button
+              onClick={() => {
+                onClose()
+                onViewTipHere()
+              }}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              View Tip
+            </Button>
+            <Link href="/dashboard/my-tips" passHref legacyBehavior>
+              <Button asChild variant="outline" className="border-blue-600 text-blue-400 hover:bg-blue-600/10">
+                <a>View All Tips</a>
+              </Button>
+            </Link>
+          </>
+        ) : (
+          <>
+            {tip.matchId && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  onClose()
+                  // Navigate and refresh to show purchased content
+                  router.push(`/match/${tip.matchId}`)
+                  router.refresh()
+                }}
+                className="border-blue-600 text-blue-400 hover:bg-blue-600/10"
+              >
+                <ExternalLink className="w-4 h-4 mr-2" />
+                View Match Page
+              </Button>
+            )}
+            <Link href="/dashboard/my-tips" passHref legacyBehavior>
+              <Button asChild className="bg-emerald-600 hover:bg-emerald-700">
+                <a>View All Tips</a>
+              </Button>
+            </Link>
+          </>
         )}
-        <Link href="/dashboard/my-tips" passHref legacyBehavior>
-          <Button asChild className="bg-emerald-600 hover:bg-emerald-700">
-            <a>View My Tips</a>
-          </Button>
-        </Link>
       </div>
     </div>
   )

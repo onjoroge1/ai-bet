@@ -71,6 +71,7 @@ interface QuickPurchaseModalProps {
   isOpen: boolean
   onClose: () => void
   item: QuickPurchaseItem | null
+  onViewTipHere?: () => void // Optional callback to view tip on the same page (for match detail page)
 }
 
 interface PaymentMethod {
@@ -102,7 +103,7 @@ function PaymentMethodCard({ method, selected, onClick, comingSoon }: { method: 
   );
 }
 
-export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModalProps) {
+export function QuickPurchaseModal({ isOpen, onClose, item, onViewTipHere }: QuickPurchaseModalProps) {
   const { convertPrice, userCountry } = useUserCountry()
   const queryClient = useQueryClient();
   const { user } = useAuth()
@@ -308,7 +309,7 @@ export function QuickPurchaseModal({ isOpen, onClose, item }: QuickPurchaseModal
           {purchasedTip.type === 'package' ? (
             <PremiumPackageReceipt package={purchasedTip} onClose={onClose} />
           ) : (
-            <TipReceipt tip={purchasedTip} onClose={onClose} />
+            <TipReceipt tip={purchasedTip} onClose={onClose} onViewTipHere={onViewTipHere} />
           )}
         </DialogContent>
       </Dialog>

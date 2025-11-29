@@ -338,9 +338,11 @@ export function PaymentForm({
                   paymentMethodOrder: selectedPaymentMethod 
                     ? [selectedPaymentMethod, ...(['apple_pay', 'google_pay', 'card'].filter(m => m !== selectedPaymentMethod))]
                     : ['apple_pay', 'google_pay', 'card'],
+                  // Auto-detect and display wallet payment methods when available
+                  // Note: Only 'auto' or 'never' are valid values (not 'always')
                   wallets: {
-                    applePay: selectedPaymentMethod === 'apple_pay' ? 'always' : 'auto',
-                    googlePay: selectedPaymentMethod === 'google_pay' ? 'always' : 'auto',
+                    applePay: 'auto',
+                    googlePay: 'auto',
                   },
                   fields: {
                     // billingDetails can only be 'never' or 'auto' in current Stripe API version
