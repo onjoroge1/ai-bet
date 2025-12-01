@@ -26,6 +26,7 @@ const publicPaths = [
   '/api/predictions/history', // Public predictions history
   '/api/predictions/history/stats', // Public predictions history stats
   '/api/predictions/history/export', // Public predictions history export
+  '/api/whatsapp/webhook', // WhatsApp webhook for Meta Business API
 ]
 
 // Paths that require admin role
