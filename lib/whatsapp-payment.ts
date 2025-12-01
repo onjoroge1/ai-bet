@@ -2,11 +2,14 @@ import { stripe, formatAmountForStripe, getStripeCurrency } from "@/lib/stripe-s
 import prisma from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { getPickByMatchId } from "./whatsapp-picks";
+import { getDbCountryPricing } from "@/lib/server-pricing-service";
+import { getCountryCodeFromPhone } from "./whatsapp-country-detection";
 
 const BASE_URL = process.env.NEXTAUTH_URL || "http://localhost:3000";
 
 /**
  * Get or create WhatsAppUser by waId
+ * Detects and stores country code from phone number
  */
 export async function getOrCreateWhatsAppUser(waId: string) {
   try {
@@ -17,21 +20,37 @@ export async function getOrCreateWhatsAppUser(waId: string) {
       where: { waId: normalizedWaId },
     });
 
+    // Detect country from phone number
+    const detectedCountry = getCountryCodeFromPhone(normalizedWaId, "US");
+
     if (!waUser) {
       waUser = await prisma.whatsAppUser.create({
         data: {
           waId: normalizedWaId,
+          countryCode: detectedCountry,
           totalSpend: 0,
           totalPicks: 0,
           isActive: true,
         },
       });
-      logger.info("Created new WhatsAppUser", { waId: normalizedWaId });
+      logger.info("Created new WhatsAppUser", { 
+        waId: normalizedWaId,
+        countryCode: detectedCountry,
+      });
     } else {
-      // Update lastSeenAt
+      // Update lastSeenAt and countryCode if not set
+      const updateData: { lastSeenAt: Date; countryCode?: string } = { 
+        lastSeenAt: new Date() 
+      };
+      
+      // Only update countryCode if it's not already set
+      if (!waUser.countryCode) {
+        updateData.countryCode = detectedCountry;
+      }
+      
       waUser = await prisma.whatsAppUser.update({
         where: { id: waUser.id },
-        data: { lastSeenAt: new Date() },
+        data: updateData,
       });
     }
 
@@ -79,6 +98,11 @@ export async function createWhatsAppPaymentSession(params: {
       throw new Error(`Pick not found for matchId: ${matchId}`);
     }
 
+    // Check if pick is purchasable (has QuickPurchase record)
+    if (!pick.isPurchasable || !pick.quickPurchaseId || !pick.price || !pick.currency) {
+      throw new Error(`This match is not available for purchase yet. Check back soon!`);
+    }
+
     // Check if already purchased
     const alreadyPurchased = await hasAlreadyPurchased(
       waUser.id,
@@ -88,18 +112,54 @@ export async function createWhatsAppPaymentSession(params: {
       throw new Error("You have already purchased this pick");
     }
 
+    // Get country-specific pricing based on user's country
+    const userCountryCode = waUser.countryCode || getCountryCodeFromPhone(waId, "US");
+    let finalPrice = pick.price;
+    let finalCurrency = pick.currency;
+
+    try {
+      // Get country-specific pricing from database
+      const countryPricing = await getDbCountryPricing(userCountryCode, "prediction");
+      finalPrice = countryPricing.price;
+      finalCurrency = countryPricing.currencyCode;
+      
+      logger.info("Using country-specific pricing", {
+        waId,
+        countryCode: userCountryCode,
+        price: finalPrice,
+        currency: finalCurrency,
+        originalPrice: pick.price,
+        originalCurrency: pick.currency,
+      });
+    } catch (pricingError) {
+      // If country pricing not found, use QuickPurchase pricing as fallback
+      logger.warn("Country pricing not found, using QuickPurchase pricing", {
+        waId,
+        countryCode: userCountryCode,
+        error: pricingError instanceof Error ? pricingError.message : undefined,
+        fallbackPrice: pick.price,
+        fallbackCurrency: pick.currency,
+      });
+      // Keep original price and currency
+    }
+
+    // Type-safe: we know these exist because of the check above
+    const quickPurchaseId = pick.quickPurchaseId;
+    const market = pick.market || "1X2";
+    const tip = pick.tip || "Win";
+
     // Create Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       line_items: [
         {
           price_data: {
-            currency: getStripeCurrency(pick.currency),
+            currency: getStripeCurrency(finalCurrency),
             product_data: {
               name: `SnapBet Pick: ${pick.homeTeam} vs ${pick.awayTeam}`,
-              description: `${pick.market} - ${pick.tip}`,
+              description: `${market} - ${tip}`,
             },
-            unit_amount: formatAmountForStripe(pick.price, pick.currency),
+            unit_amount: formatAmountForStripe(finalPrice, finalCurrency),
           },
           quantity: 1,
         },
@@ -107,7 +167,7 @@ export async function createWhatsAppPaymentSession(params: {
       metadata: {
         waId: waUser.waId,
         matchId: pick.matchId,
-        quickPurchaseId: pick.quickPurchaseId,
+        quickPurchaseId: quickPurchaseId,
         source: "whatsapp",
       },
       success_url: `${BASE_URL}/whatsapp/payment/success?session_id={CHECKOUT_SESSION_ID}`,
@@ -119,9 +179,9 @@ export async function createWhatsAppPaymentSession(params: {
     await prisma.whatsAppPurchase.create({
       data: {
         waUserId: waUser.id,
-        quickPurchaseId: pick.quickPurchaseId,
-        amount: pick.price,
-        currency: pick.currency,
+        quickPurchaseId: quickPurchaseId,
+        amount: finalPrice,
+        currency: finalCurrency,
         paymentSessionId: session.id,
         status: "pending",
       },
@@ -133,8 +193,12 @@ export async function createWhatsAppPaymentSession(params: {
       sessionId: session.id,
     });
 
+    // Create short URL for WhatsApp (cleaner than full Stripe URL)
+    const baseUrl = BASE_URL.replace(/\/$/, ""); // Remove trailing slash
+    const shortUrl = `${baseUrl}/whatsapp/pay/${session.id}`;
+
     return {
-      paymentUrl: session.url || "",
+      paymentUrl: shortUrl, // Use short URL instead of full Stripe URL
       sessionId: session.id,
     };
   } catch (error) {

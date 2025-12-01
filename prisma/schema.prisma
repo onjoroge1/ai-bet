@@ -1949,6 +1949,7 @@ model CLVOpportunityCache {
 model WhatsAppUser {
   id            String   @id @default(cuid())
   waId          String   @unique // WhatsApp number: "16783929144" (no + prefix)
+  countryCode   String?  // Detected from phone number (e.g., "US", "KE")
   totalSpend    Decimal  @default(0)
   totalPicks    Int      @default(0)
   firstSeenAt   DateTime @default(now())
@@ -1959,6 +1960,7 @@ model WhatsAppUser {
   
   @@index([waId])
   @@index([lastSeenAt])
+  @@index([countryCode])
 }
 
 // WhatsApp purchases (separate from web Purchase table)

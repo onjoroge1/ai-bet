@@ -4,6 +4,7 @@ import { sendWhatsAppText, formatPhoneNumber } from "@/lib/whatsapp-service";
 import {
   getTodaysPicks,
   formatPicksList,
+  getPickByMatchId,
 } from "@/lib/whatsapp-picks";
 import { createWhatsAppPaymentSession } from "@/lib/whatsapp-payment";
 
@@ -270,6 +271,30 @@ async function sendTodaysPicks(to: string) {
  */
 async function handleBuyByMatchId(waId: string, matchId: string) {
   try {
+    // First check if pick exists and is purchasable
+    const pick = await getPickByMatchId(matchId);
+
+    if (!pick) {
+      await sendWhatsAppText(
+        waId,
+        `Match ID ${matchId} not found. Please send '1' to see available matches.`
+      );
+      return;
+    }
+
+    if (!pick.isPurchasable) {
+      await sendWhatsAppText(
+        waId,
+        [
+          `Match ID ${matchId} is not available for purchase yet.`,
+          "",
+          `Match: ${pick.homeTeam} vs ${pick.awayTeam}`,
+          "Check back soon for purchase availability!",
+        ].join("\n")
+      );
+      return;
+    }
+
     // Create payment session
     const { paymentUrl, sessionId } = await createWhatsAppPaymentSession({
       waId,
@@ -284,12 +309,33 @@ async function handleBuyByMatchId(waId: string, matchId: string) {
       return;
     }
 
-    // Get pick details for the message
-    const { getPickByMatchId } = await import("@/lib/whatsapp-picks");
-    const pick = await getPickByMatchId(matchId);
-
-    const currencySymbol = pick?.currency === "USD" ? "$" : pick?.currency || "$";
-    const price = pick?.price || 0;
+    // Get country-specific pricing for display (same as used in payment session)
+    const { getOrCreateWhatsAppUser } = await import("@/lib/whatsapp-payment");
+    const { getDbCountryPricing } = await import("@/lib/server-pricing-service");
+    const { getCountryCodeFromPhone } = await import("@/lib/whatsapp-country-detection");
+    
+    const waUser = await getOrCreateWhatsAppUser(waId);
+    const userCountryCode = waUser.countryCode || getCountryCodeFromPhone(waId, "US");
+    
+    let displayPrice = pick?.price || 0;
+    let displayCurrency = pick?.currency || "USD";
+    
+    // Get country-specific pricing for display (matches payment session)
+    try {
+      const countryPricing = await getDbCountryPricing(userCountryCode, "prediction");
+      displayPrice = countryPricing.price;
+      displayCurrency = countryPricing.currencyCode;
+    } catch {
+      // Use pick pricing as fallback
+    }
+    
+    // Format currency symbol
+    const currencySymbol = displayCurrency === "USD" ? "$" : 
+                          displayCurrency === "GBP" ? "£" :
+                          displayCurrency === "KES" ? "KES " :
+                          displayCurrency === "NGN" ? "₦" :
+                          displayCurrency === "ZAR" ? "R" :
+                          displayCurrency || "$";
 
     // Format date if available
     let dateLine = "";
@@ -326,9 +372,9 @@ async function handleBuyByMatchId(waId: string, matchId: string) {
         : pick?.odds
         ? `📊 Odds: ${pick.odds.toFixed(2)}`
         : "",
-      `💰 Price: ${currencySymbol}${price.toFixed(2)}`,
+      `💰 Price: ${currencySymbol}${displayPrice.toFixed(2)}`,
       "",
-      "💳 Tap here to pay:",
+      "💳 Tap here to complete payment:",
       paymentUrl,
       "",
       "Once payment is confirmed, we'll send your full pick details here in WhatsApp ✅",

@@ -17,18 +17,18 @@ import {
  */
 export interface WhatsAppPick {
   matchId: string;
-  quickPurchaseId: string;
+  quickPurchaseId?: string; // Optional - only if QuickPurchase exists
   name: string;
   homeTeam: string;
   awayTeam: string;
   league?: string;
   kickoffDate?: string; // From Market API
-  market: string;
-  tip: string;
-  confidence: number; // 0-100
-  price: number;
-  currency: string;
-  odds?: number; // From QuickPurchase (legacy)
+  market?: string; // Optional - from QuickPurchase or Market API
+  tip?: string; // Optional - from QuickPurchase or Market API
+  confidence?: number; // 0-100, optional - from QuickPurchase or Market API
+  price?: number; // Optional - only if QuickPurchase exists
+  currency?: string; // Optional - only if QuickPurchase exists
+  odds?: number; // From QuickPurchase (legacy) or Market API
   valueRating?: string;
   // Enhanced Market API data
   consensusOdds?: {
@@ -42,17 +42,18 @@ export interface WhatsAppPick {
     free?: { side: string; confidence: number };
     premium?: { side: string; confidence: number };
   };
+  isPurchasable?: boolean; // True if QuickPurchase exists
 }
 
 /**
- * Get today's active picks using hybrid approach:
- * 1. Try Market API (with Redis cache) - get all upcoming matches
- * 2. Join with QuickPurchase - get confidence, price, prediction data
- * 3. Fallback to QuickPurchase-only if Market API fails
+ * Get today's active picks - same data as homepage (all Market API matches)
+ * 1. Fetch all Market API matches (with Redis cache) - same as homepage
+ * 2. Optionally enhance with QuickPurchase data (price, confidence) if available
+ * 3. Return all Market API matches, even if QuickPurchase doesn't exist
  */
 export async function getTodaysPicks(): Promise<WhatsAppPick[]> {
   try {
-    // Step 1: Try to get Market API data (with cache)
+    // Step 1: Fetch Market API data (with cache) - same as homepage
     let marketMatches: any[] = [];
     let marketDataMap = new Map<string, ReturnType<typeof normalizeMarketMatch>>();
 
@@ -101,23 +102,27 @@ export async function getTodaysPicks(): Promise<WhatsAppPick[]> {
         tags: ["whatsapp", "picks", "market", "error"],
         error: error instanceof Error ? error : undefined,
       });
+      
+      // If Market API fails, fallback to QuickPurchase-only
+      return getQuickPurchaseOnlyPicks();
     }
 
-    // Step 2: Get matchIds (from Market API if available, or we'll use QuickPurchase)
-    const matchIds = marketDataMap.size > 0 
-      ? Array.from(marketDataMap.keys())
-      : [];
+    // If no Market API matches, fallback to QuickPurchase-only
+    if (marketDataMap.size === 0) {
+      logger.warn("No Market API matches found, using QuickPurchase-only fallback", {
+        tags: ["whatsapp", "picks", "fallback"],
+      });
+      return getQuickPurchaseOnlyPicks();
+    }
 
-    // Step 3: Query QuickPurchase for matches with prediction data
+    // Step 2: Optionally fetch QuickPurchase data for enhancement (not required)
+    const matchIds = Array.from(marketDataMap.keys());
     const quickPurchases = await prisma.quickPurchase.findMany({
       where: {
         type: "prediction",
         isActive: true,
         isPredictionActive: true,
-        predictionData: { not: Prisma.JsonNull },
-        ...(matchIds.length > 0
-          ? { matchId: { in: matchIds } }
-          : { matchId: { not: null } }),
+        matchId: { in: matchIds },
       },
       include: {
         country: {
@@ -130,30 +135,28 @@ export async function getTodaysPicks(): Promise<WhatsAppPick[]> {
       orderBy: {
         confidenceScore: "desc",
       },
-      take: 50, // Get more to filter later
+      take: 100, // Get all that match
     });
 
-    // Step 4: Merge Market API data with QuickPurchase data
+    // Create a map of QuickPurchase data by matchId for quick lookup
+    const quickPurchaseMap = new Map<string, typeof quickPurchases[0]>();
+    for (const qp of quickPurchases) {
+      if (qp.matchId) {
+        quickPurchaseMap.set(qp.matchId, qp);
+      }
+    }
+
+    // Step 3: Build picks from ALL Market API matches (same as homepage)
     const picks: WhatsAppPick[] = [];
 
-    for (const qp of quickPurchases) {
-      if (!qp.matchId) continue;
-
-      // Get Market API data if available
-      const marketData = marketDataMap.get(qp.matchId);
-
-      // Extract match data from QuickPurchase JSON
-      const matchData = qp.matchData as
-        | {
-            homeTeam?: { name?: string };
-            awayTeam?: { name?: string };
-            league?: { name?: string };
-            startTime?: string;
-          }
-        | null;
-
-      // Extract prediction data from QuickPurchase JSON
-      const predictionData = qp.predictionData as
+    for (const [matchId, marketData] of marketDataMap.entries()) {
+      const qp = quickPurchaseMap.get(matchId);
+      
+      // Extract match name from Market API or QuickPurchase
+      const name = qp?.name || `${marketData.homeTeam} vs ${marketData.awayTeam}`;
+      
+      // Extract prediction data from QuickPurchase if available
+      const predictionData = qp?.predictionData as
         | {
             prediction?: string;
             market?: string;
@@ -162,70 +165,68 @@ export async function getTodaysPicks(): Promise<WhatsAppPick[]> {
           }
         | null;
 
-      // Use Market API data if available, otherwise fallback to QuickPurchase
-      const homeTeam =
-        marketData?.homeTeam ||
-        matchData?.homeTeam?.name ||
-        qp.name.split(" vs ")[0] ||
-        "Team A";
-      const awayTeam =
-        marketData?.awayTeam ||
-        matchData?.awayTeam?.name ||
-        qp.name.split(" vs ")[1] ||
-        "Team B";
-      const league =
-        marketData?.league ||
-        matchData?.league?.name ||
-        undefined;
-      const kickoffDate = marketData?.kickoffDate || matchData?.startTime || undefined;
+      // Build pick with Market API as primary, QuickPurchase as enhancement
+      const pick: WhatsAppPick = {
+        matchId,
+        name,
+        homeTeam: marketData.homeTeam,
+        awayTeam: marketData.awayTeam,
+        league: marketData.league,
+        kickoffDate: marketData.kickoffDate,
+        // Market API data (always available)
+        consensusOdds: marketData.odds?.consensus,
+        primaryBook: marketData.odds?.primaryBook,
+        booksCount: marketData.odds?.booksCount,
+        modelPredictions: marketData.modelPredictions,
+        // QuickPurchase data (optional enhancement)
+        isPurchasable: !!qp,
+      };
 
-      const market = predictionData?.market || qp.predictionType || "1X2";
-      const tip =
-        predictionData?.tip ||
-        predictionData?.prediction ||
-        qp.predictionType ||
-        "Win";
+      // Add QuickPurchase data if available
+      if (qp) {
+        pick.quickPurchaseId = qp.id;
+        pick.market = predictionData?.market || qp.predictionType || "1X2";
+        pick.tip = predictionData?.tip || predictionData?.prediction || qp.predictionType || "Win";
+        pick.confidence = qp.confidenceScore || undefined;
+        pick.price = Number(qp.price);
+        pick.currency = qp.country.currencyCode || "USD";
+        pick.odds = qp.odds ? Number(qp.odds) : undefined;
+        pick.valueRating = qp.valueRating || undefined;
+      } else {
+        // Use Market API model predictions for tip/confidence if available
+        if (marketData.modelPredictions?.premium) {
+          pick.tip = marketData.modelPredictions.premium.side;
+          pick.confidence = marketData.modelPredictions.premium.confidence;
+        } else if (marketData.modelPredictions?.free) {
+          pick.tip = marketData.modelPredictions.free.side;
+          pick.confidence = marketData.modelPredictions.free.confidence;
+        }
+      }
 
-      picks.push({
-        matchId: qp.matchId,
-        quickPurchaseId: qp.id,
-        name: qp.name,
-        homeTeam,
-        awayTeam,
-        league,
-        kickoffDate,
-        market,
-        tip,
-        confidence: qp.confidenceScore || 75,
-        price: Number(qp.price),
-        currency: qp.country.currencyCode || "USD",
-        odds: qp.odds ? Number(qp.odds) : undefined,
-        valueRating: qp.valueRating || undefined,
-        // Enhanced Market API data
-        consensusOdds: marketData?.odds?.consensus,
-        primaryBook: marketData?.odds?.primaryBook,
-        booksCount: marketData?.odds?.booksCount,
-        modelPredictions: marketData?.modelPredictions,
-      });
+      picks.push(pick);
     }
 
-    // Step 5: Filter and sort (only matches with prediction data, sorted by confidence)
-    const filteredPicks = picks
-      .filter((pick) => pick.confidence > 0) // Must have confidence
-      .sort((a, b) => b.confidence - a.confidence) // Sort by confidence DESC
-      .slice(0, 20); // Top 20 picks
+    // Step 4: Sort by kickoff date (upcoming first) - same as homepage
+    const sortedPicks = picks.sort((a, b) => {
+      if (a.kickoffDate && b.kickoffDate) {
+        return new Date(a.kickoffDate).getTime() - new Date(b.kickoffDate).getTime();
+      }
+      if (a.kickoffDate) return -1;
+      if (b.kickoffDate) return 1;
+      return 0;
+    });
 
-    logger.info("Fetched today's picks for WhatsApp (hybrid approach)", {
+    logger.info("Fetched today's picks for WhatsApp (same as homepage)", {
       tags: ["whatsapp", "picks"],
       data: {
-        totalPicks: filteredPicks.length,
+        totalPicks: sortedPicks.length,
         marketApiMatches: marketDataMap.size,
         quickPurchaseMatches: quickPurchases.length,
-        hasMarketData: marketDataMap.size > 0,
+        purchasableMatches: sortedPicks.filter(p => p.isPurchasable).length,
       },
     });
 
-    return filteredPicks;
+    return sortedPicks;
   } catch (error) {
     logger.error("Error fetching today's picks", {
       tags: ["whatsapp", "picks", "error"],
@@ -331,11 +332,13 @@ async function getQuickPurchaseOnlyPicks(): Promise<WhatsAppPick[]> {
 
 /**
  * Get a specific pick by matchId
+ * Tries QuickPurchase first, then falls back to Market API
  */
 export async function getPickByMatchId(
   matchId: string
 ): Promise<WhatsAppPick | null> {
   try {
+    // First try QuickPurchase
     const quickPurchase = await prisma.quickPurchase.findUnique({
       where: { matchId },
       include: {
@@ -348,58 +351,107 @@ export async function getPickByMatchId(
       },
     });
 
-    if (!quickPurchase) {
-      return null;
+    if (quickPurchase) {
+      // Extract match data from JSON
+      const matchData = quickPurchase.matchData as
+        | {
+            homeTeam?: { name?: string };
+            awayTeam?: { name?: string };
+            league?: { name?: string };
+          }
+        | null;
+
+      // Extract prediction data from JSON
+      const predictionData = quickPurchase.predictionData as
+        | {
+            prediction?: string;
+            market?: string;
+            tip?: string;
+            analysis?: string;
+          }
+        | null;
+
+      const homeTeam =
+        matchData?.homeTeam?.name ||
+        quickPurchase.name.split(" vs ")[0] ||
+        "Team A";
+      const awayTeam =
+        matchData?.awayTeam?.name ||
+        quickPurchase.name.split(" vs ")[1] ||
+        "Team B";
+      const market = predictionData?.market || quickPurchase.predictionType || "1X2";
+      const tip =
+        predictionData?.tip ||
+        predictionData?.prediction ||
+        quickPurchase.predictionType ||
+        "Win";
+
+      return {
+        matchId: quickPurchase.matchId!,
+        quickPurchaseId: quickPurchase.id,
+        name: quickPurchase.name,
+        homeTeam,
+        awayTeam,
+        market,
+        tip,
+        confidence: quickPurchase.confidenceScore || 75,
+        price: Number(quickPurchase.price),
+        currency: quickPurchase.country.currencyCode || "USD",
+        odds: quickPurchase.odds ? Number(quickPurchase.odds) : undefined,
+        valueRating: quickPurchase.valueRating || undefined,
+        isPurchasable: true,
+      };
     }
 
-    // Extract match data from JSON
-    const matchData = quickPurchase.matchData as
-      | {
-          homeTeam?: { name?: string };
-          awayTeam?: { name?: string };
-          league?: { name?: string };
+    // If no QuickPurchase, try Market API
+    try {
+      const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+      const url = `${baseUrl}/api/market?match_id=${matchId}&include_v2=false`;
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        next: {
+          revalidate: 0,
+        },
+      });
+
+      if (response.ok) {
+        const data = (await response.json()) as {
+          matches?: any[];
+        };
+
+        if (data.matches && data.matches.length > 0) {
+          const match = data.matches[0];
+          const normalized = normalizeMarketMatch(match);
+
+          return {
+            matchId,
+            name: `${normalized.homeTeam} vs ${normalized.awayTeam}`,
+            homeTeam: normalized.homeTeam,
+            awayTeam: normalized.awayTeam,
+            league: normalized.league,
+            kickoffDate: normalized.kickoffDate,
+            consensusOdds: normalized.odds?.consensus,
+            primaryBook: normalized.odds?.primaryBook,
+            booksCount: normalized.odds?.booksCount,
+            modelPredictions: normalized.modelPredictions,
+            tip: normalized.modelPredictions?.premium?.side || normalized.modelPredictions?.free?.side,
+            confidence: normalized.modelPredictions?.premium?.confidence || normalized.modelPredictions?.free?.confidence,
+            isPurchasable: false,
+          };
         }
-      | null;
+      }
+    } catch (marketError) {
+      logger.warn("Error fetching from Market API for matchId", {
+        matchId,
+        error: marketError instanceof Error ? marketError : undefined,
+      });
+    }
 
-    // Extract prediction data from JSON
-    const predictionData = quickPurchase.predictionData as
-      | {
-          prediction?: string;
-          market?: string;
-          tip?: string;
-          analysis?: string;
-        }
-      | null;
-
-    const homeTeam =
-      matchData?.homeTeam?.name ||
-      quickPurchase.name.split(" vs ")[0] ||
-      "Team A";
-    const awayTeam =
-      matchData?.awayTeam?.name ||
-      quickPurchase.name.split(" vs ")[1] ||
-      "Team B";
-    const market = predictionData?.market || quickPurchase.predictionType || "1X2";
-    const tip =
-      predictionData?.tip ||
-      predictionData?.prediction ||
-      quickPurchase.predictionType ||
-      "Win";
-
-    return {
-      matchId: quickPurchase.matchId!,
-      quickPurchaseId: quickPurchase.id,
-      name: quickPurchase.name,
-      homeTeam,
-      awayTeam,
-      market,
-      tip,
-      confidence: quickPurchase.confidenceScore || 75,
-      price: Number(quickPurchase.price),
-      currency: quickPurchase.country.currencyCode || "USD",
-      odds: quickPurchase.odds ? Number(quickPurchase.odds) : undefined,
-      valueRating: quickPurchase.valueRating || undefined,
-    };
+    return null;
   } catch (error) {
     logger.error("Error fetching pick by matchId", { matchId, error });
     return null;
@@ -409,11 +461,10 @@ export async function getPickByMatchId(
 /**
  * Format pick for WhatsApp message display
  * Enhanced format with dates, odds, and model predictions
+ * Handles optional fields gracefully (matches without QuickPurchase)
  */
 export function formatPickForWhatsApp(pick: WhatsAppPick, index?: number): string {
   const prefix = index !== undefined ? `${index + 1}) ` : "";
-  const confidencePct = Math.round(pick.confidence);
-  const currencySymbol = pick.currency === "USD" ? "$" : pick.currency;
   
   const lines: string[] = [];
   lines.push(`${prefix}Match ID: ${pick.matchId}`);
@@ -442,10 +493,27 @@ export function formatPickForWhatsApp(pick: WhatsAppPick, index?: number): strin
     lines.push(`   🏆 ${pick.league}`);
   }
   
-  lines.push(`   📊 Market: ${pick.market}`);
-  lines.push(`   💡 Tip: ${pick.tip}`);
-  lines.push(`   📈 Confidence: ${confidencePct}%`);
-  lines.push(`   💰 Price: ${currencySymbol}${pick.price.toFixed(2)}`);
+  // Add market and tip if available
+  if (pick.market) {
+    lines.push(`   📊 Market: ${pick.market}`);
+  }
+  if (pick.tip) {
+    lines.push(`   💡 Tip: ${pick.tip}`);
+  }
+  
+  // Add confidence if available
+  if (pick.confidence !== undefined) {
+    const confidencePct = Math.round(pick.confidence);
+    lines.push(`   📈 Confidence: ${confidencePct}%`);
+  }
+  
+  // Add price if available (only if purchasable)
+  if (pick.price !== undefined && pick.currency) {
+    const currencySymbol = pick.currency === "USD" ? "$" : pick.currency;
+    lines.push(`   💰 Price: ${currencySymbol}${pick.price.toFixed(2)}`);
+  } else if (!pick.isPurchasable) {
+    lines.push(`   ⏳ Purchase: Coming soon`);
+  }
   
   // Add consensus odds if available (from Market API)
   if (pick.consensusOdds) {
