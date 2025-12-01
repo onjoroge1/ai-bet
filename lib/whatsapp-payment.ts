@@ -149,6 +149,7 @@ export async function createWhatsAppPaymentSession(params: {
 
 /**
  * Format pick details for delivery message
+ * Includes full predictionData structure similar to /match/[id] page
  */
 export function formatPickDeliveryMessage(pick: {
   matchId: string;
@@ -162,31 +163,171 @@ export function formatPickDeliveryMessage(pick: {
   predictionData?: any;
 }): string {
   const confidencePct = Math.round(pick.confidence);
-  const oddsText = pick.odds ? `\n💰 Odds: ${pick.odds.toFixed(2)}` : "";
+  const oddsText = pick.odds ? `💰 Odds: ${pick.odds.toFixed(2)}` : "";
   const valueText = pick.valueRating
-    ? `\n⭐ Value Rating: ${pick.valueRating}`
+    ? `⭐ Value Rating: ${pick.valueRating}`
     : "";
-
-  // Extract analysis from predictionData if available
-  const analysis =
-    pick.predictionData?.analysis ||
-    pick.predictionData?.summary ||
-    "";
 
   const lines: string[] = [];
   lines.push("Payment received ✅", "");
-  lines.push(`Here is your pick for match ${pick.matchId}:`, "");
+  lines.push(`Here is your premium pick for match ${pick.matchId}:`, "");
   lines.push(`🏆 ${pick.homeTeam} vs ${pick.awayTeam}`);
-  lines.push(`📊 Market: ${pick.market}`);
-  lines.push(`💡 Tip: ${pick.tip}`);
-  lines.push(`📈 Confidence: ${confidencePct}%${oddsText}${valueText}`);
+  lines.push("");
 
-  if (analysis) {
-    lines.push("", "📝 Analysis:");
-    lines.push(analysis);
+  // Basic prediction info
+  lines.push("📊 PREDICTION:");
+  lines.push(`Market: ${pick.market}`);
+  lines.push(`Tip: ${pick.tip}`);
+  lines.push(`Confidence: ${confidencePct}%`);
+  if (oddsText) lines.push(oddsText);
+  if (valueText) lines.push(valueText);
+  lines.push("");
+
+  // Extract comprehensive_analysis from predictionData
+  const comprehensiveAnalysis = pick.predictionData?.comprehensive_analysis || 
+                               pick.predictionData?.prediction?.comprehensive_analysis;
+
+  if (comprehensiveAnalysis) {
+    // AI Verdict
+    if (comprehensiveAnalysis.ai_verdict) {
+      lines.push("🤖 AI VERDICT:");
+      if (comprehensiveAnalysis.ai_verdict.recommended_outcome) {
+        lines.push(`Recommended: ${comprehensiveAnalysis.ai_verdict.recommended_outcome}`);
+      }
+      if (comprehensiveAnalysis.ai_verdict.confidence_level) {
+        lines.push(`Confidence: ${comprehensiveAnalysis.ai_verdict.confidence_level}`);
+      }
+      if (comprehensiveAnalysis.ai_verdict.probability_assessment) {
+        const prob = comprehensiveAnalysis.ai_verdict.probability_assessment;
+        lines.push(`Probabilities:`);
+        if (prob.home) lines.push(`  Home: ${(prob.home * 100).toFixed(1)}%`);
+        if (prob.draw) lines.push(`  Draw: ${(prob.draw * 100).toFixed(1)}%`);
+        if (prob.away) lines.push(`  Away: ${(prob.away * 100).toFixed(1)}%`);
+      }
+      lines.push("");
+    }
+
+    // ML Prediction
+    if (comprehensiveAnalysis.ml_prediction) {
+      lines.push("📈 ML PREDICTION:");
+      if (comprehensiveAnalysis.ml_prediction.confidence) {
+        lines.push(`Confidence: ${(comprehensiveAnalysis.ml_prediction.confidence * 100).toFixed(1)}%`);
+      }
+      if (comprehensiveAnalysis.ml_prediction.home_win) {
+        lines.push(`Home Win: ${(comprehensiveAnalysis.ml_prediction.home_win * 100).toFixed(1)}%`);
+      }
+      if (comprehensiveAnalysis.ml_prediction.draw) {
+        lines.push(`Draw: ${(comprehensiveAnalysis.ml_prediction.draw * 100).toFixed(1)}%`);
+      }
+      if (comprehensiveAnalysis.ml_prediction.away_win) {
+        lines.push(`Away Win: ${(comprehensiveAnalysis.ml_prediction.away_win * 100).toFixed(1)}%`);
+      }
+      lines.push("");
+    }
+
+    // Detailed Reasoning
+    if (comprehensiveAnalysis.detailed_reasoning) {
+      lines.push("🧠 DETAILED REASONING:");
+      const reasoning = comprehensiveAnalysis.detailed_reasoning;
+      if (reasoning.form_analysis) {
+        lines.push(`Form: ${reasoning.form_analysis}`);
+      }
+      if (reasoning.tactical_factors) {
+        lines.push(`Tactics: ${reasoning.tactical_factors}`);
+      }
+      if (reasoning.injury_impact) {
+        lines.push(`Injuries: ${reasoning.injury_impact}`);
+      }
+      if (reasoning.historical_context) {
+        lines.push(`History: ${reasoning.historical_context}`);
+      }
+      lines.push("");
+    }
+
+    // Betting Intelligence
+    if (comprehensiveAnalysis.betting_intelligence) {
+      lines.push("💡 BETTING INTELLIGENCE:");
+      const betting = comprehensiveAnalysis.betting_intelligence;
+      if (betting.primary_bet) {
+        lines.push(`Primary Bet: ${betting.primary_bet}`);
+      }
+      if (betting.value_bets && betting.value_bets.length > 0) {
+        lines.push(`Value Bets: ${betting.value_bets.join(", ")}`);
+      }
+      if (betting.avoid_bets && betting.avoid_bets.length > 0) {
+        lines.push(`Avoid: ${betting.avoid_bets.join(", ")}`);
+      }
+      lines.push("");
+    }
+
+    // Risk Analysis
+    if (comprehensiveAnalysis.risk_analysis) {
+      lines.push("⚠️ RISK ANALYSIS:");
+      const risk = comprehensiveAnalysis.risk_analysis;
+      if (risk.overall_risk) {
+        lines.push(`Overall Risk: ${risk.overall_risk}`);
+      }
+      if (risk.key_risks && risk.key_risks.length > 0) {
+        lines.push(`Key Risks: ${risk.key_risks.join(", ")}`);
+      }
+      if (risk.upset_potential) {
+        lines.push(`Upset Potential: ${risk.upset_potential}`);
+      }
+      lines.push("");
+    }
+
+    // Confidence Breakdown
+    if (comprehensiveAnalysis.confidence_breakdown) {
+      lines.push("📊 CONFIDENCE BREAKDOWN:");
+      lines.push(comprehensiveAnalysis.confidence_breakdown);
+      lines.push("");
+    }
   }
 
-  lines.push("", "💵 Stake suggestion: 1-3% of bankroll");
+  // Additional Markets
+  const additionalMarkets = pick.predictionData?.additional_markets || 
+                            pick.predictionData?.prediction?.additional_markets;
+
+  if (additionalMarkets) {
+    lines.push("🎯 ADDITIONAL MARKETS:");
+    
+    if (additionalMarkets.total_goals) {
+      if (additionalMarkets.total_goals.over_2_5) {
+        lines.push(`Over 2.5 Goals: ${(additionalMarkets.total_goals.over_2_5 * 100).toFixed(1)}%`);
+      }
+      if (additionalMarkets.total_goals.under_2_5) {
+        lines.push(`Under 2.5 Goals: ${(additionalMarkets.total_goals.under_2_5 * 100).toFixed(1)}%`);
+      }
+    }
+    
+    if (additionalMarkets.both_teams_score) {
+      if (additionalMarkets.both_teams_score.yes) {
+        lines.push(`Both Teams Score (Yes): ${(additionalMarkets.both_teams_score.yes * 100).toFixed(1)}%`);
+      }
+      if (additionalMarkets.both_teams_score.no) {
+        lines.push(`Both Teams Score (No): ${(additionalMarkets.both_teams_score.no * 100).toFixed(1)}%`);
+      }
+    }
+    
+    if (additionalMarkets.asian_handicap) {
+      if (additionalMarkets.asian_handicap.home_handicap) {
+        lines.push(`Home Handicap: ${additionalMarkets.asian_handicap.home_handicap}`);
+      }
+      if (additionalMarkets.asian_handicap.away_handicap) {
+        lines.push(`Away Handicap: ${additionalMarkets.asian_handicap.away_handicap}`);
+      }
+    }
+    lines.push("");
+  }
+
+  // Analysis Summary (fallback if comprehensive_analysis not available)
+  if (!comprehensiveAnalysis && pick.predictionData?.analysis) {
+    lines.push("📝 ANALYSIS:");
+    lines.push(pick.predictionData.analysis);
+    lines.push("");
+  }
+
+  lines.push("💵 Stake suggestion: 1-3% of bankroll");
   lines.push("(Not financial advice)", "");
   lines.push("Good luck 🍀");
 

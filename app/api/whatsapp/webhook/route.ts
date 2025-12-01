@@ -159,7 +159,7 @@ async function handleIncomingText(waId: string, text: string) {
       return;
     }
 
-    // Buy flow: expect "2 123456" or "buy 123456"
+    // Buy flow: accept "2 123456", "buy 123456", or just "123456" (matchId directly)
     if (lower.startsWith("2") || lower.startsWith("buy")) {
       const parts = raw.split(/\s+/);
       const matchIdIndex = lower.startsWith("2") ? 1 : 1; // "2 123456" or "buy 123456"
@@ -170,13 +170,10 @@ async function handleIncomingText(waId: string, text: string) {
           [
             "To buy a pick 💰",
             "",
-            "Reply in this format:",
-            "2 <matchId>",
+            "Send the matchId directly:",
+            "Example: 123456",
             "",
-            "Example:",
-            "2 123456",
-            "",
-            "Send '1' to see available picks.",
+            "Or send '1' to see available picks.",
           ].join("\n")
         );
         return;
@@ -188,12 +185,20 @@ async function handleIncomingText(waId: string, text: string) {
       if (!matchId || matchId.length === 0) {
         await sendWhatsAppText(
           normalizedWaId,
-          `MatchId is required. Please send:\n\n2 <matchId>\n\nExample: 2 123456`
+          `MatchId is required. Please send the matchId directly.\n\nExample: 123456`
         );
         return;
       }
 
       await handleBuyByMatchId(normalizedWaId, matchId);
+      return;
+    }
+
+    // Check if input is just a number (matchId) - treat as purchase request
+    const numericMatchId = raw.trim();
+    if (/^\d+$/.test(numericMatchId) && numericMatchId.length >= 4) {
+      // It's a numeric matchId, treat as purchase request
+      await handleBuyByMatchId(normalizedWaId, numericMatchId);
       return;
     }
 
@@ -221,10 +226,10 @@ async function sendMainMenu(to: string) {
     "",
     "Reply with:",
     "1️⃣ Today's picks",
-    "2️⃣ Buy a pick (send: 2 <matchId>)",
+    "2️⃣ Buy a pick (send matchId directly)",
     "3️⃣ Help",
     "",
-    "Example: 2 123456",
+    "Example: Send '123456' to buy pick with matchId 123456",
   ].join("\n");
 
   const result = await sendWhatsAppText(to, message);
@@ -286,17 +291,44 @@ async function handleBuyByMatchId(waId: string, matchId: string) {
     const currencySymbol = pick?.currency === "USD" ? "$" : pick?.currency || "$";
     const price = pick?.price || 0;
 
+    // Format date if available
+    let dateLine = "";
+    if (pick?.kickoffDate) {
+      try {
+        const date = new Date(pick.kickoffDate);
+        const formattedDate = date.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          timeZoneName: "short",
+        });
+        dateLine = `📅 ${formattedDate}`;
+      } catch (e) {
+        // Invalid date, skip
+      }
+    }
+
     const message = [
       "You're buying this pick 💰",
       "",
       pick
-        ? `${matchId} – ${pick.homeTeam} vs ${pick.awayTeam}`
+        ? `Match ID: ${matchId}`
         : `Match ID: ${matchId}`,
-      pick ? `Market: ${pick.market}` : "",
-      pick ? `Tip: ${pick.tip}` : "",
-      `Price: ${currencySymbol}${price.toFixed(2)}`,
+      pick ? `${pick.homeTeam} vs ${pick.awayTeam}` : "",
+      dateLine,
+      pick?.league ? `🏆 ${pick.league}` : "",
+      pick ? `📊 Market: ${pick.market}` : "",
+      pick ? `💡 Tip: ${pick.tip}` : "",
+      pick?.consensusOdds
+        ? `📊 Odds: Home ${pick.consensusOdds.home.toFixed(2)} | Draw ${pick.consensusOdds.draw.toFixed(2)} | Away ${pick.consensusOdds.away.toFixed(2)}`
+        : pick?.odds
+        ? `📊 Odds: ${pick.odds.toFixed(2)}`
+        : "",
+      `💰 Price: ${currencySymbol}${price.toFixed(2)}`,
       "",
-      "Tap the link below to pay (opens inside WhatsApp):",
+      "💳 Tap here to pay:",
       paymentUrl,
       "",
       "Once payment is confirmed, we'll send your full pick details here in WhatsApp ✅",
@@ -348,14 +380,14 @@ async function sendHelp(to: string) {
     "Help 📲",
     "",
     "1️⃣ Today's picks – see top matches + matchIds",
-    "2️⃣ Buy a pick – send: 2 <matchId>",
+    "2️⃣ Buy a pick – send matchId directly",
     "3️⃣ Help – you're here 😊",
     "",
     "You can type MENU anytime to see options again.",
     "",
-    "Example:",
+    "Examples:",
     "Send '1' to see picks",
-    "Send '2 123456' to buy pick with matchId 123456",
+    "Send '123456' to buy pick with matchId 123456",
   ].join("\n");
 
   const result = await sendWhatsAppText(to, message);
