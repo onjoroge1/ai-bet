@@ -8,18 +8,21 @@ const API_VERSION = process.env.WHATSAPP_API_VERSION || "v21.0";
  * Send a text message via WhatsApp Cloud API
  * @param to - Recipient's WhatsApp number in E.164 format (e.g., "16783929144")
  * @param text - Message text content
- * @returns Promise<boolean> - true if message was sent successfully
+ * @returns Promise<{ success: boolean; error?: string }> - Result with optional error message
  */
 export async function sendWhatsAppText(
   to: string,
   text: string
-): Promise<boolean> {
+): Promise<{ success: boolean; error?: string }> {
   if (!PHONE_NUMBER_ID || !ACCESS_TOKEN) {
     logger.error("WhatsApp credentials not configured", {
       hasPhoneNumberId: !!PHONE_NUMBER_ID,
       hasAccessToken: !!ACCESS_TOKEN,
     });
-    return false;
+    return {
+      success: false,
+      error: "WhatsApp credentials not configured. Please set WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN environment variables.",
+    };
   }
 
   const url = `https://graph.facebook.com/${API_VERSION}/${PHONE_NUMBER_ID}/messages`;
@@ -49,13 +52,36 @@ export async function sendWhatsAppText(
 
     if (!res.ok) {
       const errorText = await res.text();
+      let errorMessage = `WhatsApp API error (${res.status}): ${res.statusText}`;
+      
+      // Try to parse error details from Meta API response
+      try {
+        const errorJson = JSON.parse(errorText);
+        if (errorJson.error?.message) {
+          errorMessage = errorJson.error.message;
+          // Check for common errors
+          if (errorJson.error.code === 190) {
+            errorMessage = "Access token expired. Please generate a new token from Meta for Developers.";
+          } else if (errorJson.error.code === 131047) {
+            errorMessage = "Invalid phone number format. Please use E.164 format (e.g., 16783929144).";
+          }
+        }
+      } catch {
+        // If parsing fails, use the raw error text
+        errorMessage = errorText || errorMessage;
+      }
+      
       logger.error("WhatsApp API error", {
         status: res.status,
         statusText: res.statusText,
         error: errorText,
         to,
       });
-      return false;
+      
+      return {
+        success: false,
+        error: errorMessage,
+      };
     }
 
     const data = (await res.json()) as { messages?: Array<{ id?: string }> };
@@ -64,13 +90,16 @@ export async function sendWhatsAppText(
       messageId: data.messages?.[0]?.id,
     });
 
-    return true;
+    return { success: true };
   } catch (error) {
     logger.error("Error sending WhatsApp message", {
       error,
       to,
     });
-    return false;
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error occurred while sending WhatsApp message",
+    };
   }
 }
 

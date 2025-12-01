@@ -209,6 +209,7 @@ model QuickPurchase {
   refetchPriority    String?
 
   purchases          Purchase[]
+  whatsappPurchases  WhatsAppPurchase[]
 
   country            Country    @relation(fields: [countryId], references: [id])
 
@@ -1942,5 +1943,45 @@ model CLVOpportunityCache {
   @@index([cachedAt])
   @@index([windowFilter])
   @@index([matchDate])
+}
+
+// WhatsApp-only user system (separate from web User table)
+model WhatsAppUser {
+  id            String   @id @default(cuid())
+  waId          String   @unique // WhatsApp number: "16783929144" (no + prefix)
+  totalSpend    Decimal  @default(0)
+  totalPicks    Int      @default(0)
+  firstSeenAt   DateTime @default(now())
+  lastSeenAt    DateTime @updatedAt
+  isActive      Boolean  @default(true)
+  
+  purchases     WhatsAppPurchase[]
+  
+  @@index([waId])
+  @@index([lastSeenAt])
+}
+
+// WhatsApp purchases (separate from web Purchase table)
+model WhatsAppPurchase {
+  id                String        @id @default(cuid())
+  waUserId          String
+  quickPurchaseId   String
+  amount            Decimal
+  currency          String        @default("USD")
+  paymentSessionId  String        // Stripe Checkout Session ID
+  paymentIntentId   String?       // Stripe Payment Intent ID (after payment)
+  status            String        // pending, completed, failed, canceled
+  purchasedAt       DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  
+  waUser            WhatsAppUser  @relation(fields: [waUserId], references: [id], onDelete: Cascade)
+  quickPurchase     QuickPurchase @relation(fields: [quickPurchaseId], references: [id], onDelete: Restrict)
+  
+  @@index([waUserId])
+  @@index([quickPurchaseId])
+  @@index([paymentSessionId])
+  @@index([status])
+  @@index([createdAt])
 }
 

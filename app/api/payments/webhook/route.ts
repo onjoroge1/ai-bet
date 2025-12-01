@@ -30,6 +30,10 @@ export async function POST(req: NextRequest) {
 
   try {
     switch (event.type) {
+      case 'checkout.session.completed':
+        console.log('Handling checkout.session.completed event');
+        await handleCheckoutSessionCompleted(event.data.object as Stripe.Checkout.Session);
+        break;
       case 'payment_intent.succeeded':
         console.log('Handling payment_intent.succeeded event');
         await handlePaymentSuccess(event.data.object as Stripe.PaymentIntent);
@@ -338,6 +342,116 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
 async function handlePaymentFailure(paymentIntent: Stripe.PaymentIntent) {
   console.log(`Payment failed for intent: ${paymentIntent.id}`);
   // Optionally notify user
+}
+
+/**
+ * Handle Stripe Checkout Session completion (for WhatsApp purchases)
+ */
+async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) {
+  console.log('Processing checkout.session.completed for session:', session.id);
+  
+  const metadata = session.metadata || {};
+  const waId = metadata.waId;
+  const matchId = metadata.matchId;
+  const quickPurchaseId = metadata.quickPurchaseId;
+  const source = metadata.source;
+
+  // Only process WhatsApp purchases
+  if (source !== 'whatsapp' || !waId || !matchId || !quickPurchaseId) {
+    console.log('Not a WhatsApp purchase, skipping');
+    return;
+  }
+
+  try {
+    // Find WhatsAppPurchase by paymentSessionId
+    const whatsappPurchase = await prisma.whatsAppPurchase.findFirst({
+      where: {
+        paymentSessionId: session.id,
+      },
+      include: {
+        waUser: true,
+        quickPurchase: {
+          include: {
+            country: {
+              select: {
+                currencyCode: true,
+                currencySymbol: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!whatsappPurchase) {
+      console.error('WhatsAppPurchase not found for session:', session.id);
+      return;
+    }
+
+    // Check if already processed (idempotency)
+    if (whatsappPurchase.status === 'completed') {
+      console.log('WhatsAppPurchase already completed:', whatsappPurchase.id);
+      return;
+    }
+
+    // Update purchase status
+    await prisma.whatsAppPurchase.update({
+      where: { id: whatsappPurchase.id },
+      data: {
+        status: 'completed',
+        paymentIntentId: session.payment_intent as string | null,
+        purchasedAt: new Date(),
+      },
+    });
+
+    // Update WhatsAppUser totals
+    await prisma.whatsAppUser.update({
+      where: { id: whatsappPurchase.waUserId },
+      data: {
+        totalSpend: {
+          increment: whatsappPurchase.amount,
+        },
+        totalPicks: {
+          increment: 1,
+        },
+      },
+    });
+
+    // Get pick details and send via WhatsApp
+    const { getPickByMatchId } = await import('@/lib/whatsapp-picks');
+    const { formatPickDeliveryMessage } = await import('@/lib/whatsapp-payment');
+    const { sendWhatsAppText } = await import('@/lib/whatsapp-service');
+
+    const pick = await getPickByMatchId(matchId);
+    
+    if (pick) {
+      // Format pick with full details from QuickPurchase
+      const predictionData = whatsappPurchase.quickPurchase.predictionData as any;
+      const pickWithData = {
+        ...pick,
+        predictionData,
+      };
+
+      const message = formatPickDeliveryMessage(pickWithData);
+      const result = await sendWhatsAppText(whatsappPurchase.waUser.waId, message);
+
+      if (result.success) {
+        console.log('Pick delivered successfully via WhatsApp:', {
+          waId: whatsappPurchase.waUser.waId,
+          matchId,
+        });
+      } else {
+        console.error('Failed to send pick via WhatsApp:', {
+          waId: whatsappPurchase.waUser.waId,
+          error: result.error,
+        });
+      }
+    } else {
+      console.error('Pick not found for matchId:', matchId);
+    }
+  } catch (error) {
+    console.error('Error processing WhatsApp purchase completion:', error);
+  }
 }
 
 async function createUserPackage(userId: string, packageOfferCountryPriceId: string, paymentIntent: Stripe.PaymentIntent) {

@@ -41,9 +41,9 @@ export async function POST(req: NextRequest) {
       messageLength: message.length,
     });
 
-    const success = await sendWhatsAppText(formattedPhone, message);
+    const result = await sendWhatsAppText(formattedPhone, message);
 
-    if (success) {
+    if (result.success) {
       return NextResponse.json({
         success: true,
         message: "WhatsApp message sent successfully",
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to send WhatsApp message. Check server logs for details.",
+          error: result.error || "Failed to send WhatsApp message. Check server logs for details.",
         },
         { status: 500 }
       );
