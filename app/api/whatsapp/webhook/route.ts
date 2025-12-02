@@ -215,6 +215,10 @@ async function handleIncomingText(waId: string, text: string) {
 
     // Show picks
     if (lower === "1" || lower === "picks" || lower.startsWith("picks")) {
+      logger.info("User requested today's picks", {
+        waId: normalizedWaId,
+        command: lower,
+      });
       await sendTodaysPicks(normalizedWaId);
       return;
     }
@@ -348,22 +352,71 @@ async function sendWelcomeMessage(to: string) {
  */
 async function sendTodaysPicks(to: string) {
   try {
+    logger.info("Fetching today's picks for WhatsApp user", { to });
+    
     const picks = await getTodaysPicks();
+    
+    logger.info("Fetched picks for WhatsApp", {
+      to,
+      picksCount: picks.length,
+    });
+
+    if (!picks || picks.length === 0) {
+      logger.warn("No picks available for WhatsApp user", { to });
+      await sendWhatsAppText(
+        to,
+        "No picks available for today yet. Check back later 🔄"
+      );
+      return;
+    }
+
     const message = formatPicksList(picks);
+    
+    logger.debug("Formatted picks message", {
+      to,
+      messageLength: message.length,
+      picksCount: picks.length,
+    });
 
     const result = await sendWhatsAppText(to, message);
     if (!result.success) {
       logger.error("Failed to send picks", {
         to,
         error: result.error,
+        messageLength: message.length,
+      });
+      // Send fallback error message to user
+      await sendWhatsAppText(
+        to,
+        "Sorry, couldn't send picks right now. Please try again later."
+      );
+    } else {
+      logger.info("Successfully sent picks to WhatsApp user", {
+        to,
+        picksCount: picks.length,
+        messageLength: message.length,
       });
     }
   } catch (error) {
-    logger.error("Error sending picks", { to, error });
-    await sendWhatsAppText(
+    logger.error("Error sending picks", {
       to,
-      "Sorry, couldn't fetch picks right now. Please try again later."
-    );
+      error: error instanceof Error ? error : undefined,
+      errorMessage: error instanceof Error ? error.message : "Unknown error",
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    
+    // Always send error message to user
+    try {
+      await sendWhatsAppText(
+        to,
+        "Sorry, couldn't fetch picks right now. Please try again later."
+      );
+    } catch (sendError) {
+      logger.error("Failed to send error message to user", {
+        to,
+        error: sendError instanceof Error ? sendError : undefined,
+      });
+    }
   }
 }
 
