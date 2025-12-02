@@ -158,6 +158,7 @@ export function normalizeMarketMatch(match: any): {
   kickoffDate: string;
   odds: {
     consensus?: { home: number; draw: number; away: number };
+    isConsensus?: boolean; // True if novig_current/consensus, false if single bookmaker
     primaryBook?: string;
     booksCount?: number;
   };
@@ -211,22 +212,78 @@ export function normalizeMarketMatch(match: any): {
   const kickoffDate =
     match.kickoff_utc || match.matchDate || match.date || new Date().toISOString();
 
-  // Extract odds (consensus or primary book)
-  const odds: any = {};
-  if (match.odds) {
-    // Try to get consensus odds or primary book odds
-    const primaryBook = match.primaryBook || 'bet365';
-    const bookOdds = match.odds[primaryBook] || match.odds.bet365 || match.odds.pinnacle;
-    
-    if (bookOdds) {
+  // Extract odds - use v1_consensus probabilities from Market API
+  const odds: {
+    consensus?: { home: number; draw: number; away: number };
+    isConsensus?: boolean;
+    primaryBook?: string;
+    booksCount?: number;
+  } = {};
+  let isConsensusOdds = false;
+  
+  // Helper function to convert probability to odds
+  const probToOdds = (prob: number): number => {
+    if (prob <= 0 || prob >= 1) return 0;
+    return Number((1 / prob).toFixed(2));
+  };
+  
+  // Method 1: Use models.v1_consensus.probs (consensus probabilities from Market API)
+  if (match.models?.v1_consensus?.probs) {
+    const probs = match.models.v1_consensus.probs;
+    if (probs.home && probs.draw && probs.away) {
       odds.consensus = {
-        home: bookOdds.home || bookOdds.Home || 0,
-        draw: bookOdds.draw || bookOdds.Draw || 0,
-        away: bookOdds.away || bookOdds.Away || 0,
+        home: probToOdds(probs.home),
+        draw: probToOdds(probs.draw),
+        away: probToOdds(probs.away),
       };
+      isConsensusOdds = true;
+      odds.primaryBook = undefined; // Consensus odds, not from a single book
     }
-    odds.primaryBook = primaryBook;
-    odds.booksCount = match.booksCount || Object.keys(match.odds).length;
+  }
+  // Method 2: Fallback to single bookmaker if v1_consensus not available
+  else if (match.odds) {
+    const primaryBook = match.primaryBook || 'bet365';
+    const bookOdds = match.odds.books?.[primaryBook] || match.odds.books?.bet365 || match.odds.books?.pinnacle || match.odds.books?.unibet;
+    
+    // Try to find any book with valid odds
+    if (!bookOdds && match.odds.books && typeof match.odds.books === 'object') {
+      const bookKeys = Object.keys(match.odds.books);
+      for (const key of bookKeys) {
+        const book = match.odds.books[key];
+        if (book && (book.home || book.Home) && (book.draw || book.Draw) && (book.away || book.Away)) {
+          const home = book.home || book.Home || 0;
+          const draw = book.draw || book.Draw || 0;
+          const away = book.away || book.Away || 0;
+          
+          if (home > 1.0 && draw > 1.0 && away > 1.0) {
+            odds.consensus = { home, draw, away };
+            odds.primaryBook = key;
+            isConsensusOdds = false;
+            break;
+          }
+        }
+      }
+    } else if (bookOdds) {
+      const home = bookOdds.home || bookOdds.Home || 0;
+      const draw = bookOdds.draw || bookOdds.Draw || 0;
+      const away = bookOdds.away || bookOdds.Away || 0;
+      
+      if (home > 1.0 && draw > 1.0 && away > 1.0) {
+        odds.consensus = { home, draw, away };
+        odds.primaryBook = primaryBook;
+        isConsensusOdds = false;
+      }
+    }
+  }
+  
+  // Set consensus flag
+  odds.isConsensus = isConsensusOdds;
+  
+  // Count bookmakers if available
+  if (match.odds?.books && typeof match.odds.books === 'object') {
+    odds.booksCount = Object.keys(match.odds.books).length;
+  } else {
+    odds.booksCount = match.booksCount || 0;
   }
 
   // Extract model predictions
