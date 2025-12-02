@@ -62,11 +62,42 @@ export async function POST(req: NextRequest) {
           "Example: Send '123456' to buy pick with matchId 123456",
         ].join("\n");
       }
-      // Command "1" - Today's picks
+      // Command "1" - Today's picks (same logic as sendTodaysPicks in webhook)
       else if (lowerCommand === "1" || lowerCommand === "picks") {
         commandType = "picks";
+        
         const picks = await getTodaysPicks();
-        messageToSend = formatPicksList(picks);
+        
+        if (!picks || picks.length === 0) {
+          messageToSend = "No picks available for today yet. Check back later 🔄";
+        } else {
+          messageToSend = formatPicksList(picks);
+          
+          // Check message length before sending (WhatsApp limit is 4096 characters)
+          // Same logic as sendTodaysPicks in webhook
+          const WHATSAPP_MAX_LENGTH = 4096;
+          if (messageToSend.length > WHATSAPP_MAX_LENGTH) {
+            // Dynamically reduce picks until message fits
+            let reducedPicks = picks;
+            let reducedMessage = messageToSend;
+            let attempts = 0;
+            const maxAttempts = 10;
+            
+            while (reducedMessage.length > WHATSAPP_MAX_LENGTH && attempts < maxAttempts && reducedPicks.length > 1) {
+              attempts++;
+              // Reduce by 1 pick each time
+              reducedPicks = reducedPicks.slice(0, reducedPicks.length - 1);
+              reducedMessage = formatPicksList(reducedPicks, reducedPicks.length);
+            }
+            
+            if (reducedMessage.length <= WHATSAPP_MAX_LENGTH && reducedPicks.length > 0) {
+              messageToSend = reducedMessage;
+            } else {
+              // Even with 1 pick, message is too long (shouldn't happen, but safety check)
+              messageToSend = "Sorry, there are too many picks to display. Please try again later or contact support.";
+            }
+          }
+        }
       }
       // Command "3" - Help
       else if (lowerCommand === "3" || lowerCommand === "help") {
@@ -116,8 +147,16 @@ export async function POST(req: NextRequest) {
           if (!quickPurchase) {
             messageToSend = `Match ID ${matchIdToUse} not found in our database. Please send '1' to see available matches.`;
           } else {
-            // Extract match and prediction data
-            const matchData = quickPurchase.matchData as any;
+            // Extract match and prediction data (same as handleBuyByMatchId in webhook)
+            const matchData = quickPurchase.matchData as
+              | {
+                  homeTeam?: { name?: string };
+                  awayTeam?: { name?: string };
+                  league?: { name?: string };
+                  startTime?: string;
+                }
+              | null;
+
             const predictionData = quickPurchase.predictionData as any;
 
             const homeTeam =
@@ -128,35 +167,35 @@ export async function POST(req: NextRequest) {
               matchData?.awayTeam?.name ||
               quickPurchase.name.split(" vs ")[1] ||
               "Team B";
-          const market = predictionData?.market || quickPurchase.predictionType || "1X2";
-          const tip =
-            predictionData?.tip ||
-            predictionData?.prediction ||
-            quickPurchase.predictionType ||
-            "Win";
+            const market = predictionData?.market || quickPurchase.predictionType || "1X2";
+            const tip =
+              predictionData?.tip ||
+              predictionData?.prediction ||
+              quickPurchase.predictionType ||
+              "Win";
 
-          // Note: Consensus odds fetching removed since we removed odds from the analysis message
-          let consensusOdds: { home: number; draw: number; away: number } | undefined;
-          let isConsensusOdds = false;
-          let primaryBook: string | undefined;
-          let booksCount: number | undefined;
+            // Note: Consensus odds fetching removed since we removed odds from the analysis message
+            let consensusOdds: { home: number; draw: number; away: number } | undefined;
+            let isConsensusOdds = false;
+            let primaryBook: string | undefined;
+            let booksCount: number | undefined;
 
-          // Format the full AI analysis message
-          messageToSend = formatPickDeliveryMessage({
-            matchId: quickPurchase.matchId!,
-            homeTeam,
-            awayTeam,
-            market,
-            tip,
-            confidence: quickPurchase.confidenceScore || 75,
-            odds: quickPurchase.odds ? Number(quickPurchase.odds) : undefined,
-            valueRating: quickPurchase.valueRating || undefined,
-            consensusOdds: consensusOdds,
-            isConsensusOdds: isConsensusOdds,
-            primaryBook: primaryBook,
-            booksCount: booksCount,
-            predictionData: predictionData,
-          });
+            // Format the full AI analysis message (same as handleBuyByMatchId)
+            messageToSend = formatPickDeliveryMessage({
+              matchId: quickPurchase.matchId!,
+              homeTeam,
+              awayTeam,
+              market,
+              tip,
+              confidence: quickPurchase.confidenceScore || 75,
+              odds: quickPurchase.odds ? Number(quickPurchase.odds) : undefined,
+              valueRating: quickPurchase.valueRating || undefined,
+              consensusOdds: consensusOdds,
+              isConsensusOdds: isConsensusOdds,
+              primaryBook: primaryBook,
+              booksCount: booksCount,
+              predictionData: predictionData,
+            });
           }
         }
       }
@@ -180,8 +219,16 @@ export async function POST(req: NextRequest) {
         if (!quickPurchase) {
           messageToSend = `Match ID ${lowerCommand} not found in our database. Please send '1' to see available matches.`;
         } else {
-          // Extract match and prediction data
-          const matchData = quickPurchase.matchData as any;
+          // Extract match and prediction data (same as handleBuyByMatchId in webhook)
+          const matchData = quickPurchase.matchData as
+            | {
+                homeTeam?: { name?: string };
+                awayTeam?: { name?: string };
+                league?: { name?: string };
+                startTime?: string;
+              }
+            | null;
+
           const predictionData = quickPurchase.predictionData as any;
 
           const homeTeam =
@@ -205,7 +252,7 @@ export async function POST(req: NextRequest) {
           let primaryBook: string | undefined;
           let booksCount: number | undefined;
 
-          // Format the full AI analysis message
+          // Format the full AI analysis message (same as handleBuyByMatchId)
           messageToSend = formatPickDeliveryMessage({
             matchId: quickPurchase.matchId!,
             homeTeam,

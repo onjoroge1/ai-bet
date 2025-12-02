@@ -417,37 +417,66 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
       },
     });
 
-    // Get pick details and send via WhatsApp
-    const { getPickByMatchId } = await import('@/lib/whatsapp-picks');
+    // Get pick details and send via WhatsApp (same as direct webhook flow)
     const { formatPickDeliveryMessage } = await import('@/lib/whatsapp-payment');
     const { sendWhatsAppText } = await import('@/lib/whatsapp-service');
 
-    const pick = await getPickByMatchId(matchId);
+    // Extract match and prediction data from QuickPurchase (same as handleBuyByMatchId)
+    const matchData = whatsappPurchase.quickPurchase.matchData as
+      | {
+          homeTeam?: { name?: string };
+          awayTeam?: { name?: string };
+          league?: { name?: string };
+          startTime?: string;
+        }
+      | null;
+
+    const predictionData = whatsappPurchase.quickPurchase.predictionData as any;
+
+    const homeTeam =
+      matchData?.homeTeam?.name ||
+      whatsappPurchase.quickPurchase.name.split(" vs ")[0] ||
+      "Team A";
+    const awayTeam =
+      matchData?.awayTeam?.name ||
+      whatsappPurchase.quickPurchase.name.split(" vs ")[1] ||
+      "Team B";
+    const market = predictionData?.market || whatsappPurchase.quickPurchase.predictionType || "1X2";
+    const tip =
+      predictionData?.tip ||
+      predictionData?.prediction ||
+      whatsappPurchase.quickPurchase.predictionType ||
+      "Win";
+
+    // Format the full AI analysis message (same format as direct webhook)
+    const message = formatPickDeliveryMessage({
+      matchId: whatsappPurchase.quickPurchase.matchId!,
+      homeTeam,
+      awayTeam,
+      market,
+      tip,
+      confidence: whatsappPurchase.quickPurchase.confidenceScore || 75,
+      odds: whatsappPurchase.quickPurchase.odds ? Number(whatsappPurchase.quickPurchase.odds) : undefined,
+      valueRating: whatsappPurchase.quickPurchase.valueRating || undefined,
+      consensusOdds: undefined, // Not needed since odds removed from analysis message
+      isConsensusOdds: false,
+      primaryBook: undefined,
+      booksCount: undefined,
+      predictionData: predictionData,
+    });
     
-    if (pick) {
-      // Format pick with full details from QuickPurchase
-      const predictionData = whatsappPurchase.quickPurchase.predictionData as any;
-      const pickWithData = {
-        ...pick,
-        predictionData,
-      };
+    const result = await sendWhatsAppText(whatsappPurchase.waUser.waId, message);
 
-      const message = formatPickDeliveryMessage(pickWithData);
-      const result = await sendWhatsAppText(whatsappPurchase.waUser.waId, message);
-
-      if (result.success) {
-        console.log('Pick delivered successfully via WhatsApp:', {
-          waId: whatsappPurchase.waUser.waId,
-          matchId,
-        });
-      } else {
-        console.error('Failed to send pick via WhatsApp:', {
-          waId: whatsappPurchase.waUser.waId,
-          error: result.error,
-        });
-      }
+    if (result.success) {
+      console.log('Pick delivered successfully via WhatsApp:', {
+        waId: whatsappPurchase.waUser.waId,
+        matchId,
+      });
     } else {
-      console.error('Pick not found for matchId:', matchId);
+      console.error('Failed to send pick via WhatsApp:', {
+        waId: whatsappPurchase.waUser.waId,
+        error: result.error,
+      });
     }
   } catch (error) {
     console.error('Error processing WhatsApp purchase completion:', error);
