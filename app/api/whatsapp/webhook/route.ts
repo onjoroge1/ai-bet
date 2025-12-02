@@ -6,7 +6,11 @@ import {
   formatPicksList,
   getPickByMatchId,
 } from "@/lib/whatsapp-picks";
-import { createWhatsAppPaymentSession } from "@/lib/whatsapp-payment";
+import { formatPickDeliveryMessage } from "@/lib/whatsapp-payment";
+import { checkWhatsAppRateLimit } from "@/lib/whatsapp-rate-limit";
+import { validateMatchId, sanitizeText } from "@/lib/whatsapp-validation";
+import { verifyWhatsAppWebhookSignature } from "@/lib/whatsapp-webhook-verification";
+import prisma from "@/lib/db";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -55,7 +59,26 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    // Get raw body for signature verification
+    const rawBody = await req.text();
+    const signature = req.headers.get('x-hub-signature-256');
+
+    // Verify webhook signature (only in production or if APP_SECRET is set)
+    if (process.env.WHATSAPP_APP_SECRET) {
+      if (!verifyWhatsAppWebhookSignature(rawBody, signature)) {
+        logger.warn("WhatsApp webhook signature verification failed", {
+          hasSignature: !!signature,
+        });
+        return NextResponse.json(
+          { error: "Invalid signature" },
+          { status: 401 }
+        );
+      }
+    } else {
+      logger.debug("WhatsApp APP_SECRET not set, skipping signature verification");
+    }
+
+    const body = JSON.parse(rawBody);
     
     logger.debug("WhatsApp webhook received", {
       object: body?.object,
@@ -89,8 +112,32 @@ export async function POST(req: NextRequest) {
             });
 
             if (text) {
+              // Sanitize and validate input
+              const sanitizedText = sanitizeText(text);
+              if (!sanitizedText) {
+                logger.warn("Empty or invalid text message", { from });
+                return;
+              }
+
+              // Check rate limit
+              const rateLimit = await checkWhatsAppRateLimit(from);
+              if (!rateLimit.allowed) {
+                logger.warn("Rate limit exceeded", {
+                  from,
+                  limit: rateLimit.limit,
+                  resetTime: rateLimit.resetTime,
+                });
+                
+                const resetMinutes = Math.ceil((rateLimit.resetTime - Math.floor(Date.now() / 1000)) / 60);
+                await sendWhatsAppText(
+                  from,
+                  `⏱️ Too many requests. Please wait ${resetMinutes} minute(s) before sending more messages.`
+                );
+                return;
+              }
+
               // Handle incoming text message with menu system
-              await handleIncomingText(from, text);
+              await handleIncomingText(from, sanitizedText);
             }
           }
         }
@@ -144,7 +191,25 @@ async function handleIncomingText(waId: string, text: string) {
 
     // Menu commands
     if (["menu", "hi", "hello", "hey", "0", "start"].includes(lower)) {
-      await sendMainMenu(normalizedWaId);
+      // Check if user is new
+      const waUser = await prisma.whatsAppUser.findUnique({
+        where: { waId: normalizedWaId },
+      });
+      const isNewUser = !waUser || 
+        (waUser.firstSeenAt.getTime() === waUser.lastSeenAt.getTime() &&
+         Date.now() - waUser.firstSeenAt.getTime() < 60000); // Within 1 minute of first seen
+      
+      if (isNewUser) {
+        await sendWelcomeMessage(normalizedWaId);
+      } else {
+        await sendMainMenu(normalizedWaId);
+      }
+      return;
+    }
+
+    // Purchase history
+    if (lower === "4" || lower === "history" || lower === "purchases" || lower === "mypicks") {
+      await sendPurchaseHistory(normalizedWaId);
       return;
     }
 
@@ -181,25 +246,26 @@ async function handleIncomingText(waId: string, text: string) {
       }
 
       const matchIdStr = parts[matchIdIndex];
-      const matchId = matchIdStr.trim();
+      const matchIdValidation = validateMatchId(matchIdStr);
 
-      if (!matchId || matchId.length === 0) {
+      if (!matchIdValidation.valid) {
         await sendWhatsAppText(
           normalizedWaId,
-          `MatchId is required. Please send the matchId directly.\n\nExample: 123456`
+          `${matchIdValidation.error || 'Invalid matchId'}. Please send a valid matchId.\n\nExample: 123456`
         );
         return;
       }
 
-      await handleBuyByMatchId(normalizedWaId, matchId);
+      await handleBuyByMatchId(normalizedWaId, matchIdValidation.normalized!);
       return;
     }
 
     // Check if input is just a number (matchId) - treat as purchase request
     const numericMatchId = raw.trim();
-    if (/^\d+$/.test(numericMatchId) && numericMatchId.length >= 4) {
-      // It's a numeric matchId, treat as purchase request
-      await handleBuyByMatchId(normalizedWaId, numericMatchId);
+    const matchIdValidation = validateMatchId(numericMatchId);
+    if (matchIdValidation.valid && matchIdValidation.normalized) {
+      // It's a valid numeric matchId, treat as purchase request
+      await handleBuyByMatchId(normalizedWaId, matchIdValidation.normalized);
       return;
     }
 
@@ -229,6 +295,7 @@ async function sendMainMenu(to: string) {
     "1️⃣ Today's picks",
     "2️⃣ Buy a pick (send matchId directly)",
     "3️⃣ Help",
+    "4️⃣ My Picks (purchase history)",
     "",
     "Example: Send '123456' to buy pick with matchId 123456",
   ].join("\n");
@@ -236,6 +303,40 @@ async function sendMainMenu(to: string) {
   const result = await sendWhatsAppText(to, message);
   if (!result.success) {
     logger.error("Failed to send main menu", {
+      to,
+      error: result.error,
+    });
+  }
+}
+
+/**
+ * Send welcome message for new users
+ */
+async function sendWelcomeMessage(to: string) {
+  const message = [
+    "🎉 Welcome to SnapBet! ⚽🔥",
+    "",
+    "Get AI-powered sports predictions delivered directly to your WhatsApp.",
+    "",
+    "📊 **What we offer:**",
+    "• Daily top picks with AI analysis",
+    "• Team strengths, weaknesses & injuries",
+    "• Asian Handicap insights",
+    "• Confidence factors & betting intelligence",
+    "",
+    "💰 **Currently FREE** - All picks are free to access!",
+    "",
+    "**Quick Start:**",
+    "• Send '1' to see today's picks",
+    "• Send a matchId (e.g., '123456') to get full AI analysis",
+    "• Send 'menu' anytime to see all options",
+    "",
+    "Ready to get started? Send '1' for today's picks! 🚀",
+  ].join("\n");
+
+  const result = await sendWhatsAppText(to, message);
+  if (!result.success) {
+    logger.error("Failed to send welcome message", {
       to,
       error: result.error,
     });
@@ -269,123 +370,89 @@ async function sendTodaysPicks(to: string) {
 /**
  * Handle buy by matchId
  */
+/**
+ * Handle buy by matchId
+ * TEMPORARY: Skip payment and directly send full AI analysis from QuickPurchase
+ */
 async function handleBuyByMatchId(waId: string, matchId: string) {
   try {
-    // First check if pick exists and is purchasable
-    const pick = await getPickByMatchId(matchId);
-
-    if (!pick) {
-      await sendWhatsAppText(
-        waId,
-        `Match ID ${matchId} not found. Please send '1' to see available matches.`
-      );
-      return;
-    }
-
-    if (!pick.isPurchasable) {
-      await sendWhatsAppText(
-        waId,
-        [
-          `Match ID ${matchId} is not available for purchase yet.`,
-          "",
-          `Match: ${pick.homeTeam} vs ${pick.awayTeam}`,
-          "Check back soon for purchase availability!",
-        ].join("\n")
-      );
-      return;
-    }
-
-    // Create payment session
-    const { paymentUrl, sessionId } = await createWhatsAppPaymentSession({
-      waId,
-      matchId,
+    // Directly fetch from QuickPurchase table
+    const quickPurchase = await prisma.quickPurchase.findUnique({
+      where: { matchId },
+      include: {
+        country: {
+          select: {
+            currencyCode: true,
+            currencySymbol: true,
+          },
+        },
+      },
     });
 
-    if (!paymentUrl) {
+    if (!quickPurchase) {
       await sendWhatsAppText(
         waId,
-        "Sorry, couldn't create payment link. Please try again or contact support."
+        `Match ID ${matchId} not found in our database. Please send '1' to see available matches.`
       );
       return;
     }
 
-    // Get country-specific pricing for display (same as used in payment session)
-    const { getOrCreateWhatsAppUser } = await import("@/lib/whatsapp-payment");
-    const { getDbCountryPricing } = await import("@/lib/server-pricing-service");
-    const { getCountryCodeFromPhone } = await import("@/lib/whatsapp-country-detection");
-    
-    const waUser = await getOrCreateWhatsAppUser(waId);
-    const userCountryCode = waUser.countryCode || getCountryCodeFromPhone(waId, "US");
-    
-    let displayPrice = pick?.price || 0;
-    let displayCurrency = pick?.currency || "USD";
-    
-    // Get country-specific pricing for display (matches payment session)
-    try {
-      const countryPricing = await getDbCountryPricing(userCountryCode, "prediction");
-      displayPrice = countryPricing.price;
-      displayCurrency = countryPricing.currencyCode;
-    } catch {
-      // Use pick pricing as fallback
-    }
-    
-    // Format currency symbol
-    const currencySymbol = displayCurrency === "USD" ? "$" : 
-                          displayCurrency === "GBP" ? "£" :
-                          displayCurrency === "KES" ? "KES " :
-                          displayCurrency === "NGN" ? "₦" :
-                          displayCurrency === "ZAR" ? "R" :
-                          displayCurrency || "$";
+    // Extract match and prediction data
+    const matchData = quickPurchase.matchData as
+      | {
+          homeTeam?: { name?: string };
+          awayTeam?: { name?: string };
+          league?: { name?: string };
+          startTime?: string;
+        }
+      | null;
 
-    // Format date if available
-    let dateLine = "";
-    if (pick?.kickoffDate) {
-      try {
-        const date = new Date(pick.kickoffDate);
-        const formattedDate = date.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-          timeZoneName: "short",
-        });
-        dateLine = `📅 ${formattedDate}`;
-      } catch (e) {
-        // Invalid date, skip
-      }
-    }
+    const predictionData = quickPurchase.predictionData as any;
 
-    const message = [
-      "You're buying this pick 💰",
-      "",
-      pick
-        ? `Match ID: ${matchId}`
-        : `Match ID: ${matchId}`,
-      pick ? `${pick.homeTeam} vs ${pick.awayTeam}` : "",
-      dateLine,
-      pick?.league ? `🏆 ${pick.league}` : "",
-      pick ? `📊 Market: ${pick.market}` : "",
-      pick ? `💡 Tip: ${pick.tip}` : "",
-      pick?.consensusOdds
-        ? `📊 Odds: Home ${pick.consensusOdds.home.toFixed(2)} | Draw ${pick.consensusOdds.draw.toFixed(2)} | Away ${pick.consensusOdds.away.toFixed(2)}`
-        : pick?.odds
-        ? `📊 Odds: ${pick.odds.toFixed(2)}`
-        : "",
-      `💰 Price: ${currencySymbol}${displayPrice.toFixed(2)}`,
-      "",
-      "💳 Tap here to complete payment:",
-      paymentUrl,
-      "",
-      "Once payment is confirmed, we'll send your full pick details here in WhatsApp ✅",
-    ]
-      .filter((line) => line !== "")
-      .join("\n");
+    const homeTeam =
+      matchData?.homeTeam?.name ||
+      quickPurchase.name.split(" vs ")[0] ||
+      "Team A";
+    const awayTeam =
+      matchData?.awayTeam?.name ||
+      quickPurchase.name.split(" vs ")[1] ||
+      "Team B";
+    const market = predictionData?.market || quickPurchase.predictionType || "1X2";
+    const tip =
+      predictionData?.tip ||
+      predictionData?.prediction ||
+      quickPurchase.predictionType ||
+      "Win";
+
+    // Note: Consensus odds fetching removed since we removed odds from the analysis message
+    // If needed in future, can be re-added here
+    let consensusOdds: { home: number; draw: number; away: number } | undefined;
+    let isConsensusOdds = false;
+    let primaryBook: string | undefined;
+    let booksCount: number | undefined;
+
+    // Format the full AI analysis message
+    const message = formatPickDeliveryMessage({
+      matchId: quickPurchase.matchId!,
+      homeTeam,
+      awayTeam,
+      market,
+      tip,
+      confidence: quickPurchase.confidenceScore || 75,
+      odds: quickPurchase.odds ? Number(quickPurchase.odds) : undefined,
+      valueRating: quickPurchase.valueRating || undefined,
+      consensusOdds: consensusOdds,
+      isConsensusOdds: isConsensusOdds,
+      primaryBook: primaryBook,
+      booksCount: booksCount,
+      predictionData: predictionData,
+    });
 
     const result = await sendWhatsAppText(waId, message);
     if (!result.success) {
-      logger.error("Failed to send payment link", {
+      logger.error("Failed to send pick details", {
         waId,
+        matchId,
         error: result.error,
       });
     }
@@ -399,22 +466,10 @@ async function handleBuyByMatchId(waId: string, matchId: string) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
 
-    if (errorMessage.includes("already purchased")) {
-      await sendWhatsAppText(
-        waId,
-        "You have already purchased this pick. Send '1' to see other available picks."
-      );
-    } else if (errorMessage.includes("not found")) {
-      await sendWhatsAppText(
-        waId,
-        `I couldn't find a pick for matchId ${matchId}. Please send '1' to see today's available picks.`
-      );
-    } else {
-      await sendWhatsAppText(
-        waId,
-        "Sorry, something went wrong. Please try again or send 'menu' for options."
-      );
-    }
+    await sendWhatsAppText(
+      waId,
+      `Sorry, I couldn't retrieve the pick for match ID ${matchId}. ${errorMessage}`
+    );
   }
 }
 
@@ -428,12 +483,14 @@ async function sendHelp(to: string) {
     "1️⃣ Today's picks – see top matches + matchIds",
     "2️⃣ Buy a pick – send matchId directly",
     "3️⃣ Help – you're here 😊",
+    "4️⃣ My Picks – view your purchase history",
     "",
     "You can type MENU anytime to see options again.",
     "",
     "Examples:",
     "Send '1' to see picks",
     "Send '123456' to buy pick with matchId 123456",
+    "Send '4' to see your purchase history",
   ].join("\n");
 
   const result = await sendWhatsAppText(to, message);
@@ -442,6 +499,97 @@ async function sendHelp(to: string) {
       to,
       error: result.error,
     });
+  }
+}
+
+/**
+ * Send purchase history
+ */
+async function sendPurchaseHistory(to: string) {
+  try {
+    const waUser = await prisma.whatsAppUser.findUnique({
+      where: { waId: to },
+      include: {
+        purchases: {
+          where: {
+            status: 'completed',
+          },
+          include: {
+            quickPurchase: {
+              select: {
+                matchId: true,
+                name: true,
+                predictionType: true,
+              },
+            },
+          },
+          orderBy: {
+            purchasedAt: 'desc',
+          },
+          take: 10, // Last 10 purchases
+        },
+      },
+    });
+
+    if (!waUser) {
+      await sendWhatsAppText(
+        to,
+        "You haven't made any purchases yet. Send '1' to see available picks!"
+      );
+      return;
+    }
+
+    if (waUser.purchases.length === 0) {
+      await sendWhatsAppText(
+        to,
+        "📚 **My Picks**\n\nYou haven't purchased any picks yet.\n\nSend '1' to see today's available picks!"
+      );
+      return;
+    }
+
+    const lines: string[] = [];
+    lines.push("📚 **My Picks**");
+    lines.push(`Total Purchases: ${waUser.totalPicks}`);
+    lines.push("");
+
+    waUser.purchases.forEach((purchase, index) => {
+      const matchName = purchase.quickPurchase?.name || 'Unknown Match';
+      const matchId = purchase.quickPurchase?.matchId || 'N/A';
+      const purchasedDate = purchase.purchasedAt
+        ? new Date(purchase.purchasedAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          })
+        : 'N/A';
+
+      lines.push(`${index + 1}. ${matchName}`);
+      lines.push(`   Match ID: ${matchId}`);
+      lines.push(`   Date: ${purchasedDate}`);
+      lines.push("");
+    });
+
+    lines.push("To view a pick again, send its matchId.");
+    lines.push("Example: Send '123456' to get the full analysis.");
+
+    const message = lines.join("\n");
+    const result = await sendWhatsAppText(to, message);
+    
+    if (!result.success) {
+      logger.error("Failed to send purchase history", {
+        to,
+        error: result.error,
+      });
+    }
+  } catch (error) {
+    logger.error("Error sending purchase history", {
+      to,
+      error,
+    });
+    await sendWhatsAppText(
+      to,
+      "Sorry, couldn't fetch your purchase history. Please try again later."
+    );
   }
 }
 
