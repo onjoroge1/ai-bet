@@ -378,18 +378,97 @@ async function sendTodaysPicks(to: string) {
       picksCount: picks.length,
     });
 
+    // Check message length before sending (WhatsApp limit is 4096 characters)
+    const WHATSAPP_MAX_LENGTH = 4096;
+    if (message.length > WHATSAPP_MAX_LENGTH) {
+      logger.error("Picks message exceeds WhatsApp character limit", {
+        to,
+        messageLength: message.length,
+        maxLength: WHATSAPP_MAX_LENGTH,
+        picksCount: picks.length,
+      });
+      
+      // Dynamically reduce picks until message fits
+      let reducedPicks = picks;
+      let reducedMessage = message;
+      let attempts = 0;
+      const maxAttempts = 10;
+      
+      while (reducedMessage.length > WHATSAPP_MAX_LENGTH && attempts < maxAttempts && reducedPicks.length > 1) {
+        attempts++;
+        // Reduce by 1 pick each time
+        reducedPicks = reducedPicks.slice(0, reducedPicks.length - 1);
+        reducedMessage = formatPicksList(reducedPicks, reducedPicks.length);
+        
+        logger.debug("Trying reduced picks", {
+          to,
+          attempts,
+          picksCount: reducedPicks.length,
+          messageLength: reducedMessage.length,
+        });
+      }
+      
+      if (reducedMessage.length <= WHATSAPP_MAX_LENGTH && reducedPicks.length > 0) {
+        logger.info("Sending shortened picks message", {
+          to,
+          originalPicksCount: picks.length,
+          shortenedPicksCount: reducedPicks.length,
+          messageLength: reducedMessage.length,
+        });
+        const result = await sendWhatsAppText(to, reducedMessage);
+        if (!result.success) {
+          logger.error("Failed to send shortened picks", {
+            to,
+            error: result.error,
+          });
+          await sendWhatsAppText(
+            to,
+            "Sorry, couldn't send picks right now. Please try again later."
+          );
+        }
+      } else {
+        // Even with 1 pick, message is too long (shouldn't happen, but safety check)
+        logger.error("Even single pick message is too long", {
+          to,
+          messageLength: reducedMessage.length,
+          picksCount: reducedPicks.length,
+        });
+        await sendWhatsAppText(
+          to,
+          "Sorry, there are too many picks to display. Please try again later or contact support."
+        );
+      }
+      return;
+    }
+
     const result = await sendWhatsAppText(to, message);
     if (!result.success) {
       logger.error("Failed to send picks", {
         to,
         error: result.error,
         messageLength: message.length,
+        errorDetails: result.error,
       });
+      
+      // Provide more specific error message based on error type
+      let errorMessage = "Sorry, couldn't send picks right now. Please try again later.";
+      
+      if (result.errorType === "TOKEN_EXPIRED" || result.errorCode === 190) {
+        errorMessage = "System error: Access token expired. Please contact support.";
+      } else if (result.errorType === "RATE_LIMIT" || result.errorCode === 429) {
+        errorMessage = "Too many requests. Please wait a moment and try again.";
+      } else if (result.errorType === "INVALID_PHONE" || result.errorCode === 131047) {
+        errorMessage = "Invalid phone number format. Please contact support.";
+      } else if (result.errorType === "MESSAGE_TOO_LONG" || result.errorCode === 100) {
+        errorMessage = "Message too long. Please try again later or contact support.";
+      } else if (result.errorType === "NUMBER_NOT_REGISTERED" || result.errorCode === 131026) {
+        errorMessage = "Phone number not registered on WhatsApp. Please verify your number.";
+      } else if (result.errorType === "TEMPLATE_REQUIRED" || result.errorCode === 131031) {
+        errorMessage = "Please send a message first to start a conversation.";
+      }
+      
       // Send fallback error message to user
-      await sendWhatsAppText(
-        to,
-        "Sorry, couldn't send picks right now. Please try again later."
-      );
+      await sendWhatsAppText(to, errorMessage);
     } else {
       logger.info("Successfully sent picks to WhatsApp user", {
         to,

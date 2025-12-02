@@ -36,6 +36,7 @@ export interface WhatsAppPick {
     draw: number;
     away: number;
   };
+  isConsensusOdds?: boolean; // True if from novig_current (Market API consensus), false if single bookmaker
   primaryBook?: string;
   booksCount?: number;
   modelPredictions?: {
@@ -50,6 +51,10 @@ export interface WhatsAppPick {
  * 1. Fetch all Market API matches (with Redis cache) - same as homepage
  * 2. Optionally enhance with QuickPurchase data (price, confidence) if available
  * 3. Return all Market API matches, even if QuickPurchase doesn't exist
+ */
+/**
+ * Get today's picks for WhatsApp
+ * Limited to 10 picks to stay within WhatsApp's 4096 character limit
  */
 export async function getTodaysPicks(): Promise<WhatsAppPick[]> {
   try {
@@ -201,6 +206,7 @@ export async function getTodaysPicks(): Promise<WhatsAppPick[]> {
         kickoffDate: marketData.kickoffDate,
         // Market API data (always available)
         consensusOdds: marketData.odds?.consensus,
+        isConsensusOdds: marketData.odds?.isConsensus, // True if novig_current, false if single bookmaker
         primaryBook: marketData.odds?.primaryBook,
         booksCount: marketData.odds?.booksCount,
         modelPredictions: marketData.modelPredictions,
@@ -268,10 +274,8 @@ export async function getTodaysPicks(): Promise<WhatsAppPick[]> {
       },
     });
     
-    // Return only valid picks (with matchIds)
-    return validPicks;
-
-    return sortedPicks;
+    // Return only valid picks (with matchIds), limited to 10 for WhatsApp character limit
+    return validPicks.slice(0, 10);
   } catch (error) {
     logger.error("Error fetching today's picks", {
       tags: ["whatsapp", "picks", "error"],
@@ -491,6 +495,7 @@ export async function getPickByMatchId(
             league: normalized.league,
             kickoffDate: normalized.kickoffDate,
             consensusOdds: normalized.odds?.consensus,
+            isConsensusOdds: normalized.odds?.isConsensus, // True if novig_current, false if single bookmaker
             primaryBook: normalized.odds?.primaryBook,
             booksCount: normalized.odds?.booksCount,
             modelPredictions: normalized.modelPredictions,
@@ -516,134 +521,150 @@ export async function getPickByMatchId(
 
 /**
  * Format pick for WhatsApp message display
- * Enhanced format with dates, odds, and model predictions
- * Handles optional fields gracefully (matches without QuickPurchase)
+ * New action-driving format with cleaner layout and better visual hierarchy
+ */
+/**
+ * Format a single pick for WhatsApp (compact version to stay under character limit)
  */
 export function formatPickForWhatsApp(pick: WhatsAppPick, index?: number): string {
-  const prefix = index !== undefined ? `${index + 1}) ` : "";
-  
   const lines: string[] = [];
-  // Ensure matchId is always displayed (use fallback if missing)
-  const displayMatchId = pick.matchId && pick.matchId.trim() !== "" ? pick.matchId : "N/A";
-  lines.push(`${prefix}Match ID: ${displayMatchId}`);
-  lines.push(`   ${pick.homeTeam} vs ${pick.awayTeam}`);
   
-  // Add date if available (from Market API)
-  if (pick.kickoffDate) {
+  // Ensure matchId is always displayed
+  const displayMatchId = pick.matchId && pick.matchId.trim() !== "" ? pick.matchId : "N/A";
+  
+  // Number emoji (1️⃣ through 🔟)
+  const numberEmojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"];
+  const emojiNumber = index !== undefined && index < 10 ? numberEmojis[index] : `${index !== undefined ? index + 1 : ""}️⃣`;
+  
+  // Compact header: Match ID and Teams on same line
+  lines.push(`## ${emojiNumber} *${displayMatchId}* - **${pick.homeTeam} vs ${pick.awayTeam}**`);
+  
+  // Date and League on one line
+  const dateTime = pick.kickoffDate ? (() => {
     try {
       const date = new Date(pick.kickoffDate);
-      const formattedDate = date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        timeZoneName: "short",
-      });
-      lines.push(`   📅 ${formattedDate}`);
-    } catch (e) {
-      // Invalid date, skip
-    }
+      return date.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    } catch { return null; }
+  })() : null;
+  
+  if (dateTime && pick.league) {
+    lines.push(`📅 ${dateTime} | 🏆 ${pick.league}`);
+  } else if (dateTime) {
+    lines.push(`📅 ${dateTime}`);
+  } else if (pick.league) {
+    lines.push(`🏆 ${pick.league}`);
   }
   
-  // Add league if available
-  if (pick.league) {
-    lines.push(`   🏆 ${pick.league}`);
-  }
-  
-  // Add market and tip if available
-  if (pick.market) {
-    lines.push(`   📊 Market: ${pick.market}`);
-  }
+  // Pick/Tip
+  let pickText = "";
   if (pick.tip) {
-    lines.push(`   💡 Tip: ${pick.tip}`);
+    if (pick.tip.toLowerCase().includes("home") || pick.tip.toLowerCase() === "1") {
+      pickText = "Home Win";
+    } else if (pick.tip.toLowerCase().includes("away") || pick.tip.toLowerCase() === "2") {
+      pickText = "Away Win";
+    } else if (pick.tip.toLowerCase().includes("draw") || pick.tip.toLowerCase() === "x") {
+      pickText = "Draw";
+    } else {
+      pickText = pick.tip;
+    }
+  } else if (pick.modelPredictions?.premium) {
+    const pred = pick.modelPredictions.premium;
+    pickText = pred.side === "home" ? "Home Win" : pred.side === "away" ? "Away Win" : "Draw";
+  } else if (pick.modelPredictions?.free) {
+    const pred = pick.modelPredictions.free;
+    pickText = pred.side === "home" ? "Home Win" : pred.side === "away" ? "Away Win" : "Draw";
   }
   
-  // Add confidence if available
+  // Confidence and Value on one line
+  let confidenceText = "";
   if (pick.confidence !== undefined) {
-    const confidencePct = Math.round(pick.confidence);
-    lines.push(`   📈 Confidence: ${confidencePct}%`);
+    confidenceText = `${Math.round(pick.confidence)}%`;
+  } else if (pick.modelPredictions?.premium) {
+    confidenceText = `${Math.round(pick.modelPredictions.premium.confidence)}%`;
+  } else if (pick.modelPredictions?.free) {
+    confidenceText = `${Math.round(pick.modelPredictions.free.confidence)}%`;
   }
   
-  // Add price if available (only if purchasable)
-  if (pick.price !== undefined && pick.currency) {
-    const currencySymbol = pick.currency === "USD" ? "$" : pick.currency;
-    lines.push(`   💰 Price: ${currencySymbol}${pick.price.toFixed(2)}`);
-  } else if (!pick.isPurchasable) {
-    lines.push(`   ⏳ Purchase: Coming soon`);
-  }
-  
-  // Add consensus odds if available (from Market API)
-  if (pick.consensusOdds) {
-    const odds = pick.consensusOdds;
-    lines.push(`   📊 Odds: Home ${odds.home.toFixed(2)} | Draw ${odds.draw.toFixed(2)} | Away ${odds.away.toFixed(2)}`);
-  } else if (pick.odds) {
-    // Fallback to single odds from QuickPurchase
-    lines.push(`   📊 Odds: ${pick.odds.toFixed(2)}`);
-  }
-  
-  // Add bookmakers count if available
-  if (pick.booksCount) {
-    const bookText = pick.booksCount === 1 ? "bookmaker" : "bookmakers";
-    lines.push(`   📚 ${pick.booksCount} ${bookText}`);
-    if (pick.primaryBook) {
-      lines.push(`   📚 Primary: ${pick.primaryBook}`);
-    }
-  }
-  
-  // Add model predictions if available (from Market API)
-  if (pick.modelPredictions) {
-    if (pick.modelPredictions.premium) {
-      const pred = pick.modelPredictions.premium;
-      const sideText = pred.side === "home" ? "Home Win" : pred.side === "away" ? "Away Win" : "Draw";
-      lines.push(`   🤖 Model: ${sideText} (${Math.round(pred.confidence)}%)`);
-    } else if (pick.modelPredictions.free) {
-      const pred = pick.modelPredictions.free;
-      const sideText = pred.side === "home" ? "Home Win" : pred.side === "away" ? "Away Win" : "Draw";
-      lines.push(`   🤖 Model: ${sideText} (${Math.round(pred.confidence)}%)`);
-    }
-  }
-  
-  // Add value rating if available
+  let valueText = "";
   if (pick.valueRating) {
-    lines.push(`   ⭐ Value: ${pick.valueRating}`);
+    const valueLower = pick.valueRating.toLowerCase();
+    if (valueLower.includes("high") || valueLower.includes("very")) {
+      valueText = pick.confidence && pick.confidence >= 60 ? "VERY HIGH" : "High";
+    } else if (valueLower.includes("medium")) {
+      valueText = "Medium";
+    } else if (valueLower.includes("low")) {
+      valueText = "Low";
+    }
+  } else if (pick.confidence !== undefined) {
+    if (pick.confidence >= 60) valueText = "VERY HIGH";
+    else if (pick.confidence >= 40) valueText = "High";
+    else if (pick.confidence >= 25) valueText = "Medium";
+    else valueText = "Low";
   }
-
+  
+  if (pickText) {
+    if (confidenceText && valueText) {
+      lines.push(`📊 **${pickText}** | 💡 ${confidenceText} | ⭐ ${valueText}`);
+    } else if (confidenceText) {
+      lines.push(`📊 **${pickText}** | 💡 ${confidenceText}`);
+    } else {
+      lines.push(`📊 **${pickText}**`);
+    }
+  }
+  
+  // Compact odds on one line
+  if (pick.consensusOdds && pick.consensusOdds.home > 0 && pick.consensusOdds.draw > 0 && pick.consensusOdds.away > 0) {
+    const odds = pick.consensusOdds;
+    const isHomePick = pickText.toLowerCase().includes("home");
+    const isAwayPick = pickText.toLowerCase().includes("away");
+    const isDrawPick = pickText.toLowerCase().includes("draw");
+    
+    lines.push(`🔢 H:${isHomePick ? "**" : ""}${odds.home.toFixed(2)}${isHomePick ? "**" : ""} D:${isDrawPick ? "**" : ""}${odds.draw.toFixed(2)}${isDrawPick ? "**" : ""} A:${isAwayPick ? "**" : ""}${odds.away.toFixed(2)}${isAwayPick ? "**" : ""}`);
+  }
+  
+  // Call to action
+  if (pick.isPurchasable) {
+    lines.push(`👉 Send *${displayMatchId}* to buy`);
+  }
+  
   return lines.join("\n");
 }
 
 /**
  * Format multiple picks for WhatsApp message
  */
-export function formatPicksList(picks: WhatsAppPick[]): string {
+export function formatPicksList(picks: WhatsAppPick[], limit: number = 10): string {
   if (picks.length === 0) {
     return "No picks available for today yet. Check back later 🔄";
   }
 
-  const lines: string[] = [];
-  lines.push("Here are today's picks 🔥", "");
+  // Filter valid picks and limit to 10 to stay within WhatsApp's 4096 character limit
+  const validPicks = picks
+    .filter(p => p.matchId && p.matchId.trim() !== "")
+    .slice(0, limit);
 
-  picks.forEach((pick, idx) => {
-    // Only include picks with valid matchId
-    if (pick.matchId && pick.matchId.trim() !== "") {
-      lines.push(formatPickForWhatsApp(pick, idx));
-      lines.push(""); // Empty line between picks
+  if (validPicks.length === 0) {
+    return "No valid picks available for today yet. Check back later 🔄";
+  }
+
+  const lines: string[] = [];
+  
+  // Compact header
+  lines.push("# 🔥 TODAY'S TOP PICKS");
+  lines.push("");
+
+  // Format each pick (compact)
+  validPicks.forEach((pick, idx) => {
+    lines.push(formatPickForWhatsApp(pick, idx));
+    if (idx < validPicks.length - 1) {
+      lines.push(""); // Only add spacing between picks, not after last one
     }
   });
 
-  // Find first valid matchId for example (filter out empty/invalid)
-  const validPicks = picks.filter(p => p.matchId && p.matchId.trim() !== "");
-  const examplePick = validPicks[0];
-  const exampleMatchId = examplePick?.matchId || (picks[0]?.matchId || "N/A");
-
-  lines.push("To buy a pick, send the matchId directly:");
+  // Compact footer
   lines.push("");
-  lines.push("Example:");
-  if (exampleMatchId && exampleMatchId !== "N/A") {
-    lines.push(exampleMatchId);
-  } else {
-    lines.push("(No valid matchId available)");
-  }
+  const exampleMatchId = validPicks[0]?.matchId || "123456";
+  lines.push(`💰 Send *${exampleMatchId}* to buy | Send "1" for more`);
 
   return lines.join("\n");
 }
