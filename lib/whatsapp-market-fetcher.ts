@@ -148,6 +148,7 @@ export function extractMatchIds(matches: any[]): string[] {
 
 /**
  * Normalize Market API match to WhatsApp format
+ * Returns null if match is missing required fields (like id)
  */
 export function normalizeMarketMatch(match: any): {
   id: string;
@@ -164,8 +165,37 @@ export function normalizeMarketMatch(match: any): {
     free?: { side: string; confidence: number };
     premium?: { side: string; confidence: number };
   };
-} {
-  const id = String(match.id || match.matchId || match._id || '');
+} | null {
+  // Extract matchId - try multiple possible fields (handle both string and number IDs)
+  let id: string | null = null;
+  
+  // Try each field, converting to string if it's a number
+  if (match.id !== undefined && match.id !== null) {
+    id = String(match.id).trim();
+  } else if (match.matchId !== undefined && match.matchId !== null) {
+    id = String(match.matchId).trim();
+  } else if (match._id !== undefined && match._id !== null) {
+    id = String(match._id).trim();
+  } else if (match.match_id !== undefined && match.match_id !== null) {
+    id = String(match.match_id).trim();
+  }
+
+  // Validate matchId - if missing or invalid, return null to skip
+  if (!id || id === '' || id === 'undefined' || id === 'null' || id === 'NaN') {
+    logger.warn("Match missing valid ID, skipping", {
+      tags: ["whatsapp", "market", "normalize"],
+      data: {
+        matchKeys: Object.keys(match),
+        idValue: match.id,
+        matchIdValue: match.matchId,
+        _idValue: match._id,
+        match_idValue: match.match_id,
+        extractedId: id,
+      },
+    });
+    return null;
+  }
+
   const homeTeam =
     match.home?.name ||
     match.homeTeam?.name ||

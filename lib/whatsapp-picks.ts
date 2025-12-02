@@ -92,10 +92,22 @@ export async function getTodaysPicks(): Promise<WhatsAppPick[]> {
         }
       }
 
-      // Normalize Market API matches
+      // Normalize Market API matches (skip invalid matches)
+      let skippedCount = 0;
       for (const match of marketMatches) {
         const normalized = normalizeMarketMatch(match);
-        marketDataMap.set(normalized.id, normalized);
+        if (normalized) {
+          marketDataMap.set(normalized.id, normalized);
+        } else {
+          skippedCount++;
+        }
+      }
+
+      if (skippedCount > 0) {
+        logger.warn("Skipped matches due to missing/invalid IDs", {
+          tags: ["whatsapp", "picks", "normalize"],
+          data: { skippedCount, totalMatches: marketMatches.length },
+        });
       }
     } catch (error) {
       logger.warn("Error fetching Market API data, falling back to QuickPurchase-only", {
@@ -150,6 +162,20 @@ export async function getTodaysPicks(): Promise<WhatsAppPick[]> {
     const picks: WhatsAppPick[] = [];
 
     for (const [matchId, marketData] of marketDataMap.entries()) {
+      // Skip if marketData is null or matchId is invalid
+      if (!marketData) {
+        logger.warn("Skipping null market data entry", { matchId });
+        continue;
+      }
+      
+      if (!matchId || matchId.trim() === "" || matchId === "undefined" || matchId === "null") {
+        logger.warn("Skipping match with invalid matchId", { 
+          matchId, 
+          marketDataKeys: Object.keys(marketData),
+        });
+        continue;
+      }
+
       const qp = quickPurchaseMap.get(matchId);
       
       // Extract match name from Market API or QuickPurchase
@@ -167,7 +193,7 @@ export async function getTodaysPicks(): Promise<WhatsAppPick[]> {
 
       // Build pick with Market API as primary, QuickPurchase as enhancement
       const pick: WhatsAppPick = {
-        matchId,
+        matchId: matchId, // Ensure matchId is always set
         name,
         homeTeam: marketData.homeTeam,
         awayTeam: marketData.awayTeam,
@@ -216,15 +242,34 @@ export async function getTodaysPicks(): Promise<WhatsAppPick[]> {
       return 0;
     });
 
+    // Filter out picks with invalid matchIds before logging
+    const validPicks = sortedPicks.filter(p => p.matchId && p.matchId.trim() !== "");
+    
     logger.info("Fetched today's picks for WhatsApp (same as homepage)", {
       tags: ["whatsapp", "picks"],
       data: {
         totalPicks: sortedPicks.length,
+        validPicks: validPicks.length,
         marketApiMatches: marketDataMap.size,
+        rawMarketMatches: marketMatches.length,
         quickPurchaseMatches: quickPurchases.length,
         purchasableMatches: sortedPicks.filter(p => p.isPurchasable).length,
+        firstMatchId: validPicks[0]?.matchId || sortedPicks[0]?.matchId || "N/A",
+        sampleMatchIds: validPicks.slice(0, 5).map(p => p.matchId),
+        invalidMatchIds: sortedPicks.filter(p => !p.matchId || p.matchId.trim() === "").length,
+        // Log first raw match structure for debugging
+        firstRawMatch: marketMatches[0] ? {
+          keys: Object.keys(marketMatches[0]),
+          hasId: !!marketMatches[0].id,
+          hasMatchId: !!marketMatches[0].matchId,
+          idValue: marketMatches[0].id,
+          matchIdValue: marketMatches[0].matchId,
+        } : null,
       },
     });
+    
+    // Return only valid picks (with matchIds)
+    return validPicks;
 
     return sortedPicks;
   } catch (error) {
@@ -426,9 +471,20 @@ export async function getPickByMatchId(
         if (data.matches && data.matches.length > 0) {
           const match = data.matches[0];
           const normalized = normalizeMarketMatch(match);
+          
+          // If normalization failed, return null
+          if (!normalized) {
+            logger.warn("Failed to normalize match from Market API", { matchId });
+            return null;
+          }
+          
+          if (!normalized.id) {
+            logger.warn("Normalized match missing ID", { matchId });
+            return null;
+          }
 
           return {
-            matchId,
+            matchId: normalized.id, // Use normalized.id, not the input matchId
             name: `${normalized.homeTeam} vs ${normalized.awayTeam}`,
             homeTeam: normalized.homeTeam,
             awayTeam: normalized.awayTeam,
@@ -467,7 +523,9 @@ export function formatPickForWhatsApp(pick: WhatsAppPick, index?: number): strin
   const prefix = index !== undefined ? `${index + 1}) ` : "";
   
   const lines: string[] = [];
-  lines.push(`${prefix}Match ID: ${pick.matchId}`);
+  // Ensure matchId is always displayed (use fallback if missing)
+  const displayMatchId = pick.matchId && pick.matchId.trim() !== "" ? pick.matchId : "N/A";
+  lines.push(`${prefix}Match ID: ${displayMatchId}`);
   lines.push(`   ${pick.homeTeam} vs ${pick.awayTeam}`);
   
   // Add date if available (from Market API)
@@ -566,14 +624,26 @@ export function formatPicksList(picks: WhatsAppPick[]): string {
   lines.push("Here are today's picks 🔥", "");
 
   picks.forEach((pick, idx) => {
-    lines.push(formatPickForWhatsApp(pick, idx));
-    lines.push(""); // Empty line between picks
+    // Only include picks with valid matchId
+    if (pick.matchId && pick.matchId.trim() !== "") {
+      lines.push(formatPickForWhatsApp(pick, idx));
+      lines.push(""); // Empty line between picks
+    }
   });
+
+  // Find first valid matchId for example (filter out empty/invalid)
+  const validPicks = picks.filter(p => p.matchId && p.matchId.trim() !== "");
+  const examplePick = validPicks[0];
+  const exampleMatchId = examplePick?.matchId || (picks[0]?.matchId || "N/A");
 
   lines.push("To buy a pick, send the matchId directly:");
   lines.push("");
   lines.push("Example:");
-  lines.push(`${picks[0].matchId}`);
+  if (exampleMatchId && exampleMatchId !== "N/A") {
+    lines.push(exampleMatchId);
+  } else {
+    lines.push("(No valid matchId available)");
+  }
 
   return lines.join("\n");
 }
