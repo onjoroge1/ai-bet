@@ -56,10 +56,13 @@ export async function POST(req: NextRequest) {
           "",
           "Reply with:",
           "1️⃣ Today's picks",
-          "2️⃣ Buy a pick (send matchId directly)",
+          "2️⃣ Get AI analysis (send Match ID)",
           "3️⃣ Help",
+          "4️⃣ My Picks (purchase history)",
           "",
-          "Example: Send '123456' to buy pick with matchId 123456",
+          "💡 **How to get a Match ID:**",
+          "Send '1' to see picks. Each pick shows its Match ID.",
+          "Then send that Match ID to get the full AI analysis.",
         ].join("\n");
       }
       // Command "1" - Today's picks (same logic as sendTodaysPicks in webhook)
@@ -105,15 +108,27 @@ export async function POST(req: NextRequest) {
         messageToSend = [
           "Help 📲",
           "",
-          "1️⃣ Today's picks – see top matches + matchIds",
-          "2️⃣ Buy a pick – send matchId directly",
-          "3️⃣ Help – you're here 😊",
+          "**Available Commands:**",
           "",
-          "You can type MENU anytime to see options again.",
+          "1️⃣ **Today's picks**",
+          "   See today's top matches with their Match IDs",
           "",
-          "Examples:",
-          "Send '1' to see picks",
-          "Send '123456' to buy pick with matchId 123456",
+          "2️⃣ **Get AI Analysis**",
+          "   Send a Match ID to receive full AI analysis",
+          "   (Find Match IDs in the picks list from option 1)",
+          "",
+          "3️⃣ **Help**",
+          "   You're here! 😊",
+          "",
+          "4️⃣ **My Picks**",
+          "   View your purchase history",
+          "",
+          "**How to use:**",
+          "1. Send '1' to see today's picks",
+          "2. Each pick shows a Match ID (e.g., 1379099)",
+          "3. Send that Match ID to get the full AI analysis",
+          "",
+          "💡 Type 'menu' anytime to see all options again.",
         ].join("\n");
       }
       // Command "2" - Buy pick (needs matchId)
@@ -278,10 +293,13 @@ export async function POST(req: NextRequest) {
           "",
           "Reply with:",
           "1️⃣ Today's picks",
-          "2️⃣ Buy a pick (send matchId directly)",
+          "2️⃣ Get AI analysis (send Match ID)",
           "3️⃣ Help",
+          "4️⃣ My Picks (purchase history)",
           "",
-          "Example: Send '123456' to buy pick with matchId 123456",
+          "💡 **How to get a Match ID:**",
+          "Send '1' to see picks. Each pick shows its Match ID.",
+          "Then send that Match ID to get the full AI analysis.",
         ].join("\n");
       }
 

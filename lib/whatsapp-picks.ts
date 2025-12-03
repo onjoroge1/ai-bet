@@ -532,26 +532,31 @@ export function formatPickForWhatsApp(pick: WhatsAppPick, index?: number): strin
   // Ensure matchId is always displayed
   const displayMatchId = pick.matchId && pick.matchId.trim() !== "" ? pick.matchId : "N/A";
   
-  // Number emoji (1️⃣ through 🔟)
-  const numberEmojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"];
-  const emojiNumber = index !== undefined && index < 10 ? numberEmojis[index] : `${index !== undefined ? index + 1 : ""}️⃣`;
+  // Match ID with number prefix (1-, 2-, etc.)
+  const numberPrefix = index !== undefined ? `${index + 1}-` : "";
+  lines.push(`${numberPrefix}Match ID: ${displayMatchId}`);
+  lines.push(""); // Empty line for spacing
   
-  // Compact header: Match ID and Teams on same line
-  lines.push(`## ${emojiNumber} *${displayMatchId}* - **${pick.homeTeam} vs ${pick.awayTeam}**`);
+  // Teams on their own line
+  lines.push(`${pick.homeTeam} vs ${pick.awayTeam}`);
+  lines.push(""); // Empty line for spacing
   
-  // Date and League on one line
-  const dateTime = pick.kickoffDate ? (() => {
+  // Date formatting: "Dec 2 – 9:38 AM EST"
+  if (pick.kickoffDate) {
     try {
       const date = new Date(pick.kickoffDate);
-      return date.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-    } catch { return null; }
-  })() : null;
+      const month = date.toLocaleDateString("en-US", { month: "short" });
+      const day = date.getDate();
+      const time = date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+      const timezone = "EST"; // You can make this dynamic if needed
+      lines.push(`📅 ${month} ${day} – ${time} ${timezone}`);
+    } catch {
+      // If date parsing fails, skip date line
+    }
+  }
   
-  if (dateTime && pick.league) {
-    lines.push(`📅 ${dateTime} | 🏆 ${pick.league}`);
-  } else if (dateTime) {
-    lines.push(`📅 ${dateTime}`);
-  } else if (pick.league) {
+  // League on its own line
+  if (pick.league) {
     lines.push(`🏆 ${pick.league}`);
   }
   
@@ -573,6 +578,10 @@ export function formatPickForWhatsApp(pick: WhatsAppPick, index?: number): strin
   } else if (pick.modelPredictions?.free) {
     const pred = pick.modelPredictions.free;
     pickText = pred.side === "home" ? "Home Win" : pred.side === "away" ? "Away Win" : "Draw";
+  }
+  
+  if (pickText) {
+    lines.push(`📊 Pick: ${pickText}`);
   }
   
   // Confidence and Value on one line
@@ -602,29 +611,29 @@ export function formatPickForWhatsApp(pick: WhatsAppPick, index?: number): strin
     else valueText = "Low";
   }
   
-  if (pickText) {
-    if (confidenceText && valueText) {
-      lines.push(`📊 **${pickText}** | 💡 ${confidenceText} | ⭐ ${valueText}`);
-    } else if (confidenceText) {
-      lines.push(`📊 **${pickText}** | 💡 ${confidenceText}`);
-    } else {
-      lines.push(`📊 **${pickText}**`);
-    }
+  if (confidenceText && valueText) {
+    lines.push(`💡 Confidence: ${confidenceText} | ⭐ Value: ${valueText}`);
+  } else if (confidenceText) {
+    lines.push(`💡 Confidence: ${confidenceText}`);
+  } else if (valueText) {
+    lines.push(`⭐ Value: ${valueText}`);
   }
   
-  // Compact odds on one line
+  // Odds section with header and each odds on its own line
   if (pick.consensusOdds && pick.consensusOdds.home > 0 && pick.consensusOdds.draw > 0 && pick.consensusOdds.away > 0) {
     const odds = pick.consensusOdds;
-    const isHomePick = pickText.toLowerCase().includes("home");
-    const isAwayPick = pickText.toLowerCase().includes("away");
-    const isDrawPick = pickText.toLowerCase().includes("draw");
-    
-    lines.push(`🔢 H:${isHomePick ? "**" : ""}${odds.home.toFixed(2)}${isHomePick ? "**" : ""} D:${isDrawPick ? "**" : ""}${odds.draw.toFixed(2)}${isDrawPick ? "**" : ""} A:${isAwayPick ? "**" : ""}${odds.away.toFixed(2)}${isAwayPick ? "**" : ""}`);
+    lines.push("");
+    lines.push("🔢 Consensus Odds:");
+    lines.push("");
+    lines.push(`Home: ${odds.home.toFixed(2)}`);
+    lines.push(`Draw: ${odds.draw.toFixed(2)}`);
+    lines.push(`Away: ${odds.away.toFixed(2)}`);
   }
   
   // Call to action
   if (pick.isPurchasable) {
-    lines.push(`👉 Send *${displayMatchId}* to buy`);
+    lines.push("");
+    lines.push(`👉 To get the tip send: Send ${displayMatchId}`);
   }
   
   return lines.join("\n");
