@@ -6,7 +6,7 @@ import {
   formatPicksList,
   getPickByMatchId,
 } from "@/lib/whatsapp-picks";
-import { formatPickDeliveryMessage } from "@/lib/whatsapp-payment";
+import { formatPickDeliveryMessage, getOrCreateWhatsAppUser } from "@/lib/whatsapp-payment";
 import { checkWhatsAppRateLimit } from "@/lib/whatsapp-rate-limit";
 import { validateMatchId, sanitizeText } from "@/lib/whatsapp-validation";
 import { verifyWhatsAppWebhookSignature } from "@/lib/whatsapp-webhook-verification";
@@ -189,6 +189,17 @@ async function handleIncomingText(waId: string, text: string) {
       return;
     }
 
+    // Ensure user record exists (create or update)
+    try {
+      await getOrCreateWhatsAppUser(normalizedWaId);
+    } catch (error) {
+      logger.error("Error creating/updating WhatsAppUser", {
+        waId: normalizedWaId,
+        error,
+      });
+      // Continue processing even if user record creation fails
+    }
+
     // Menu commands
     if (["menu", "hi", "hello", "hey", "0", "start"].includes(lower)) {
       // Check if user is new
@@ -295,15 +306,36 @@ async function sendMainMenu(to: string) {
   const message = [
     "Welcome to SnapBet ⚽🔥",
     "",
-    "Reply with:",
-    "1️⃣ Today's picks",
-    "2️⃣ Get AI analysis (send Match ID)",
-    "3️⃣ Help",
-    "4️⃣ My Picks (purchase history)",
+    "**Available Commands:**",
     "",
-    "💡 **How to get a Match ID:**",
-    "Send '1' to see picks. Each pick shows its Match ID.",
-    "Then send that Match ID to get the full AI analysis.",
+    "**1** = See today's picks",
+    "   Type: 1",
+    "   Shows top matches with Match IDs",
+    "",
+    "**2** = Get AI Analysis (requires Match ID)",
+    "   Type: 2 [Match ID]",
+    "   Example: 2 1379099",
+    "",
+    "**3** = Help",
+    "   Type: 3",
+    "   Shows all available commands",
+    "",
+    "**4** = My Picks",
+    "   Type: 4",
+    "   View your purchase history",
+    "",
+    "**Or type a Match ID directly**",
+    "   Example: 1379099",
+    "   Sends you the full AI analysis for that match",
+    "",
+    "**Quick Start:**",
+    "1. Type '1' to see today's picks",
+    "2. Each pick shows a Match ID",
+    "3. Type that Match ID to get AI analysis",
+    "",
+    "💡 You can type a Match ID anytime without typing '2' first!",
+    "",
+    "For more information visit https://www.snapbet.bet",
   ].join("\n");
 
   const result = await sendWhatsAppText(to, message);
@@ -332,16 +364,36 @@ async function sendWelcomeMessage(to: string) {
     "",
     "💰 **Currently FREE** - All picks are free to access!",
     "",
-    "**How it works:**",
-    "1️⃣ Send '1' to see today's top picks",
-    "2️⃣ Each pick shows a Match ID (e.g., 123456)",
-    "3️⃣ Send that Match ID to get the full AI analysis",
+    "**How to use:**",
     "",
-    "**Other commands:**",
-    "• Send 'menu' to see all options",
-    "• Send '3' for help",
+    "**1** = See today's picks",
+    "   Type: 1",
+    "   Shows top matches with Match IDs",
     "",
-    "Ready to get started? Send '1' for today's picks! 🚀",
+    "**2** = Get AI Analysis (requires Match ID)",
+    "   Type: 2 [Match ID]",
+    "   Example: 2 1379099",
+    "",
+    "**3** = Help",
+    "   Type: 3",
+    "   Shows all available commands",
+    "",
+    "**menu** = Main menu",
+    "   Type: menu",
+    "   Shows all available options",
+    "",
+    "**Or type a Match ID directly**",
+    "   Example: 1379099",
+    "   Sends you the full AI analysis for that match",
+    "",
+    "**Quick Start:**",
+    "1. Type '1' to see today's picks",
+    "2. Each pick shows a Match ID",
+    "3. Type that Match ID to get AI analysis",
+    "",
+    "💡 You can type a Match ID anytime without typing '2' first!",
+    "",
+    "For more information visit https://www.snapbet.bet",
   ].join("\n");
 
   const result = await sendWhatsAppText(to, message);
@@ -620,25 +672,33 @@ async function sendHelp(to: string) {
     "",
     "**Available Commands:**",
     "",
-    "1️⃣ **Today's picks**",
-    "   See today's top matches with their Match IDs",
+    "**1** = See today's picks",
+    "   Type: 1",
+    "   Shows top matches with Match IDs",
     "",
-    "2️⃣ **Get AI Analysis**",
-    "   Send a Match ID to receive full AI analysis",
-    "   (Find Match IDs in the picks list from option 1)",
+    "**2** = Get AI Analysis (requires Match ID)",
+    "   Type: 2 [Match ID]",
+    "   Example: 2 1379099",
     "",
-    "3️⃣ **Help**",
-    "   You're here! 😊",
+    "**3** = Help",
+    "   Type: 3 (you're here!)",
     "",
-    "4️⃣ **My Picks**",
-    "   View your purchase history",
+    "**menu** = Main menu",
+    "   Type: menu",
+    "   Shows all available options",
     "",
-    "**How to use:**",
-    "1. Send '1' to see today's picks",
-    "2. Each pick shows a Match ID (e.g., 1379099)",
-    "3. Send that Match ID to get the full AI analysis",
+    "**Or type a Match ID directly**",
+    "   Example: 1379099",
+    "   Sends you the full AI analysis for that match",
     "",
-    "💡 Type 'menu' anytime to see all options again.",
+    "**Quick Start:**",
+    "1. Type '1' to see today's picks",
+    "2. Each pick shows a Match ID",
+    "3. Type that Match ID to get AI analysis",
+    "",
+    "💡 You can type a Match ID anytime without typing '2' first!",
+    "",
+    "To get more matches Visit https://www.snapbet.bet",
   ].join("\n");
 
   const result = await sendWhatsAppText(to, message);

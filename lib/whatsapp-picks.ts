@@ -532,16 +532,15 @@ export function formatPickForWhatsApp(pick: WhatsAppPick, index?: number): strin
   // Ensure matchId is always displayed
   const displayMatchId = pick.matchId && pick.matchId.trim() !== "" ? pick.matchId : "N/A";
   
-  // Match ID with number prefix (1-, 2-, etc.)
-  const numberPrefix = index !== undefined ? `${index + 1}-` : "";
-  lines.push(`${numberPrefix}Match ID: ${displayMatchId}`);
-  lines.push(""); // Empty line for spacing
+  // Numbered format: "1) Team vs Team"
+  const numberPrefix = index !== undefined ? `${index + 1})` : "";
+  lines.push(`${numberPrefix} ${pick.homeTeam} vs ${pick.awayTeam}`);
+  lines.push("");
   
-  // Teams on their own line
-  lines.push(`${pick.homeTeam} vs ${pick.awayTeam}`);
-  lines.push(""); // Empty line for spacing
+  // Match ID with 🆔 emoji
+  lines.push(`🆔 ${displayMatchId}`);
   
-  // Date formatting: "Dec 2 – 9:38 AM EST"
+  // Date formatting: "Dec 2 – 9:38 AM EST" (optional)
   if (pick.kickoffDate) {
     try {
       const date = new Date(pick.kickoffDate);
@@ -555,7 +554,7 @@ export function formatPickForWhatsApp(pick: WhatsAppPick, index?: number): strin
     }
   }
   
-  // League on its own line
+  // League on its own line (optional)
   if (pick.league) {
     lines.push(`🏆 ${pick.league}`);
   }
@@ -563,11 +562,14 @@ export function formatPickForWhatsApp(pick: WhatsAppPick, index?: number): strin
   // Pick/Tip
   let pickText = "";
   if (pick.tip) {
-    if (pick.tip.toLowerCase().includes("home") || pick.tip.toLowerCase() === "1") {
+    const tipLower = pick.tip.toLowerCase();
+    if (tipLower.includes("no bet") || tipLower.includes("info only") || tipLower.includes("skip")) {
+      pickText = "No Bet (Info Only)";
+    } else if (tipLower.includes("home") || tipLower === "1") {
       pickText = "Home Win";
-    } else if (pick.tip.toLowerCase().includes("away") || pick.tip.toLowerCase() === "2") {
+    } else if (tipLower.includes("away") || tipLower === "2") {
       pickText = "Away Win";
-    } else if (pick.tip.toLowerCase().includes("draw") || pick.tip.toLowerCase() === "x") {
+    } else if (tipLower.includes("draw") || tipLower === "x") {
       pickText = "Draw";
     } else {
       pickText = pick.tip;
@@ -619,21 +621,15 @@ export function formatPickForWhatsApp(pick: WhatsAppPick, index?: number): strin
     lines.push(`⭐ Value: ${valueText}`);
   }
   
-  // Odds section with header and each odds on its own line
+  // Compact odds format: "🔢 H: 2.89 | D: 3.08 | A: 2.45"
   if (pick.consensusOdds && pick.consensusOdds.home > 0 && pick.consensusOdds.draw > 0 && pick.consensusOdds.away > 0) {
     const odds = pick.consensusOdds;
-    lines.push("");
-    lines.push("🔢 Consensus Odds:");
-    lines.push("");
-    lines.push(`Home: ${odds.home.toFixed(2)}`);
-    lines.push(`Draw: ${odds.draw.toFixed(2)}`);
-    lines.push(`Away: ${odds.away.toFixed(2)}`);
+    lines.push(`🔢 H: ${odds.home.toFixed(2)} | D: ${odds.draw.toFixed(2)} | A: ${odds.away.toFixed(2)}`);
   }
   
   // Call to action
   if (pick.isPurchasable) {
-    lines.push("");
-    lines.push(`👉 To get the tip send: Send ${displayMatchId}`);
+    lines.push(`👉 Reply: ${displayMatchId}`);
   }
   
   return lines.join("\n");
@@ -658,22 +654,34 @@ export function formatPicksList(picks: WhatsAppPick[], limit: number = 10): stri
 
   const lines: string[] = [];
   
-  // Compact header
-  lines.push("# 🔥 TODAY'S TOP PICKS");
+  // Header with tagline and website
+  lines.push("🔥 TODAY'S TOP PICKS");
+  lines.push("");
+  lines.push("Smart AI predictions. Get your tips instantly.");
+  lines.push("");
+  lines.push("🌐 More details & live matches: https://www.snapbet.bet");
   lines.push("");
 
-  // Format each pick (compact)
+  // Format each pick with border separator
   validPicks.forEach((pick, idx) => {
     lines.push(formatPickForWhatsApp(pick, idx));
     if (idx < validPicks.length - 1) {
-      lines.push(""); // Only add spacing between picks, not after last one
+      lines.push(""); // Border/separator between picks
     }
   });
 
-  // Compact footer
+  // Footer with instructions
   lines.push("");
-  const exampleMatchId = validPicks[0]?.matchId || "123456";
-  lines.push(`💰 Send *${exampleMatchId}* to buy | Send "1" for more`);
+  lines.push("");
+  lines.push("💰 To get a pick:");
+  lines.push("");
+  lines.push("Reply with the Match ID (Example: " + (validPicks[0]?.matchId || "123456") + ")");
+  lines.push("");
+  lines.push("📌 Extra Options");
+  lines.push("");
+  lines.push("Reply HELP — How SnapBet works");
+  lines.push("");
+  lines.push("To get more matches visit 🌐 https://www.snapbet.bet");
 
   return lines.join("\n");
 }
