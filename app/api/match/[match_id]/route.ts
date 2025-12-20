@@ -374,6 +374,21 @@ export async function GET(
       )
     }
 
+    // Determine if match is live to set appropriate cache headers
+    const matchStatus = matchData.status?.toUpperCase() || ''
+    const isLive = matchStatus === 'LIVE' || matchData.momentum !== undefined || matchData.model_markets !== undefined
+    const isFinished = matchStatus === 'FINISHED' || matchData.final_result !== undefined
+    
+    // Dynamic cache headers based on match status:
+    // - Live matches: NO caching (real-time updates needed)
+    // - Finished matches: Long cache (data won't change)
+    // - Upcoming matches: Short cache (60s for performance)
+    const cacheHeaders = isLive
+      ? { 'Cache-Control': 'no-store, no-cache, must-revalidate' } // No caching for live matches
+      : isFinished
+      ? { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=7200' } // 1 hour cache for finished matches
+      : { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' } // 60s cache for upcoming
+
     return NextResponse.json({
       match: matchData,
       quickPurchase: quickPurchaseInfo ? {
@@ -394,9 +409,7 @@ export async function GET(
         }
       } : null
     }, {
-      headers: {
-        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120',
-      }
+      headers: cacheHeaders
     })
   } catch (error) {
     console.error('Error fetching match details:', error)

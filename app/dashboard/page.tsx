@@ -64,6 +64,14 @@ const ReferralBanner = dynamic(() => import('@/components/referral-banner'), {
   loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
 })
 
+const ParlaysPreviewWidget = dynamic(() => import('@/components/dashboard/parlays-preview-widget').then(mod => mod.ParlaysPreviewWidget), {
+  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
+})
+
+const CLVPreviewWidget = dynamic(() => import('@/components/dashboard/clv-preview-widget').then(mod => mod.CLVPreviewWidget), {
+  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
+})
+
 export default function DashboardPage() {
   // 🔥 REMOVED: Duplicate auth check - DashboardLayout already handles server-side auth
   // The layout checks /api/auth/session and only renders children if authenticated
@@ -98,6 +106,16 @@ export default function DashboardPage() {
       <div className="mb-8" data-section="personalized-offers">
         <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
           <PersonalizedOffers />
+        </Suspense>
+      </div>
+
+      {/* Premium Features Preview - Parlays & CLV */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
+          <ParlaysPreviewWidget />
+        </Suspense>
+        <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
+          <CLVPreviewWidget />
         </Suspense>
       </div>
 

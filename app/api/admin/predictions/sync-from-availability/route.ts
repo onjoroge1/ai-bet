@@ -5,9 +5,16 @@ import { authOptions } from '@/lib/auth'
 import { logger } from '@/lib/logger'
 
 /**
- * Global Sync Endpoint - Syncs all available matches from /predict/availability API
+ * Global Sync Endpoint - Syncs all available matches from /consensus/sync API
  * This solves the 94.9% data gap by ensuring all prediction-capable matches are in QuickPurchase table
+ * 
+ * Timeout Configuration:
+ * - maxDuration: 300 seconds (5 minutes) for Vercel Pro/Enterprise
+ * - runtime: nodejs (required for long-running operations)
  */
+export const maxDuration = 300 // 5 minutes - allows processing ~150-200 matches
+export const runtime = 'nodejs' // Use Node.js runtime for long operations
+
 export async function POST(req: NextRequest) {
   const startTime = Date.now()
   
@@ -112,7 +119,7 @@ export async function POST(req: NextRequest) {
       const consensusResponse = await fetch(consensusUrl, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer betgenius_secure_key_2024`, // Use the exact key from your working curl
+          'Authorization': `Bearer ${process.env.CONSENSUS_API_KEY || 'betgenius_secure_key_2024'}`,
           'Content-Type': 'application/json',
         },
         signal: AbortSignal.timeout(30000) // 30 second timeout
@@ -159,89 +166,11 @@ export async function POST(req: NextRequest) {
       }, { status: 500 })
     }
 
-    // Convert match IDs to match objects by fetching details
-    const availableMatches = []
-    
-    logger.info('Fetching match details for available matches', {
-      tags: ['api', 'admin', 'global-sync'],
-      data: { matchesToFetch: uniqueMatchIds.length }
-    })
-    
-    for (const matchId of uniqueMatchIds) {
-      try {
-        const matchResponse = await fetch(`${process.env.BACKEND_URL}/matches/${matchId}`, {
-          headers: {
-            'Authorization': `Bearer ${process.env.BACKEND_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          signal: AbortSignal.timeout(10000) // 10 second timeout per match
-        })
-
-        if (matchResponse.ok) {
-          const matchDetails = await matchResponse.json()
-          availableMatches.push({
-            match_id: matchId,
-            ...matchDetails
-          })
-        } else {
-          // Create minimal match object if details fetch fails
-          availableMatches.push({
-            match_id: matchId,
-            home_team: `Team A`,
-            away_team: `Team B`,
-            date: new Date().toISOString(),
-            league: 'Unknown League'
-          })
-        }
-      } catch (error) {
-        logger.warn('Failed to fetch match details', {
-          tags: ['api', 'admin', 'global-sync', 'warning'],
-          data: { matchId, error: error instanceof Error ? error.message : String(error) }
-        })
-        
-        // Create minimal match object on error
-        availableMatches.push({
-          match_id: matchId,
-          home_team: `Team A`,
-          away_team: `Team B`,
-          date: new Date().toISOString(),
-          league: 'Unknown League'
-        })
-      }
-      
-      // Small delay to prevent overwhelming the API
-      await new Promise(resolve => setTimeout(resolve, 50))
-    }
-
-    logger.info('Processed all available match IDs', {
+    logger.info('Starting /predict calls for discovered matches', {
       tags: ['api', 'admin', 'global-sync'],
       data: { 
-        totalProcessed: availableMatches.length,
-        sampleMatches: availableMatches.slice(0, 3).map(m => ({
-          id: m.match_id,
-          teams: `${m.home_team} vs ${m.away_team}`
-        }))
-      }
-    })
-    
-    if (!Array.isArray(availableMatches)) {
-      logger.error('Failed to process available matches', {
-        tags: ['api', 'admin', 'global-sync', 'error'],
-        data: { responseType: typeof availableMatches }
-      })
-      return NextResponse.json({ 
-        error: 'Failed to process available matches' 
-      }, { status: 500 })
-    }
-
-    logger.info('Successfully processed all available matches', {
-      tags: ['api', 'admin', 'global-sync'],
-      data: { 
-        totalMatches: availableMatches.length,
-        sampleMatches: availableMatches.slice(0, 5).map(m => ({
-          id: m.match_id,
-          teams: `${m.home_team} vs ${m.away_team}`
-        }))
+        totalMatches: uniqueMatchIds.length,
+        sampleMatchIds: uniqueMatchIds.slice(0, 5)
       }
     })
 
@@ -263,97 +192,280 @@ export async function POST(req: NextRequest) {
       tags: ['api', 'admin', 'global-sync'],
       data: { 
         existingCount: existingMatchIds.size,
-        sampleExisting: Array.from(existingMatchIds).slice(0, 5)
+        totalDiscovered: uniqueMatchIds.length,
+        newMatchesToCreate: uniqueMatchIds.length - existingMatchIds.size,
+        sampleExisting: Array.from(existingMatchIds).slice(0, 5),
+        sampleNew: uniqueMatchIds.filter(id => !existingMatchIds.has(id)).slice(0, 5)
       }
     })
 
-    // Step 3: Process each available match
+    // Step 3: Process each match by calling /predict (same pattern as enrichment)
     let created = 0
     let existing = 0
     let errors = 0
     const errorDetails: string[] = []
+    
+    // Timeout protection: Stop processing before route timeout
+    // Leave 60 seconds buffer for cleanup and response
+    const MAX_PROCESSING_TIME = 240000 // 4 minutes (240 seconds)
+    let timeoutReached = false
 
-    for (const match of availableMatches) {
+    // Helper function to extract prediction data (same as enrichment)
+    const toValueRating = (conf: number): "Very High"|"High"|"Medium"|"Low" => {
+      if (conf >= 0.6) return "Very High"
+      if (conf >= 0.4) return "High"
+      if (conf >= 0.25) return "Medium"
+      return "Low"
+    }
+
+    const probToImpliedOdds = (pred?: {home_win?: number; draw?: number; away_win?: number}) => {
+      if (!pred) return null
+      const safe = (p?: number) => p && p > 0 ? +(1/p).toFixed(2) : null
+      return {
+        home: safe(pred.home_win),
+        draw: safe(pred.draw),
+        away: safe(pred.away_win),
+      }
+    }
+
+    // Rate limiting helper
+    const delay = (ms: number): Promise<void> => {
+      return new Promise(resolve => setTimeout(resolve, ms))
+    }
+
+    for (let i = 0; i < uniqueMatchIds.length; i++) {
+      // Check if we're approaching timeout
+      const elapsedTime = Date.now() - startTime
+      if (elapsedTime > MAX_PROCESSING_TIME) {
+        timeoutReached = true
+        logger.warn('⏰ Approaching timeout limit, stopping match processing', {
+          tags: ['api', 'admin', 'global-sync', 'timeout'],
+          data: {
+            processed: i,
+            total: uniqueMatchIds.length,
+            created,
+            existing,
+            errors,
+            elapsedTime: `${elapsedTime}ms`,
+            remainingMatches: uniqueMatchIds.length - i
+          }
+        })
+        break
+      }
+      
+      const matchIdStr = uniqueMatchIds[i]
+      const matchId = parseInt(matchIdStr)
+      const requestStartTime = Date.now()
+      
       try {
-        const matchId = match.match_id?.toString()
-        
-        if (!matchId) {
-          logger.warn('Skipping match with missing match_id', {
-            tags: ['api', 'admin', 'global-sync', 'warning'],
-            data: { match }
-          })
-          errors++
-          errorDetails.push(`Match missing match_id: ${JSON.stringify(match)}`)
-          continue
-        }
+        logger.info(`🔄 Processing match ${i + 1}/${uniqueMatchIds.length} - Match ID: ${matchId}`, {
+          tags: ['api', 'admin', 'global-sync'],
+          data: { 
+            matchId, 
+            matchIdStr,
+            progress: `${i + 1}/${uniqueMatchIds.length}`,
+            status: 'checking'
+          }
+        })
 
         // Check if QuickPurchase already exists
-        if (existingMatchIds.has(matchId)) {
+        if (existingMatchIds.has(matchIdStr)) {
           existing++
-          continue
-        }
-
-        // Fetch detailed match information
-        logger.debug('Fetching match details', {
-          tags: ['api', 'admin', 'global-sync'],
-          data: { matchId }
-        })
-
-        const matchResponse = await fetch(`${process.env.BACKEND_URL}/matches/${matchId}`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${process.env.BACKEND_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          // 30 second timeout per match
-          signal: AbortSignal.timeout(30000)
-        })
-
-        if (!matchResponse.ok) {
-          logger.warn('Failed to fetch match details, using basic info', {
-            tags: ['api', 'admin', 'global-sync', 'warning'],
+          logger.info(`⏭️ SKIP: Match ID ${matchId} already exists in QuickPurchase database`, {
+            tags: ['api', 'admin', 'global-sync'],
             data: { 
               matchId,
-              status: matchResponse.status,
-              statusText: matchResponse.statusText
+              matchIdStr,
+              status: 'exists',
+              progress: `${i + 1}/${uniqueMatchIds.length}`,
+              summary: `Skipped ${existing} existing, ${created} created, ${errors} errors`
             }
           })
-          
-          // Create basic QuickPurchase with minimal data
-          await prisma.quickPurchase.create({
-            data: {
-              name: `Match ${matchId}`,
-              price: 9.99, // Default pricing
-              originalPrice: 19.99,
-              description: `AI prediction for match ${matchId}`,
-              features: ['AI Analysis', 'Match Statistics', 'Risk Assessment'],
-              type: 'prediction',
-              iconName: 'Brain',
-              colorGradientFrom: '#3B82F6',
-              colorGradientTo: '#1D4ED8',
-              countryId: defaultCountry.id,
-              matchId: matchId,
-              matchData: { match_id: matchId, source: 'availability_sync' },
-              isPredictionActive: true,
-              isActive: true
-            }
-          })
-          
-          created++
+          // Small delay even for skipped matches to prevent overwhelming
+          await delay(50)
           continue
         }
 
-        const matchDetails = await matchResponse.json()
+        // Rate limiting: Wait before each /predict call (except first one)
+        // User mentioned ~500ms response time, so we add delay to prevent overwhelming
+        if (i > 0) {
+          await delay(300)
+        }
+
+        // Call /predict endpoint to get complete match + prediction data
+        logger.info(`📡 Calling /predict API for Match ID: ${matchId}`, {
+          tags: ['api', 'admin', 'global-sync'],
+          data: { 
+            matchId,
+            matchIdStr,
+            backendUrl: `${process.env.BACKEND_URL}/predict`,
+            status: 'fetching',
+            progress: `${i + 1}/${uniqueMatchIds.length}`
+          }
+        })
+
+        const predictStartTime = Date.now()
+        let predictResponse: Response
+        let predictResponseTime: number
         
-        // Create comprehensive QuickPurchase record
+        try {
+          // Call /predict API - await ensures we wait for response before proceeding
+          predictResponse = await fetch(`${process.env.BACKEND_URL}/predict`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${process.env.BACKEND_API_KEY}`
+            },
+            body: JSON.stringify({
+              match_id: matchId,
+              include_analysis: true // Include full analysis for complete data
+            }),
+            signal: AbortSignal.timeout(30000) // 30 second timeout - will throw if exceeded
+          })
+          
+          predictResponseTime = Date.now() - predictStartTime
+          logger.info(`📥 Received /predict response for Match ID: ${matchId}`, {
+            tags: ['api', 'admin', 'global-sync'],
+            data: {
+              matchId,
+              matchIdStr,
+              status: predictResponse.ok ? 'success' : 'failed',
+              httpStatus: predictResponse.status,
+              responseTime: `${predictResponseTime}ms`,
+              progress: `${i + 1}/${uniqueMatchIds.length}`
+            }
+          })
+        } catch (fetchError) {
+          predictResponseTime = Date.now() - predictStartTime
+          const isTimeout = fetchError instanceof Error && 
+                           (fetchError.name === 'AbortError' || fetchError.message.includes('timeout'))
+          
+          errors++
+          const errorMessage = isTimeout 
+            ? `Request timeout after ${predictResponseTime}ms (30s limit exceeded)`
+            : fetchError instanceof Error ? fetchError.message : String(fetchError)
+          
+          logger.error(`❌ FAILED: Match ID ${matchId} - /predict API call failed`, {
+            tags: ['api', 'admin', 'global-sync', 'error'],
+            data: { 
+              matchId,
+              matchIdStr,
+              status: isTimeout ? 'timeout' : 'fetch_error',
+              error: errorMessage,
+              responseTime: `${predictResponseTime}ms`,
+              progress: `${i + 1}/${uniqueMatchIds.length}`,
+              summary: `${errors} errors, ${created} created, ${existing} existing`
+            }
+          })
+          errorDetails.push(`Match ${matchId}: ${errorMessage}`)
+          // Wait before processing next match even on error
+          await delay(200)
+          continue
+        }
+
+        if (!predictResponse.ok) {
+          const errorText = await predictResponse.text()
+          errors++
+          logger.error(`❌ FAILED: Match ID ${matchId} - /predict API returned ${predictResponse.status}`, {
+            tags: ['api', 'admin', 'global-sync', 'error'],
+            data: { 
+              matchId,
+              matchIdStr,
+              status: 'failed',
+              httpStatus: predictResponse.status,
+              statusText: predictResponse.statusText,
+              errorText: errorText.substring(0, 200),
+              responseTime: `${predictResponseTime}ms`,
+              progress: `${i + 1}/${uniqueMatchIds.length}`,
+              summary: `${errors} errors, ${created} created, ${existing} existing`
+            }
+          })
+          errorDetails.push(`Match ${matchId}: /predict returned ${predictResponse.status} - ${errorText.substring(0, 100)}`)
+          // Wait before processing next match even on error
+          await delay(200)
+          continue
+        }
+
+        // Parse response JSON - await ensures we wait for parsing to complete
+        const parseStartTime = Date.now()
+        let prediction: any
+        try {
+          prediction = await predictResponse.json()
+        } catch (parseError) {
+          const parseTime = Date.now() - parseStartTime
+          errors++
+          const parseErrorMessage = parseError instanceof Error ? parseError.message : String(parseError)
+          logger.error(`❌ FAILED: Match ID ${matchId} - Failed to parse /predict response JSON`, {
+            tags: ['api', 'admin', 'global-sync', 'error'],
+            data: {
+              matchId,
+              matchIdStr,
+              status: 'parse_error',
+              error: parseErrorMessage,
+              responseTime: `${predictResponseTime}ms`,
+              parseTime: `${parseTime}ms`,
+              progress: `${i + 1}/${uniqueMatchIds.length}`,
+              summary: `${errors} errors, ${created} created, ${existing} existing`
+            }
+          })
+          errorDetails.push(`Match ${matchId}: JSON parse error - ${parseErrorMessage}`)
+          await delay(200)
+          continue
+        }
+        const parseTime = Date.now() - parseStartTime
+
+        if (!prediction || !prediction.match_info) {
+          errors++
+          logger.error(`❌ FAILED: Match ID ${matchId} - Invalid prediction response (missing match_info)`, {
+            tags: ['api', 'admin', 'global-sync', 'error'],
+            data: { 
+              matchId,
+              matchIdStr,
+              status: 'invalid_response',
+              hasPrediction: !!prediction,
+              hasMatchInfo: !!prediction?.match_info,
+              predictionKeys: prediction ? Object.keys(prediction) : [],
+              responseTime: `${predictResponseTime}ms`,
+              parseTime: `${parseTime}ms`,
+              progress: `${i + 1}/${uniqueMatchIds.length}`,
+              summary: `${errors} errors, ${created} created, ${existing} existing`
+            }
+          })
+          errorDetails.push(`Match ${matchId}: Invalid prediction response - missing match_info`)
+          // Wait before processing next match even on error
+          await delay(200)
+          continue
+        }
+
+        // Extract match information from prediction response
+        const matchInfo = prediction.match_info
+        const matchName = matchInfo.home_team && matchInfo.away_team
+          ? `${matchInfo.home_team} vs ${matchInfo.away_team}`
+          : `Match ${matchId}`
+
+        // Extract prediction details (same logic as enrichment)
+        const confidence = prediction.predictions?.confidence ?? 
+                          prediction.comprehensive_analysis?.ml_prediction?.confidence ?? 
+                          0
+        
+        const predictionType = prediction.predictions?.recommended_bet ?? 
+                              prediction.comprehensive_analysis?.ai_verdict?.recommended_outcome?.toLowerCase().replace(' ', '_') ?? 
+                              'no_prediction'
+        
+        const confidenceScore = Math.round(confidence * 100)
+        const valueRating = toValueRating(confidence)
+        const odds = probToImpliedOdds(prediction.predictions)
+        const analysisSummary = prediction.analysis?.explanation ?? 
+                               prediction.comprehensive_analysis?.ai_verdict?.confidence_level ?? 
+                               'AI prediction available'
+
+        // Create QuickPurchase record with complete data (match + prediction)
         const quickPurchaseData = {
-          name: matchDetails.home_team && matchDetails.away_team 
-            ? `${matchDetails.home_team} vs ${matchDetails.away_team}`
-            : `Match ${matchId}`,
+          name: matchName,
           price: 9.99, // Default pricing - can be adjusted per country later
           originalPrice: 19.99,
-          description: matchDetails.home_team && matchDetails.away_team
-            ? `AI prediction for ${matchDetails.home_team} vs ${matchDetails.away_team}`
+          description: matchInfo.home_team && matchInfo.away_team
+            ? `AI prediction for ${matchInfo.home_team} vs ${matchInfo.away_team}`
             : `AI prediction for match ${matchId}`,
           features: ['AI Analysis', 'Match Statistics', 'Risk Assessment'],
           type: 'prediction',
@@ -361,63 +473,126 @@ export async function POST(req: NextRequest) {
           colorGradientFrom: '#3B82F6',
           colorGradientTo: '#1D4ED8',
           countryId: defaultCountry.id,
-          matchId: matchId,
+          matchId: matchIdStr,
           matchData: {
-            ...matchDetails,
-            source: 'availability_sync',
+            ...matchInfo,
+            source: 'global_sync',
             sync_timestamp: new Date().toISOString()
           },
+          predictionData: prediction, // Store complete prediction data
+          predictionType: predictionType,
+          confidenceScore: confidenceScore,
+          odds: odds?.home || null,
+          valueRating: valueRating,
+          analysisSummary: analysisSummary,
           isPredictionActive: true,
           isActive: true
         }
 
-        await prisma.quickPurchase.create({ data: quickPurchaseData })
-        
-        logger.debug('Created QuickPurchase record', {
+        // Save to database
+        logger.info(`💾 Saving Match ID ${matchId} to database...`, {
           tags: ['api', 'admin', 'global-sync'],
-          data: { 
+          data: {
             matchId,
-            name: quickPurchaseData.name
+            matchIdStr,
+            name: matchName,
+            status: 'saving',
+            progress: `${i + 1}/${uniqueMatchIds.length}`
           }
         })
-        
-        created++
 
-        // Add small delay to prevent overwhelming the external API
-        await new Promise(resolve => setTimeout(resolve, 100))
+        const dbStartTime = Date.now()
+        try {
+          await prisma.quickPurchase.create({ data: quickPurchaseData })
+          const dbTime = Date.now() - dbStartTime
+          const totalRequestTime = Date.now() - requestStartTime
+          created++
+
+          logger.info(`✅ SUCCESS: Match ID ${matchId} created in QuickPurchase database`, {
+            tags: ['api', 'admin', 'global-sync'],
+            data: { 
+              matchId,
+              matchIdStr,
+              name: matchName,
+              predictionType,
+              confidenceScore,
+              valueRating,
+              dbTime: `${dbTime}ms`,
+              totalTime: `${totalRequestTime}ms`,
+              progress: `${i + 1}/${uniqueMatchIds.length}`,
+              summary: `${created} created, ${existing} existing, ${errors} errors`
+            }
+          })
+        } catch (dbError) {
+          const dbTime = Date.now() - dbStartTime
+          const dbErrorMessage = dbError instanceof Error ? dbError.message : String(dbError)
+          errors++
+          logger.error(`❌ DATABASE ERROR: Failed to create QuickPurchase for Match ID ${matchId}`, {
+            tags: ['api', 'admin', 'global-sync', 'error'],
+            data: {
+              matchId,
+              matchIdStr,
+              status: 'database_error',
+              error: dbErrorMessage,
+              dbTime: `${dbTime}ms`,
+              quickPurchaseData: {
+                name: quickPurchaseData.name,
+                matchId: quickPurchaseData.matchId,
+                hasMatchData: !!quickPurchaseData.matchData,
+                hasPredictionData: !!quickPurchaseData.predictionData
+              },
+              progress: `${i + 1}/${uniqueMatchIds.length}`,
+              summary: `${errors} errors, ${created} created, ${existing} existing`
+            }
+          })
+          errorDetails.push(`Match ${matchId}: Database error - ${dbErrorMessage}`)
+          // Wait before processing next match even on error
+          await delay(200)
+          continue
+        }
+
+        // Rate limiting: Wait after successful creation to prevent overwhelming
+        // User mentioned ~500ms response time, so we ensure proper spacing
+        await delay(500)
 
       } catch (error) {
-        errors++
+        const errorTime = Date.now() - requestStartTime
         const errorMessage = error instanceof Error ? error.message : String(error)
-        errorDetails.push(`Match ${match.match_id}: ${errorMessage}`)
         
         logger.error('Error processing match', {
           tags: ['api', 'admin', 'global-sync', 'error'],
-          data: { 
-            matchId: match.match_id,
-            error: errorMessage
+          data: {
+            matchId: matchIdStr,
+            error: errorMessage,
+            requestTime: `${errorTime}ms`
           }
         })
+        
+        errors++
+        errorDetails.push(`Match ${matchIdStr}: ${errorMessage}`)
       }
     }
 
     const processingTime = Date.now() - startTime
     const totalProcessed = created + existing
-    const coverage = availableMatches.length > 0 
-      ? ((totalProcessed / availableMatches.length) * 100).toFixed(1)
+    const totalAvailable = uniqueMatchIds.length
+    const coverage = totalAvailable > 0 
+      ? ((totalProcessed / totalAvailable) * 100).toFixed(1)
       : '0.0'
 
     logger.info('Global sync completed', {
       tags: ['api', 'admin', 'global-sync', 'completed'],
       data: {
-        available: availableMatches.length, // Dynamic count from actual API response
+        available: totalAvailable,
         created,
         existing,
         errors,
         coverage: `${coverage}%`,
         processingTimeMs: processingTime,
         processingTimeMin: (processingTime / 60000).toFixed(2),
-        dateRange: `${fromDate} to ${toDate}`
+        dateRange: `${fromDate} to ${toDate}`,
+        timeoutReached: timeoutReached,
+        partialSync: timeoutReached
       }
     })
 
@@ -425,7 +600,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       summary: {
-        available: availableMatches.length, // Dynamic count from actual API response
+        available: totalAvailable,
         created,
         existing,
         errors,
@@ -436,11 +611,13 @@ export async function POST(req: NextRequest) {
           minutes: (processingTime / 60000).toFixed(2)
         },
         dateRange: `${fromDate} to ${toDate}`,
-        source: uniqueMatchIds.length > 0 ? 'consensus_api' : 'fallback'
+        source: 'consensus_api_with_predict'
       },
-      message: errors > 0 
-        ? `Sync completed with ${errors} errors. ${created} new matches created, ${existing} already existed.`
-        : `Sync completed successfully! ${created} new matches created, ${existing} already existed.`,
+      message: timeoutReached
+        ? `Sync partially completed due to timeout. ${created} new matches created, ${existing} already existed, ${errors} errors. Remaining matches will be processed on next sync.`
+        : errors > 0 
+        ? `Sync completed with ${errors} errors. ${created} new matches created (with full prediction data), ${existing} already existed.`
+        : `Sync completed successfully! ${created} new matches created (with full prediction data), ${existing} already existed.`,
       errorDetails: errors > 0 ? errorDetails.slice(0, 10) : [], // Limit error details
       timestamp: new Date().toISOString()
     })

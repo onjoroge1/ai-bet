@@ -3,10 +3,31 @@
   "installCommand": "npm install",
   "framework": "nextjs",
   "functions": {
+    "app/api/admin/market/**/*.ts": {
+      "maxDuration": 60
+    },
     "app/api/**/*.ts": {
       "maxDuration": 30
     }
   },
+  "crons": [
+    {
+      "path": "/api/admin/parlays/sync-scheduled",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/admin/market/sync-scheduled?type=live",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/admin/market/sync-scheduled?type=upcoming",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/admin/market/sync-scheduled?type=completed",
+      "schedule": "*/10 * * * *"
+    }
+  ],
   "env": {
     "PRISMA_GENERATE_DATAPROXY": "true"
   }

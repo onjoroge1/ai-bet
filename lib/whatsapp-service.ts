@@ -195,6 +195,116 @@ export async function sendWhatsAppInteractive(
 }
 
 /**
+ * Send an image via WhatsApp Cloud API
+ * @param to - Recipient's WhatsApp number in E.164 format
+ * @param imageUrl - Publicly accessible URL of the image
+ * @param caption - Optional caption text (max 1024 characters)
+ * @returns Promise<{ success: boolean; error?: string }>
+ */
+export async function sendWhatsAppImage(
+  to: string,
+  imageUrl: string,
+  caption?: string
+): Promise<{ success: boolean; error?: string; errorCode?: number; errorType?: string }> {
+  if (!PHONE_NUMBER_ID || !ACCESS_TOKEN) {
+    logger.error("WhatsApp credentials not configured");
+    return {
+      success: false,
+      error: "WhatsApp credentials not configured",
+    };
+  }
+
+  const url = `https://graph.facebook.com/${API_VERSION}/${PHONE_NUMBER_ID}/messages`;
+
+  const payload: any = {
+    messaging_product: "whatsapp",
+    to,
+    type: "image",
+    image: {
+      link: imageUrl, // Public URL to the image
+    },
+  };
+
+  // Add caption if provided (WhatsApp allows up to 1024 characters)
+  if (caption && caption.length > 0) {
+    if (caption.length > 1024) {
+      logger.warn("Image caption too long, truncating", {
+        originalLength: caption.length,
+        to,
+      });
+      payload.image.caption = caption.substring(0, 1021) + "...";
+    } else {
+      payload.image.caption = caption;
+    }
+  }
+
+  try {
+    logger.debug("Sending WhatsApp image", {
+      to,
+      imageUrl,
+      hasCaption: !!caption,
+    });
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${ACCESS_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      let errorMessage = `WhatsApp API error (${res.status}): ${res.statusText}`;
+      let errorCode: number | undefined;
+      let errorType: string | undefined;
+
+      try {
+        const errorJson = JSON.parse(errorText);
+        if (errorJson.error?.message) {
+          errorMessage = errorJson.error.message;
+          errorCode = errorJson.error.code;
+        }
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+
+      logger.error("WhatsApp image API error", {
+        status: res.status,
+        errorCode,
+        errorMessage,
+        to,
+      });
+
+      return {
+        success: false,
+        error: errorMessage,
+        errorCode,
+        errorType,
+      };
+    }
+
+    const data = (await res.json()) as { messages?: Array<{ id?: string }> };
+    logger.info("WhatsApp image sent successfully", {
+      to,
+      messageId: data.messages?.[0]?.id,
+    });
+
+    return { success: true };
+  } catch (error) {
+    logger.error("Error sending WhatsApp image", {
+      error,
+      to,
+    });
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error occurred while sending WhatsApp image",
+    };
+  }
+}
+
+/**
  * Format a phone number to E.164 format
  * @param phone - Phone number in any format
  * @returns Formatted phone number or null if invalid

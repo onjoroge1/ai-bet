@@ -122,7 +122,12 @@ export function OddsPredictionTable({
         url += `&league=${leagueId}`
       }
       
-      const response = await fetch(url)
+      // Prevent browser caching for live matches - server handles appropriate caching
+      const fetchOptions = status === "live" 
+        ? { cache: 'no-store' as const } // No browser caching for live matches
+        : {} // Allow browser cache for upcoming (server still controls cache headers)
+      
+      const response = await fetch(url, fetchOptions)
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))

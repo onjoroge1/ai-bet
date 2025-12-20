@@ -79,9 +79,12 @@ export function HomepageMatches() {
       const upcomingData: MatchesResponse = await upcomingResponse.json()
       setUpcomingMatches(upcomingData.matches || [])
 
-      // Fetch live matches
+      // Fetch live matches - prevent browser caching for real-time data
       const liveResponse = await fetch(
-        "/api/market?status=live&limit=50"
+        "/api/market?status=live&limit=50",
+        {
+          cache: 'no-store', // No browser caching for live matches
+        }
       )
 
       if (!liveResponse.ok) {

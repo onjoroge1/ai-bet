@@ -186,7 +186,12 @@ export default function MatchDetailPage() {
 
       // Run match and purchase-status in parallel
       const matchPromise = (async () => {
-        const resp = await fetch(`/api/match/${matchId}`)
+        // Prevent browser caching - let server-side headers control caching strategy
+        // Server will return no-store for live matches, cache for upcoming/finished
+        const resp = await fetch(`/api/match/${matchId}`, {
+          cache: 'no-store', // Prevent browser cache - server handles appropriate caching
+          credentials: 'include',
+        })
         if (!resp.ok) throw new Error('Failed to fetch match details')
         const json = await resp.json()
         setMatchData(json.match)

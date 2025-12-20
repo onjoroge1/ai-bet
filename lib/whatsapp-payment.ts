@@ -215,7 +215,119 @@ export async function createWhatsAppPaymentSession(params: {
     logger.error("Error creating WhatsApp payment session", {
       waId,
       matchId,
-      error,
+      error: error instanceof Error ? error.message : undefined,
+    });
+    throw error;
+  }
+}
+
+/**
+ * Create Stripe Checkout Session for WhatsApp VIP subscription
+ */
+export async function createWhatsAppVIPSubscriptionSession(params: {
+  waId: string;
+  packageType: "weekend_pass" | "weekly_pass" | "monthly_sub";
+}): Promise<{ paymentUrl: string; sessionId: string }> {
+  const { waId, packageType } = params;
+
+  try {
+    // Get or create WhatsAppUser
+    const waUser = await getOrCreateWhatsAppUser(waId);
+    const userCountryCode = waUser.countryCode || getCountryCodeFromPhone(waId, "US");
+
+    // Get country-specific pricing
+    const countryPricing = await getDbCountryPricing(userCountryCode, packageType);
+    
+    // Get package offer details
+    const packageOffer = await prisma.packageOffer.findFirst({
+      where: {
+        packageType,
+        isActive: true,
+      },
+      include: {
+        countryPrices: {
+          where: {
+            country: {
+              code: userCountryCode,
+            },
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    if (!packageOffer) {
+      throw new Error(`Package offer not found for type: ${packageType}`);
+    }
+
+    // Use country-specific price if available, otherwise use pricing service
+    const countryPrice = packageOffer.countryPrices[0];
+    const finalPrice = countryPrice 
+      ? Number(countryPrice.price) 
+      : countryPricing.price;
+    const finalCurrency = countryPrice 
+      ? countryPrice.currencyCode 
+      : countryPricing.currencyCode;
+
+    // Package type display names
+    const packageNames: Record<string, string> = {
+      weekend_pass: "Weekend Package (Fri-Sun)",
+      weekly_pass: "Weekly Package (7 days)",
+      monthly_sub: "Monthly VIP Subscription",
+    };
+
+    const packageName = packageNames[packageType] || "VIP Package";
+
+    // Create Stripe Checkout Session
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment", // One-time payment for subscriptions
+      line_items: [
+        {
+          price_data: {
+            currency: getStripeCurrency(finalCurrency),
+            product_data: {
+              name: `SnapBet ${packageName}`,
+              description: packageOffer.description || `VIP access for ${packageName}`,
+            },
+            unit_amount: formatAmountForStripe(finalPrice, finalCurrency),
+          },
+          quantity: 1,
+        },
+      ],
+      metadata: {
+        waId: waUser.waId,
+        packageType,
+        packageOfferId: packageOffer.id,
+        countryId: countryPrice?.countryId || userCountryCode,
+        source: "whatsapp",
+        purchaseType: "vip_subscription",
+      },
+      success_url: `${BASE_URL}/whatsapp/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${BASE_URL}/whatsapp/payment/cancel`,
+      expires_at: Math.floor(Date.now() / 1000) + 30 * 60, // 30 minutes
+    });
+
+    logger.info("Created WhatsApp VIP subscription session", {
+      waId: waUser.waId,
+      packageType,
+      sessionId: session.id,
+      price: finalPrice,
+      currency: finalCurrency,
+    });
+
+    // Create short URL for WhatsApp
+    const baseUrl = BASE_URL.replace(/\/$/, "");
+    const shortUrl = `${baseUrl}/whatsapp/pay/${session.id}`;
+
+    return {
+      paymentUrl: shortUrl,
+      sessionId: session.id,
+    };
+  } catch (error) {
+    logger.error("Error creating WhatsApp VIP subscription session", {
+      waId,
+      packageType,
+      error: error instanceof Error ? error.message : undefined,
     });
     throw error;
   }

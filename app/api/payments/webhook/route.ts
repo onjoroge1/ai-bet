@@ -355,10 +355,25 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
   const matchId = metadata.matchId;
   const quickPurchaseId = metadata.quickPurchaseId;
   const source = metadata.source;
+  const purchaseType = metadata.purchaseType;
+  const packageType = metadata.packageType;
 
-  // Only process WhatsApp purchases
-  if (source !== 'whatsapp' || !waId || !matchId || !quickPurchaseId) {
+  // Process WhatsApp purchases (both individual picks and VIP subscriptions)
+  if (source !== 'whatsapp' || !waId) {
     console.log('Not a WhatsApp purchase, skipping');
+    return;
+  }
+
+  // Handle VIP subscription purchases
+  if (purchaseType === 'vip_subscription' && packageType) {
+    const { handleWhatsAppVIPSubscription } = await import('../webhook-handle-vip');
+    await handleWhatsAppVIPSubscription(session, waId, packageType, metadata);
+    return;
+  }
+
+  // Handle individual pick purchases (existing logic)
+  if (!matchId || !quickPurchaseId) {
+    console.log('WhatsApp purchase missing matchId or quickPurchaseId, skipping');
     return;
   }
 

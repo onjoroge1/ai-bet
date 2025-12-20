@@ -192,6 +192,8 @@ model QuickPurchase {
 
   matchId            String?    @unique
 
+  marketMatchId      String?    // Link to MarketMatch table
+
   odds               Decimal?
 
   predictionData     Json?
@@ -212,6 +214,10 @@ model QuickPurchase {
   whatsappPurchases  WhatsAppPurchase[]
 
   country            Country    @relation(fields: [countryId], references: [id])
+  marketMatch        MarketMatch? @relation(fields: [marketMatchId], references: [id])
+
+  @@index([marketMatchId])
+  @@index([matchId, marketMatchId])
 
 }
 
@@ -508,6 +514,8 @@ model User {
   breakingNews          BreakingNews[]
 
   blogComments          BlogComment[]
+
+  parlayPurchases       ParlayPurchase[]
 
 }
 
@@ -1955,6 +1963,7 @@ model WhatsAppUser {
   firstSeenAt   DateTime @default(now())
   lastSeenAt    DateTime @updatedAt
   isActive      Boolean  @default(true)
+  vipInfo       Json?    // Stores { plan: string, expiresAt: string, hasAccess: boolean, isExpired: boolean }
   
   purchases     WhatsAppPurchase[]
   
@@ -1985,5 +1994,185 @@ model WhatsAppPurchase {
   @@index([paymentSessionId])
   @@index([status])
   @@index([createdAt])
+}
+
+// Parlay System Tables
+model ParlayConsensus {
+  id                String   @id @default(cuid())
+  parlayId          String   @unique // Backend parlay_id (UUID)
+  apiVersion        String   @default("v2") // "v1", "v2", or future versions
+  legCount          Int
+  combinedProb      Decimal
+  correlationPenalty Decimal
+  adjustedProb      Decimal
+  impliedOdds       Decimal
+  edgePct           Decimal
+  confidenceTier    String   // "high", "medium", "low"
+  parlayType        String   // "same_league", "cross_league", etc.
+  leagueGroup       String?
+  earliestKickoff   DateTime
+  latestKickoff     DateTime
+  kickoffWindow     String   // "today", "tomorrow", "this_week"
+  status            String   @default("active") // "active", "expired", "settled"
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  syncedAt          DateTime @default(now())
+  
+  legs              ParlayLeg[]
+  purchases         ParlayPurchase[]
+  performance       ParlayPerformance?
+  
+  @@index([status, earliestKickoff])
+  @@index([confidenceTier, edgePct])
+  @@index([parlayType, status])
+  @@index([apiVersion, status])
+  @@index([syncedAt])
+}
+
+model ParlayLeg {
+  id                String   @id @default(cuid())
+  parlayId          String
+  matchId           String   // Backend match_id
+  outcome           String   // "H", "D", "A"
+  homeTeam          String
+  awayTeam          String
+  modelProb         Decimal
+  decimalOdds       Decimal
+  edge              Decimal
+  legOrder          Int      // Order in parlay (1, 2, 3...)
+  
+  parlay            ParlayConsensus @relation(fields: [parlayId], references: [id], onDelete: Cascade)
+  
+  @@unique([parlayId, legOrder])
+  @@index([matchId])
+  @@index([parlayId])
+}
+
+model ParlayPurchase {
+  id                String   @id @default(cuid())
+  userId            String
+  parlayId          String
+  amount            Decimal
+  paymentMethod     String
+  status            String   // "pending", "completed", "failed", "won", "lost", "void"
+  potentialReturn   Decimal?
+  actualReturn      Decimal?
+  purchasedAt       DateTime @default(now())
+  settledAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  user              User     @relation(fields: [userId], references: [id])
+  parlay            ParlayConsensus @relation(fields: [parlayId], references: [id])
+  
+  @@index([userId, status])
+  @@index([parlayId])
+  @@index([purchasedAt])
+}
+
+model ParlayPerformance {
+  id                String   @id @default(cuid())
+  parlayId          String   @unique
+  totalPurchases    Int      @default(0)
+  totalWins         Int      @default(0)
+  totalLosses       Int      @default(0)
+  totalVoids        Int      @default(0)
+  totalRevenue      Decimal  @default(0)
+  totalPayouts      Decimal  @default(0)
+  avgStake          Decimal?
+  winRate           Decimal?
+  roi               Decimal?
+  calculatedAt      DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  parlay            ParlayConsensus @relation(fields: [parlayId], references: [id])
+  
+  @@index([winRate, roi])
+}
+
+model MarketMatch {
+  id                String   @id @default(cuid())
+  matchId           String   @unique // External API match ID (string or number as string)
+  status            String   // "UPCOMING", "LIVE", "FINISHED", "CANCELLED", "POSTPONED"
+  
+  // Basic Match Information
+  homeTeam          String
+  homeTeamId        String?
+  homeTeamLogo      String?
+  awayTeam          String
+  awayTeamId        String?
+  awayTeamLogo      String?
+  
+  league            String
+  leagueId          String?
+  leagueCountry     String?
+  leagueFlagUrl     String?  // League country flag URL
+  leagueFlagEmoji   String?  // League country flag emoji
+  
+  kickoffDate       DateTime
+  matchDate         DateTime?
+  
+  // Odds Data
+  consensusOdds     Json?    // { home: number, draw: number, away: number }
+  isConsensusOdds   Boolean  @default(true)
+  allBookmakers     Json?    // { bet365: {home, draw, away}, pinnacle: {...}, ... }
+  primaryBook       String?
+  booksCount        Int?
+  
+  // Model Predictions
+  v1Model           Json?    // { pick: "home"|"away"|"draw", confidence: number, probs: {...} }
+  v2Model           Json?    // { pick: "home"|"away"|"draw", confidence: number, probs: {...} }
+  modelPredictions  Json?    // { free: {...}, premium: {...} }
+  
+  // Live Match Data (Status: LIVE)
+  currentScore      Json?    // { home: number, away: number }
+  liveScore         Json?    // Alternative field name
+  elapsed           Int?     // Minutes elapsed
+  minute            Int?     // Alternative field name
+  period            String?  // "1st Half", "2nd Half", "Half Time", "Full Time"
+  liveStatistics    Json?    // { possession, shots, corners, fouls, cards, etc. }
+  momentum          Json?    // { minute, momentum, intensity, key_events }
+  modelMarkets      Json?    // { totals, btts, asian_handicap }
+  aiAnalysis        Json?    // { minute, trigger, momentum, observations, betting_angles }
+  
+  // Completed Match Data (Status: FINISHED)
+  finalResult       Json?    // { score: {...}, outcome: string, outcome_text: string, halfTimeScore?: {...} }
+  matchStatistics   Json?    // Final match statistics
+  venue             String?
+  referee           String?
+  attendance        Int?
+  
+  // Raw API Data
+  rawApiData        Json?    // Complete API response snapshot
+  
+  // Sync Metadata
+  lastSyncedAt      DateTime @default(now())
+  nextSyncAt        DateTime?
+  syncPriority      String?  // "high" (live), "medium" (upcoming <24h), "low" (upcoming >24h)
+  syncCount         Int      @default(0)
+  syncErrors        Int      @default(0)
+  lastSyncError     String?
+  
+  // Status Flags
+  isActive          Boolean  @default(true)
+  isArchived        Boolean  @default(false)
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  archivedAt        DateTime?
+  
+  // Relations
+  quickPurchases    QuickPurchase[]
+  
+  @@index([matchId])
+  @@index([status, kickoffDate])
+  @@index([status, lastSyncedAt])
+  @@index([kickoffDate])
+  @@index([isActive, status])
+  @@index([nextSyncAt])
+  @@index([syncPriority, status])
+  @@index([isArchived, status])
+  @@index([leagueId, status])
 }
 

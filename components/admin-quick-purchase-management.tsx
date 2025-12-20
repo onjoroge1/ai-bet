@@ -140,7 +140,11 @@ const initialFormData: QuickPurchaseItemAdmin = {
   updatedAt: "",
 }
 
-export function AdminQuickPurchaseManagement() {
+interface AdminQuickPurchaseManagementProps {
+  shouldLoadData?: boolean
+}
+
+export function AdminQuickPurchaseManagement({ shouldLoadData = true }: AdminQuickPurchaseManagementProps) {
   debugLog('Rendering AdminQuickPurchaseManagement')
   const [countries, setCountries] = useState<Country[]>([])
   const [items, setItems] = useState<QuickPurchaseItemAdmin[]>([])
@@ -150,32 +154,40 @@ export function AdminQuickPurchaseManagement() {
   const [isLoading, setIsLoading] = useState(true)
   const [formData, setFormData] = useState<QuickPurchaseItemAdmin>(initialFormData)
 
-  // Fetch countries
+  // Fetch countries only when shouldLoadData is true
   useEffect(() => {
-    const fetchCountries = async () => {
-      try {
-        const response = await fetch('/api/countries')
-        if (response.ok) {
-          const countriesData = await response.json()
-          setCountries(countriesData)
+    if (shouldLoadData) {
+      const fetchCountries = async () => {
+        try {
+          const response = await fetch('/api/countries')
+          if (response.ok) {
+            const countriesData = await response.json()
+            setCountries(countriesData)
+          }
+        } catch (error) {
+          console.error('Error fetching countries:', error)
         }
-      } catch (error) {
-        console.error('Error fetching countries:', error)
       }
+      fetchCountries()
     }
-    fetchCountries()
-  }, [])
+  }, [shouldLoadData])
 
   // Remove the USD country ID logic since we're using a specific ID
   useEffect(() => {
-    console.log('Component mounted')
-    console.log('Available countries:', countries)
-  }, [countries])
+    if (shouldLoadData) {
+      console.log('Component mounted')
+      console.log('Available countries:', countries)
+    }
+  }, [countries, shouldLoadData])
 
-  // Fetch quick purchases
+  // Fetch quick purchases only when shouldLoadData is true
   useEffect(() => {
-    fetchQuickPurchases()
-  }, [])
+    if (shouldLoadData) {
+      fetchQuickPurchases()
+    } else {
+      setIsLoading(false)
+    }
+  }, [shouldLoadData])
 
   const fetchQuickPurchases = async () => {
     try {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { logger } from '@/lib/logger'
+import prisma from '@/lib/db'
 
 /**
  * GET /api/clv/opportunities - Fetch CLV opportunities from backend
@@ -14,8 +15,32 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Check premium access (admins bypass)
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { subscriptionPlan: true, subscriptionExpiresAt: true, role: true },
+    })
+
+    const isAdmin = user?.role === 'admin'
+    const isPremiumPlan = user?.subscriptionPlan && 
+      (user.subscriptionPlan.toLowerCase().includes('premium') ||
+       user.subscriptionPlan.toLowerCase().includes('monthly') ||
+       user.subscriptionPlan.toLowerCase().includes('vip'))
+    const isNotExpired = user?.subscriptionExpiresAt && 
+      new Date(user.subscriptionExpiresAt) > new Date()
+    const hasAccess = isAdmin || (isPremiumPlan && isNotExpired)
+
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: 'Premium subscription required' },
+        { status: 403 }
+      )
+    }
+
     const { searchParams } = new URL(req.url)
     const window = searchParams.get('window')
+    const limitParam = searchParams.get('limit')
+    const limit = limitParam ? parseInt(limitParam) : undefined
 
     // Build backend URL
     const backendUrl = new URL(`${process.env.BACKEND_URL}/clv/club/opportunities`)
@@ -56,10 +81,17 @@ export async function GET(req: NextRequest) {
 
     // Backend returns 'items' instead of 'opportunities'
     // Normalize the response to match our frontend expectations
+    let opportunities = data.items || data.opportunities || []
+    
+    // Apply limit if specified
+    if (limit && opportunities.length > limit) {
+      opportunities = opportunities.slice(0, limit)
+    }
+    
     const normalizedData = {
-      opportunities: data.items || data.opportunities || [],
+      opportunities,
       meta: {
-        count: data.count || (data.items?.length || 0),
+        count: opportunities.length,
         window: window || 'all',
         generated_at: data.timestamp || new Date().toISOString(),
         status: data.status

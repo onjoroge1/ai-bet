@@ -9,6 +9,7 @@ import { CLVConfidenceMeter } from '@/components/dashboard/clv-confidence-meter'
 import { calculateCLV, formatPercent, formatStake } from '@/lib/clv-calculator'
 import { Activity, TrendingUp, AlertCircle, RefreshCw, DollarSign, Target } from 'lucide-react'
 import { toast } from 'sonner'
+import { PremiumGate } from '@/components/premium-gate'
 
 interface CLVOpportunity {
   alert_id: string
@@ -56,6 +57,8 @@ export default function CLVDashboard() {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [refreshInterval, setRefreshInterval] = useState(30) // seconds
   const [useLowBandwidth, setUseLowBandwidth] = useState(false)
+  const [hasPremiumAccess, setHasPremiumAccess] = useState<boolean | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   const fetchOpportunities = async (window: string, useCache = false) => {
     setIsLoading(true)
@@ -98,8 +101,33 @@ export default function CLVDashboard() {
   }, [autoRefresh, refreshInterval, selectedWindow, useLowBandwidth])
 
   useEffect(() => {
+    checkAuthAndPremium()
     fetchOpportunities(selectedWindow, useLowBandwidth)
   }, [selectedWindow, useLowBandwidth])
+
+  const checkAuthAndPremium = async () => {
+    try {
+      // Check auth
+      const authRes = await fetch('/api/auth/session', {
+        cache: 'no-store',
+        credentials: 'include',
+      })
+      const session = await authRes.json()
+      setIsAdmin(session?.user?.role?.toLowerCase() === 'admin')
+
+      // Check premium access
+      const premiumRes = await fetch('/api/premium/check')
+      if (premiumRes.ok) {
+        const data = await premiumRes.json()
+        setHasPremiumAccess(data.hasAccess)
+      } else {
+        setHasPremiumAccess(false)
+      }
+    } catch (error) {
+      console.error('Error checking premium access:', error)
+      setHasPremiumAccess(false)
+    }
+  }
 
   const handleRefresh = () => {
     fetchOpportunities(selectedWindow, useLowBandwidth)
@@ -151,6 +179,17 @@ export default function CLVDashboard() {
       case 'A': return 'Away Win'
       default: return outcome
     }
+  }
+
+  // Show premium gate if user doesn't have access
+  if (hasPremiumAccess === false && !isAdmin) {
+    return (
+      <PremiumGate 
+        title="Premium CLV Tracker Access"
+        description="Access real-time Closing Line Value opportunities with monthly premium subscription."
+        featureName="CLV Tracker"
+      />
+    )
   }
 
   return (

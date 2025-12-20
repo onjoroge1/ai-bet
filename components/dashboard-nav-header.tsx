@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Menu, X, Home, Zap, Gift, Crown, Settings, BarChart3, Target, HeadphonesIcon, History, Bell, Activity } from "lucide-react"
+import { Menu, X, Home, Zap, Gift, Crown, Settings, BarChart3, Target, HeadphonesIcon, History, Bell, Activity, Layers, Sparkles } from "lucide-react"
 import { NotificationBell } from "@/components/notifications/NotificationBell"
 import { Badge } from "@/components/ui/badge"
 
@@ -18,8 +18,12 @@ export function DashboardNavHeader() {
     // Core Dashboard
     { href: "/dashboard", label: "Overview", icon: Home, category: "core" },
     
+    // Premium Features
+    { href: "/dashboard/premium", label: "Premium Hub", icon: Sparkles, category: "premium", badge: "Premium" },
+    
     // Predictions & Tips
     { href: "/dashboard/matches", label: "Live Matches", icon: Target, category: "predictions" },
+    { href: "/dashboard/parlays", label: "Parlays", icon: Layers, category: "predictions" },
     { href: "/dashboard/daily-tips", label: "Daily Tips", icon: Zap, category: "predictions" },
     { href: "/dashboard/weekend-special", label: "Weekend Special", icon: Gift, category: "predictions" },
     { href: "/dashboard/vip", label: "VIP Zone", icon: Crown, category: "predictions" },
@@ -95,6 +99,42 @@ export function DashboardNavHeader() {
       {isMenuOpen && (
         <Card className="bg-slate-800/50 border-slate-700 p-6 mb-4">
           <div className="space-y-6">
+            {/* Premium Features */}
+            {groupedItems.premium && (
+              <div>
+                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-emerald-400" />
+                  Premium Features
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {groupedItems.premium.map((item) => {
+                    const Icon = item.icon
+                    const isActive = pathname === item.href
+                    return (
+                      <Link key={item.href} href={item.href}>
+                        <Button
+                          variant={isActive ? "default" : "ghost"}
+                          className={`w-full justify-start ${
+                            isActive
+                              ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                              : "text-slate-300 hover:bg-slate-700 hover:text-white"
+                          }`}
+                        >
+                          <Icon className="w-4 h-4 mr-2" />
+                          {item.label}
+                          {item.badge && (
+                            <Badge className="ml-auto bg-emerald-500/20 text-emerald-400 border-emerald-500/50 text-xs">
+                              {item.badge}
+                            </Badge>
+                          )}
+                        </Button>
+                      </Link>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Core Dashboard */}
             {groupedItems.core && (
               <div>

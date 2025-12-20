@@ -84,20 +84,34 @@ export async function GET(request: NextRequest) {
 
     console.log(`Fetching from: ${url}`)
 
-    // Cache for 60 seconds - ISR (Incremental Static Regeneration)
+    // Live matches should NOT be cached - they need real-time data
+    // Upcoming matches can be cached for performance
+    const isLive = status === 'live'
+    const cacheConfig = isLive 
+      ? { cache: 'no-store' as const } // No caching for live matches
+      : { 
+          next: { 
+            revalidate: 60, // Cache upcoming matches for 60 seconds
+            tags: ['market-data', `market-${status}`] // Cache tags for selective revalidation
+          }
+        }
+
     const response = await fetch(url, {
       headers: {
         Authorization: `Bearer ${API_KEY}`,
       },
-      next: { 
-        revalidate: 60, // Revalidate every 60 seconds
-        tags: ['market-data', `market-${status}`] // Cache tags for selective revalidation
-      }
+      ...cacheConfig
     })
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error')
       console.error(`Backend API error: ${response.status} ${response.statusText}`, errorText)
+      
+      // Different cache headers based on match status
+      const errorCacheHeaders = isLive
+        ? { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
+        : { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' }
+      
       return NextResponse.json(
         { 
           error: `Backend API error: ${response.status} ${response.statusText}`,
@@ -107,9 +121,7 @@ export async function GET(request: NextRequest) {
         },
         { 
           status: response.status,
-          headers: {
-            'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120'
-          }
+          headers: errorCacheHeaders
         }
       )
     }
@@ -117,10 +129,13 @@ export async function GET(request: NextRequest) {
     const data = await response.json()
     console.log(`Received ${data.matches?.length || 0} matches from ${url}`)
     
+    // Dynamic cache headers based on match status
+    const cacheHeaders = isLive
+      ? { 'Cache-Control': 'no-store, no-cache, must-revalidate' } // No caching for live
+      : { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' } // Cache upcoming
+    
     return NextResponse.json(data, {
-      headers: {
-        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120',
-      }
+      headers: cacheHeaders
     })
   } catch (error) {
     console.error('Error fetching market data:', error)

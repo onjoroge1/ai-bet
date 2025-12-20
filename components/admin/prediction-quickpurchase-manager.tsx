@@ -88,7 +88,11 @@ const createQuickPurchase = async (data: CreateQuickPurchaseData): Promise<any> 
   return response.json()
 }
 
-export function PredictionQuickPurchaseManager() {
+interface PredictionQuickPurchaseManagerProps {
+  shouldLoadData?: boolean
+}
+
+export function PredictionQuickPurchaseManager({ shouldLoadData = true }: PredictionQuickPurchaseManagerProps) {
   const [matches, setMatches] = useState<Match[]>([])
   const [countries, setCountries] = useState<Country[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -105,10 +109,14 @@ export function PredictionQuickPurchaseManager() {
     description: ""
   })
 
-  // Load data on component mount
+  // Load data only when shouldLoadData is true
   useEffect(() => {
-    loadData()
-  }, [selectedLeague])
+    if (shouldLoadData) {
+      loadData()
+    } else {
+      setIsLoading(false)
+    }
+  }, [selectedLeague, shouldLoadData])
 
   const loadData = async () => {
     try {

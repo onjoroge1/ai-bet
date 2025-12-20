@@ -27,6 +27,15 @@ const publicPaths = [
   '/api/predictions/history/stats', // Public predictions history stats
   '/api/predictions/history/export', // Public predictions history export
   '/api/whatsapp/webhook', // WhatsApp webhook for Meta Business API
+  '/api/whatsapp/send-test', // WhatsApp test endpoint for sending messages
+  '/api/whatsapp/test-command', // WhatsApp test endpoint for menu commands
+]
+
+// Cron endpoints that use CRON_SECRET instead of user authentication
+const cronEndpoints = [
+  '/api/admin/parlays/sync-scheduled',
+  '/api/admin/market/sync-scheduled',
+  '/api/admin/predictions/enrich-scheduled',
 ]
 
 // Paths that require admin role
@@ -108,6 +117,49 @@ export async function middleware(request: NextRequest) {
   const startTime = Date.now()
   
   try {
+    // ✅ CRON_SECRET Authentication Check (Early Exit for Automated Sync)
+    // This allows automated cron jobs to authenticate without user sessions
+    const isCronEndpoint = cronEndpoints.some(endpoint => pathname.startsWith(endpoint))
+    if (isCronEndpoint) {
+      const authHeader = request.headers.get('authorization')
+      const cronSecret = process.env.CRON_SECRET || '749daccdf93e0228b8d5c9b7210d2181ea3b9e48af1e3833473a5020bcbc9ecb'
+      
+      if (authHeader === `Bearer ${cronSecret}`) {
+        // Valid CRON_SECRET - allow through without user authentication
+        logger.info('Middleware - CRON_SECRET authenticated', {
+          tags: ['middleware', 'cron', 'auth'],
+          data: { pathname, authenticated: true }
+        })
+        
+        // Create response with security headers
+        const requestHeaders = new Headers(request.headers)
+        const forwarded = request.headers.get('x-forwarded-for')
+        const ip = forwarded ? forwarded.split(',')[0] : request.headers.get('x-real-ip') || 'unknown'
+        requestHeaders.set('x-client-ip', ip)
+        requestHeaders.set('x-cron-authenticated', 'true')
+        
+        const response = NextResponse.next({
+          request: {
+            headers: requestHeaders,
+          },
+        })
+        
+        return addSecurityHeaders(response)
+      } else {
+        // Invalid or missing CRON_SECRET - reject
+        logger.warn('Middleware - Invalid CRON_SECRET attempt', {
+          tags: ['middleware', 'cron', 'auth', 'unauthorized'],
+          data: { pathname, hasAuthHeader: !!authHeader }
+        })
+        
+        const response = new NextResponse(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { 'Content-Type': 'application/json' } }
+        )
+        return addSecurityHeaders(response)
+      }
+    }
+    
     // Get client IP for rate limiting and country detection
     const forwarded = request.headers.get('x-forwarded-for')
     const ip = forwarded ? forwarded.split(',')[0] : request.headers.get('x-real-ip') || 'unknown'
