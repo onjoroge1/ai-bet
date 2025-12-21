@@ -36,6 +36,7 @@ const cronEndpoints = [
   '/api/admin/parlays/sync-scheduled',
   '/api/admin/market/sync-scheduled',
   '/api/admin/predictions/enrich-scheduled',
+  '/api/admin/predictions/sync-from-availability-scheduled',
 ]
 
 // Paths that require admin role

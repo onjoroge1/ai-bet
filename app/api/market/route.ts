@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import prisma from '@/lib/db'
+import { isMarketMatchTooOld, transformMarketMatchesToApiResponse } from '@/lib/market-match-helpers'
 
 // Use BACKEND_API_URL from environment (no hardcoded fallback)
 const BASE_URL = process.env.BACKEND_API_URL || process.env.BACKEND_URL
@@ -32,10 +34,48 @@ export async function GET(request: NextRequest) {
     
     console.log(`[Market API] Using backend: ${BASE_URL}`)
 
-    // Single match request - fastest path
+    // Single match request - check database first
     if (matchId) {
+      try {
+        // Try to get from database first
+        const dbMatch = await prisma.marketMatch.findUnique({
+          where: { matchId: String(matchId) },
+        })
+
+        if (dbMatch && !isMarketMatchTooOld(dbMatch)) {
+          console.log(`[Market API] Using database for match ${matchId}`)
+          const { transformMarketMatchToApiFormat } = await import('@/lib/market-match-helpers')
+          const apiMatch = transformMarketMatchToApiFormat(dbMatch)
+          
+          // Determine cache headers based on status
+          const isLive = dbMatch.status === 'LIVE'
+          const isFinished = dbMatch.status === 'FINISHED'
+          const cacheHeaders = isLive
+            ? { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
+            : isFinished
+            ? { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=7200' }
+            : { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' }
+
+          return NextResponse.json(
+            {
+              matches: [apiMatch],
+              total_count: 1,
+            },
+            { headers: cacheHeaders }
+          )
+        } else if (dbMatch && isMarketMatchTooOld(dbMatch)) {
+          console.log(`[Market API] Database data too old for match ${matchId}, fetching from API`)
+        } else {
+          console.log(`[Market API] Match ${matchId} not in database, fetching from API`)
+        }
+      } catch (dbError) {
+        console.error(`[Market API] Database error for match ${matchId}:`, dbError)
+        // Continue to API fallback
+      }
+
+      // Fallback to external API
       const url = `${BASE_URL}/market?match_id=${matchId}${includeV2 === 'false' ? '&include_v2=false' : ''}`
-      console.log(`Fetching single match: ${url}`)
+      console.log(`[Market API] Fetching single match from API: ${url}`)
       
       const response = await fetch(url, {
         headers: {
@@ -48,7 +88,7 @@ export async function GET(request: NextRequest) {
       })
 
       if (!response.ok) {
-        console.error(`Backend API error: ${response.status} ${response.statusText}`)
+        console.error(`[Market API] Backend API error: ${response.status} ${response.statusText}`)
         return NextResponse.json(
           { 
             matches: [],
@@ -71,7 +111,65 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Multi-match request
+    // Multi-match request - check database first
+    const isLive = status === 'live'
+    const dbStatus = status.toUpperCase() // Convert 'live' to 'LIVE', 'upcoming' to 'UPCOMING'
+    
+    try {
+      // Build database query
+      const whereClause: any = {
+        status: dbStatus,
+        isActive: true,
+        isArchived: false,
+      }
+
+      if (leagueId) {
+        whereClause.leagueId = String(leagueId)
+      }
+
+      // Query database
+      const dbMatches = await prisma.marketMatch.findMany({
+        where: whereClause,
+        orderBy: [
+          { kickoffDate: 'asc' }, // Order by kickoff time
+        ],
+        take: parseInt(limit) || 10,
+      })
+
+      // Filter out matches that are too old
+      const freshMatches = dbMatches.filter((match) => !isMarketMatchTooOld(match))
+      const staleMatches = dbMatches.filter((match) => isMarketMatchTooOld(match))
+
+      if (freshMatches.length > 0) {
+        console.log(`[Market API] Using database: ${freshMatches.length} fresh matches for status=${status}`)
+        if (staleMatches.length > 0) {
+          console.log(`[Market API] ${staleMatches.length} matches in database are too old, will fetch from API`)
+        }
+
+        // Transform and return database matches
+        const apiResponse = transformMarketMatchesToApiResponse(freshMatches, freshMatches.length)
+        
+        // Dynamic cache headers based on match status
+        const cacheHeaders = isLive
+          ? { 'Cache-Control': 'no-store, no-cache, must-revalidate' } // No caching for live
+          : { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' } // Cache upcoming
+        
+        return NextResponse.json(apiResponse, {
+          headers: cacheHeaders
+        })
+      } else if (dbMatches.length > 0) {
+        // All matches in database are too old
+        console.log(`[Market API] All ${dbMatches.length} database matches are too old, fetching from API`)
+      } else {
+        // No matches in database
+        console.log(`[Market API] No matches in database for status=${status}, fetching from API`)
+      }
+    } catch (dbError) {
+      console.error(`[Market API] Database error for status=${status}:`, dbError)
+      // Continue to API fallback
+    }
+
+    // Fallback to external API
     let url = `${BASE_URL}/market?status=${status}&limit=${limit}`
     
     if (leagueId) {
@@ -82,11 +180,10 @@ export async function GET(request: NextRequest) {
       url += '&include_v2=false' // 50% faster V1-only mode
     }
 
-    console.log(`Fetching from: ${url}`)
+    console.log(`[Market API] Fetching from external API: ${url}`)
 
     // Live matches should NOT be cached - they need real-time data
     // Upcoming matches can be cached for performance
-    const isLive = status === 'live'
     const cacheConfig = isLive 
       ? { cache: 'no-store' as const } // No caching for live matches
       : { 
@@ -105,7 +202,7 @@ export async function GET(request: NextRequest) {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error')
-      console.error(`Backend API error: ${response.status} ${response.statusText}`, errorText)
+      console.error(`[Market API] Backend API error: ${response.status} ${response.statusText}`, errorText)
       
       // Different cache headers based on match status
       const errorCacheHeaders = isLive
@@ -127,7 +224,7 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json()
-    console.log(`Received ${data.matches?.length || 0} matches from ${url}`)
+    console.log(`[Market API] Received ${data.matches?.length || 0} matches from external API`)
     
     // Dynamic cache headers based on match status
     const cacheHeaders = isLive

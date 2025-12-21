@@ -28,6 +28,10 @@ The automated scheduler is **Vercel Cron**, which is configured in `vercel.json`
     {
       "path": "/api/admin/market/sync-scheduled?type=completed",
       "schedule": "*/10 * * * *"  // Every 10 minutes
+    },
+    {
+      "path": "/api/admin/predictions/sync-from-availability-scheduled",
+      "schedule": "0 */2 * * *"  // Every 2 hours
     }
   ]
 }
@@ -92,6 +96,20 @@ if (status === 'live') {
 
 **Result**: Syncs **once** when match finishes, then never again ✅
 
+### **4. Global Match Sync** 🆕
+
+**Cron Schedule**: `0 */2 * * *` (Every 2 hours)
+
+**Actual Behavior**:
+- Vercel calls the endpoint **every 2 hours**
+- Discovers new matches from `/consensus/sync` API
+- Finds existing matches in database needing enrichment
+- Checks availability API for ready matches
+- Creates new QuickPurchase records
+- Enriches existing records with prediction data
+
+**Result**: Keeps QuickPurchase table up-to-date with fresh matches and predictions ✅
+
 ---
 
 ## 🔄 **How Vercel Cron Works**
@@ -130,6 +148,7 @@ Once deployed to Vercel:
 | **Live** | `* * * * *` | Every minute | Only syncs if last sync > 30 seconds ago |
 | **Upcoming** | `*/10 * * * *` | Every 10 minutes | Only syncs if last sync > 10 minutes ago |
 | **Completed** | `*/10 * * * *` | Every 10 minutes | Only syncs once when status changes to FINISHED |
+| **Global Sync** | `0 */2 * * *` | Every 2 hours | Discovers new matches and enriches existing ones |
 
 ---
 
@@ -241,8 +260,9 @@ Once deployed to Vercel:
 2. **✅ Live Matches**: Runs every minute, syncs if last sync > 30 seconds ago
 3. **✅ Upcoming Matches**: Runs every 10 minutes
 4. **✅ Completed Matches**: Runs every 10 minutes, syncs once when finished
-5. **✅ Browser "Unauthorized"**: Expected and correct (security feature)
-6. **✅ Production Only**: Cron jobs only run on Vercel, not locally
+5. **✅ Global Match Sync**: Runs every 2 hours, discovers and enriches matches
+6. **✅ Browser "Unauthorized"**: Expected and correct (security feature)
+7. **✅ Production Only**: Cron jobs only run on Vercel, not locally
 
 ---
 

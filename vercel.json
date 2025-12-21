@@ -26,6 +26,10 @@
     {
       "path": "/api/admin/market/sync-scheduled?type=completed",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/admin/predictions/sync-from-availability-scheduled",
+      "schedule": "0 */2 * * *"
     }
   ],
   "env": {

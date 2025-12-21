@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import prisma from '@/lib/db'
 import { authOptions } from '@/lib/auth'
 import { getDbCountryPricing } from '@/lib/server-pricing-service'
+import { isMarketMatchTooOld, transformMarketMatchToApiFormat } from '@/lib/market-match-helpers'
 
 // Use BACKEND_API_URL from environment (no hardcoded fallback)
 const BASE_URL = process.env.BACKEND_API_URL || process.env.BACKEND_URL
@@ -90,13 +91,33 @@ export async function GET(
       }
     }
 
-    // Always fetch from backend API FIRST to get latest data (especially for live matches)
-    // This ensures we get live data, momentum, model_markets even if QuickPurchase exists
+    // Check database first, then fallback to external API if data is too old or missing
     let backendMatchData = null
+    let dbMatch = null
     
-    if (!BASE_URL) {
-      console.error(`[Match API] Cannot fetch match ${matchId}: BACKEND_API_URL not configured`)
-    } else {
+    try {
+      // Try to get from MarketMatch database first
+      dbMatch = await prisma.marketMatch.findUnique({
+        where: { matchId: String(matchId) },
+      })
+
+      if (dbMatch && !isMarketMatchTooOld(dbMatch)) {
+        console.log(`[Match API] Using database for match ${matchId} (status: ${dbMatch.status})`)
+        // Transform database match to API format
+        backendMatchData = transformMarketMatchToApiFormat(dbMatch)
+      } else if (dbMatch && isMarketMatchTooOld(dbMatch)) {
+        console.log(`[Match API] Database data too old for match ${matchId} (status: ${dbMatch.status}), fetching from API`)
+        // Continue to API fetch below
+      } else {
+        console.log(`[Match API] Match ${matchId} not in database, fetching from API`)
+      }
+    } catch (dbError) {
+      console.error(`[Match API] Database error for match ${matchId}:`, dbError)
+      // Continue to API fallback
+    }
+
+    // If database data is not available or too old, fetch from external API
+    if (!backendMatchData && BASE_URL) {
       // First try with status=live to get enhanced live data if match is live
       const liveMarketUrl = `${BASE_URL}/market?match_id=${matchId}&status=live`
       console.log(`[Match API] Fetching live match from: ${liveMarketUrl}`)
@@ -197,9 +218,11 @@ export async function GET(
           console.error(`[Match API] Error fetching match:`, error)
         }
       }
+    } else if (!BASE_URL) {
+      console.error(`[Match API] Cannot fetch match ${matchId}: BACKEND_API_URL not configured`)
     }
 
-    // Use backend data if available (it's more up-to-date with live data)
+    // Use backend data if available (from database or API)
     if (backendMatchData) {
       matchData = backendMatchData
       
