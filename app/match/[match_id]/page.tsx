@@ -17,6 +17,7 @@ import { MomentumIndicator } from "@/components/live/MomentumIndicator"
 import { LiveMarketsCard } from "@/components/live/LiveMarketsCard"
 import { LiveMatchStats } from "@/components/live/LiveMatchStats"
 import { LiveAIAnalysis } from "@/components/live/LiveAIAnalysis"
+import { ConnectionStatusIndicator } from "@/components/live/ConnectionStatusIndicator"
 import { UnifiedPremiumValue } from "@/components/match/UnifiedPremiumValue"
 import { RealtimeAdvancedMarkets } from "@/components/live/RealtimeAdvancedMarkets"
 import { FinishedMatchStats } from "@/components/match/FinishedMatchStats"
@@ -106,10 +107,40 @@ export default function MatchDetailPage() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false) // Server-side auth state
 
   // Check match status
-  const isFinished = matchData?.status === 'FINISHED' || matchData?.final_result !== undefined
-  const isLive = !isFinished && (matchData?.status === 'LIVE' || 
-                 (matchData?.momentum !== undefined || matchData?.model_markets !== undefined))
-  const { delta, isConnected, clearDelta } = useLiveMatchWebSocket(matchId, isLive || false)
+  // Calculate if match has likely finished based on time (even if API still says LIVE)
+  const getMatchFinishStatus = () => {
+    if (!matchData) return { isFinished: false, isLive: false }
+    
+    // Explicit finished status
+    const explicitlyFinished = matchData.status === 'FINISHED' || matchData.final_result !== undefined
+    if (explicitlyFinished) {
+      return { isFinished: true, isLive: false }
+    }
+    
+    // Check if match has likely finished based on time
+    if (matchData.kickoff_at) {
+      const kickoffTime = new Date(matchData.kickoff_at).getTime()
+      const now = Date.now()
+      const hoursSinceKickoff = (now - kickoffTime) / (1000 * 60 * 60)
+      
+      // Matches typically last ~2 hours (90 min + stoppage + halftime)
+      // If it's been more than 3 hours since kickoff, match is likely finished
+      const likelyFinished = hoursSinceKickoff > 3
+      
+      if (likelyFinished) {
+        return { isFinished: true, isLive: false }
+      }
+    }
+    
+    // Check if match is actually live
+    const isLiveStatus = matchData.status === 'LIVE' || 
+                        (matchData.momentum !== undefined || matchData.model_markets !== undefined)
+    
+    return { isFinished: false, isLive: isLiveStatus }
+  }
+  
+  const { isFinished, isLive } = getMatchFinishStatus()
+  const { delta, connectionStatus, clearDelta, reconnect } = useLiveMatchWebSocket(matchId, isLive || false)
 
   // Merge WebSocket delta updates into matchData (including odds changes)
   useEffect(() => {
@@ -196,6 +227,31 @@ export default function MatchDetailPage() {
         const json = await resp.json()
         setMatchData(json.match)
         setQuickPurchaseInfo(json.quickPurchase)
+        
+        // Update page title dynamically with actual team names
+        if (json.match?.home?.name && json.match?.away?.name) {
+          const homeTeam = json.match.home.name
+          const awayTeam = json.match.away.name
+          
+          // Check if match is finished (explicit or by time)
+          let matchIsFinished = json.match.status === 'FINISHED' || json.match.final_result !== undefined
+          if (!matchIsFinished && json.match.kickoff_at) {
+            const kickoffTime = new Date(json.match.kickoff_at).getTime()
+            const now = Date.now()
+            const hoursSinceKickoff = (now - kickoffTime) / (1000 * 60 * 60)
+            matchIsFinished = hoursSinceKickoff > 3 // More than 3 hours = likely finished
+          }
+          
+          let pageTitle = `${homeTeam} vs ${awayTeam} | SnapBet AI`
+          if (matchIsFinished && json.match.final_result?.score) {
+            const score = json.match.final_result.score
+            pageTitle = `${homeTeam} ${score.home}-${score.away} ${awayTeam} | SnapBet AI`
+          } else if (json.match.status === 'LIVE' && !matchIsFinished) {
+            pageTitle = `${homeTeam} vs ${awayTeam} (LIVE) | SnapBet AI`
+          }
+          
+          document.title = pageTitle
+        }
         
         // Debug: Log AI analysis availability
         if (json.match?.ai_analysis) {
@@ -447,8 +503,51 @@ export default function MatchDetailPage() {
   const isPurchased = purchaseStatus?.isPurchased || false
   const hasV2 = !!v2Model
 
+  // Generate structured data for SEO (JSON-LD) - only if we have valid team names
+  const structuredData = matchData.home?.name && matchData.away?.name && 
+    matchData.home.name !== 'Home Team' && matchData.away.name !== 'Away Team' &&
+    matchData.home.name !== 'Team A' && matchData.away.name !== 'Team B' ? {
+    '@context': 'https://schema.org',
+    '@type': isFinished ? 'SportsEvent' : 'Event',
+    name: `${matchData.home.name} vs ${matchData.away.name}`,
+    description: `AI-powered match prediction and analysis for ${matchData.home.name} vs ${matchData.away.name}`,
+    startDate: matchData.kickoff_at,
+    location: {
+      '@type': 'Place',
+      name: matchData.league?.name || 'Football Match',
+    },
+    sport: 'Football',
+    ...(isFinished && matchData.final_result?.score && {
+      result: {
+        '@type': 'SportsEventResult',
+        homeTeamScore: matchData.final_result.score.home,
+        awayTeamScore: matchData.final_result.score.away,
+      },
+    }),
+    competitor: [
+      {
+        '@type': 'SportsTeam',
+        name: matchData.home.name,
+      },
+      {
+        '@type': 'SportsTeam',
+        name: matchData.away.name,
+      },
+    ],
+  } : null
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+    <>
+      {/* Structured Data for SEO */}
+      {structuredData && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(structuredData),
+          }}
+        />
+      )}
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
         {/* Back Button */}
         <Button
@@ -478,22 +577,38 @@ export default function MatchDetailPage() {
                 </div>
               </div>
               {(matchData.status === 'LIVE' || isFinished) && (() => {
-                const score = isFinished 
-                  ? (matchData.final_result?.score || matchData.score)
-                  : matchData.score
+                // Get score from multiple possible locations
+                let score = null
+                if (isFinished) {
+                  score = matchData.final_result?.score || matchData.score
+                } else if (matchData.status === 'LIVE') {
+                  // For live matches, check live_data first, then score, then momentum
+                  score = matchData.live_data?.current_score || 
+                          matchData.score || 
+                          (matchData.momentum && matchData.score ? matchData.score : null)
+                }
+                
                 if (!score || score.home === undefined || score.away === undefined) return null
                 return (
-                  <div className={`flex items-center gap-2 ${matchData.status === 'LIVE' ? 'text-emerald-400' : 'text-slate-300'}`}>
-                    {matchData.status === 'LIVE' && (
-                      <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                    )}
-                    <span className="font-bold text-lg">
-                      {score.home} - {score.away}
-                    </span>
-                    {matchData.status === 'LIVE' && matchData.live_data?.minute && (
-                      <span className="text-slate-400 text-sm">
-                        {matchData.live_data.minute}'
+                  <div className="flex flex-col gap-2">
+                    <div className={`flex items-center gap-2 ${matchData.status === 'LIVE' ? 'text-emerald-400' : 'text-slate-300'}`}>
+                      {matchData.status === 'LIVE' && (
+                        <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+                      )}
+                      <span className="font-bold text-lg">
+                        {score.home} - {score.away}
                       </span>
+                      {matchData.status === 'LIVE' && (matchData.live_data?.minute || matchData.momentum?.minute) && (
+                        <span className="text-slate-400 text-sm">
+                          {matchData.live_data?.minute || matchData.momentum?.minute}'
+                        </span>
+                      )}
+                    </div>
+                    {matchData.status === 'LIVE' && (
+                      <ConnectionStatusIndicator 
+                        status={connectionStatus} 
+                        onReconnect={reconnect}
+                      />
                     )}
                   </div>
                 )
@@ -693,18 +808,28 @@ export default function MatchDetailPage() {
         {/* Live Match Components - Only when status=LIVE and not finished */}
         {isLive && !isFinished && (
           <div className="space-y-6">
-            {/* Live Score Card - use momentum.minute and score if live_data not available */}
-            {(matchData.live_data || (matchData.momentum && matchData.score)) && (
-              <LiveScoreCard
-                score={
-                  matchData.live_data?.current_score || 
-                  { home: matchData.score?.home || 0, away: matchData.score?.away || 0 }
-                }
-                minute={matchData.live_data?.minute || matchData.momentum?.minute || 0}
-                period={matchData.live_data?.period || 'Live'}
-                status={matchData.status}
-              />
-            )}
+            {/* Live Score Card - Always show for live matches, use multiple fallbacks for score */}
+            {(() => {
+              // Get score from multiple sources
+              const liveScore = matchData.live_data?.current_score
+              const regularScore = matchData.score
+              const finalScore = matchData.final_result?.score
+              
+              // Determine which score to use
+              const score = liveScore || regularScore || finalScore || { home: 0, away: 0 }
+              const minute = matchData.live_data?.minute || matchData.momentum?.minute || 0
+              const period = matchData.live_data?.period || 'Live'
+              
+              // Always show LiveScoreCard for live matches, even if score is 0-0
+              return (
+                <LiveScoreCard
+                  score={score}
+                  minute={minute}
+                  period={period}
+                  status={matchData.status}
+                />
+              )
+            })()}
             
             {/* Momentum Indicator */}
             {matchData.momentum && (
@@ -1107,8 +1232,9 @@ export default function MatchDetailPage() {
           </div>
           )}
 
-          {/* Real-time Advanced Markets (For Live Matches with Purchase) */}
-          {isPurchased && isLive && matchData.odds?.novig_current && (
+
+          {/* Real-time Advanced Markets (For Live Matches - Show for all live matches, not just purchased) */}
+          {isLive && !isFinished && matchData.odds?.novig_current && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-white">Real-time Advanced Markets</h2>
@@ -1197,6 +1323,7 @@ export default function MatchDetailPage() {
         )}
       </div>
     </div>
+    </>
   )
 }
 

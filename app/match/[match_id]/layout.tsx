@@ -15,38 +15,97 @@ export async function generateMetadata({ params }: MatchLayoutProps): Promise<Me
   const baseUrl = process.env.NEXTAUTH_URL || 'https://www.snapbet.bet'
   
   try {
-    // Try to get match data from QuickPurchase (faster)
+    // First, try to get match data from MarketMatch table (most reliable source for team names)
+    const marketMatch = await prisma.marketMatch.findUnique({
+      where: { matchId: String(match_id) },
+      select: {
+        homeTeam: true,
+        awayTeam: true,
+        league: true,
+        status: true,
+        currentScore: true,
+        finalResult: true,
+        kickoffDate: true,
+      }
+    })
+
+    // Also try QuickPurchase for prediction data
     const quickPurchase = await prisma.quickPurchase.findFirst({
       where: {
         matchId: match_id,
         type: { in: ['prediction', 'tip'] },
         isActive: true,
-        predictionData: { not: null }
       },
       select: {
         matchData: true,
         predictionData: true,
         analysisSummary: true,
-        updatedAt: true
+        updatedAt: true,
+        name: true, // Extract team names from name field if needed
       }
     })
 
-    if (!quickPurchase) {
+    // Determine which data source to use
+    let matchData: any = null
+    let predictionData: any = null
+    let isFinished = false
+    let homeTeam = 'Home Team'
+    let awayTeam = 'Away Team'
+    let league = ''
+    let finalScore: any = null
+
+    if (marketMatch) {
+      // Use MarketMatch data (most reliable)
+      homeTeam = marketMatch.homeTeam || 'Home Team'
+      awayTeam = marketMatch.awayTeam || 'Away Team'
+      league = marketMatch.league || ''
+      isFinished = marketMatch.status === 'FINISHED'
+      finalScore = marketMatch.finalResult || marketMatch.currentScore
+      
+      // Merge with QuickPurchase data if available
+      if (quickPurchase) {
+        matchData = quickPurchase.matchData as any
+        predictionData = quickPurchase.predictionData as any
+        // Override with MarketMatch data if QuickPurchase has placeholder names
+        if (matchData?.home?.name && 
+            (matchData.home.name === 'Home Team' || matchData.home.name === 'Team A' || matchData.home.name.includes('TBD'))) {
+          matchData.home.name = homeTeam
+        }
+        if (matchData?.away?.name && 
+            (matchData.away.name === 'Away Team' || matchData.away.name === 'Team B' || matchData.away.name.includes('TBD'))) {
+          matchData.away.name = awayTeam
+        }
+      }
+    } else if (quickPurchase) {
+      // Fallback to QuickPurchase data
+      matchData = quickPurchase.matchData as any
+      predictionData = quickPurchase.predictionData as any
+      isFinished = matchData?.status === 'FINISHED' || matchData?.final_result !== undefined
+      
+      // Extract team names - check multiple sources
+      homeTeam = matchData?.home?.name || 
+                 (quickPurchase.name ? quickPurchase.name.split(' vs ')[0]?.trim() : null) ||
+                 'Home Team'
+      awayTeam = matchData?.away?.name || 
+                 (quickPurchase.name ? quickPurchase.name.split(' vs ')[1]?.trim() : null) ||
+                 'Away Team'
+      league = matchData?.league?.name || ''
+      finalScore = matchData?.final_result?.score || matchData?.score
+      
+      // Clean up placeholder names
+      if (homeTeam === 'Home Team' || homeTeam === 'Team A' || homeTeam.includes('TBD')) {
+        homeTeam = 'Home Team'
+      }
+      if (awayTeam === 'Away Team' || awayTeam === 'Team B' || awayTeam.includes('TBD')) {
+        awayTeam = 'Away Team'
+      }
+    } else {
+      // No data found
       return {
         title: `Match ${match_id} | SnapBet AI`,
         description: 'View match predictions and analysis powered by AI.',
       }
     }
-
-    const matchData = quickPurchase.matchData as any
-    const predictionData = quickPurchase.predictionData as any
-    const isFinished = matchData?.status === 'FINISHED' || matchData?.final_result !== undefined
-
-    // Extract match info
-    const homeTeam = matchData?.home?.name || 'Home Team'
-    const awayTeam = matchData?.away?.name || 'Away Team'
-    const league = matchData?.league?.name || ''
-    const finalScore = matchData?.final_result?.score || matchData?.score
     
     // Create SEO-friendly title and description
     let title = `${homeTeam} vs ${awayTeam}`
@@ -68,11 +127,46 @@ export async function generateMetadata({ params }: MatchLayoutProps): Promise<Me
       'football prediction',
       'AI betting tips',
       'match analysis',
-      'sports predictions'
-    ].filter(Boolean)
+      'sports predictions',
+      'sports betting',
+      'football tips',
+    ].filter(Boolean).filter((k) => k !== 'Home Team' && k !== 'Away Team' && k !== 'Team A' && k !== 'Team B')
 
     // Build canonical URL
     const canonical = `${baseUrl}/match/${match_id}`
+
+    // Build structured data for SEO (JSON-LD)
+    const structuredData = {
+      '@context': 'https://schema.org',
+      '@type': isFinished ? 'SportsEvent' : 'Event',
+      name: title,
+      description,
+      startDate: marketMatch?.kickoffDate?.toISOString() || matchData?.kickoff_at,
+      location: {
+        '@type': 'Place',
+        name: league || 'Football Match',
+      },
+      sport: 'Football',
+      ...(isFinished && finalScore && {
+        result: {
+          '@type': 'SportsEventResult',
+          homeTeamScore: finalScore.home,
+          awayTeamScore: finalScore.away,
+        },
+      }),
+      ...(homeTeam !== 'Home Team' && awayTeam !== 'Away Team' && {
+        competitor: [
+          {
+            '@type': 'SportsTeam',
+            name: homeTeam,
+          },
+          {
+            '@type': 'SportsTeam',
+            name: awayTeam,
+          },
+        ],
+      }),
+    }
 
     return {
       title,
@@ -95,14 +189,15 @@ export async function generateMetadata({ params }: MatchLayoutProps): Promise<Me
             alt: title,
           },
         ],
-        ...(isFinished && quickPurchase.updatedAt && {
-          publishedTime: quickPurchase.updatedAt.toISOString(),
+        ...(isFinished && (quickPurchase?.updatedAt || marketMatch) && {
+          publishedTime: (quickPurchase?.updatedAt || marketMatch?.kickoffDate)?.toISOString(),
         }),
       },
       twitter: {
         card: 'summary_large_image',
         title,
         description,
+        creator: '@SnapBetAI',
       },
       robots: {
         index: true,
@@ -114,15 +209,16 @@ export async function generateMetadata({ params }: MatchLayoutProps): Promise<Me
           'max-snippet': -1,
         },
       },
-      ...(isFinished && {
-        // Article metadata for finished matches (blog-style)
-        other: {
-          'article:published_time': quickPurchase.updatedAt?.toISOString() || new Date().toISOString(),
-          'article:modified_time': quickPurchase.updatedAt?.toISOString() || new Date().toISOString(),
+      other: {
+        'structured-data': JSON.stringify(structuredData),
+        ...(isFinished && {
+          // Article metadata for finished matches (blog-style)
+          'article:published_time': (quickPurchase?.updatedAt || marketMatch?.kickoffDate)?.toISOString() || new Date().toISOString(),
+          'article:modified_time': (quickPurchase?.updatedAt || marketMatch?.kickoffDate)?.toISOString() || new Date().toISOString(),
           'article:author': 'SnapBet AI',
           'article:section': league || 'Sports',
-        },
-      }),
+        }),
+      },
     }
   } catch (error) {
     console.error('Error generating match metadata:', error)
