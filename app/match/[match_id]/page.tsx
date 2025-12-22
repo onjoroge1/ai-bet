@@ -1233,8 +1233,8 @@ export default function MatchDetailPage() {
           )}
 
 
-          {/* Real-time Advanced Markets (For Live Matches - Show for all live matches, not just purchased) */}
-          {isLive && !isFinished && matchData.odds?.novig_current && (
+          {/* Real-time Advanced Markets (For Live Matches - Premium, requires purchase) */}
+          {isLive && !isFinished && isPurchased && matchData.odds?.novig_current && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-white">Real-time Advanced Markets</h2>
@@ -1251,8 +1251,8 @@ export default function MatchDetailPage() {
             </div>
           )}
 
-          {/* Live Markets Card - Show when we have model_markets data */}
-          {matchData.model_markets && (
+          {/* Live Markets Card - Premium, requires purchase */}
+          {isLive && !isFinished && isPurchased && matchData.model_markets && (
             <LiveMarketsCard markets={matchData.model_markets} />
           )}
 
