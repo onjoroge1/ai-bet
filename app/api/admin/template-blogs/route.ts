@@ -2,21 +2,24 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import prisma from '@/lib/db'
-import { TemplateBlogGenerator, type QuickPurchaseLite } from '@/lib/blog/template-blog-generator'
+import { TemplateBlogGenerator, type QuickPurchaseLite, type MarketMatchWithQP } from '@/lib/blog/template-blog-generator'
 
-// GET /api/admin/template-blogs - Get eligible QuickPurchase matches
+// GET /api/admin/template-blogs - Get eligible MarketMatch records
 export async function GET() {
   try {
-    const matches = await TemplateBlogGenerator.getEligibleQuickPurchases()
+    console.log('[TemplateBlog API] Starting fetch...')
+    const matches = await TemplateBlogGenerator.getEligibleMarketMatches()
+    console.log(`[TemplateBlog API] Returning ${matches.length} matches`)
     
     return NextResponse.json({
       success: true,
       data: matches,
     })
   } catch (error) {
-    console.error('Error fetching eligible matches:', error)
+    console.error('[TemplateBlog API] Error fetching eligible matches:', error)
+    console.error('[TemplateBlog API] Error details:', error instanceof Error ? error.stack : error)
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch matches' },
+      { success: false, error: 'Failed to fetch matches', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }
@@ -33,7 +36,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const body = await req.json() as { action?: 'generate_all' | 'generate_single'; matchId?: string }
+    const body = await req.json() as { action?: 'generate_all' | 'generate_single'; marketMatchId?: string }
 
     if (body.action === 'generate_all') {
       const result = await generateAllTemplateDrafts()
@@ -41,15 +44,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.action === 'generate_single') {
-      if (!body.matchId) {
+      if (!body.marketMatchId) {
         return NextResponse.json(
-          { success: false, error: 'matchId required' },
+          { success: false, error: 'marketMatchId required' },
           { status: 400 }
         )
       }
 
-      const matches = await TemplateBlogGenerator.getEligibleQuickPurchases()
-      const target = matches.find((m) => m.id === body.matchId)
+      const matches = await TemplateBlogGenerator.getEligibleMarketMatches()
+      const target = matches.find((m) => m.id === body.marketMatchId)
       
       if (!target) {
         return NextResponse.json(
@@ -58,7 +61,7 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      const result = await generateDraftForQuickPurchase(target)
+      const result = await generateDraftForMarketMatch(target)
       return NextResponse.json({ success: true, data: result })
     }
 
@@ -76,12 +79,12 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Check if draft already exists for QuickPurchase
+ * Check if draft already exists for MarketMatch
  */
-async function hasExistingDraftForQP(quickPurchaseId: string): Promise<boolean> {
+async function hasExistingDraftForMarketMatch(marketMatchId: string): Promise<boolean> {
   const existing = await prisma.blogPost.findFirst({
     where: { 
-      sourceUrl: quickPurchaseId,
+      marketMatchId: marketMatchId,
       isActive: true // Only check for active blogs
     },
     select: { id: true },
@@ -90,7 +93,83 @@ async function hasExistingDraftForQP(quickPurchaseId: string): Promise<boolean> 
 }
 
 /**
- * Generate and save draft for a single QuickPurchase
+ * Generate and save draft for a single MarketMatch
+ */
+async function generateDraftForMarketMatch(marketMatch: MarketMatchWithQP): Promise<{ created: boolean; error?: string }> {
+  if (!marketMatch.id) {
+    console.error('[TemplateBlog] No MarketMatch ID provided')
+    return { created: false, error: 'No MarketMatch ID' }
+  }
+
+  console.log(`[TemplateBlog] Processing: ${marketMatch.homeTeam} vs ${marketMatch.awayTeam} (${marketMatch.id})`)
+
+  const exists = await hasExistingDraftForMarketMatch(marketMatch.id)
+  if (exists) {
+    console.log(`[TemplateBlog] Draft already exists for MarketMatch ${marketMatch.id}`)
+    return { created: false, error: 'Draft already exists' }
+  }
+
+  // Get QuickPurchase data for blog generation
+  const quickPurchase = marketMatch.quickPurchases[0]
+  if (!quickPurchase || !quickPurchase.id) {
+    console.error('[TemplateBlog] No QuickPurchase data available')
+    return { created: false, error: 'No QuickPurchase data available' }
+  }
+
+  try {
+    console.log(`[TemplateBlog] Starting draft generation for ${marketMatch.homeTeam} vs ${marketMatch.awayTeam}`)
+    const draft = TemplateBlogGenerator.generateTemplateOnlyDraft(quickPurchase, marketMatch)
+    console.log(`[TemplateBlog] Draft generated successfully`)
+
+    // Generate slug from title
+    const slug = draft.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '')
+
+    // Check if slug already exists
+    const existingSlug = await prisma.blogPost.findFirst({
+      where: { slug },
+      select: { id: true },
+    })
+
+    let finalSlug = slug
+    if (existingSlug) {
+      finalSlug = `${slug}-${marketMatch.id.slice(-6)}`
+    }
+
+    console.log(`[TemplateBlog] Creating blog post with slug: ${finalSlug}`)
+    await prisma.blogPost.create({
+      data: {
+        title: draft.title,
+        slug: finalSlug,
+        excerpt: draft.excerpt,
+        content: draft.contentHtml,
+        author: 'AI System',
+        category: 'Predictions',
+        tags: draft.tags,
+        readTime: draft.readTimeMinutes,
+        seoTitle: draft.title,
+        seoDescription: draft.excerpt,
+        isPublished: true, // Auto-publish template blogs (they use predefined data, no manual review needed)
+        isActive: true,
+        aiGenerated: false, // Key: No AI badge for templates
+        marketMatchId: marketMatch.id, // Link to MarketMatch
+        sourceUrl: quickPurchase.id, // Keep QuickPurchase reference for backward compatibility
+      },
+    })
+
+    console.log(`[TemplateBlog] Blog post created successfully: ${finalSlug}`)
+    return { created: true }
+  } catch (error) {
+    console.error(`[TemplateBlog] Error generating blog for MarketMatch ${marketMatch.id}:`, error)
+    return { created: false, error: error instanceof Error ? error.message : 'Unknown error' }
+  }
+}
+
+/**
+ * Generate and save draft for a single QuickPurchase (legacy method, kept for backward compatibility)
+ * @deprecated Use generateDraftForMarketMatch instead
  */
 async function generateDraftForQuickPurchase(qp: QuickPurchaseLite): Promise<{ created: boolean; error?: string }> {
   if (!qp.id) {
@@ -157,15 +236,15 @@ async function generateDraftForQuickPurchase(qp: QuickPurchaseLite): Promise<{ c
 }
 
 /**
- * Generate all eligible template drafts
+ * Generate all eligible template drafts from MarketMatch
  */
 async function generateAllTemplateDrafts(): Promise<{ success: number; skipped: number }> {
-  const matches = await TemplateBlogGenerator.getEligibleQuickPurchases()
+  const matches = await TemplateBlogGenerator.getEligibleMarketMatches()
   let success = 0
   let skipped = 0
 
-  for (const qp of matches) {
-    const result = await generateDraftForQuickPurchase(qp)
+  for (const match of matches) {
+    const result = await generateDraftForMarketMatch(match)
     if (result.created) {
       success += 1
     } else {

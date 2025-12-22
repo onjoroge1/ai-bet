@@ -407,7 +407,7 @@ export default function BlogAutomationPage() {
     }
   }
 
-  const handleTemplateBlogGeneration = async (action: 'generate_all' | 'generate_single', matchId?: string) => {
+  const handleTemplateBlogGeneration = async (action: 'generate_all' | 'generate_single', marketMatchId?: string) => {
     try {
       setRefreshing(true)
       
@@ -416,7 +416,7 @@ export default function BlogAutomationPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ action, matchId })
+        body: JSON.stringify({ action, marketMatchId })
       })
 
       const data = await response.json()
@@ -1096,7 +1096,7 @@ export default function BlogAutomationPage() {
                       <p>• Links back to original QuickPurchase via sourceUrl</p>
                       <p>• No AI badge - set as aiGenerated: false</p>
                       <p>• Team logos available via manual API fetch</p>
-                      <p>• Minimum 60% confidence threshold</p>
+                      <p>• Creates blogs for all matches with prediction data (no confidence threshold)</p>
                     </div>
                   </div>
 
@@ -1267,43 +1267,57 @@ export default function BlogAutomationPage() {
                     <div className="space-y-4">
                       <h3 className="text-white font-semibold">Eligible Matches</h3>
                       <div className="space-y-2">
-                        {templateMatches.slice(0, 10).map((match) => (
-                          <Card key={match.id} className="bg-slate-700 border-slate-600">
-                            <CardContent className="p-4">
-                              <div className="flex items-center justify-between">
-                                <div className="flex-1">
-                                  <h4 className="text-white font-semibold">{match.name}</h4>
-                                  {match.description && (
-                                    <p className="text-slate-400 text-sm mt-1">{match.description.slice(0, 100)}...</p>
-                                  )}
-                                  <div className="flex items-center gap-4 mt-2 text-sm">
-                                    {match.confidenceScore && (
-                                      <span className="text-slate-300">
-                                        Confidence: <strong>{match.confidenceScore}%</strong>
-                                      </span>
+                        {templateMatches.slice(0, 10).map((match) => {
+                          const qp = match.quickPurchases?.[0]
+                          const matchName = `${match.homeTeam} vs ${match.awayTeam}`
+                          return (
+                            <Card key={match.id} className="bg-slate-700 border-slate-600">
+                              <CardContent className="p-4">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex-1">
+                                    <h4 className="text-white font-semibold">{matchName}</h4>
+                                    <div className="flex items-center gap-4 mt-1 text-sm text-slate-400">
+                                      <span>{match.league}</span>
+                                      <span>•</span>
+                                      <span>{new Date(match.kickoffDate).toLocaleDateString()}</span>
+                                    </div>
+                                    {qp && (
+                                      <div className="flex items-center gap-4 mt-2 text-sm">
+                                        {qp.confidenceScore && (
+                                          <span className="text-slate-300">
+                                            Confidence: <strong>{qp.confidenceScore}%</strong>
+                                          </span>
+                                        )}
+                                        {qp.valueRating && (
+                                          <span className="text-slate-300">
+                                            Value: <strong>{qp.valueRating}</strong>
+                                          </span>
+                                        )}
+                                      </div>
                                     )}
-                                    {match.valueRating && (
-                                      <span className="text-slate-300">
-                                        Value: <strong>{match.valueRating}</strong>
-                                      </span>
+                                  </div>
+                                  <div className="ml-4 flex flex-col gap-2 items-end">
+                                    {match.blogPosts && match.blogPosts.length > 0 ? (
+                                      <Badge className={match.blogPosts[0].isPublished ? "bg-green-600" : "bg-yellow-600"}>
+                                        {match.blogPosts[0].isPublished ? "Published" : "Draft"}
+                                      </Badge>
+                                    ) : (
+                                      <Button
+                                        onClick={() => handleTemplateBlogGeneration('generate_single', match.id)}
+                                        disabled={refreshing}
+                                        size="sm"
+                                        className="bg-emerald-600 hover:bg-emerald-700"
+                                      >
+                                        <FileText className="w-4 h-4 mr-1" />
+                                        Generate
+                                      </Button>
                                     )}
                                   </div>
                                 </div>
-                                <div className="ml-4">
-                                  <Button
-                                    onClick={() => handleTemplateBlogGeneration('generate_single', match.id)}
-                                    disabled={refreshing}
-                                    size="sm"
-                                    className="bg-emerald-600 hover:bg-emerald-700"
-                                  >
-                                    <FileText className="w-4 h-4 mr-1" />
-                                    Generate
-                                  </Button>
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
+                              </CardContent>
+                            </Card>
+                          )
+                        })}
                       </div>
                     </div>
                   )}

@@ -1642,6 +1642,8 @@ model BlogPost {
   // Relations
   media              BlogMedia[]
   comments           BlogComment[]
+  marketMatchId      String?
+  marketMatch        MarketMatch? @relation(fields: [marketMatchId], references: [id])
 
 
 
@@ -1660,6 +1662,8 @@ model BlogPost {
   @@index([aiGenerated, isPublished])
 
   @@index([sourceUrl])
+  @@index([marketMatchId])
+  @@index([marketMatchId, isPublished])
 
 }
 
@@ -2164,6 +2168,7 @@ model MarketMatch {
   
   // Relations
   quickPurchases    QuickPurchase[]
+  blogPosts         BlogPost[]
   
   @@index([matchId])
   @@index([status, kickoffDate])

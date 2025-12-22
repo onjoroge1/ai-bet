@@ -30,6 +30,10 @@
     {
       "path": "/api/admin/predictions/sync-from-availability-scheduled",
       "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/admin/template-blogs/scheduled",
+      "schedule": "0 2 * * *"
     }
   ],
   "env": {
