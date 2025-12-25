@@ -1,11 +1,13 @@
 import { NextRequest } from 'next/server'
 import { getPrimarySupportedCountries } from '@/lib/countries'
+import { normalizeBaseUrl, buildSitemapUrl } from '@/lib/sitemap-helpers'
 
 // Prevent pre-rendering during build
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
-  const baseUrl = process.env.NEXTAUTH_URL || 'https://snapbet.ai'
+  // Normalize baseUrl to ensure no trailing slash (prevents double slashes)
+  const baseUrl = normalizeBaseUrl()
   const currentDate = new Date().toISOString()
 
   // Get supported countries for country-specific pages
@@ -16,19 +18,19 @@ export async function GET(request: NextRequest) {
     const countryCode = country.code.toLowerCase()
     return [
       {
-        url: `${baseUrl}/${countryCode}`,
+        url: buildSitemapUrl(baseUrl, `/${countryCode}`),
         lastModified: currentDate,
         changeFrequency: 'daily',
         priority: 0.9,
       },
       {
-        url: `${baseUrl}/${countryCode}/blog`,
+        url: buildSitemapUrl(baseUrl, `/${countryCode}/blog`),
         lastModified: currentDate,
         changeFrequency: 'daily',
         priority: 0.7,
       },
       {
-        url: `${baseUrl}/${countryCode}/faq`,
+        url: buildSitemapUrl(baseUrl, `/${countryCode}/faq`),
         lastModified: currentDate,
         changeFrequency: 'weekly',
         priority: 0.6,
@@ -48,7 +50,7 @@ ${countryPages.map(page => `  <url>
 
   return new Response(xml, {
     headers: {
-      'Content-Type': 'application/xml',
+      'Content-Type': 'application/xml; charset=utf-8',
       'Cache-Control': 'public, max-age=3600, s-maxage=3600',
     },
   })

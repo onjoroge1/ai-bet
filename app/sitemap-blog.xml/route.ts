@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { getPrimarySupportedCountries } from '@/lib/countries'
+import { normalizeBaseUrl, buildSitemapUrl } from '@/lib/sitemap-helpers'
 import prisma from '@/lib/db'
 
 interface BlogPostData {
@@ -13,7 +14,8 @@ interface BlogPostData {
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
-  const baseUrl = process.env.NEXTAUTH_URL || 'https://snapbet.ai'
+  // Normalize baseUrl to ensure no trailing slash (prevents double slashes)
+  const baseUrl = normalizeBaseUrl()
   const currentDate = new Date().toISOString()
 
   try {
@@ -47,7 +49,7 @@ export async function GET(request: NextRequest) {
 
     // Add main blog pages
     blogUrls.push({
-      url: `${baseUrl}/blog`,
+      url: buildSitemapUrl(baseUrl, '/blog'),
       lastModified: currentDate,
       changeFrequency: 'daily',
       priority: 0.7,
@@ -59,7 +61,7 @@ export async function GET(request: NextRequest) {
       
       // Main blog post URL
       blogUrls.push({
-        url: `${baseUrl}/blog/${post.slug}`,
+        url: buildSitemapUrl(baseUrl, `/blog/${post.slug}`),
         lastModified: postDate.toISOString(),
         changeFrequency: 'monthly',
         priority: 0.6,
@@ -71,7 +73,7 @@ export async function GET(request: NextRequest) {
           const country = supportedCountries.find(c => c.code === countryCode)
           if (country) {
             blogUrls.push({
-              url: `${baseUrl}/${countryCode.toLowerCase()}/blog/${post.slug}`,
+              url: buildSitemapUrl(baseUrl, `/${countryCode.toLowerCase()}/blog/${post.slug}`),
               lastModified: postDate.toISOString(),
               changeFrequency: 'monthly',
               priority: 0.6,
@@ -93,7 +95,7 @@ ${blogUrls.map(page => `  <url>
 
     return new Response(xml, {
       headers: {
-        'Content-Type': 'application/xml',
+        'Content-Type': 'application/xml; charset=utf-8',
         'Cache-Control': 'public, max-age=3600, s-maxage=3600',
       },
     })
@@ -101,10 +103,11 @@ ${blogUrls.map(page => `  <url>
     console.error('Error generating blog sitemap:', error)
     
     // Fallback to basic blog sitemap
+    const fallbackBlogUrl = buildSitemapUrl(baseUrl, '/blog')
     const fallbackXml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>${baseUrl}/blog</loc>
+    <loc>${fallbackBlogUrl}</loc>
     <lastmod>${currentDate}</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
@@ -113,7 +116,7 @@ ${blogUrls.map(page => `  <url>
 
     return new Response(fallbackXml, {
       headers: {
-        'Content-Type': 'application/xml',
+        'Content-Type': 'application/xml; charset=utf-8',
         'Cache-Control': 'public, max-age=3600, s-maxage=3600',
       },
     })

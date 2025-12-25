@@ -1,91 +1,105 @@
 import { NextRequest } from 'next/server'
+import { normalizeBaseUrl, buildSitemapUrl } from '@/lib/sitemap-helpers'
 import prisma from '@/lib/db'
 
 // Prevent pre-rendering during build
 export const dynamic = 'force-dynamic'
 
-const BASE_URL = process.env.BACKEND_API_URL || process.env.BACKEND_URL
-const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY || 'betgenius_secure_key_2024'
-
 /**
- * Sitemap for finished matches
- * Uses backend API to get authoritative list of finished matches,
- * then cross-references with QuickPurchase to ensure we only include
+ * Sitemap for all matches (UPCOMING, LIVE, FINISHED)
+ * Uses MarketMatch table as single source of truth
+ * Cross-references with QuickPurchase to ensure we only include
  * matches with predictionData (content requirement)
  */
 export async function GET(request: NextRequest) {
-  const baseUrl = process.env.NEXTAUTH_URL || 'https://www.snapbet.bet'
+  // Normalize baseUrl to ensure no trailing slash (prevents double slashes)
+  const baseUrl = normalizeBaseUrl()
 
   try {
-    // Step 1: Get finished matches from backend API (source of truth)
-    let finishedMatchIds: string[] = []
-    
-    if (BASE_URL) {
-      try {
-        // Call backend API to get finished matches (limit to 500 most recent)
-        const finishedMatchesUrl = `${BASE_URL}/market?status=finished&limit=500`
-        console.log('[Sitemap] Fetching finished matches from backend:', finishedMatchesUrl)
-        
-        const response = await fetch(finishedMatchesUrl, {
-          headers: {
-            Authorization: `Bearer ${API_KEY}`,
-          },
-          next: { revalidate: 3600 } // Cache for 1 hour
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          // Extract match IDs from backend response
-          if (data.matches && Array.isArray(data.matches)) {
-            finishedMatchIds = data.matches
-              .map((match: any) => match.match_id?.toString())
-              .filter((id: string) => id !== undefined && id !== null)
-          }
-          console.log(`[Sitemap] Found ${finishedMatchIds.length} finished matches from backend API`)
-        } else {
-          console.warn(`[Sitemap] Backend API returned ${response.status}, falling back to database`)
-        }
-      } catch (error) {
-        console.error('[Sitemap] Error fetching from backend API:', error)
-        // Fall back to database-only approach
-      }
-    }
-
-    // Step 2: Get QuickPurchase records with predictionData
-    // If we have match IDs from backend, filter by them; otherwise get all with predictionData
-    const quickPurchaseWhere: any = {
-      type: { in: ['prediction', 'tip'] },
-      isActive: true,
-      predictionData: { not: null },
-    }
-
-    // If we have finished match IDs from backend, filter by them
-    if (finishedMatchIds.length > 0) {
-      quickPurchaseWhere.matchId = { in: finishedMatchIds }
-    }
-
-    const quickPurchases = await prisma.quickPurchase.findMany({
-      where: quickPurchaseWhere,
+    // Step 1: Get all MarketMatch records with active statuses
+    // Include UPCOMING, LIVE, and FINISHED matches (exclude CANCELLED, POSTPONED)
+    const marketMatches = await prisma.marketMatch.findMany({
+      where: {
+        status: { in: ['UPCOMING', 'LIVE', 'FINISHED'] },
+        isActive: true,
+        isArchived: false,
+      },
       select: {
         matchId: true,
+        status: true,
         updatedAt: true,
-        createdAt: true,
+        kickoffDate: true,
+        quickPurchases: {
+          where: {
+            type: { in: ['prediction', 'tip'] },
+            isActive: true,
+            isPredictionActive: true,
+            predictionData: { not: null },
+          },
+          select: {
+            id: true,
+            updatedAt: true,
+          },
+          take: 1, // Only need to check if predictionData exists
+        },
       },
-      orderBy: {
-        updatedAt: 'desc',
-      },
-      take: 1000, // Limit to most recent 1000
+      orderBy: [
+        { status: 'asc' }, // UPCOMING first, then LIVE, then FINISHED
+        { kickoffDate: 'desc' }, // Most recent first within each status
+      ],
+      take: 5000, // Increased limit to include more matches
     })
 
-    console.log(`[Sitemap] Found ${quickPurchases.length} QuickPurchase records with predictionData`)
+    console.log(`[Sitemap] Found ${marketMatches.length} MarketMatch records`)
 
-    // Step 3: Create sitemap entries
-    const matchUrls = quickPurchases.map((qp) => ({
-      url: `${baseUrl}/match/${qp.matchId}`,
-      lastModified: qp.updatedAt.toISOString(),
-      changeFrequency: 'weekly' as const, // Finished matches don't change often
-      priority: 0.6, // Medium priority - good for SEO but not highest
-    }))
+    // Step 2: Filter to only matches that have QuickPurchase with predictionData
+    const matchesWithPredictions = marketMatches.filter(
+      (match) => match.quickPurchases.length > 0
+    )
+
+    console.log(
+      `[Sitemap] Found ${matchesWithPredictions.length} matches with predictionData`
+    )
+
+    // Step 3: Create sitemap entries with status-based priorities and change frequencies
+    const matchUrls = matchesWithPredictions.map((match) => {
+      // Determine priority and change frequency based on status
+      let priority: number
+      let changeFrequency: 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never'
+
+      switch (match.status) {
+        case 'UPCOMING':
+          priority = 0.8 // High priority - users actively search for upcoming predictions
+          changeFrequency = 'daily' // May change before kickoff
+          break
+        case 'LIVE':
+          priority = 0.8 // High priority - live matches are very relevant
+          changeFrequency = 'hourly' // Changing rapidly during match
+          break
+        case 'FINISHED':
+          priority = 0.6 // Lower priority - historical content
+          changeFrequency = 'weekly' // Rarely changes after completion
+          break
+        default:
+          priority = 0.6
+          changeFrequency = 'weekly'
+      }
+
+      // Use the most recent updatedAt from either MarketMatch or QuickPurchase
+      const quickPurchaseUpdatedAt =
+        match.quickPurchases[0]?.updatedAt || match.updatedAt
+      const lastModified =
+        quickPurchaseUpdatedAt > match.updatedAt
+          ? quickPurchaseUpdatedAt
+          : match.updatedAt
+
+      return {
+        url: buildSitemapUrl(baseUrl, `/match/${match.matchId}`),
+        lastModified: lastModified.toISOString(),
+        changeFrequency,
+        priority,
+      }
+    })
 
     // Generate XML
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -104,7 +118,7 @@ ${matchUrls
 
     return new Response(xml, {
       headers: {
-        'Content-Type': 'application/xml',
+        'Content-Type': 'application/xml; charset=utf-8',
         'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
       },
     })
