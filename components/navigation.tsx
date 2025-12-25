@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Menu, X, TrendingUp, User, MapPin, BookOpen, Target, Crown, Radio, HelpCircle, BarChart3, Gift, RefreshCw, Activity } from "lucide-react"
+import { Menu, X, User, MapPin, BookOpen, Target, Crown, Radio, HelpCircle, BarChart3, Gift, RefreshCw, Activity } from "lucide-react"
 import { useUserCountry } from "@/contexts/user-country-context"
 import { useSession } from "next-auth/react"
 import { LogoutButton } from "@/components/auth/logout-button"
@@ -79,11 +79,10 @@ export function Navigation() {
     return (
       <nav ref={navRef} className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-20 min-h-[64px]">
             {/* Logo skeleton */}
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-slate-700 rounded-lg animate-pulse" />
-              <div className="h-6 w-24 bg-slate-700 rounded animate-pulse" />
+            <div className="flex items-center">
+              <div className="h-14 w-40 bg-slate-700 rounded animate-pulse" />
             </div>
             {/* Right side skeleton */}
             <div className="flex items-center space-x-3">
@@ -119,13 +118,30 @@ export function Navigation() {
   return (
     <nav ref={navRef} className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800">
       <div className="max-w-7xl mx-auto px-4">
-        <div className="flex items-center justify-between h-16">
-          {/* Logo - Simplified with Homepage Link */}
-          <Link href="/" className="flex items-center space-x-3 hover:opacity-90 transition-opacity">
-            <div className="w-8 h-8 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-lg flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-slate-900" />
-            </div>
-            <span className="text-xl font-bold text-white">SnapBet</span>
+        <div className="flex items-center justify-between h-20 min-h-[64px]">
+          {/* Logo - SnapBet Brand Image */}
+          <Link href="/" className="flex items-center hover:opacity-90 transition-opacity flex-shrink-0 z-10 relative min-w-[120px]">
+            <img
+              src="/uploads/image/snapbet_logo.png"
+              alt="SnapBet"
+              className="h-16 w-auto max-h-20 object-contain"
+              style={{ minHeight: '48px', minWidth: '120px', display: 'block', visibility: 'visible', opacity: 1 }}
+              onError={(e) => {
+                console.error('Logo image failed to load:', e.currentTarget.src)
+                // Fallback: show text if image fails
+                e.currentTarget.style.display = 'none'
+                const parent = e.currentTarget.parentElement
+                if (parent && !parent.querySelector('.logo-fallback')) {
+                  const fallback = document.createElement('span')
+                  fallback.className = 'logo-fallback text-xl font-bold text-white'
+                  fallback.textContent = 'SnapBet'
+                  parent.appendChild(fallback)
+                }
+              }}
+              onLoad={() => {
+                console.log('Logo image loaded successfully')
+              }}
+            />
           </Link>
 
           {/* Desktop Navigation - Cleaner spacing */}
