@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { randomUUID } from 'crypto'
-
-// This endpoint is called by cron jobs
-// Uses CRON_SECRET for authentication instead of user session
 
 interface MarketData {
   dnb?: { home: number; away: number }
   btts?: { yes: number; no: number }
   totals?: Record<string, { over: number; under: number }>
   double_chance?: { "12": number; "1X": number; "X2": number }
+  win_to_nil?: { home: number; away: number }
 }
 
 interface SGP {
@@ -31,7 +31,7 @@ interface SGP {
   confidence: 'high' | 'medium' | 'low'
 }
 
-async function generateAndSyncSGPs() {
+async function generateSGPs(): Promise<SGP[]> {
   const upcomingMatches = await prisma.marketMatch.findMany({
     where: {
       status: 'UPCOMING',
@@ -179,7 +179,7 @@ async function generateAndSyncSGPs() {
 
             const combinedProb = leg1.probability * leg2.probability
             const fairOdds = 1 / combinedProb
-            const correlationPenalty = 0.85
+            const correlationPenalty = 0.85 // Default correlation penalty for SGPs
             const adjustedProb = combinedProb * correlationPenalty
             const impliedOdds = 1 / adjustedProb
             const edgePct = ((impliedOdds - fairOdds) / fairOdds) * 100
@@ -228,168 +228,171 @@ async function generateAndSyncSGPs() {
     }
   }
 
-  let created = 0
-  let skipped = 0
-  let errors = 0
-
-  for (const sgp of sgps) {
-    try {
-      // Verify match exists in MarketMatch and get team names
-      const matchData = await prisma.marketMatch.findUnique({
-        where: { matchId: sgp.matchId },
-        select: {
-          homeTeam: true,
-          awayTeam: true,
-          league: true
-        }
-      })
-
-      if (!matchData) {
-        logger.warn('Match not found in MarketMatch, skipping parlay', {
-          tags: ['api', 'admin', 'parlays', 'cron'],
-          data: { matchId: sgp.matchId }
-        })
-        skipped++
-        continue
-      }
-
-      // Use MarketMatch team names (most reliable)
-      const homeTeam = matchData.homeTeam || sgp.homeTeam
-      const awayTeam = matchData.awayTeam || sgp.awayTeam
-
-      if (homeTeam === 'TBD' || awayTeam === 'TBD' || !homeTeam || !awayTeam) {
-        logger.warn('Match has invalid team names, skipping parlay', {
-          tags: ['api', 'admin', 'parlays', 'cron'],
-          data: { matchId: sgp.matchId, homeTeam, awayTeam }
-        })
-        skipped++
-        continue
-      }
-
-      const existing = await prisma.parlayConsensus.findFirst({
-        where: {
-          parlayType: 'single_game',
-          legs: {
-            every: {
-              matchId: sgp.matchId
-            }
-          }
-        },
-        include: { legs: true }
-      })
-
-      if (existing) {
-        const existingLegOutcomes = existing.legs.map(l => l.outcome).sort().join(',')
-        const newLegOutcomes = sgp.legs.map(l => l.outcome).sort().join(',')
-        
-        if (existingLegOutcomes === newLegOutcomes) {
-          skipped++
-          continue
-        }
-      }
-
-      const correlationPenalty = sgp.legs.length === 2 ? 0.85 : 0.80
-      const adjustedProb = sgp.combinedProb * correlationPenalty
-      const impliedOdds = 1 / adjustedProb
-      const edgePct = ((impliedOdds - sgp.fairOdds) / sgp.fairOdds) * 100
-
-      const parlayId = randomUUID()
-      const parlayConsensus = await prisma.parlayConsensus.create({
-        data: {
-          parlayId,
-          apiVersion: 'v2',
-          legCount: sgp.legs.length,
-          combinedProb: sgp.combinedProb,
-          correlationPenalty,
-          adjustedProb,
-          impliedOdds,
-          edgePct,
-          confidenceTier: sgp.confidence,
-          parlayType: 'single_game',
-          leagueGroup: matchData.league || sgp.league,
-          earliestKickoff: sgp.kickoffDate,
-          latestKickoff: sgp.kickoffDate,
-          kickoffWindow: 'today',
-          status: 'active',
-          syncedAt: new Date()
-        }
-      })
-
-      for (let i = 0; i < sgp.legs.length; i++) {
-        const leg = sgp.legs[i]
-        await prisma.parlayLeg.create({
-          data: {
-            parlayId: parlayConsensus.id,
-            matchId: sgp.matchId,
-            outcome: leg.outcome,
-            homeTeam, // Use validated team names from MarketMatch
-            awayTeam, // Use validated team names from MarketMatch
-            modelProb: leg.probability,
-            decimalOdds: 1 / leg.probability,
-            edge: edgePct / sgp.legs.length,
-            legOrder: i + 1
-          }
-        })
-      }
-
-      created++
-  } catch (error) {
-      errors++
-      logger.error('Error creating parlay in cron job', {
-        tags: ['api', 'admin', 'parlays', 'cron'],
-        data: {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          matchId: sgp.matchId
-        }
-      })
-    }
-  }
-
-  return { created, skipped, errors, total: sgps.length }
+  return sgps.sort((a, b) => b.combinedProb - a.combinedProb)
 }
 
 /**
- * POST /api/admin/parlays/sync-scheduled - Cron job endpoint for automatic sync
+ * POST /api/admin/parlays/sync-generated - Generate and sync parlays to database
  */
 export async function POST(req: NextRequest) {
   try {
-    // Verify CRON_SECRET
-    const authHeader = req.headers.get('authorization')
-    const cronSecret = process.env.CRON_SECRET
-
-    if (!cronSecret) {
-      logger.error('CRON_SECRET not configured', {
-        tags: ['api', 'admin', 'parlays', 'cron']
-      })
-      return NextResponse.json({ error: 'Cron secret not configured' }, { status: 500 })
-    }
-    
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      logger.warn('Unauthorized cron job attempt', {
-        tags: ['api', 'admin', 'parlays', 'cron']
-      })
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.role || session.user.role.toLowerCase() !== 'admin') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    logger.info('🕐 CRON: Starting parlay sync', {
-      tags: ['api', 'admin', 'parlays', 'cron']
+    logger.info('Syncing generated parlays to database', {
+      tags: ['api', 'admin', 'parlays', 'sync']
     })
 
-    const result = await generateAndSyncSGPs()
+    const sgps = await generateSGPs()
+    let created = 0
+    let skipped = 0
+    let errors = 0
 
-    logger.info('🕐 CRON: Completed parlay sync', {
-      tags: ['api', 'admin', 'parlays', 'cron'],
-      data: result
+    for (const sgp of sgps) {
+      try {
+        // Verify match exists in MarketMatch and get team names
+        const matchData = await prisma.marketMatch.findUnique({
+          where: { matchId: sgp.matchId },
+          select: {
+            homeTeam: true,
+            awayTeam: true,
+            league: true
+          }
+        })
+
+        if (!matchData) {
+          logger.warn('Match not found in MarketMatch, skipping parlay', {
+            tags: ['api', 'admin', 'parlays', 'sync'],
+            data: { matchId: sgp.matchId }
+          })
+          skipped++
+          continue
+        }
+
+        // Use MarketMatch team names (most reliable)
+        const homeTeam = matchData.homeTeam || sgp.homeTeam
+        const awayTeam = matchData.awayTeam || sgp.awayTeam
+
+        if (homeTeam === 'TBD' || awayTeam === 'TBD' || !homeTeam || !awayTeam) {
+          logger.warn('Match has invalid team names, skipping parlay', {
+            tags: ['api', 'admin', 'parlays', 'sync'],
+            data: { matchId: sgp.matchId, homeTeam, awayTeam }
+          })
+          skipped++
+          continue
+        }
+
+        // Check if parlay already exists (same match, same leg outcomes)
+        const newLegOutcomes = sgp.legs.map(l => l.outcome).sort().join('|')
+        const existing = await prisma.parlayConsensus.findFirst({
+          where: {
+            parlayType: 'single_game',
+            legs: {
+              every: {
+                matchId: sgp.matchId
+              },
+              some: {
+                outcome: { in: sgp.legs.map(l => l.outcome) }
+              }
+            }
+          },
+          include: { 
+            legs: {
+              orderBy: { legOrder: 'asc' }
+            }
+          }
+        })
+
+        if (existing) {
+          // Check if legs match exactly
+          const existingLegOutcomes = existing.legs.map(l => l.outcome).sort().join('|')
+          
+          if (existingLegOutcomes === newLegOutcomes && existing.legs.length === sgp.legs.length) {
+            skipped++
+            continue
+          }
+        }
+
+        // Calculate parlay metrics
+        const correlationPenalty = sgp.legs.length === 2 ? 0.85 : 0.80
+        const adjustedProb = sgp.combinedProb * correlationPenalty
+        const impliedOdds = 1 / adjustedProb
+        const edgePct = ((impliedOdds - sgp.fairOdds) / sgp.fairOdds) * 100
+
+        // Create parlay
+        const parlayId = randomUUID()
+        const parlayConsensus = await prisma.parlayConsensus.create({
+          data: {
+            parlayId,
+            apiVersion: 'v2',
+            legCount: sgp.legs.length,
+            combinedProb: sgp.combinedProb,
+            correlationPenalty,
+            adjustedProb,
+            impliedOdds,
+            edgePct,
+            confidenceTier: sgp.confidence,
+            parlayType: 'single_game',
+            leagueGroup: matchData.league || sgp.league,
+            earliestKickoff: sgp.kickoffDate,
+            latestKickoff: sgp.kickoffDate,
+            kickoffWindow: 'today',
+            status: 'active',
+            syncedAt: new Date()
+          }
+        })
+
+        // Create legs
+        for (let i = 0; i < sgp.legs.length; i++) {
+          const leg = sgp.legs[i]
+          await prisma.parlayLeg.create({
+            data: {
+              parlayId: parlayConsensus.id,
+              matchId: sgp.matchId,
+              outcome: leg.outcome,
+              homeTeam, // Use validated team names from MarketMatch
+              awayTeam, // Use validated team names from MarketMatch
+              modelProb: leg.probability,
+              decimalOdds: 1 / leg.probability,
+              edge: edgePct / sgp.legs.length,
+              legOrder: i + 1
+            }
+          })
+        }
+
+        created++
+      } catch (error) {
+        errors++
+        logger.error('Error creating parlay', {
+          tags: ['api', 'admin', 'parlays', 'sync'],
+          data: {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            matchId: sgp.matchId
+          }
+        })
+      }
+    }
+
+    logger.info('Completed syncing parlays', {
+      tags: ['api', 'admin', 'parlays', 'sync'],
+      data: { created, skipped, errors, total: sgps.length }
     })
 
     return NextResponse.json({
       success: true,
-      message: `Synced ${result.created} parlays (${result.skipped} skipped, ${result.errors} errors)`,
-      stats: result
+      message: `Synced ${created} parlays (${skipped} skipped, ${errors} errors)`,
+      stats: {
+        generated: sgps.length,
+        created,
+        skipped,
+        errors
+      }
     })
   } catch (error) {
-    logger.error('🕐 CRON: Error syncing parlays', {
-      tags: ['api', 'admin', 'parlays', 'cron'],
+    logger.error('Error syncing parlays', {
+      tags: ['api', 'admin', 'parlays', 'sync'],
       data: { error: error instanceof Error ? error.message : 'Unknown error' }
     })
     return NextResponse.json(
@@ -398,3 +401,4 @@ export async function POST(req: NextRequest) {
     )
   }
 }
+

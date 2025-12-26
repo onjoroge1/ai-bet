@@ -198,7 +198,37 @@ function transformMatchData(apiMatch: any) {
 }
 
 /**
- * Sync matches by status
+ * Retry helper with exponential backoff
+ */
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  initialDelay: number = 1000
+): Promise<T> {
+  let lastError: Error | null = null
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error('Unknown error')
+      
+      if (attempt < maxRetries - 1) {
+        const delay = initialDelay * Math.pow(2, attempt) // Exponential backoff
+        logger.warn(`Sync attempt ${attempt + 1} failed, retrying in ${delay}ms`, {
+          tags: ['market', 'sync', 'retry'],
+          error: lastError,
+        })
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+  }
+  
+  throw lastError
+}
+
+/**
+ * Sync matches by status with automatic retry
  */
 async function syncMatchesByStatus(status: 'upcoming' | 'live' | 'completed') {
   try {
@@ -206,8 +236,12 @@ async function syncMatchesByStatus(status: 'upcoming' | 'live' | 'completed') {
       tags: ['market', 'sync', status],
     })
 
-    // Fetch from API
-    const apiMatches = await fetchMatchesFromAPI(status, 100)
+    // Fetch from API with retry logic
+    const apiMatches = await retryWithBackoff(
+      () => fetchMatchesFromAPI(status, 100),
+      3, // Max 3 retries
+      2000 // Initial delay 2 seconds
+    )
     
     if (apiMatches.length === 0) {
       logger.info(`No ${status} matches found in API`, {
@@ -319,11 +353,13 @@ async function syncMatchesByStatus(status: 'upcoming' | 'live' | 'completed') {
 
     return { synced, errors, skipped }
   } catch (error) {
-    logger.error(`Failed to sync ${status} matches`, {
+    logger.error(`Failed to sync ${status} matches after retries`, {
       tags: ['market', 'sync', status, 'error'],
       error: error instanceof Error ? error : undefined,
     })
-    throw error
+    
+    // Return error result instead of throwing to allow other syncs to continue
+    return { synced: 0, errors: 1, skipped: 0 }
   }
 }
 

@@ -7,7 +7,7 @@ import { MarketMatch } from '@prisma/client'
 
 // Data freshness thresholds (in milliseconds)
 const LIVE_MAX_AGE = 30 * 1000 // 30 seconds for live matches
-const UPCOMING_MAX_AGE = 10 * 60 * 1000 // 10 minutes for upcoming matches
+const UPCOMING_MAX_AGE = 30 * 60 * 1000 // 30 minutes for upcoming matches (20-minute buffer after 10-minute sync)
 // FINISHED matches never expire (use database always)
 
 /**

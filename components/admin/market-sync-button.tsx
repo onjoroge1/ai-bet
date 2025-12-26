@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { RefreshCw, CheckCircle2, XCircle, Loader2 } from "lucide-react"
+import { RefreshCw, CheckCircle2, XCircle, Loader2, AlertTriangle, Clock } from "lucide-react"
 import { toast } from "sonner"
 import {
   AlertDialog,
@@ -38,10 +38,81 @@ interface SyncResponse {
   error?: string
 }
 
+interface SyncStatusResponse {
+  success: boolean
+  status?: {
+    live: {
+      status: 'healthy' | 'degraded' | 'error'
+      lastSyncedAt: string | null
+      timeSinceLastSync: string
+      matchCount: number
+      syncErrors: number
+      syncCount: number
+    }
+    upcoming: {
+      status: 'healthy' | 'degraded' | 'error'
+      lastSyncedAt: string | null
+      timeSinceLastSync: string
+      matchCount: number
+      syncErrors: number
+      syncCount: number
+    }
+    completed: {
+      status: 'healthy' | 'degraded' | 'error'
+      lastSyncedAt: string | null
+      timeSinceLastSync: string
+      matchCount: number
+      syncErrors: number
+      syncCount: number
+    }
+  }
+  overall?: {
+    status: 'healthy' | 'degraded' | 'error'
+    lastCheckedAt: string
+  }
+  error?: string
+}
+
 export function MarketSyncButton() {
   const [isSyncing, setIsSyncing] = useState(false)
   const [lastSync, setLastSync] = useState<SyncResponse | null>(null)
   const [syncType, setSyncType] = useState<'all' | 'live' | 'upcoming' | 'completed'>('all')
+  const [syncStatus, setSyncStatus] = useState<SyncStatusResponse | null>(null)
+  const [isLoadingStatus, setIsLoadingStatus] = useState(true)
+
+  // Fetch sync status on mount and every 30 seconds
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const response = await fetch('/api/admin/market/sync-status')
+        const data: SyncStatusResponse = await response.json()
+        setSyncStatus(data)
+      } catch (error) {
+        console.error('Failed to fetch sync status:', error)
+      } finally {
+        setIsLoadingStatus(false)
+      }
+    }
+
+    // Fetch immediately
+    fetchStatus()
+
+    // Then fetch every 30 seconds
+    const interval = setInterval(fetchStatus, 30000)
+
+    return () => clearInterval(interval)
+  }, [])
+
+  // Refresh status after manual sync
+  const refreshStatus = async () => {
+    try {
+      const response = await fetch('/api/admin/market/sync-status')
+      const data: SyncStatusResponse = await response.json()
+      setSyncStatus(data)
+    } catch (error) {
+      console.error('Failed to refresh sync status:', error)
+    }
+  }
 
   const handleSync = async (type: 'all' | 'live' | 'upcoming' | 'completed', force: boolean = false) => {
     setIsSyncing(true)
@@ -63,6 +134,9 @@ export function MarketSyncButton() {
       }
 
       setLastSync(data)
+
+      // Refresh status after sync
+      await refreshStatus()
 
       // Show success toast
       const summary = data.summary
@@ -96,6 +170,45 @@ export function MarketSyncButton() {
         return 'Sync Completed'
       default:
         return 'Sync All'
+    }
+  }
+
+  const getStatusColor = (status: 'healthy' | 'degraded' | 'error' | undefined) => {
+    switch (status) {
+      case 'healthy':
+        return 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30'
+      case 'degraded':
+        return 'text-orange-400 bg-orange-400/10 border-orange-400/30'
+      case 'error':
+        return 'text-red-400 bg-red-400/10 border-red-400/30'
+      default:
+        return 'text-slate-400 bg-slate-400/10 border-slate-400/30'
+    }
+  }
+
+  const getStatusIcon = (status: 'healthy' | 'degraded' | 'error' | undefined) => {
+    switch (status) {
+      case 'healthy':
+        return <CheckCircle2 className="w-4 h-4" />
+      case 'degraded':
+        return <AlertTriangle className="w-4 h-4" />
+      case 'error':
+        return <XCircle className="w-4 h-4" />
+      default:
+        return <Clock className="w-4 h-4" />
+    }
+  }
+
+  const getStatusLabel = (status: 'healthy' | 'degraded' | 'error' | undefined) => {
+    switch (status) {
+      case 'healthy':
+        return 'Healthy'
+      case 'degraded':
+        return 'Degraded'
+      case 'error':
+        return 'Error'
+      default:
+        return 'Unknown'
     }
   }
 
@@ -174,6 +287,78 @@ export function MarketSyncButton() {
           Sync Completed
         </Button>
       </div>
+
+      {/* Sync Status Table */}
+      {syncStatus && syncStatus.status && (
+        <div className="mb-4 p-3 bg-slate-900/50 rounded border border-slate-700">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold text-white">Sync Status</h4>
+            {isLoadingStatus && (
+              <Loader2 className="w-4 h-4 text-slate-400 animate-spin" />
+            )}
+          </div>
+          
+          <div className="space-y-2">
+            {/* Live Status */}
+            <div className={`flex items-center justify-between p-2 rounded border ${getStatusColor(syncStatus.status.live.status)}`}>
+              <div className="flex items-center gap-2">
+                {getStatusIcon(syncStatus.status.live.status)}
+                <span className="text-sm font-medium">Live Matches</span>
+              </div>
+              <div className="flex items-center gap-3 text-xs">
+                <span className="text-slate-400">{syncStatus.status.live.matchCount} matches</span>
+                <span className="text-slate-400">{syncStatus.status.live.timeSinceLastSync}</span>
+                <span className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(syncStatus.status.live.status)}`}>
+                  {getStatusLabel(syncStatus.status.live.status)}
+                </span>
+              </div>
+            </div>
+
+            {/* Upcoming Status */}
+            <div className={`flex items-center justify-between p-2 rounded border ${getStatusColor(syncStatus.status.upcoming.status)}`}>
+              <div className="flex items-center gap-2">
+                {getStatusIcon(syncStatus.status.upcoming.status)}
+                <span className="text-sm font-medium">Upcoming Matches</span>
+              </div>
+              <div className="flex items-center gap-3 text-xs">
+                <span className="text-slate-400">{syncStatus.status.upcoming.matchCount} matches</span>
+                <span className="text-slate-400">{syncStatus.status.upcoming.timeSinceLastSync}</span>
+                <span className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(syncStatus.status.upcoming.status)}`}>
+                  {getStatusLabel(syncStatus.status.upcoming.status)}
+                </span>
+              </div>
+            </div>
+
+            {/* Completed Status */}
+            <div className={`flex items-center justify-between p-2 rounded border ${getStatusColor(syncStatus.status.completed.status)}`}>
+              <div className="flex items-center gap-2">
+                {getStatusIcon(syncStatus.status.completed.status)}
+                <span className="text-sm font-medium">Completed Matches</span>
+              </div>
+              <div className="flex items-center gap-3 text-xs">
+                <span className="text-slate-400">{syncStatus.status.completed.matchCount} matches</span>
+                <span className="text-slate-400">{syncStatus.status.completed.timeSinceLastSync}</span>
+                <span className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(syncStatus.status.completed.status)}`}>
+                  {getStatusLabel(syncStatus.status.completed.status)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Overall Status */}
+          {syncStatus.overall && (
+            <div className="mt-3 pt-3 border-t border-slate-700">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-400">Overall Status</span>
+                <div className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold ${getStatusColor(syncStatus.overall.status)}`}>
+                  {getStatusIcon(syncStatus.overall.status)}
+                  <span>{getStatusLabel(syncStatus.overall.status).toUpperCase()}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Force Sync Option */}
       <div className="mb-4">

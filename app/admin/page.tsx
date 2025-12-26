@@ -15,13 +15,15 @@ import { PredictionQuickPurchaseManager } from "@/components/admin/prediction-qu
 import { PricingManagement } from "@/components/admin/pricing-management" // Import new
 import { GlobalMatchSync } from "@/components/admin/global-match-sync" // Import new Global Sync
 import { MarketSyncButton } from "@/components/admin/market-sync-button" // Import Market Sync Button
+import { ParlayManagement } from "@/components/admin/parlay-management" // Import Parlay Management
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { DollarSign, Target, ChevronDown, ShoppingBag } from "lucide-react"
+import { DollarSign, Target, ChevronDown, ShoppingBag, Layers } from "lucide-react"
 
 export default function AdminPage() {
   const [pricingCollapsed, setPricingCollapsed] = useState(true)
   const [availableMatchesCollapsed, setAvailableMatchesCollapsed] = useState(true)
   const [quickPurchaseManagementCollapsed, setQuickPurchaseManagementCollapsed] = useState(true)
+  const [parlayManagementCollapsed, setParlayManagementCollapsed] = useState(true)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-900 text-slate-100">
@@ -141,6 +143,37 @@ export default function AdminPage() {
 
         {/* Personalized Offers Management Section */}
         <AdminPersonalizedOffersManagement />
+
+        {/* Parlay Management Section - Collapsible */}
+        <Collapsible open={!parlayManagementCollapsed} onOpenChange={(open) => setParlayManagementCollapsed(!open)}>
+          <div className="bg-slate-800/50 border border-slate-700 rounded-lg overflow-hidden">
+            <CollapsibleTrigger asChild>
+              <div className="cursor-pointer hover:bg-slate-700/30 transition-colors px-6 py-4">
+                <div className="flex items-center justify-between text-white">
+                  <div className="flex items-center space-x-2">
+                    <Layers className="w-6 h-6 text-emerald-500" />
+                    <span className="text-xl font-semibold">Parlay Management</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm text-slate-400">
+                      {parlayManagementCollapsed ? "Click to expand" : "Click to collapse"}
+                    </span>
+                    <ChevronDown
+                      className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${
+                        parlayManagementCollapsed ? "" : "rotate-180"
+                      }`}
+                    />
+                  </div>
+                </div>
+              </div>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="px-6 pb-6 pt-2">
+                <ParlayManagement />
+              </div>
+            </CollapsibleContent>
+          </div>
+        </Collapsible>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <UserManagement />

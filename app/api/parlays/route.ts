@@ -217,18 +217,41 @@ async function syncParlaysFromVersion(version: 'v1' | 'v2'): Promise<{ synced: n
             }
           })
 
+          // Get MarketMatch data to enrich team names if missing
+          const legMatchIds = parlay.legs.map(l => l.match_id.toString())
+          const marketMatches = await prisma.marketMatch.findMany({
+            where: {
+              matchId: { in: legMatchIds }
+            },
+            select: {
+              matchId: true,
+              homeTeam: true,
+              awayTeam: true
+            }
+          })
+          const matchMap = new Map(marketMatches.map(m => [m.matchId, m]))
+
           let legsCreated = 0
           for (let i = 0; i < parlay.legs.length; i++) {
             const leg = parlay.legs[i]
             try {
+              // Enrich team names from MarketMatch if missing or "TBD"
+              const matchData = matchMap.get(leg.match_id.toString())
+              const homeTeam = (leg.home_team && leg.home_team !== 'TBD') 
+                ? leg.home_team 
+                : (matchData?.homeTeam || leg.home_team || 'TBD')
+              const awayTeam = (leg.away_team && leg.away_team !== 'TBD') 
+                ? leg.away_team 
+                : (matchData?.awayTeam || leg.away_team || 'TBD')
+
               // CRITICAL: Use parlayConsensusId (internal Prisma ID), NOT parlay.parlay_id (backend UUID)
               const createdLeg = await prisma.parlayLeg.create({
                 data: {
                   parlayId: parlayConsensusId, // Internal Prisma ID, not backend UUID!
                   matchId: leg.match_id.toString(),
                   outcome: leg.outcome,
-                  homeTeam: leg.home_team,
-                  awayTeam: leg.away_team,
+                  homeTeam,
+                  awayTeam,
                   modelProb: leg.model_prob,
                   decimalOdds: leg.decimal_odds,
                   edge: leg.edge,
