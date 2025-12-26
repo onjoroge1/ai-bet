@@ -43,10 +43,83 @@ export async function GET(request: NextRequest) {
     const getStatus = (
       lastSync: { lastSyncedAt: Date; syncErrors: number } | null,
       syncInterval: number,
-      matchCount: number
+      matchCount: number,
+      matchType: 'live' | 'upcoming' | 'completed'
     ): 'healthy' | 'degraded' | 'error' => {
-      if (!lastSync || matchCount === 0) {
-        return 'error' // No matches or no sync data
+      // For live matches: 0 matches is NORMAL (no games live) - should be healthy if sync is recent
+      // For upcoming matches: 0 matches is UNUSUAL (we should usually have upcoming matches) - could indicate an issue
+      // For completed matches: 0 matches might be normal (if archived) or unusual (if not)
+      
+      if (matchType === 'live') {
+        // Live matches: 0 matches is normal when no games are live
+        if (matchCount === 0) {
+          // If we have recent sync data, it's healthy (just no live matches)
+          // If no sync data at all, it's an error (sync might not be working)
+          if (lastSync) {
+            const timeSinceLastSync = now.getTime() - lastSync.lastSyncedAt.getTime()
+            // If sync was recent (< 5 minutes), it's healthy (just no live matches)
+            if (timeSinceLastSync < 5 * 60 * 1000) {
+              return lastSync.syncErrors > 0 ? 'degraded' : 'healthy'
+            }
+            // If sync is old, might indicate sync isn't running
+            return 'degraded'
+          }
+          return 'error' // No sync data at all
+        }
+        
+        // Have live matches - check sync freshness
+        if (!lastSync) {
+          return 'error'
+        }
+        
+        const timeSinceLastSync = now.getTime() - lastSync.lastSyncedAt.getTime()
+        const isStale = timeSinceLastSync > syncInterval * 2 // 2x interval = stale
+        const hasErrors = lastSync.syncErrors > 0
+
+        if (isStale || hasErrors) {
+          return isStale ? 'error' : 'degraded'
+        }
+
+        // Check if sync is slightly delayed (within 1.5x interval = degraded)
+        if (timeSinceLastSync > syncInterval * 1.5) {
+          return 'degraded'
+        }
+
+        return 'healthy'
+      }
+
+      if (matchType === 'completed') {
+        // For completed matches, they're only synced once when they finish
+        // So old lastSyncedAt is normal - only check for sync errors
+        if (matchCount === 0) {
+          // 0 completed matches is normal if they're archived or we just started
+          // Only error if we have sync errors
+          return lastSync?.syncErrors > 0 ? 'degraded' : 'healthy'
+        }
+        
+        if (!lastSync) {
+          return 'error' // No sync data at all
+        }
+        // Only check for sync errors, not sync age (completed matches don't re-sync)
+        return lastSync.syncErrors > 0 ? 'degraded' : 'healthy'
+      }
+
+      // For upcoming matches, check both sync age and errors
+      if (matchCount === 0) {
+        // 0 upcoming matches is unusual - we should usually have some
+        // But if sync is recent, might just be a temporary gap
+        if (lastSync) {
+          const timeSinceLastSync = now.getTime() - lastSync.lastSyncedAt.getTime()
+          if (timeSinceLastSync < UPCOMING_SYNC_INTERVAL * 2) {
+            // Recent sync, just no matches - might be okay (temporary gap)
+            return lastSync.syncErrors > 0 ? 'degraded' : 'degraded' // Degraded because unusual
+          }
+        }
+        return 'error' // No matches and old/no sync data
+      }
+
+      if (!lastSync) {
+        return 'error' // No sync data
       }
 
       const timeSinceLastSync = now.getTime() - lastSync.lastSyncedAt.getTime()
@@ -65,9 +138,9 @@ export async function GET(request: NextRequest) {
       return 'healthy'
     }
 
-    const liveStatus = getStatus(liveMatches, LIVE_SYNC_INTERVAL, liveCount)
-    const upcomingStatus = getStatus(upcomingMatches, UPCOMING_SYNC_INTERVAL, upcomingCount)
-    const completedStatus = getStatus(completedMatches, UPCOMING_SYNC_INTERVAL, completedCount) // Completed uses same interval
+    const liveStatus = getStatus(liveMatches, LIVE_SYNC_INTERVAL, liveCount, 'live')
+    const upcomingStatus = getStatus(upcomingMatches, UPCOMING_SYNC_INTERVAL, upcomingCount, 'upcoming')
+    const completedStatus = getStatus(completedMatches, UPCOMING_SYNC_INTERVAL, completedCount, 'completed') // Completed matches are never re-synced
 
     // Calculate time since last sync
     const getTimeSinceLastSync = (lastSync: { lastSyncedAt: Date } | null): string => {
@@ -107,6 +180,7 @@ export async function GET(request: NextRequest) {
         },
       },
       overall: {
+        // Overall status only considers live and upcoming (completed matches don't affect overall health)
         status: liveStatus === 'error' || upcomingStatus === 'error' 
           ? 'error' 
           : liveStatus === 'degraded' || upcomingStatus === 'degraded' 
