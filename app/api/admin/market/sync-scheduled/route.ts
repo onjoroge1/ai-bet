@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { retryWithBackoff } from '@/lib/retry-utils'
 
 const BASE_URL = process.env.BACKEND_API_URL || process.env.BACKEND_URL
 const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY || "betgenius_secure_key_2024"
@@ -198,36 +199,6 @@ function transformMatchData(apiMatch: any) {
 }
 
 /**
- * Retry helper with exponential backoff
- */
-async function retryWithBackoff<T>(
-  fn: () => Promise<T>,
-  maxRetries: number = 3,
-  initialDelay: number = 1000
-): Promise<T> {
-  let lastError: Error | null = null
-  
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      return await fn()
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error('Unknown error')
-      
-      if (attempt < maxRetries - 1) {
-        const delay = initialDelay * Math.pow(2, attempt) // Exponential backoff
-        logger.warn(`Sync attempt ${attempt + 1} failed, retrying in ${delay}ms`, {
-          tags: ['market', 'sync', 'retry'],
-          error: lastError,
-        })
-        await new Promise(resolve => setTimeout(resolve, delay))
-      }
-    }
-  }
-  
-  throw lastError
-}
-
-/**
  * Sync matches by status with automatic retry
  */
 async function syncMatchesByStatus(status: 'upcoming' | 'live' | 'completed') {
@@ -236,11 +207,12 @@ async function syncMatchesByStatus(status: 'upcoming' | 'live' | 'completed') {
       tags: ['market', 'sync', status],
     })
 
-    // Fetch from API with retry logic
+    // Fetch from API with retry logic (3 retries, 2s initial delay, 30s max delay cap)
     const apiMatches = await retryWithBackoff(
       () => fetchMatchesFromAPI(status, 100),
-      3, // Max 3 retries
-      2000 // Initial delay 2 seconds
+      3,    // Max 3 retries
+      2000, // Initial delay 2 seconds
+      30000 // Maximum delay cap 30 seconds
     )
     
     if (apiMatches.length === 0) {

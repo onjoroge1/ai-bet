@@ -34,6 +34,14 @@
     {
       "path": "/api/admin/template-blogs/scheduled",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/admin/social/twitter/scheduled",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/admin/social/twitter/post-scheduled",
+      "schedule": "*/30 * * * *"
     }
   ],
   "env": {

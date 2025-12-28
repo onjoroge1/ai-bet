@@ -10,19 +10,31 @@ export const dynamic = 'force-dynamic'
  * Uses MarketMatch table as single source of truth
  * Cross-references with QuickPurchase to ensure we only include
  * matches with predictionData (content requirement)
+ * 
+ * Strategy:
+ * - UPCOMING/LIVE: Recent active matches with active predictions
+ * - FINISHED: Recent completed matches (last 90 days) with prediction data
+ *   (Includes historical content for SEO and user reference)
  */
 export async function GET(request: NextRequest) {
   // Normalize baseUrl to ensure no trailing slash (prevents double slashes)
   const baseUrl = normalizeBaseUrl()
 
   try {
-    // Step 1: Get all MarketMatch records with active statuses
-    // Include UPCOMING, LIVE, and FINISHED matches (exclude CANCELLED, POSTPONED)
-    const marketMatches = await prisma.marketMatch.findMany({
+    // Step 1: Get UPCOMING and LIVE matches (active predictions)
+    const upcomingAndLiveMatches = await prisma.marketMatch.findMany({
       where: {
-        status: { in: ['UPCOMING', 'LIVE', 'FINISHED'] },
+        status: { in: ['UPCOMING', 'LIVE'] },
         isActive: true,
         isArchived: false,
+        quickPurchases: {
+          some: {
+            type: { in: ['prediction', 'tip'] },
+            isActive: true,
+            isPredictionActive: true,
+            predictionData: { not: null },
+          },
+        },
       },
       select: {
         matchId: true,
@@ -40,19 +52,69 @@ export async function GET(request: NextRequest) {
             id: true,
             updatedAt: true,
           },
-          take: 1, // Only need to check if predictionData exists
+          take: 1,
         },
       },
       orderBy: [
-        { status: 'asc' }, // UPCOMING first, then LIVE, then FINISHED
-        { kickoffDate: 'desc' }, // Most recent first within each status
+        { status: 'asc' }, // UPCOMING first, then LIVE
+        { kickoffDate: 'desc' },
       ],
-      take: 5000, // Increased limit to include more matches
+      take: 2000, // Limit for upcoming/live matches
     })
 
-    console.log(`[Sitemap] Found ${marketMatches.length} MarketMatch records`)
+    // Step 2: Get FINISHED matches (recent completed matches with prediction data)
+    // Include finished matches from the last 90 days to ensure we have historical content
+    const ninetyDaysAgo = new Date()
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
 
-    // Step 2: Filter to only matches that have QuickPurchase with predictionData
+    const finishedMatches = await prisma.marketMatch.findMany({
+      where: {
+        status: 'FINISHED',
+        isActive: true,
+        isArchived: false,
+        kickoffDate: { gte: ninetyDaysAgo }, // Only recent finished matches (last 90 days)
+        quickPurchases: {
+          some: {
+            type: { in: ['prediction', 'tip'] },
+            isActive: true,
+            predictionData: { not: null }, // For finished matches, include if predictionData exists
+            // Note: We don't require isPredictionActive for finished matches
+            // as they may have historical prediction data
+          },
+        },
+      },
+      select: {
+        matchId: true,
+        status: true,
+        updatedAt: true,
+        kickoffDate: true,
+        quickPurchases: {
+          where: {
+            type: { in: ['prediction', 'tip'] },
+            isActive: true,
+            predictionData: { not: null },
+          },
+          select: {
+            id: true,
+            updatedAt: true,
+          },
+          take: 1,
+        },
+      },
+      orderBy: {
+        kickoffDate: 'desc', // Most recent finished matches first
+      },
+      take: 3000, // Limit for finished matches
+    })
+
+    // Step 3: Combine both sets of matches
+    const marketMatches = [...upcomingAndLiveMatches, ...finishedMatches]
+
+    console.log(`[Sitemap] Found ${upcomingAndLiveMatches.length} UPCOMING/LIVE matches`)
+    console.log(`[Sitemap] Found ${finishedMatches.length} FINISHED matches`)
+    console.log(`[Sitemap] Total: ${marketMatches.length} MarketMatch records`)
+
+    // Step 4: Filter to only matches that have QuickPurchase with predictionData
     const matchesWithPredictions = marketMatches.filter(
       (match) => match.quickPurchases.length > 0
     )
@@ -61,7 +123,7 @@ export async function GET(request: NextRequest) {
       `[Sitemap] Found ${matchesWithPredictions.length} matches with predictionData`
     )
 
-    // Step 3: Create sitemap entries with status-based priorities and change frequencies
+    // Step 5: Create sitemap entries with status-based priorities and change frequencies
     const matchUrls = matchesWithPredictions.map((match) => {
       // Determine priority and change frequency based on status
       let priority: number

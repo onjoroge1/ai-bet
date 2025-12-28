@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { retryWithBackoff } from '@/lib/retry-utils'
 
 const BASE_URL = process.env.BACKEND_API_URL || process.env.BACKEND_URL
 const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY || "betgenius_secure_key_2024"
@@ -193,7 +194,13 @@ async function syncMatchesByStatus(status: 'upcoming' | 'live' | 'completed', fo
       tags: ['market', 'sync', status, 'manual'],
     })
 
-    const apiMatches = await fetchMatchesFromAPI(status, 100)
+    // Fetch from API with retry logic (3 retries, 2s initial delay, 30s max delay cap)
+    const apiMatches = await retryWithBackoff(
+      () => fetchMatchesFromAPI(status, 100),
+      3,    // Max 3 retries
+      2000, // Initial delay 2 seconds
+      30000 // Maximum delay cap 30 seconds
+    )
     
     if (apiMatches.length === 0) {
       logger.info(`No ${status} matches found in API`, {

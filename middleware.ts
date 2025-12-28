@@ -38,6 +38,8 @@ const cronEndpoints = [
   '/api/admin/predictions/enrich-scheduled',
   '/api/admin/predictions/sync-from-availability-scheduled',
   '/api/admin/template-blogs/scheduled',
+  '/api/admin/social/twitter/scheduled',
+  '/api/admin/social/twitter/post-scheduled',
 ]
 
 // Paths that require admin role
