@@ -151,11 +151,14 @@ export async function POST(request: NextRequest) {
 
     // Send email verification email
     try {
+      const { getAppUrl } = await import('@/lib/email-urls')
+      const appUrl = getAppUrl()
+      
       await EmailService.sendEmailVerification({
         to: user.email,
         userName: user.fullName || user.email,
         verificationToken,
-        appUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        appUrl: appUrl
       })
       
       logger.info('Email verification email sent successfully', {

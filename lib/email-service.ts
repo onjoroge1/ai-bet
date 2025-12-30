@@ -1,5 +1,6 @@
 import { Resend } from 'resend'
 import { logger } from '@/lib/logger'
+import { getAppUrl, getPasswordResetUrl, getEmailVerificationUrl } from '@/lib/email-urls'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -104,9 +105,10 @@ export class EmailService {
       
       if (template && template.isActive) {
         // Use the template system
+        const appUrl = getAppUrl(data.appUrl)
         const renderedEmail = await EmailTemplateService.renderTemplate('welcome-email', {
           userName: data.userName,
-          appUrl: data.appUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+          appUrl: appUrl,
           supportEmail: data.supportEmail || 'support@snapbet.com'
         })
         
@@ -157,7 +159,7 @@ export class EmailService {
           </div>
           
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${data.appUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard" 
+            <a href="${getAppUrl(data.appUrl)}/dashboard" 
                style="background: #8b5cf6; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
               Get Started
             </a>
@@ -199,6 +201,7 @@ export class EmailService {
       
       if (template && template.isActive) {
         // Use the template system
+        const appUrl = getAppUrl()
         const renderedEmail = await EmailTemplateService.renderTemplate('payment-successful', {
           userName: data.userName,
           packageName: data.packageName,
@@ -206,7 +209,7 @@ export class EmailService {
           currencySymbol: data.currencySymbol || '$',
           transactionId: data.transactionId,
           tipsCount: data.tipsCount,
-          appUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+          appUrl: appUrl
         })
         
         return this.sendEmail({
@@ -262,7 +265,7 @@ export class EmailService {
           </div>
           
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/my-tips" 
+            <a href="${getAppUrl()}/dashboard/my-tips" 
                style="background: #10b981; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
               View Your Tips
             </a>
@@ -342,7 +345,7 @@ export class EmailService {
           `).join('')}
           
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/predictions" 
+            <a href="${getAppUrl()}/dashboard/predictions" 
                style="background: #3b82f6; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
               View All Predictions
             </a>
@@ -433,7 +436,7 @@ export class EmailService {
           ` : ''}
           
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard" 
+            <a href="${getAppUrl()}/dashboard" 
                style="background: #8b5cf6; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
               Go to Dashboard
             </a>
@@ -483,7 +486,7 @@ export class EmailService {
           </div>
           
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard" 
+            <a href="${getAppUrl()}/dashboard" 
                style="background: #f59e0b; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
               View Your Achievements
             </a>
@@ -531,7 +534,7 @@ export class EmailService {
           </div>
           
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/settings" 
+            <a href="${getAppUrl()}/dashboard/settings" 
                style="background: #ef4444; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
               Review Account Settings
             </a>
@@ -739,12 +742,8 @@ export class EmailService {
       
       if (template && template.isActive) {
         // Use the template system
-        // Prefer provided appUrl, then env variable, fallback to localhost only in development
-        const appUrl = data.appUrl || 
-                       process.env.NEXT_PUBLIC_APP_URL || 
-                       (process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : undefined) ||
-                       'http://localhost:3000' // Final fallback
-        const resetUrl = `${appUrl}/reset-password?token=${data.resetToken}`
+        const appUrl = getAppUrl(data.appUrl)
+        const resetUrl = getPasswordResetUrl(data.resetToken, appUrl)
         
         const renderedEmail = await EmailTemplateService.renderTemplate('password-reset', {
           userName: data.userName,
@@ -774,12 +773,9 @@ export class EmailService {
     }
 
     // Fallback hardcoded template
-    // Prefer provided appUrl, then env variable, fallback to localhost only in development
-    const appUrl = data.appUrl || 
-                   process.env.NEXT_PUBLIC_APP_URL || 
-                   (process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : undefined) ||
-                   'http://localhost:3000' // Final fallback
-    const resetUrl = `${appUrl}/reset-password?token=${data.resetToken}`
+    // Use utility function to get appUrl safely
+    const appUrl = getAppUrl(data.appUrl)
+    const resetUrl = getPasswordResetUrl(data.resetToken, appUrl)
     
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -864,10 +860,15 @@ export class EmailService {
       
       if (template && template.isActive) {
         // Use the template system
+        // Construct verificationUrl before passing to template
+        const appUrl = getAppUrl(data.appUrl)
+        const verificationUrl = getEmailVerificationUrl(data.verificationToken, appUrl)
+        
         const renderedEmail = await EmailTemplateService.renderTemplate('email-verification', {
           userName: data.userName,
-          verificationToken: data.verificationToken,
-          appUrl: data.appUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+          userEmail: data.to,
+          verificationUrl: verificationUrl,
+          appUrl: appUrl
         })
         
         return this.sendEmail({
@@ -876,8 +877,9 @@ export class EmailService {
           template: 'email-verification',
           data: {
             userName: data.userName,
-            verificationToken: data.verificationToken,
-            appUrl: data.appUrl
+            userEmail: data.to,
+            verificationUrl: verificationUrl,
+            appUrl: appUrl
           },
         }, renderedEmail.html)
       }
@@ -890,7 +892,9 @@ export class EmailService {
     }
 
     // Fallback hardcoded template
-    const verifyUrl = `${data.appUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/verify-email?token=${data.verificationToken}`
+    // Use utility function to get appUrl safely
+    const appUrl = getAppUrl(data.appUrl)
+    const verifyUrl = getEmailVerificationUrl(data.verificationToken, appUrl)
     
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">

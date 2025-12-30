@@ -4,6 +4,7 @@ import { logger } from "@/lib/logger"
 import { z } from "zod"
 import crypto from "crypto"
 import { EmailService } from "@/lib/email-service"
+import { validateApiConfiguration } from "@/lib/config-validation"
 
 const forgotPasswordSchema = z.object({
   email: z.string().email("Invalid email format"),
@@ -11,6 +12,9 @@ const forgotPasswordSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    // Validate configuration before processing
+    validateApiConfiguration()
+    
     const body = await request.json()
     const validation = forgotPasswordSchema.safeParse(body)
 
@@ -64,24 +68,16 @@ export async function POST(request: NextRequest) {
     })
 
     // Send password reset email
-    // Use NEXT_PUBLIC_APP_URL from environment, fallback to localhost only in development
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 
-                   (process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : undefined)
-    
-    if (!appUrl) {
-      logger.error('NEXT_PUBLIC_APP_URL is not set in production environment', {
-        tags: ["auth", "password-reset", "email", "config-error"],
-        data: { email: user.email, userId: user.id },
-      })
-      // Still try to send email, but with a warning
-    }
-    
+    // Use utility function to get appUrl safely (will throw error in production if not set)
     try {
+      const { getAppUrl } = await import('@/lib/email-urls')
+      const appUrl = getAppUrl()
+      
       await EmailService.sendPasswordResetEmail({
         to: user.email,
         userName: user.fullName || user.email,
         resetToken,
-        appUrl: appUrl || 'http://localhost:3000' // Fallback only if not set
+        appUrl: appUrl
       })
       
       logger.info('Password reset email sent successfully', {
