@@ -1,13 +1,71 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/db'
 import { isMarketMatchTooOld, transformMarketMatchesToApiResponse } from '@/lib/market-match-helpers'
+import { retryWithBackoff } from '@/lib/retry-utils'
 
 // Use BACKEND_API_URL from environment (no hardcoded fallback)
 const BASE_URL = process.env.BACKEND_API_URL || process.env.BACKEND_URL
 const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY || "betgenius_secure_key_2024"
 
+// API route timeout configuration
+export const maxDuration = 30 // 30 seconds for Vercel Pro/Enterprise
+export const runtime = 'nodejs'
+
+// External API timeout (15 seconds - leave buffer for Next.js timeout)
+const EXTERNAL_API_TIMEOUT = 15000
+
 if (!BASE_URL) {
   console.error('[Market API] BACKEND_API_URL or BACKEND_URL environment variable is not set')
+}
+
+/**
+ * Fetch from external API with timeout and retry logic
+ * Each retry attempt gets a fresh timeout to prevent AbortController conflicts
+ */
+async function fetchFromExternalAPI(url: string, cacheConfig: any, isLive: boolean) {
+  // Use retry logic with exponential backoff
+  // Each retry gets a fresh AbortController to avoid signal conflicts
+  const response = await retryWithBackoff(
+    async () => {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => {
+        controller.abort()
+      }, EXTERNAL_API_TIMEOUT)
+
+      try {
+        const res = await fetch(url, {
+          headers: {
+            Authorization: `Bearer ${API_KEY}`,
+          },
+          signal: controller.signal,
+          ...cacheConfig
+        })
+
+        clearTimeout(timeoutId)
+
+        if (!res.ok) {
+          const errorText = await res.text().catch(() => 'Unknown error')
+          throw new Error(`API error: ${res.status} ${res.statusText} - ${errorText}`)
+        }
+
+        return res
+      } catch (error) {
+        clearTimeout(timeoutId)
+        
+        if (error instanceof Error && error.name === 'AbortError') {
+          console.error(`[Market API] External API timeout after ${EXTERNAL_API_TIMEOUT}ms: ${url}`)
+          throw new Error('External API timeout - request took too long')
+        }
+        
+        throw error
+      }
+    },
+    3,    // Max 3 retries
+    2000, // Initial 2 second delay
+    30000 // Max 30 second delay cap
+  )
+
+  return response
 }
 
 export async function GET(request: NextRequest) {
@@ -73,22 +131,31 @@ export async function GET(request: NextRequest) {
         // Continue to API fallback
       }
 
-      // Fallback to external API
+      // Fallback to external API with timeout and retry
       const url = `${BASE_URL}/market?match_id=${matchId}${includeV2 === 'false' ? '&include_v2=false' : ''}`
       console.log(`[Market API] Fetching single match from API: ${url}`)
       
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${API_KEY}`,
-        },
-        next: { 
-          revalidate: 60,
-          tags: ['market-data', `market-${matchId}`]
-        }
-      })
+      try {
+        const response = await fetchFromExternalAPI(
+          url,
+          {
+            next: { 
+              revalidate: 60,
+              tags: ['market-data', `market-${matchId}`]
+            }
+          },
+          false // Single match request, not live list
+        )
 
-      if (!response.ok) {
-        console.error(`[Market API] Backend API error: ${response.status} ${response.statusText}`)
+        const data = await response.json()
+        return NextResponse.json(data, {
+          headers: {
+            'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120',
+          }
+        })
+      } catch (error) {
+        console.error(`[Market API] Error fetching single match:`, error)
+        // Return empty result instead of error (graceful degradation)
         return NextResponse.json(
           { 
             matches: [],
@@ -102,13 +169,6 @@ export async function GET(request: NextRequest) {
           }
         )
       }
-
-      const data = await response.json()
-      return NextResponse.json(data, {
-        headers: {
-          'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120',
-        }
-      })
     }
 
     // Multi-match request - check database first
@@ -193,47 +253,48 @@ export async function GET(request: NextRequest) {
           }
         }
 
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-      },
-      ...cacheConfig
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Unknown error')
-      console.error(`[Market API] Backend API error: ${response.status} ${response.statusText}`, errorText)
+    try {
+      // Fetch with timeout and retry logic
+      const response = await fetchFromExternalAPI(url, cacheConfig, isLive)
+      
+      const data = await response.json()
+      console.log(`[Market API] Received ${data.matches?.length || 0} matches from external API`)
+      
+      // Dynamic cache headers based on match status
+      const cacheHeaders = isLive
+        ? { 'Cache-Control': 'no-store, no-cache, must-revalidate' } // No caching for live
+        : { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' } // Cache upcoming
+      
+      return NextResponse.json(data, {
+        headers: cacheHeaders
+      })
+    } catch (error) {
+      // Handle timeout and other errors gracefully
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      console.error(`[Market API] Error fetching from external API:`, errorMessage)
       
       // Different cache headers based on match status
       const errorCacheHeaders = isLive
         ? { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
         : { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' }
       
+      // Return empty matches instead of error (graceful degradation)
+      // This prevents 504 errors and allows page to load with empty table
       return NextResponse.json(
         { 
-          error: `Backend API error: ${response.status} ${response.statusText}`,
-          message: errorText,
+          error: errorMessage.includes('timeout') 
+            ? 'External API timeout - request took too long'
+            : `Failed to fetch matches: ${errorMessage}`,
+          message: 'Returning empty matches array due to external API error',
           matches: [],
           total_count: 0
         },
         { 
-          status: response.status,
+          status: 200, // Return 200 instead of 500/504 to prevent frontend errors
           headers: errorCacheHeaders
         }
       )
     }
-
-    const data = await response.json()
-    console.log(`[Market API] Received ${data.matches?.length || 0} matches from external API`)
-    
-    // Dynamic cache headers based on match status
-    const cacheHeaders = isLive
-      ? { 'Cache-Control': 'no-store, no-cache, must-revalidate' } // No caching for live
-      : { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' } // Cache upcoming
-    
-    return NextResponse.json(data, {
-      headers: cacheHeaders
-    })
   } catch (error) {
     console.error('Error fetching market data:', error)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'

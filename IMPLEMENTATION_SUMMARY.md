@@ -1,142 +1,110 @@
-# Implementation Summary for Next Agent
+# Implementation Summary
 
-## Project Overview
-This is the SnapBet AI platform - a sports prediction and quiz platform built with Next.js 14, React 18, TypeScript, Prisma ORM, and PostgreSQL. The platform includes user authentication, quiz participation, prediction systems, and package management.
+## ✅ Completed Tasks
 
-## What Has Been Implemented
+### 1. VIP Access Tracking Schema ✅
+**Status**: Already implemented - no changes needed
+- `vipInfo` field exists in `WhatsAppUser` schema
+- `hasWhatsAppPremiumAccess()` correctly checks `vipInfo`
+- `handleWhatsAppVIPSubscription()` correctly stores VIP info
 
-### 1. Enhanced Referral System
-- **Database Schema Updates**: Modified `prisma/schema.prisma` to support a comprehensive referral system
-  - Added `ReferralCode` model for unique user referral codes
-  - Enhanced `Referral` model with tracking fields (status, expiration, rewards, metadata)
-  - Updated `User` model with referral relationships and statistics
-  - Added `UserPoints` model for tracking user points
+### 2. Placeholder Commands Identification ✅
+**Found**: 4 actual placeholder commands (not 7)
 
-- **Referral Service**: Created `lib/referral-service.ts` with core business logic
-  - `generateReferralCode()`: Creates unique 8-character alphanumeric codes
-  - `validateReferralCode()`: Validates referral codes and returns referrer details
-  - `createReferralRecord()`: Creates new referral entries
-  - `validateCompletionCriteria()`: Checks if referral completion criteria are met
-  - `processReferralRewards()`: Processes completed referrals and awards credits/points
-  - `getUserReferralStats()`: Retrieves comprehensive referral statistics
+The documentation was outdated. CS, BTTS, OVERS, UNDERS are **fully implemented**.
 
-- **API Endpoints**: Enhanced referral API infrastructure
-  - `app/api/referrals/route.ts`: Main referral management (GET, POST, PUT)
-  - `app/api/referrals/[id]/complete/route.ts`: Dedicated endpoint for completing referrals
+**Actual Placeholders**:
+1. **VIP PICKS** - Calls `sendTodaysPicks()` (needs premium filtering)
+2. **V2** - Hardcoded placeholder message
+3. **V3** - Hardcoded placeholder message
+4. **LIVE** - Hardcoded placeholder message
 
-### 2. Quiz System Improvements
-- **Enhanced Quiz Flow**: Modified `app/api/quiz/route.ts` to support:
-  - Skipping intro pages for logged-in users
-  - Integration with referral system during quiz participation
-  - New quiz session management with `startQuiz` and `submitQuiz` functions
+### 3. Command "1" or "TODAY" Message Format ✅
+**Documented** in `IMPLEMENTATION_STATUS_SUMMARY.md`
 
-- **Frontend Quiz Experience**: Updated `app/snapbet-quiz/page.tsx` with:
-  - Dynamic step management (intro, registration, questions, results)
-  - Automatic intro skip for authenticated users
-  - Quiz reset functionality for retaking
-  - Integration with referral system
+### 4. PesaPal Integration ✅
+**Status**: Implementation complete
 
-### 3. User Interface Components
-- **Referral Dashboard**: Created `components/referral-dashboard.tsx` featuring:
-  - Display of user's unique referral code and shareable link
-  - Copy and share functionality
-  - Comprehensive referral statistics
-  - Recent referral activity tracking
-  - "How It Works" explanation section
+#### Database Schema Updates ✅
+- Added `paymentGateway` field to `Purchase` model (default: 'stripe')
+- Added `paymentGateway` field to `WhatsAppPurchase` model (default: 'stripe')
+- Added `pesapalOrderTrackingId` field to both models
+- Added `pesapalMerchantReference` field to both models
+- Added indexes for performance
 
-- **Dashboard Integration**: Updated `app/dashboard/page.tsx` to include the referral dashboard
+#### PesaPal Service ✅
+- Created `lib/pesapal-service.ts` with:
+  - OAuth 1.0 authentication
+  - `submitPesaPalOrder()` - Submit order requests
+  - `getPesaPalTransactionStatus()` - Check transaction status
+  - `verifyPesaPalIPNSignature()` - IPN signature verification
 
-### 4. Database Migration
-- **Migration Script**: Created `scripts/migrate-referral-system.sql` with:
-  - Table creation for new models
-  - Schema updates for existing tables
-  - Data migration for existing users
-  - Index creation for performance optimization
+#### Payment Gateway Abstraction ✅
+- Created `lib/payments/payment-gateway.ts` - Interface definition
+- Created `lib/payments/stripe-gateway.ts` - Stripe implementation
+- Created `lib/payments/pesapal-gateway.ts` - PesaPal implementation
+- Created `lib/payments/gateway-factory.ts` - Gateway factory
 
-## Current Status
-✅ **Completed**:
-- Database schema design and updates
-- Core referral service implementation
-- API endpoint structure
-- Frontend quiz improvements
-- Referral dashboard component
-- Database migration script
+#### WhatsApp Payment Integration ✅
+- Updated `lib/whatsapp-payment.ts`:
+  - `createWhatsAppPaymentSession()` - Now uses gateway factory
+  - `createWhatsAppVIPSubscriptionSession()` - Now uses gateway factory
+  - Automatically selects PesaPal for Kenya (KE), Stripe for others
 
-## What Needs to Be Done Next
+## 🔄 Remaining Tasks
 
-### 1. Critical Missing Component
-- **QuizSession Model**: The `QuizSession` model is referenced in the quiz API but not defined in the schema. This needs to be added to `prisma/schema.prisma`.
+### 5. PesaPal IPN Webhook Endpoint ⏳
+**Status**: Not yet implemented
+**File**: `app/api/payments/pesapal/ipn/route.ts`
 
-### 2. Database Migration
-- **Apply Migration**: The SQL migration script needs to be executed against the live database to create the new tables and update existing ones.
+**Required**:
+- Create IPN endpoint
+- Verify IPN signature
+- Update payment status in database
+- Send confirmation messages
 
-### 3. Testing and Validation
-- **Test Referral Flow**: Verify the complete referral process from code generation to reward distribution
-- **Test Quiz Flow**: Ensure logged-in users can skip intro and quiz resets properly
-- **Integration Testing**: Test the interaction between referral system and quiz participation
+### 6. Update Payment Page Handler ⏳
+**Status**: Needs update
+**File**: `app/whatsapp/pay/[sessionId]/route.ts`
 
-### 4. Potential Issues to Address
-- **Type Safety**: Ensure all TypeScript interfaces match the implemented functionality
-- **Error Handling**: Verify comprehensive error handling across all new endpoints
-- **Performance**: Check database query performance with new indexes and relationships
+**Required**:
+- Handle both Stripe and PesaPal session IDs
+- Redirect to appropriate payment gateway
+- Handle PesaPal redirect URLs
 
-## Key Technical Decisions Made
+### 7. Update Payment Webhook Handler ⏳
+**Status**: Needs update
+**File**: `app/api/payments/webhook/route.ts`
 
-### 1. Referral Code Format
-- 8-character alphanumeric codes (e.g., "IADPRM50")
-- Unique per user with collision detection
-- Configurable usage limits and expiration
+**Required**:
+- Handle PesaPal IPN callbacks
+- Update payment status for both gateways
+- Process PesaPal payment confirmations
 
-### 2. Referral Reward Structure
-- Credits and points awarded to referrers
-- Completion criteria based on quiz scores, predictions, and account activity
-- 30-day expiration for referral tracking
+## 📋 Environment Variables Required
 
-### 3. Quiz Flow Architecture
-- Step-based navigation with conditional intro skipping
-- Session-based quiz management
-- Full reset capability for retaking
+Add these to your `.env` file:
 
-### 4. Database Design
-- Normalized structure with proper foreign key relationships
-- Comprehensive indexing for performance
-- JSON metadata fields for extensibility
+```env
+# PesaPal Configuration
+PESAPAL_CONSUMER_KEY=wcBXN5ORIxwZDmdTF3wC2i2+kEA5ZV9m
+PESAPAL_CONSUMER_SECRET=Le1FzDPw2DPjPghz0eDsn1k+MrM=
+PESAPAL_ENVIRONMENT=sandbox  # or 'live' for production
+```
 
-## Files Modified/Created
+## 🚀 Next Steps
 
-### Modified Files:
-- `prisma/schema.prisma` - Database schema updates
-- `app/api/referrals/route.ts` - Enhanced referral API
-- `app/api/quiz/route.ts` - Quiz flow improvements
-- `app/snapbet-quiz/page.tsx` - Frontend quiz experience
-- `app/dashboard/page.tsx` - Dashboard integration
+1. Run database migration:
+   ```bash
+   npx prisma db push
+   ```
 
-### New Files:
-- `lib/referral-service.ts` - Core referral business logic
-- `app/api/referrals/[id]/complete/route.ts` - Referral completion endpoint
-- `components/referral-dashboard.tsx` - Referral management UI
-- `scripts/migrate-referral-system.sql` - Database migration script
+2. Test PesaPal integration in sandbox mode
 
-## Next Steps Priority Order
+3. Implement IPN webhook endpoint
 
-1. **HIGH**: Add missing `QuizSession` model to schema
-2. **HIGH**: Execute database migration script
-3. **MEDIUM**: Test referral system end-to-end
-4. **MEDIUM**: Test quiz flow improvements
-5. **LOW**: Performance optimization and monitoring
+4. Update payment page handler
 
-## Environment Requirements
-- PostgreSQL database with Prisma client
-- Next.js 14 with App Router
-- Redis/Upstash Redis for caching
-- NextAuth.js for authentication
-- TypeScript with strict mode enabled
+5. Update payment webhook handler
 
-## Notes for Next Agent
-- The implementation follows the existing codebase patterns and conventions
-- All new code includes proper TypeScript typing and error handling
-- The referral system is designed to be extensible for future enhancements
-- The quiz improvements maintain backward compatibility while adding new features
-- Database migrations are designed to be safe for production use
-
-This implementation provides a solid foundation for the referral system and quiz improvements, with most of the heavy lifting already completed. The next agent should focus on completing the missing pieces and ensuring everything works together seamlessly. 
+6. Test end-to-end payment flow with Kenyan users

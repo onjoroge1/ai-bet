@@ -243,3 +243,5 @@ This document provides a comprehensive list of all WhatsApp commands, their mess
 
 5. **Message Length:** All messages are checked against WhatsApp's 4096 character limit and truncated if needed.
 
+
+

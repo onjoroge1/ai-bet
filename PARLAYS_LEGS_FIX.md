@@ -70,3 +70,5 @@ After syncing, legs should now be properly saved and retrievable:
 **Date**: December 12, 2025  
 **Priority**: CRITICAL - Legs are the most important part of parlays!
 
+
+

@@ -47,8 +47,18 @@ export function transformMarketMatchToApiFormat(match: MarketMatch): any {
   const momentum = match.momentum as any
   const modelMarkets = match.modelMarkets as any
   const aiAnalysis = match.aiAnalysis as any
-  const finalResult = match.finalResult as any
+  const finalResult = match.finalResult as any // ✅ Direct read from database - format: {"score":{"away":1,"home":1},"outcome":"D","outcome_text":"Draw"}
   const matchStatistics = match.matchStatistics as any
+  
+  // Log finalResult for FINISHED matches
+  if (match.status === 'FINISHED') {
+    console.log(`[Transform] Processing FINISHED match ${match.matchId}`, {
+      hasFinalResult: !!finalResult,
+      finalResult: finalResult,
+      finalResultType: typeof finalResult,
+      finalResultKeys: finalResult ? Object.keys(finalResult) : null
+    })
+  }
 
   // Build API response format
   const apiMatch: any = {
@@ -143,6 +153,29 @@ export function transformMarketMatchToApiFormat(match: MarketMatch): any {
         minute: match.elapsed || match.minute || null,
         period: match.period || 'Live',
       }
+      
+      // ✅ FIX: If match is likely finished (more than 2.5 hours old), also set final_result
+      // This handles cases where database still says LIVE but match has actually finished
+      const kickoffTime = match.kickoffDate.getTime()
+      const now = Date.now()
+      const hoursSinceKickoff = (now - kickoffTime) / (1000 * 60 * 60)
+      const likelyFinished = hoursSinceKickoff > 2.5 // More than 2.5 hours = likely finished
+      
+      if (likelyFinished && !finalResult) {
+        console.log(`[Transform] ⚠️ Match ${match.matchId} is LIVE in DB but likely finished (${hoursSinceKickoff.toFixed(2)}h old) - creating finalResult from currentScore`)
+        apiMatch.final_result = {
+          score: {
+            home: currentScore.home ?? 0,
+            away: currentScore.away ?? 0
+          },
+          outcome: (currentScore.home ?? 0) > (currentScore.away ?? 0) ? 'home' : 
+                   (currentScore.away ?? 0) > (currentScore.home ?? 0) ? 'away' : 'draw',
+          outcome_text: (currentScore.home ?? 0) > (currentScore.away ?? 0) ? 'Home Win' : 
+                       (currentScore.away ?? 0) > (currentScore.home ?? 0) ? 'Away Win' : 'Draw'
+        }
+        // Also update status to finished since it's likely finished
+        apiMatch.status = 'finished'
+      }
     }
     if (match.elapsed !== null || match.minute !== null) {
       apiMatch.minute = match.elapsed || match.minute
@@ -168,14 +201,80 @@ export function transformMarketMatchToApiFormat(match: MarketMatch): any {
   }
 
   // Add finished match data (if status is FINISHED)
+  // ✅ PRIORITY: Always use finalResult from database for FINISHED matches
   if (match.status === 'FINISHED') {
+    console.log(`[Transform] 🔍 Processing FINISHED match ${match.matchId}`, {
+      hasFinalResult: !!finalResult,
+      finalResultType: typeof finalResult,
+      finalResultValue: finalResult,
+      finalResultKeys: finalResult ? Object.keys(finalResult) : null,
+      hasCurrentScore: !!currentScore,
+      currentScoreValue: currentScore
+    })
+    
     if (finalResult) {
+      // ✅ Direct read from marketMatch.finalResult - format: {"score":{"away":1,"home":1},"outcome":"D","outcome_text":"Draw"}
       apiMatch.final_result = finalResult
-      // Also add score from finalResult if available
-      if (finalResult.score) {
-        apiMatch.score = finalResult.score
+      
+      // Extract score from finalResult.score (nested structure)
+      // Handle multiple possible score locations in finalResult
+      const scoreFromFinalResult = finalResult.score || 
+                                   finalResult.final_score ||
+                                   (finalResult.home !== undefined && finalResult.away !== undefined ? 
+                                     { home: finalResult.home, away: finalResult.away } : null)
+      
+      if (scoreFromFinalResult) {
+        apiMatch.score = scoreFromFinalResult
+        console.log(`[Transform] ✅ Using finalResult.score for FINISHED match ${match.matchId}:`, {
+          score: scoreFromFinalResult,
+          source: finalResult.score ? 'finalResult.score' : 
+                  finalResult.final_score ? 'finalResult.final_score' : 
+                  'finalResult.home/away'
+        })
+      } else {
+        console.warn(`[Transform] ⚠️ finalResult exists but no score found in any format for match ${match.matchId}`, {
+          finalResult: finalResult,
+          finalResultKeys: Object.keys(finalResult)
+        })
+        // Still set final_result even if score is missing
+      }
+    } else {
+      // Fallback: Try to get score from currentScore if finalResult is missing
+      // This handles edge cases where score was stored but finalResult wasn't created
+      if (currentScore && (currentScore.home !== undefined || currentScore.away !== undefined)) {
+        console.log(`[Transform] Using currentScore as fallback for FINISHED match ${match.matchId}`, {
+          currentScore: currentScore
+        })
+        const homeScore = currentScore.home ?? 0
+        const awayScore = currentScore.away ?? 0
+        apiMatch.final_result = {
+          score: {
+            home: homeScore,
+            away: awayScore
+          },
+          outcome: homeScore > awayScore ? 'home' : 
+                   awayScore > homeScore ? 'away' : 'draw',
+          outcome_text: homeScore > awayScore ? 'Home Win' : 
+                       awayScore > homeScore ? 'Away Win' : 'Draw'
+        }
+        apiMatch.score = apiMatch.final_result.score
+      } else {
+        console.warn(`[Transform] ⚠️ No finalResult or currentScore for FINISHED match ${match.matchId}`, {
+          hasFinalResult: !!finalResult,
+          hasCurrentScore: !!currentScore,
+          matchId: match.matchId,
+          status: match.status
+        })
       }
     }
+    
+    // Log final state
+    console.log(`[Transform] 📊 Final state for FINISHED match ${match.matchId}:`, {
+      hasFinalResult: !!apiMatch.final_result,
+      hasScore: !!apiMatch.score,
+      finalResult: apiMatch.final_result,
+      score: apiMatch.score
+    })
     if (matchStatistics) {
       apiMatch.match_statistics = matchStatistics
       apiMatch.statistics = matchStatistics // Alternative field name

@@ -101,13 +101,46 @@ export async function GET(
         where: { matchId: String(matchId) },
       })
 
-      if (dbMatch && !isMarketMatchTooOld(dbMatch)) {
-        console.log(`[Match API] Using database for match ${matchId} (status: ${dbMatch.status})`)
-        // Transform database match to API format
-        backendMatchData = transformMarketMatchToApiFormat(dbMatch)
-      } else if (dbMatch && isMarketMatchTooOld(dbMatch)) {
-        console.log(`[Match API] Database data too old for match ${matchId} (status: ${dbMatch.status}), fetching from API`)
-        // Continue to API fetch below
+      if (dbMatch) {
+        // ✅ FOR FINISHED MATCHES: Always use database (never expires, no API fallback needed)
+        if (dbMatch.status === 'FINISHED') {
+          console.log(`[Match API] Using database for FINISHED match ${matchId}`, {
+            hasFinalResult: !!dbMatch.finalResult,
+            finalResult: dbMatch.finalResult,
+            status: dbMatch.status
+          })
+          // Transform database match to API format
+          backendMatchData = transformMarketMatchToApiFormat(dbMatch)
+          
+          // Log finalResult extraction for debugging
+          if (dbMatch.finalResult) {
+            const finalResult = dbMatch.finalResult as any
+            console.log(`[Match API] ✅ FinalResult from database for match ${matchId}:`, {
+              finalResult: finalResult,
+              hasScore: !!finalResult.score,
+              score: finalResult.score,
+              outcome: finalResult.outcome,
+              outcome_text: finalResult.outcome_text,
+              finalResultType: typeof finalResult,
+              finalResultKeys: finalResult ? Object.keys(finalResult) : null
+            })
+          } else {
+            console.warn(`[Match API] ⚠️ FINISHED match ${matchId} in database but no finalResult field`, {
+              matchId: matchId,
+              status: dbMatch.status,
+              hasCurrentScore: !!dbMatch.currentScore,
+              currentScore: dbMatch.currentScore
+            })
+          }
+        } else if (!isMarketMatchTooOld(dbMatch)) {
+          // For LIVE/UPCOMING: Use database if not too old
+          console.log(`[Match API] Using database for match ${matchId} (status: ${dbMatch.status})`)
+          backendMatchData = transformMarketMatchToApiFormat(dbMatch)
+        } else {
+          // For LIVE/UPCOMING: Data too old, fetch from API
+          console.log(`[Match API] Database data too old for match ${matchId} (status: ${dbMatch.status}), fetching from API`)
+          // Continue to API fetch below
+        }
       } else {
         console.log(`[Match API] Match ${matchId} not in database, fetching from API`)
       }
@@ -117,106 +150,122 @@ export async function GET(
     }
 
     // If database data is not available or too old, fetch from external API
+    // ✅ SKIP API FETCH FOR FINISHED MATCHES - database is the source of truth
     if (!backendMatchData && BASE_URL) {
-      // First try with status=live to get enhanced live data if match is live
-      const liveMarketUrl = `${BASE_URL}/market?match_id=${matchId}&status=live`
-      console.log(`[Match API] Fetching live match from: ${liveMarketUrl}`)
+      // Check if match is FINISHED in database - if so, don't fetch from API
+      if (dbMatch && dbMatch.status === 'FINISHED') {
+        console.log(`[Match API] Match ${matchId} is FINISHED in database but no backendMatchData - this should not happen`)
+        // Still try to transform what we have
+        if (dbMatch) {
+          backendMatchData = transformMarketMatchToApiFormat(dbMatch)
+        }
+      }
       
-      try {
-        const liveMarketResponse = await fetch(liveMarketUrl, {
-          headers: {
-            Authorization: `Bearer ${API_KEY}`,
-          },
-          cache: 'no-store' // Disable caching for live matches to get real-time data
-        })
-
-        if (liveMarketResponse.ok) {
-          const liveData = await liveMarketResponse.json()
-          const match = liveData.matches?.[0]
-          const matchDate = match?.kickoff_at ? new Date(match.kickoff_at) : null
-          const now = new Date()
-          const hoursSinceKickoff = matchDate ? (now.getTime() - matchDate.getTime()) / (1000 * 60 * 60) : null
-          const isLikelyFinished = hoursSinceKickoff !== null && hoursSinceKickoff > 3 // More than 3 hours old
-          
-          console.log(`[Match API] Live match response:`, { 
-            hasData: !!match, 
-            status: match?.status,
-            hasMomentum: !!match?.momentum,
-            hasModelMarkets: !!match?.model_markets,
-            hasAIAnalysis: !!match?.ai_analysis,
-            currentScore: match?.live_data?.current_score,
-            minute: match?.live_data?.minute,
-            kickoff_at: match?.kickoff_at,
-            hoursSinceKickoff: hoursSinceKickoff?.toFixed(1),
-            isLikelyFinished: isLikelyFinished,
-            warning: isLikelyFinished && match?.status === 'LIVE' ? 'Match likely finished but status still LIVE' : null,
-            timestamp: new Date().toISOString()
-          })
-          if (liveData.matches?.[0]) {
-            backendMatchData = liveData.matches[0]
-          }
-        } else {
-          console.log(`[Match API] Live match fetch failed: ${liveMarketResponse.status} ${liveMarketResponse.statusText}`)
-        }
-      } catch (error) {
-        console.error(`[Match API] Error fetching live match:`, error)
-      }
-
-      // If not found as live, try finished matches first (more specific)
-      if (!backendMatchData) {
-        const finishedMarketUrl = `${BASE_URL}/market?match_id=${matchId}&status=finished`
-        console.log(`[Match API] Fetching finished match from: ${finishedMarketUrl}`)
+      // Only fetch from API if not FINISHED or if match not in database
+      if (!dbMatch || dbMatch.status !== 'FINISHED') {
+        // First try with status=live to get enhanced live data if match is live
+        const liveMarketUrl = `${BASE_URL}/market?match_id=${matchId}&status=live`
+        console.log(`[Match API] Fetching live match from: ${liveMarketUrl}`)
         
         try {
-          const finishedResponse = await fetch(finishedMarketUrl, {
+          const liveMarketResponse = await fetch(liveMarketUrl, {
             headers: {
               Authorization: `Bearer ${API_KEY}`,
             },
-            next: { revalidate: 3600 } // Cache finished matches for 1 hour
+            cache: 'no-store' // Disable caching for live matches to get real-time data
           })
 
-          if (finishedResponse.ok) {
-            const finishedData = await finishedResponse.json()
-            console.log(`[Match API] Finished match response:`, { 
-              hasData: !!finishedData.matches?.[0], 
-              status: finishedData.matches?.[0]?.status,
-              final_result: finishedData.matches?.[0]?.final_result 
+          if (liveMarketResponse.ok) {
+            const liveData = await liveMarketResponse.json()
+            const match = liveData.matches?.[0]
+            const matchDate = match?.kickoff_at ? new Date(match.kickoff_at) : null
+            const now = new Date()
+            const hoursSinceKickoff = matchDate ? (now.getTime() - matchDate.getTime()) / (1000 * 60 * 60) : null
+            const isLikelyFinished = hoursSinceKickoff !== null && hoursSinceKickoff > 3 // More than 3 hours old
+            
+            console.log(`[Match API] Live match response:`, { 
+              hasData: !!match, 
+              status: match?.status,
+              hasMomentum: !!match?.momentum,
+              hasModelMarkets: !!match?.model_markets,
+              hasAIAnalysis: !!match?.ai_analysis,
+              currentScore: match?.live_data?.current_score,
+              minute: match?.live_data?.minute,
+              kickoff_at: match?.kickoff_at,
+              hoursSinceKickoff: hoursSinceKickoff?.toFixed(1),
+              isLikelyFinished: isLikelyFinished,
+              warning: isLikelyFinished && match?.status === 'LIVE' ? 'Match likely finished but status still LIVE' : null,
+              timestamp: new Date().toISOString()
             })
-            if (finishedData.matches?.[0]) {
-              backendMatchData = finishedData.matches[0]
+            if (liveData.matches?.[0]) {
+              backendMatchData = liveData.matches[0]
             }
-          }
-        } catch (error) {
-          console.error(`[Match API] Error fetching finished match:`, error)
-        }
-      }
-
-      // If not found as live or finished, try without status filter (for upcoming)
-      if (!backendMatchData) {
-        const marketUrl = `${BASE_URL}/market?match_id=${matchId}`
-        console.log(`[Match API] Fetching match from: ${marketUrl}`)
-        
-        try {
-          const marketResponse = await fetch(marketUrl, {
-            headers: {
-              Authorization: `Bearer ${API_KEY}`,
-            },
-            next: { revalidate: 60 }
-          })
-
-          if (marketResponse.ok) {
-            const marketData = await marketResponse.json()
-            console.log(`[Match API] Match response:`, { 
-              hasData: !!marketData.matches?.[0], 
-              status: marketData.matches?.[0]?.status 
-            })
-            backendMatchData = marketData.matches?.[0] // Single match returned, get first element
           } else {
-            console.log(`[Match API] Match fetch failed: ${marketResponse.status} ${marketResponse.statusText}`)
+            console.log(`[Match API] Live match fetch failed: ${liveMarketResponse.status} ${liveMarketResponse.statusText}`)
           }
         } catch (error) {
-          console.error(`[Match API] Error fetching match:`, error)
+          console.error(`[Match API] Error fetching live match:`, error)
         }
+
+        // ✅ SKIP API FETCH FOR FINISHED MATCHES - database is source of truth
+        // If not found as live, try finished matches from API ONLY if not already in database as FINISHED
+        if (!backendMatchData) {
+          const finishedMarketUrl = `${BASE_URL}/market?match_id=${matchId}&status=finished`
+          console.log(`[Match API] Fetching finished match from API: ${finishedMarketUrl}`)
+          
+          try {
+            const finishedResponse = await fetch(finishedMarketUrl, {
+              headers: {
+                Authorization: `Bearer ${API_KEY}`,
+              },
+              next: { revalidate: 3600 } // Cache finished matches for 1 hour
+            })
+
+            if (finishedResponse.ok) {
+              const finishedData = await finishedResponse.json()
+              console.log(`[Match API] Finished match response:`, { 
+                hasData: !!finishedData.matches?.[0], 
+                status: finishedData.matches?.[0]?.status,
+                final_result: finishedData.matches?.[0]?.final_result 
+              })
+              if (finishedData.matches?.[0]) {
+                backendMatchData = finishedData.matches[0]
+              }
+            }
+          } catch (error) {
+            console.error(`[Match API] Error fetching finished match:`, error)
+          }
+        }
+
+        // If not found as live or finished, try without status filter (for upcoming)
+        if (!backendMatchData) {
+          const marketUrl = `${BASE_URL}/market?match_id=${matchId}`
+          console.log(`[Match API] Fetching match from: ${marketUrl}`)
+          
+          try {
+            const marketResponse = await fetch(marketUrl, {
+              headers: {
+                Authorization: `Bearer ${API_KEY}`,
+              },
+              next: { revalidate: 60 }
+            })
+
+            if (marketResponse.ok) {
+              const marketData = await marketResponse.json()
+              console.log(`[Match API] Match response:`, { 
+                hasData: !!marketData.matches?.[0], 
+                status: marketData.matches?.[0]?.status 
+              })
+              backendMatchData = marketData.matches?.[0] // Single match returned, get first element
+            } else {
+              console.log(`[Match API] Match fetch failed: ${marketResponse.status} ${marketResponse.statusText}`)
+            }
+          } catch (error) {
+            console.error(`[Match API] Error fetching match:`, error)
+          }
+        }
+      } else if (dbMatch && dbMatch.status === 'FINISHED') {
+        console.log(`[Match API] ✅ Skipping API fetch for FINISHED match ${matchId} - using database finalResult only`)
       }
     } else if (!BASE_URL) {
       console.error(`[Match API] Cannot fetch match ${matchId}: BACKEND_API_URL not configured`)
@@ -225,6 +274,78 @@ export async function GET(
     // Use backend data if available (from database or API)
     if (backendMatchData) {
       matchData = backendMatchData
+      
+      // ✅ FIX: If match status is "finished" or "FINISHED" but final_result is missing,
+      // OR if match is likely finished (more than 2.5 hours old) but status is still LIVE,
+      // create final_result from current score so frontend can display it correctly
+      const isFinishedStatus = matchData.status === 'finished' || matchData.status === 'FINISHED'
+      const isLiveStatus = matchData.status === 'live' || matchData.status === 'LIVE'
+      
+      if ((isFinishedStatus || isLiveStatus) && !matchData.final_result) {
+        const kickoffTime = matchData.kickoff_at ? new Date(matchData.kickoff_at).getTime() : null
+        let shouldCreateFinalResult = false
+        
+        if (isFinishedStatus) {
+          // If status is already finished, always create final_result if missing
+          shouldCreateFinalResult = true
+          console.log(`[Match API] ⚠️ Match ${matchId} has FINISHED status but no final_result - creating from score`)
+        } else if (kickoffTime) {
+          // If status is LIVE, check if match is likely finished
+          const now = Date.now()
+          const hoursSinceKickoff = (now - kickoffTime) / (1000 * 60 * 60)
+          const likelyFinished = hoursSinceKickoff > 2.5 // More than 2.5 hours = likely finished
+          shouldCreateFinalResult = likelyFinished
+          if (likelyFinished) {
+            console.log(`[Match API] ⚠️ Match ${matchId} is LIVE but likely finished (${hoursSinceKickoff.toFixed(2)}h old) - creating final_result from score`)
+          }
+        }
+        
+        if (shouldCreateFinalResult) {
+          // Get score from multiple possible locations
+          let score = matchData.score || 
+                      matchData.live_data?.current_score ||
+                      (matchData.currentScore ? { home: matchData.currentScore.home, away: matchData.currentScore.away } : null)
+          
+          // ✅ FIX: If score is still not found, try to get it from database directly
+          if (!score && dbMatch && dbMatch.currentScore) {
+            const dbScore = dbMatch.currentScore as { home?: number; away?: number }
+            if (dbScore && (dbScore.home !== undefined || dbScore.away !== undefined)) {
+              console.log(`[Match API] 🔍 Getting score from database currentScore field`)
+              score = {
+                home: dbScore.home ?? 0,
+                away: dbScore.away ?? 0
+              }
+            }
+          }
+          
+          if (score && (score.home !== undefined || score.away !== undefined)) {
+            matchData.final_result = {
+              score: {
+                home: score.home ?? 0,
+                away: score.away ?? 0
+              },
+              outcome: (score.home ?? 0) > (score.away ?? 0) ? 'home' : 
+                       (score.away ?? 0) > (score.home ?? 0) ? 'away' : 'draw',
+              outcome_text: (score.home ?? 0) > (score.away ?? 0) ? 'Home Win' : 
+                           (score.away ?? 0) > (score.home ?? 0) ? 'Away Win' : 'Draw'
+            }
+            // Also ensure score is set at root level
+            if (!matchData.score) {
+              matchData.score = matchData.final_result.score
+            }
+            console.log(`[Match API] ✅ Created final_result:`, matchData.final_result)
+          } else {
+            console.warn(`[Match API] ⚠️ Cannot create final_result: no score found`, {
+              hasScore: !!matchData.score,
+              hasLiveData: !!matchData.live_data,
+              hasCurrentScore: !!matchData.currentScore,
+              hasDbMatch: !!dbMatch,
+              dbMatchCurrentScore: dbMatch?.currentScore,
+              matchDataKeys: Object.keys(matchData)
+            })
+          }
+        }
+      }
       
       // Normalize predictions structure (backend uses predictions.v1/v2, frontend expects models.v1_consensus/v2_lightgbm)
       if (matchData.predictions && !matchData.models) {
@@ -412,6 +533,17 @@ export async function GET(
       ? { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=7200' } // 1 hour cache for finished matches
       : { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' } // 60s cache for upcoming
 
+    // Log final response for FINISHED matches
+    if (matchData?.status === 'finished' || matchData?.final_result) {
+      console.log(`[Match API] 📤 Final response for FINISHED match ${matchId}:`, {
+        hasFinalResult: !!matchData.final_result,
+        finalResult: matchData.final_result,
+        hasScore: !!matchData.score,
+        score: matchData.score,
+        status: matchData.status
+      })
+    }
+    
     return NextResponse.json({
       match: matchData,
       quickPurchase: quickPurchaseInfo ? {

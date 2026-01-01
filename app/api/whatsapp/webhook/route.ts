@@ -329,12 +329,8 @@ async function handleIncomingText(waId: string, text: string) {
     }
 
     // PARLAY: AI-built parlay (3-6 matches)
+    // Free users get 1 upcoming parlay preview, VIP users get unlimited
     if (lower === "parlay" || lower === "parlays") {
-      const premiumStatus = await hasWhatsAppPremiumAccess(normalizedWaId);
-      if (!premiumStatus.hasAccess) {
-        await sendVIPRequiredMessage(normalizedWaId);
-        return;
-      }
       await sendParlayPicks(normalizedWaId);
       return;
     }
@@ -1445,12 +1441,37 @@ async function sendV3Picks(to: string) {
 
 /**
  * Send parlay picks (PARLAY command)
+ * Free users: 1 upcoming parlay preview
+ * VIP users: Multiple parlays (up to 5)
  */
 async function sendParlayPicks(to: string) {
   try {
+    // Check premium access
+    const premiumStatus = await hasWhatsAppPremiumAccess(to);
+    const isPremium = premiumStatus.hasAccess;
+
+    // Get upcoming match IDs from MarketMatch table
+    const now = new Date();
+    const upcomingMatches = await prisma.marketMatch.findMany({
+      where: {
+        status: 'UPCOMING',
+        kickoffDate: { gt: now },
+        isActive: true,
+      },
+      select: { matchId: true },
+    });
+    const upcomingMatchIds = new Set(upcomingMatches.map(m => m.matchId));
+
+    if (upcomingMatchIds.size === 0) {
+      await sendWhatsAppText(
+        to,
+        "🎯 **AI PARLAY BUILDER**\n\nNo upcoming matches available right now.\n\nCheck back later or send '1' for today's picks!"
+      );
+      return;
+    }
+
     // Fetch active parlays from database
-    // Use type assertion since Prisma client might need regeneration
-    const parlays = await (prisma as any).parlayConsensus.findMany({
+    const allParlays = await prisma.parlayConsensus.findMany({
       where: {
         status: 'active',
         confidenceTier: { in: ['high', 'medium'] },
@@ -1458,14 +1479,13 @@ async function sendParlayPicks(to: string) {
       include: {
         legs: {
           orderBy: { legOrder: 'asc' },
-          take: 6,
         },
       },
       orderBy: { edgePct: 'desc' },
-      take: 5,
+      take: 10, // Get more to filter
     }).catch(() => []);
 
-    if (parlays.length === 0) {
+    if (allParlays.length === 0) {
       await sendWhatsAppText(
         to,
         "🎯 **AI PARLAY BUILDER**\n\nNo active parlays available right now.\n\nCheck back later or send '1' for today's picks!"
@@ -1473,39 +1493,253 @@ async function sendParlayPicks(to: string) {
       return;
     }
 
-    const lines: string[] = [];
-    lines.push("🔗 **AI PARLAY**");
-    lines.push("");
-    lines.push("High-odds parlay ticket.");
-    lines.push("");
-    lines.push("👉 Get detailed info:");
-    lines.push("");
-    lines.push("Type: [matchid]");
+    // Filter parlays: Only include those where ALL legs reference upcoming matches
+    const upcomingParlays = allParlays.filter(parlay => {
+      return parlay.legs.every(leg => upcomingMatchIds.has(leg.matchId));
+    }).slice(0, isPremium ? 5 : 1); // Free: 1, VIP: 5
 
-    const message = lines.join("\n");
-    
-    // Check message length
-    if (message.length > 4096) {
-      const shortMessage = [
-        "🎯 **AI-BUILT PARLAYS**",
-        "",
-        `Found ${parlays.length} active parlays!`,
-        "",
-        "**Top Parlay:**",
-        `${parlays[0].legCount} legs | Edge: ${Number(parlays[0].edgePct).toFixed(1)}%`,
-        "",
-        "Send 'BUY' to see payment options",
-        "to view and purchase all parlays.",
-      ].join("\n");
-      
-      await sendWhatsAppText(to, shortMessage);
-    } else {
-      await sendWhatsAppText(to, message);
+    if (upcomingParlays.length === 0) {
+      await sendWhatsAppText(
+        to,
+        "🎯 **AI PARLAY BUILDER**\n\nNo parlays available for upcoming matches right now.\n\nCheck back later or send '1' for today's picks!"
+      );
+      return;
     }
+
+    // Format parlay message based on user tier
+    let message: string;
+
+    if (!isPremium) {
+      // FREE USER: Show 1 complete parlay with ALL legs
+      message = formatFreeUserParlay(upcomingParlays[0]);
+    } else {
+      // PREMIUM USER: Show list of parlays (first one detailed, others summarized)
+      message = formatPremiumUserParlays(upcomingParlays);
+    }
+
+    // Check message length and truncate if needed
+    if (message.length > 4096) {
+      // Fallback: Show compact version
+      if (!isPremium) {
+        message = formatSingleParlayCompact(upcomingParlays[0]) + "\n\n🔒 **Upgrade to VIP for unlimited parlays!**\n\nSend 'BUY' to see pricing.";
+      } else {
+        message = formatPremiumUserParlaysCompact(upcomingParlays);
+      }
+      
+      // Final safety check
+      if (message.length > 4096) {
+        message = message.slice(0, 4090) + "...";
+      }
+    }
+
+    await sendWhatsAppText(to, message);
   } catch (error) {
     logger.error("Error sending parlay picks", { to, error });
     await sendWhatsAppText(to, "Sorry, couldn't fetch parlays. Send 'BUY' to see payment options.");
   }
+}
+
+/**
+ * Format parlay for FREE user (1 complete parlay with ALL legs)
+ */
+function formatFreeUserParlay(parlay: any): string {
+  if (!parlay) {
+    return "🎯 **AI PARLAY**\n\nNo parlays available right now.";
+  }
+
+  const lines: string[] = [];
+  lines.push("🔗 **AI PARLAY**");
+  lines.push("");
+  lines.push("**Preview - Complete Parlay Details:**");
+  lines.push("");
+  
+  // Parlay summary
+  lines.push(`**${parlay.legCount} Leg Parlay**`);
+  lines.push(`Edge: ${Number(parlay.edgePct).toFixed(1)}%`);
+  lines.push(`Combined Odds: ${Number(parlay.impliedOdds).toFixed(2)}`);
+  lines.push(`Confidence: ${(Number(parlay.combinedProb) * 100).toFixed(1)}%`);
+  lines.push("");
+
+  // ALL legs with full details
+  lines.push("**All Legs:**");
+  parlay.legs.forEach((leg: any, legIndex: number) => {
+    const outcomeLabel = leg.outcome === 'H' ? 'Home Win' : leg.outcome === 'D' ? 'Draw' : 'Away Win';
+    lines.push("");
+    lines.push(`**Leg ${legIndex + 1}:**`);
+    lines.push(`${leg.homeTeam} vs ${leg.awayTeam}`);
+    lines.push(`Pick: ${outcomeLabel}`);
+    lines.push(`Odds: ${Number(leg.decimalOdds).toFixed(2)}`);
+    lines.push(`Match ID: ${leg.matchId}`);
+    lines.push(`Edge: +${(Number(leg.edge) * 100).toFixed(1)}%`);
+  });
+
+  // Kickoff info
+  if (parlay.earliestKickoff) {
+    const kickoff = new Date(parlay.earliestKickoff);
+    const dateStr = kickoff.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const timeStr = kickoff.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    lines.push("");
+    lines.push(`**Earliest Kickoff:** ${dateStr} ${timeStr}`);
+  }
+
+  // Upgrade prompt
+  lines.push("");
+  lines.push("─".repeat(30));
+  lines.push("");
+  lines.push("🔒 **Want unlimited parlays?**");
+  lines.push("");
+  lines.push("Upgrade to VIP to access:");
+  lines.push("• Unlimited parlay picks");
+  lines.push("• Multiple parlay options");
+  lines.push("• All premium markets");
+  lines.push("");
+  lines.push("Send 'BUY' to see pricing options!");
+
+  return lines.join("\n");
+}
+
+/**
+ * Format parlays for PREMIUM user (list format: first detailed, others summarized)
+ */
+function formatPremiumUserParlays(parlays: any[]): string {
+  if (parlays.length === 0) {
+    return "🎯 **AI PARLAY**\n\nNo parlays available right now.";
+  }
+
+  const lines: string[] = [];
+  lines.push("🔗 **AI PARLAYS**");
+  lines.push("");
+  lines.push(`Found ${parlays.length} upcoming parlay${parlays.length > 1 ? 's' : ''}:`);
+  lines.push("");
+
+  // First parlay: Full details with ALL legs
+  if (parlays[0]) {
+    lines.push("**📋 PARLAY 1 (Full Details):**");
+    lines.push("");
+    lines.push(formatParlayFullDetails(parlays[0]));
+  }
+
+  // Remaining parlays: Summary format
+  if (parlays.length > 1) {
+    lines.push("");
+    lines.push("─".repeat(30));
+    lines.push("");
+    lines.push("**📊 Additional Parlays:**");
+    lines.push("");
+
+    parlays.slice(1).forEach((parlay, index) => {
+      lines.push(`**Parlay ${index + 2}:**`);
+      lines.push(`${parlay.legCount} legs | Edge: ${Number(parlay.edgePct).toFixed(1)}% | Odds: ${Number(parlay.impliedOdds).toFixed(2)}`);
+      lines.push(`Confidence: ${(Number(parlay.combinedProb) * 100).toFixed(1)}%`);
+      
+      // Show first 2 legs as preview
+      lines.push("Legs preview:");
+      parlay.legs.slice(0, 2).forEach((leg: any, legIndex: number) => {
+        const outcomeLabel = leg.outcome === 'H' ? 'H' : leg.outcome === 'D' ? 'D' : 'A';
+        lines.push(`  ${legIndex + 1}. ${leg.homeTeam} vs ${leg.awayTeam} - ${outcomeLabel} @ ${Number(leg.decimalOdds).toFixed(2)}`);
+      });
+      if (parlay.legs.length > 2) {
+        lines.push(`  ... and ${parlay.legs.length - 2} more leg${parlay.legs.length - 2 > 1 ? 's' : ''}`);
+      }
+      
+      // Show match IDs for getting details
+      const matchIds = parlay.legs.map((leg: any) => leg.matchId).slice(0, 3).join(", ");
+      lines.push(`  Match IDs: ${matchIds}${parlay.legs.length > 3 ? "..." : ""}`);
+      lines.push("");
+    });
+
+    lines.push("💡 **To see full details of any parlay:**");
+    lines.push("Send any Match ID from that parlay to get the complete analysis!");
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Format a single parlay with full details (all legs)
+ */
+function formatParlayFullDetails(parlay: any): string {
+  const lines: string[] = [];
+  
+  // Summary
+  lines.push(`${parlay.legCount} legs | Edge: ${Number(parlay.edgePct).toFixed(1)}%`);
+  lines.push(`Combined Odds: ${Number(parlay.impliedOdds).toFixed(2)}`);
+  lines.push(`Confidence: ${(Number(parlay.combinedProb) * 100).toFixed(1)}%`);
+  lines.push("");
+
+  // ALL legs with complete details
+  lines.push("**All Legs:**");
+  parlay.legs.forEach((leg: any, legIndex: number) => {
+    const outcomeLabel = leg.outcome === 'H' ? 'Home Win' : leg.outcome === 'D' ? 'Draw' : 'Away Win';
+    lines.push("");
+    lines.push(`**Leg ${legIndex + 1}:**`);
+    lines.push(`${leg.homeTeam} vs ${leg.awayTeam}`);
+    lines.push(`Pick: ${outcomeLabel}`);
+    lines.push(`Odds: ${Number(leg.decimalOdds).toFixed(2)}`);
+    lines.push(`Match ID: ${leg.matchId}`);
+    lines.push(`Edge: +${(Number(leg.edge) * 100).toFixed(1)}%`);
+    lines.push(`Probability: ${(Number(leg.modelProb) * 100).toFixed(1)}%`);
+  });
+
+  // Kickoff info
+  if (parlay.earliestKickoff) {
+    const kickoff = new Date(parlay.earliestKickoff);
+    const dateStr = kickoff.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const timeStr = kickoff.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    lines.push("");
+    lines.push(`**Earliest Kickoff:** ${dateStr} ${timeStr}`);
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Format a single parlay in compact format (fallback)
+ */
+function formatSingleParlayCompact(parlay: any): string {
+  if (!parlay) return "No parlay available";
+  
+  const lines: string[] = [];
+  lines.push(`**${parlay.legCount} Leg Parlay**`);
+  lines.push(`Edge: ${Number(parlay.edgePct).toFixed(1)}% | Odds: ${Number(parlay.impliedOdds).toFixed(2)}`);
+  lines.push("");
+  lines.push("**Legs:**");
+  parlay.legs.slice(0, 3).forEach((leg: any, index: number) => {
+    const outcomeLabel = leg.outcome === 'H' ? 'Home' : leg.outcome === 'D' ? 'Draw' : 'Away';
+    lines.push(`${index + 1}. ${leg.homeTeam} vs ${leg.awayTeam}`);
+    lines.push(`   ${outcomeLabel} @ ${Number(leg.decimalOdds).toFixed(2)}`);
+  });
+  if (parlay.legs.length > 3) {
+    lines.push(`... and ${parlay.legs.length - 3} more`);
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Format premium parlays in compact format (fallback)
+ */
+function formatPremiumUserParlaysCompact(parlays: any[]): string {
+  const lines: string[] = [];
+  lines.push("🔗 **AI PARLAYS**");
+  lines.push("");
+  lines.push(`Found ${parlays.length} upcoming parlay${parlays.length > 1 ? 's' : ''}:`);
+  lines.push("");
+
+  parlays.forEach((parlay, index) => {
+    lines.push(`**Parlay ${index + 1}:**`);
+    lines.push(`${parlay.legCount} legs | Edge: ${Number(parlay.edgePct).toFixed(1)}% | Odds: ${Number(parlay.impliedOdds).toFixed(2)}`);
+    lines.push(`Confidence: ${(Number(parlay.combinedProb) * 100).toFixed(1)}%`);
+    
+    // Show first leg match ID
+    if (parlay.legs.length > 0) {
+      lines.push(`First Match ID: ${parlay.legs[0].matchId}`);
+    }
+    lines.push("");
+  });
+
+  lines.push("💡 Send any Match ID to get full parlay details!");
+
+  return lines.join("\n");
 }
 
 /**

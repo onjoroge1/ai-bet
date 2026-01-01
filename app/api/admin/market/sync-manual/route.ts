@@ -90,11 +90,54 @@ function transformMatchData(apiMatch: any) {
   let attendance = null
 
   if (normalizedStatus === 'FINISHED') {
-    finalResult = apiMatch.final_result || {
-      score: apiMatch.score || apiMatch.final_score,
-      outcome: apiMatch.outcome,
-      outcome_text: apiMatch.outcome_text
+    // Try multiple sources for final score
+    const scoreFromFinalResult = apiMatch.final_result?.score
+    const scoreFromScore = apiMatch.score
+    const scoreFromFinalScore = apiMatch.final_score
+    const scoreFromLiveData = apiMatch.live_data?.current_score
+    const scoreFromCurrentScore = currentScore // Already extracted above
+    
+    // Determine the actual final score
+    const finalScore = scoreFromFinalResult || 
+                       scoreFromScore || 
+                       scoreFromFinalScore || 
+                       scoreFromLiveData ||
+                       scoreFromCurrentScore
+    
+    // Only create finalResult if we have a valid score
+    if (finalScore && (finalScore.home !== undefined || finalScore.away !== undefined)) {
+      finalResult = apiMatch.final_result || {
+        score: {
+          home: finalScore.home ?? 0,
+          away: finalScore.away ?? 0
+        },
+        outcome: apiMatch.outcome || 
+                 (finalScore.home > finalScore.away ? 'home' : 
+                  finalScore.away > finalScore.home ? 'away' : 'draw'),
+        outcome_text: apiMatch.outcome_text ||
+                     (finalScore.home > finalScore.away ? 'Home Win' : 
+                      finalScore.away > finalScore.home ? 'Away Win' : 'Draw')
+      }
+      
+      console.log(`[Sync Manual] Extracted finalResult for match ${matchId}:`, {
+        score: finalResult.score,
+        outcome: finalResult.outcome,
+        source: scoreFromFinalResult ? 'final_result.score' :
+                scoreFromScore ? 'score' :
+                scoreFromFinalScore ? 'final_score' :
+                scoreFromLiveData ? 'live_data.current_score' :
+                'currentScore'
+      })
+    } else {
+      console.warn(`[Sync Manual] No valid score found for FINISHED match ${matchId}`, {
+        hasFinalResult: !!apiMatch.final_result,
+        hasScore: !!apiMatch.score,
+        hasFinalScore: !!apiMatch.final_score,
+        hasLiveData: !!apiMatch.live_data,
+        hasCurrentScore: !!currentScore
+      })
     }
+    
     matchStatistics = apiMatch.match_statistics || apiMatch.statistics
     venue = apiMatch.venue
     referee = apiMatch.referee

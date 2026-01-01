@@ -4,6 +4,7 @@ import { logger } from "@/lib/logger";
 import { getPickByMatchId } from "./whatsapp-picks";
 import { getDbCountryPricing } from "@/lib/server-pricing-service";
 import { getCountryCodeFromPhone } from "./whatsapp-country-detection";
+import { createPaymentGateway, getPaymentGatewayType } from "./payments/gateway-factory";
 
 const BASE_URL = process.env.NEXTAUTH_URL || "http://localhost:3000";
 
@@ -158,31 +159,24 @@ export async function createWhatsAppPaymentSession(params: {
     const market = pick.market || "1X2";
     const tip = pick.tip || "Win";
 
-    // Create Stripe Checkout Session
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      line_items: [
-        {
-          price_data: {
-            currency: getStripeCurrency(finalCurrency),
-            product_data: {
-              name: `SnapBet Pick: ${pick.homeTeam} vs ${pick.awayTeam}`,
-              description: `${market} - ${tip}`,
-            },
-            unit_amount: formatAmountForStripe(finalPrice, finalCurrency),
-          },
-          quantity: 1,
-        },
-      ],
+    // Determine payment gateway based on country
+    const paymentGatewayType = getPaymentGatewayType(userCountryCode);
+    const gateway = createPaymentGateway(userCountryCode);
+
+    // Create payment session using appropriate gateway
+    const paymentSession = await gateway.createPaymentSession({
+      amount: finalPrice,
+      currency: finalCurrency,
+      description: `SnapBet Pick: ${pick.homeTeam} vs ${pick.awayTeam} - ${market} - ${tip}`,
       metadata: {
         waId: waUser.waId,
         matchId: pick.matchId,
         quickPurchaseId: quickPurchaseId,
         source: "whatsapp",
       },
-      success_url: `${BASE_URL}/whatsapp/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${BASE_URL}/whatsapp/payment/cancel`,
-      expires_at: Math.floor(Date.now() / 1000) + 30 * 60, // 30 minutes
+      successUrl: `${BASE_URL}/whatsapp/payment/success?session_id={SESSION_ID}`,
+      cancelUrl: `${BASE_URL}/whatsapp/payment/cancel`,
+      expiresAt: Math.floor(Date.now() / 1000) + 30 * 60, // 30 minutes
     });
 
     // Create WhatsAppPurchase record
@@ -192,7 +186,10 @@ export async function createWhatsAppPaymentSession(params: {
         quickPurchaseId: quickPurchaseId,
         amount: finalPrice,
         currency: finalCurrency,
-        paymentSessionId: session.id,
+        paymentGateway: paymentGatewayType,
+        paymentSessionId: paymentSession.sessionId,
+        pesapalOrderTrackingId: paymentGatewayType === 'pesapal' ? paymentSession.sessionId : null,
+        pesapalMerchantReference: paymentSession.merchantReference || null,
         status: "pending",
       },
     });
@@ -200,16 +197,17 @@ export async function createWhatsAppPaymentSession(params: {
     logger.info("Created WhatsApp payment session", {
       waId: waUser.waId,
       matchId,
-      sessionId: session.id,
+      gateway: paymentGatewayType,
+      sessionId: paymentSession.sessionId,
     });
 
-    // Create short URL for WhatsApp (cleaner than full Stripe URL)
+    // Create short URL for WhatsApp (cleaner than full payment URL)
     const baseUrl = BASE_URL.replace(/\/$/, ""); // Remove trailing slash
-    const shortUrl = `${baseUrl}/whatsapp/pay/${session.id}`;
+    const shortUrl = `${baseUrl}/whatsapp/pay/${paymentSession.sessionId}`;
 
     return {
-      paymentUrl: shortUrl, // Use short URL instead of full Stripe URL
-      sessionId: session.id,
+      paymentUrl: shortUrl,
+      sessionId: paymentSession.sessionId,
     };
   } catch (error) {
     logger.error("Error creating WhatsApp payment session", {
@@ -278,22 +276,15 @@ export async function createWhatsAppVIPSubscriptionSession(params: {
 
     const packageName = packageNames[packageType] || "VIP Package";
 
-    // Create Stripe Checkout Session
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment", // One-time payment for subscriptions
-      line_items: [
-        {
-          price_data: {
-            currency: getStripeCurrency(finalCurrency),
-            product_data: {
-              name: `SnapBet ${packageName}`,
-              description: packageOffer.description || `VIP access for ${packageName}`,
-            },
-            unit_amount: formatAmountForStripe(finalPrice, finalCurrency),
-          },
-          quantity: 1,
-        },
-      ],
+    // Determine payment gateway based on country
+    const paymentGatewayType = getPaymentGatewayType(userCountryCode);
+    const gateway = createPaymentGateway(userCountryCode);
+
+    // Create payment session using appropriate gateway
+    const paymentSession = await gateway.createPaymentSession({
+      amount: finalPrice,
+      currency: finalCurrency,
+      description: `SnapBet ${packageName}`,
       metadata: {
         waId: waUser.waId,
         packageType,
@@ -302,26 +293,27 @@ export async function createWhatsAppVIPSubscriptionSession(params: {
         source: "whatsapp",
         purchaseType: "vip_subscription",
       },
-      success_url: `${BASE_URL}/whatsapp/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${BASE_URL}/whatsapp/payment/cancel`,
-      expires_at: Math.floor(Date.now() / 1000) + 30 * 60, // 30 minutes
+      successUrl: `${BASE_URL}/whatsapp/payment/success?session_id={SESSION_ID}`,
+      cancelUrl: `${BASE_URL}/whatsapp/payment/cancel`,
+      expiresAt: Math.floor(Date.now() / 1000) + 30 * 60, // 30 minutes
     });
 
     logger.info("Created WhatsApp VIP subscription session", {
       waId: waUser.waId,
       packageType,
-      sessionId: session.id,
+      gateway: paymentGatewayType,
+      sessionId: paymentSession.sessionId,
       price: finalPrice,
       currency: finalCurrency,
     });
 
     // Create short URL for WhatsApp
     const baseUrl = BASE_URL.replace(/\/$/, "");
-    const shortUrl = `${baseUrl}/whatsapp/pay/${session.id}`;
+    const shortUrl = `${baseUrl}/whatsapp/pay/${paymentSession.sessionId}`;
 
     return {
       paymentUrl: shortUrl,
-      sessionId: session.id,
+      sessionId: paymentSession.sessionId,
     };
   } catch (error) {
     logger.error("Error creating WhatsApp VIP subscription session", {

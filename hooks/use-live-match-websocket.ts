@@ -29,6 +29,7 @@ export interface ConnectionStatus {
  * - Exponential backoff for reconnection
  * - Connection health monitoring
  * - Fallback to HTTP polling if WebSocket fails
+ * - Overlap period: Keeps polling active for 2s after WebSocket connects (eliminates gap)
  * - Proactive refresh mechanism
  * - Connection quality tracking
  * - Cleanup on unmount
@@ -53,6 +54,7 @@ export function useLiveMatchWebSocket(matchId: string, isLive: boolean) {
   const pollingIntervalRef = useRef<NodeJS.Timeout>()
   const proactiveRefreshIntervalRef = useRef<NodeJS.Timeout>()
   const healthCheckIntervalRef = useRef<NodeJS.Timeout>()
+  const overlapTimerRef = useRef<NodeJS.Timeout>() // Timer for overlap period
   const shouldConnectRef = useRef(isLive)
   const reconnectAttemptsRef = useRef(0)
   const lastMessageTimeRef = useRef<number | null>(null)
@@ -67,6 +69,7 @@ export function useLiveMatchWebSocket(matchId: string, isLive: boolean) {
   const PROACTIVE_REFRESH_INTERVAL = 25000 // 25 seconds (check freshness even when WS connected)
   const HEALTH_CHECK_INTERVAL = 60000 // 60 seconds (check if WS is still alive)
   const STALE_THRESHOLD = 35000 // 35 seconds (consider data stale if no update)
+  const OVERLAP_PERIOD = 2000 // 2 seconds - keep polling active after WebSocket connects
 
   // Update ref when isLive changes
   useEffect(() => {
@@ -207,7 +210,56 @@ export function useLiveMatchWebSocket(matchId: string, isLive: boolean) {
   }, [getReconnectDelay])
 
   /**
-   * Fallback HTTP polling
+   * Perform a single polling fetch
+   */
+  const performPollingFetch = useCallback(async () => {
+    if (!shouldConnectRef.current) return
+
+    try {
+      const response = await fetch(`/api/match/${matchId}?t=${Date.now()}`) // Cache bust
+      if (!response.ok) {
+        throw new Error('Polling failed')
+      }
+      const data = await response.json()
+      
+      const receiveTime = Date.now()
+      lastMessageTimeRef.current = receiveTime
+      
+      console.log('[WebSocket] HTTP Polling update:', {
+        match_id: matchId,
+        score: data.match?.live_data?.current_score,
+        minute: data.match?.live_data?.minute,
+        timestamp: new Date().toISOString()
+      })
+      
+      // Convert match data to delta format
+      const deltaUpdate: LiveMatchDelta = {
+        match_id: Number(matchId),
+        minute: data.match?.live_data?.minute,
+        live_data: data.match?.live_data,
+        momentum: data.match?.momentum,
+        model_markets: data.match?.model_markets,
+        ai_analysis: data.match?.ai_analysis
+      }
+      
+      setDelta(deltaUpdate)
+      setConnectionStatus(prev => ({
+        ...prev,
+        lastUpdateTime: receiveTime,
+      }))
+      updateConnectionQuality()
+
+      // Try to reconnect WebSocket periodically while polling
+      if (reconnectAttemptsRef.current < 5) {
+        attemptReconnect()
+      }
+    } catch (error) {
+      console.error('[WebSocket] Polling error:', error)
+    }
+  }, [matchId, attemptReconnect, updateConnectionQuality])
+
+  /**
+   * Fallback HTTP polling - starts immediately and continues on interval
    */
   const startPolling = useCallback(() => {
     console.log('[WebSocket] Starting HTTP polling fallback')
@@ -218,53 +270,14 @@ export function useLiveMatchWebSocket(matchId: string, isLive: boolean) {
       clearInterval(pollingIntervalRef.current)
     }
 
+    // ✅ IMMEDIATE FETCH: Perform first fetch right away (not wait for interval)
+    performPollingFetch()
+
     // Poll every 10 seconds for faster updates
-    pollingIntervalRef.current = setInterval(async () => {
-      if (!shouldConnectRef.current) return
-
-      try {
-        const response = await fetch(`/api/match/${matchId}?t=${Date.now()}`) // Cache bust
-        if (!response.ok) {
-          throw new Error('Polling failed')
-        }
-        const data = await response.json()
-        
-        const receiveTime = Date.now()
-        lastMessageTimeRef.current = receiveTime
-        
-        console.log('[WebSocket] HTTP Polling update:', {
-          match_id: matchId,
-          score: data.match?.live_data?.current_score,
-          minute: data.match?.live_data?.minute,
-          timestamp: new Date().toISOString()
-        })
-        
-        // Convert match data to delta format
-        const deltaUpdate: LiveMatchDelta = {
-          match_id: Number(matchId),
-          minute: data.match?.live_data?.minute,
-          live_data: data.match?.live_data,
-          momentum: data.match?.momentum,
-          model_markets: data.match?.model_markets,
-          ai_analysis: data.match?.ai_analysis
-        }
-        
-        setDelta(deltaUpdate)
-        setConnectionStatus(prev => ({
-          ...prev,
-          lastUpdateTime: receiveTime,
-        }))
-        updateConnectionQuality()
-
-        // Try to reconnect WebSocket periodically while polling
-        if (reconnectAttemptsRef.current < 5) {
-          attemptReconnect()
-        }
-      } catch (error) {
-        console.error('[WebSocket] Polling error:', error)
-      }
+    pollingIntervalRef.current = setInterval(() => {
+      performPollingFetch()
     }, POLLING_INTERVAL)
-  }, [matchId, attemptReconnect, setIsPolling, updateConnectionQuality])
+  }, [performPollingFetch, setIsPolling])
 
   // Store startPolling in ref to avoid circular dependency
   startPollingRef.current = startPolling
@@ -324,14 +337,30 @@ export function useLiveMatchWebSocket(matchId: string, isLive: boolean) {
         console.log(`[WebSocket] Connected (${connectTime}ms)`)
         
         setIsConnected(true)
-        setIsPolling(false)
         reconnectAttemptsRef.current = 0 // Reset on successful connection
         
-        // Clear any polling interval if WebSocket connects
-        if (pollingIntervalRef.current) {
-          clearInterval(pollingIntervalRef.current)
-          pollingIntervalRef.current = undefined
+        // ✅ OVERLAP PERIOD: Keep polling active for 2 seconds after WebSocket connects
+        // This eliminates the gap window where updates could be missed
+        console.log(`[WebSocket] Starting ${OVERLAP_PERIOD}ms overlap period - polling will continue`)
+        
+        // Clear any existing overlap timer
+        if (overlapTimerRef.current) {
+          clearTimeout(overlapTimerRef.current)
         }
+        
+        // Set timer to stop polling after overlap period
+        overlapTimerRef.current = setTimeout(() => {
+          console.log('[WebSocket] Overlap period ended - stopping HTTP polling')
+          setIsPolling(false)
+          
+          // Clear polling interval after overlap period
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current)
+            pollingIntervalRef.current = undefined
+          }
+          
+          overlapTimerRef.current = undefined
+        }, OVERLAP_PERIOD)
 
         // Update connection quality
         setConnectionStatus(prev => ({
@@ -406,6 +435,13 @@ export function useLiveMatchWebSocket(matchId: string, isLive: boolean) {
         })
         setIsConnected(false)
         
+        // Clear overlap timer if WebSocket disconnects before overlap period ends
+        if (overlapTimerRef.current) {
+          clearTimeout(overlapTimerRef.current)
+          overlapTimerRef.current = undefined
+          console.log('[WebSocket] Cleared overlap timer due to disconnection')
+        }
+        
         // Only reconnect if match is still live
         if (shouldConnectRef.current) {
           reconnectAttemptsRef.current++
@@ -445,7 +481,12 @@ export function useLiveMatchWebSocket(matchId: string, isLive: boolean) {
   useEffect(() => {
     // Only initialize WebSocket if match is actually live
     if (isLive && matchId) {
-      // Use setTimeout to defer connection, allowing page to render first
+      // ✅ START POLLING IMMEDIATELY for live matches (Solution 1 from analysis)
+      // This ensures data appears right away, before WebSocket connects
+      console.log('[WebSocket] Starting immediate HTTP polling for live match')
+      startPolling()
+      
+      // Use setTimeout to defer WebSocket connection, allowing page to render first
       const connectTimer = setTimeout(() => {
         connect()
       }, 100) // Small delay to let page render first
@@ -494,6 +535,9 @@ export function useLiveMatchWebSocket(matchId: string, isLive: boolean) {
         if (healthCheckIntervalRef.current) {
           clearInterval(healthCheckIntervalRef.current)
         }
+        if (overlapTimerRef.current) {
+          clearTimeout(overlapTimerRef.current)
+        }
         setIsConnected(false)
         setIsPolling(false)
       }
@@ -514,6 +558,9 @@ export function useLiveMatchWebSocket(matchId: string, isLive: boolean) {
       }
       if (healthCheckIntervalRef.current) {
         clearInterval(healthCheckIntervalRef.current)
+      }
+      if (overlapTimerRef.current) {
+        clearTimeout(overlapTimerRef.current)
       }
       setIsConnected(false)
       setIsPolling(false)

@@ -39,7 +39,40 @@ interface FinishedMatchStatsProps {
  * Displays final score, outcome, and detailed match statistics for completed matches
  */
 export function FinishedMatchStats({ matchData, predictionData }: FinishedMatchStatsProps) {
-  const finalScore = matchData.final_result?.score || matchData.score || { home: 0, away: 0 }
+  // Extract score with comprehensive logging
+  console.log('[FinishedMatchStats] 🔍 Component received matchData:', {
+    hasFinalResult: !!matchData.final_result,
+    finalResult: matchData.final_result,
+    hasScore: !!matchData.score,
+    score: matchData.score,
+    status: (matchData as any).status,
+    live_data: matchData.live_data,
+    fullMatchData: matchData
+  })
+  
+  const scoreFromFinalResult = matchData.final_result?.score
+  const scoreFromScore = matchData.score
+  const finalScore = scoreFromFinalResult || scoreFromScore || { home: 0, away: 0 }
+  
+  // Log if we're using fallback (0-0)
+  if (!scoreFromFinalResult && !scoreFromScore) {
+    console.error('[FinishedMatchStats] ❌ No score found, using 0-0 fallback', {
+      hasFinalResult: !!matchData.final_result,
+      hasScore: !!matchData.score,
+      finalResult: matchData.final_result,
+      score: matchData.score,
+      matchDataKeys: Object.keys(matchData),
+      matchData: matchData
+    })
+  } else {
+    console.log('[FinishedMatchStats] ✅ Score found', {
+      score: finalScore,
+      source: scoreFromFinalResult ? 'final_result.score' : 'score',
+      hasFinalResult: !!matchData.final_result,
+      finalResult: matchData.final_result
+    })
+  }
+  
   const outcome = matchData.final_result?.outcome_text || 
                   (finalScore.home > finalScore.away ? 'Home Win' :
                    finalScore.away > finalScore.home ? 'Away Win' : 'Draw')

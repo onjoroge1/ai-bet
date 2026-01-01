@@ -75,3 +75,5 @@ for (let i = 0; i < parlay.legs.length; i++) {
 **Date**: December 12, 2025  
 **Action Required**: Contact backend team to fix parlay generation logic
 
+
+

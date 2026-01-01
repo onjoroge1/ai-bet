@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
 import prisma from '@/lib/db'
+import { postTweet, isTwitterConfigured } from '@/lib/social/twitter-client'
 
 /**
  * GET /api/admin/social/twitter/post-scheduled - Post scheduled Twitter posts (for cron jobs)
@@ -10,8 +11,7 @@ import prisma from '@/lib/db'
  * 
  * Schedule: Every 15-30 minutes
  * 
- * NOTE: This requires Twitter API integration. For now, it just marks posts as "posted"
- * In production, you'll need to integrate with Twitter API v2.
+ * Posts scheduled tweets to Twitter using the Twitter API v2.
  */
 export async function GET(request: NextRequest) {
   const startTime = Date.now()
@@ -94,18 +94,41 @@ export async function GET(request: NextRequest) {
       data: { count: scheduledPosts.length },
     })
 
+    // Check if Twitter API is configured
+    if (!isTwitterConfigured()) {
+      logger.warn('🕐 CRON: Twitter API credentials not configured', {
+        tags: ['api', 'admin', 'social', 'twitter', 'cron', 'warning'],
+      })
+      return NextResponse.json({
+        success: false,
+        message: 'Twitter API credentials not configured',
+        posted: 0,
+        failed: scheduledPosts.length,
+        errors: ['Twitter API credentials not configured. Please set TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, and TWITTER_ACCESS_TOKEN_SECRET environment variables.'],
+      })
+    }
+
     let posted = 0
     let failed = 0
+    let rateLimitHit = false
     const errors: string[] = []
 
     for (const post of scheduledPosts) {
+      // Stop processing if rate limit was hit
+      if (rateLimitHit) {
+        logger.info('🕐 CRON: Rate limit hit, skipping remaining posts', {
+          tags: ['api', 'admin', 'social', 'twitter', 'cron'],
+          data: { remainingPosts: scheduledPosts.length - posted - failed },
+        })
+        break
+      }
+
       try {
-        // TODO: Integrate with Twitter API v2 here
-        // For now, we'll simulate posting
-        // In production, use: await twitterClient.v2.tweet({ text: post.content + (post.url ? ` ${post.url}` : '') })
+        // Build tweet text (content + URL if available)
+        const tweetText = post.content + (post.url ? ` ${post.url}` : '')
         
-        // Simulate Twitter API call
-        const tweetId = `sim_${Date.now()}_${Math.random().toString(36).substring(7)}`
+        // Post to Twitter API
+        const tweetId = await postTweet(tweetText)
         
         // Update post status
         await prisma.socialMediaPost.update({
@@ -118,18 +141,58 @@ export async function GET(request: NextRequest) {
         })
 
         posted++
-        logger.info('🕐 CRON: Twitter post published', {
+        logger.info('🕐 CRON: Twitter post published successfully', {
           tags: ['api', 'admin', 'social', 'twitter', 'cron'],
           data: {
             postId: post.id,
             tweetId,
             templateId: post.templateId,
             postType: post.postType,
+            textLength: tweetText.length,
           },
         })
       } catch (error) {
-        failed++
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        
+        // Check for specific Twitter API errors
+        if (error instanceof Error) {
+          // Rate limit exceeded (429)
+          if (error.message.includes('429') || error.message.toLowerCase().includes('rate limit')) {
+            logger.warn('🕐 CRON: Twitter API rate limit exceeded', {
+              tags: ['api', 'admin', 'social', 'twitter', 'cron', 'rate-limit'],
+              data: { postId: post.id },
+            })
+            rateLimitHit = true
+            // Don't mark as failed, just stop processing
+            break
+          }
+          
+          // Authentication errors (401)
+          if (error.message.includes('401') || error.message.toLowerCase().includes('unauthorized') || error.message.toLowerCase().includes('authentication')) {
+            logger.error('🕐 CRON: Twitter API authentication failed', {
+              tags: ['api', 'admin', 'social', 'twitter', 'cron', 'error', 'auth'],
+              error: error instanceof Error ? error : undefined,
+              data: { postId: post.id },
+            })
+            rateLimitHit = true // Stop processing on auth errors
+            errors.push(`Post ${post.id}: Authentication failed - check Twitter API credentials`)
+            break
+          }
+          
+          // Forbidden (403) - account suspended or no permissions
+          if (error.message.includes('403') || error.message.toLowerCase().includes('forbidden')) {
+            logger.error('🕐 CRON: Twitter API forbidden (403)', {
+              tags: ['api', 'admin', 'social', 'twitter', 'cron', 'error'],
+              error: error instanceof Error ? error : undefined,
+              data: { postId: post.id },
+            })
+            rateLimitHit = true // Stop processing on forbidden errors
+            errors.push(`Post ${post.id}: Forbidden - account may be suspended or app lacks write permissions`)
+            break
+          }
+        }
+        
+        failed++
         errors.push(`Post ${post.id}: ${errorMessage}`)
         
         await prisma.socialMediaPost.update({

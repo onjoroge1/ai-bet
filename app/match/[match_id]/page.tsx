@@ -219,12 +219,23 @@ export default function MatchDetailPage() {
       const matchPromise = (async () => {
         // Prevent browser caching - let server-side headers control caching strategy
         // Server will return no-store for live matches, cache for upcoming/finished
-        const resp = await fetch(`/api/match/${matchId}`, {
+        const resp = await fetch(`/api/match/${matchId}?t=${Date.now()}`, {
           cache: 'no-store', // Prevent browser cache - server handles appropriate caching
           credentials: 'include',
         })
         if (!resp.ok) throw new Error('Failed to fetch match details')
         const json = await resp.json()
+        
+        // Log what we received for debugging
+        console.log('[Match Detail] 📥 Received match data:', {
+          status: json.match?.status,
+          hasFinalResult: !!json.match?.final_result,
+          finalResult: json.match?.final_result,
+          hasScore: !!json.match?.score,
+          score: json.match?.score,
+          matchKeys: Object.keys(json.match || {})
+        })
+        
         setMatchData(json.match)
         setQuickPurchaseInfo(json.quickPurchase)
         
