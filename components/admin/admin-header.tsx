@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Shield, Bell, Settings, Download, RefreshCw, FileText, Mail, Twitter } from "lucide-react"
+import { Shield, Bell, Settings, Download, RefreshCw, FileText, Mail, Twitter, Target } from "lucide-react"
 import Link from "next/link"
 
 export function AdminHeader() {
@@ -43,6 +43,12 @@ export function AdminHeader() {
             <Link href="/admin/social-automation">
               <Twitter className="w-4 h-4 mr-2" />
               Social Automation
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="sm" className="border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white">
+            <Link href="/admin/matches">
+              <Target className="w-4 h-4 mr-2" />
+              Matches
             </Link>
           </Button>
           <Button variant="ghost" size="sm" className="text-slate-300 hover:text-white relative">

@@ -44,7 +44,7 @@ async function hasExistingPostForParlay(parlayId: string): Promise<boolean> {
 }
 
 /**
- * GET /api/admin/social/twitter - Get eligible matches/parlays for posting
+ * GET /api/admin/social/twitter - Get eligible matches/parlays for posting or available templates for a match
  */
 export async function GET(request: NextRequest) {
   try {
@@ -54,6 +54,98 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
+    const matchId = searchParams.get('matchId')
+    const action = searchParams.get('action') // 'templates' to get available templates
+    
+    // If requesting available templates for a specific match
+    if (action === 'templates' && matchId) {
+      const match = await prisma.marketMatch.findUnique({
+        where: { matchId },
+        include: {
+          quickPurchases: {
+            where: {
+              isActive: true,
+              isPredictionActive: true,
+            },
+            take: 1,
+            select: {
+              confidenceScore: true,
+              predictionData: true
+            }
+          },
+          blogPosts: {
+            where: { isPublished: true, isActive: true },
+            take: 1,
+          },
+        },
+      })
+
+      if (!match) {
+        return NextResponse.json({ success: false, error: 'Match not found' }, { status: 404 })
+      }
+
+      // Extract confidence (same logic as generate_match)
+      let aiConf: number | undefined = undefined
+      const quickPurchase = match.quickPurchases[0]
+      
+      if (quickPurchase) {
+        if (quickPurchase.confidenceScore !== null && quickPurchase.confidenceScore !== undefined) {
+          aiConf = quickPurchase.confidenceScore
+        } else if (quickPurchase.predictionData) {
+          const predictionData = quickPurchase.predictionData as any
+          const mlPrediction = predictionData?.comprehensive_analysis?.ml_prediction || 
+                              predictionData?.predictions ||
+                              predictionData?.prediction?.predictions ||
+                              predictionData?.ml_prediction
+          
+          if (mlPrediction?.confidence !== undefined && mlPrediction?.confidence !== null) {
+            aiConf = typeof mlPrediction.confidence === 'number' && mlPrediction.confidence <= 1
+              ? Math.round(mlPrediction.confidence * 100)
+              : Math.round(mlPrediction.confidence)
+          } else if (predictionData?.analysis?.confidence !== undefined) {
+            aiConf = typeof predictionData.analysis.confidence === 'number' && predictionData.analysis.confidence <= 1
+              ? Math.round(predictionData.analysis.confidence * 100)
+              : Math.round(predictionData.analysis.confidence)
+          } else if (predictionData?.confidence !== undefined) {
+            aiConf = typeof predictionData.confidence === 'number' && predictionData.confidence <= 1
+              ? Math.round(predictionData.confidence * 100)
+              : Math.round(predictionData.confidence)
+          }
+        }
+      }
+
+      const matchData = {
+        homeTeam: match.homeTeam,
+        awayTeam: match.awayTeam,
+        league: match.league,
+        matchId: match.matchId,
+        aiConf,
+        matchUrl: '',
+        blogUrl: undefined,
+      }
+
+      // Get available templates
+      const hasBlog = match.blogPosts.length > 0
+      const allMatchTemplates = TwitterGenerator.getAvailableTemplates('match', matchData)
+      const upcomingTemplates = TwitterGenerator.getAvailableTemplates('upcoming', matchData)
+      const availableTemplates = [...allMatchTemplates, ...upcomingTemplates].filter(
+        t => !t.requiresLive // Exclude live templates for UPCOMING matches
+      )
+
+      return NextResponse.json({
+        success: true,
+        templates: availableTemplates.map(t => ({
+          id: t.id,
+          name: t.name,
+          category: t.category,
+          requiresConfidence: t.requiresConfidence || false
+        })),
+        hasConfidence: aiConf !== undefined,
+        hasBlog
+      })
+    }
+
+    // Original GET logic for eligible matches/parlays
     const type = searchParams.get('type') || 'matches' // 'matches', 'parlays', 'both'
 
     const result: any = {}
@@ -192,7 +284,6 @@ export async function POST(request: NextRequest) {
             where: {
               isActive: true,
               isPredictionActive: true,
-              predictionData: { not: Prisma.JsonNull },
             },
             take: 1,
           },
@@ -211,14 +302,70 @@ export async function POST(request: NextRequest) {
       const blogPost = match.blogPosts[0]
       const baseUrl = TwitterGenerator.getBaseUrl()
 
+      // Extract confidence score - try multiple sources (same logic as predict endpoint)
+      let aiConf: number | undefined = undefined
+      
+      if (quickPurchase) {
+        // First try confidenceScore field
+        if (quickPurchase.confidenceScore !== null && quickPurchase.confidenceScore !== undefined) {
+          aiConf = quickPurchase.confidenceScore
+        } else if (quickPurchase.predictionData) {
+          // Try to extract from predictionData (multiple possible structures)
+          const predictionData = quickPurchase.predictionData as any
+          
+          // Try comprehensive_analysis.ml_prediction.confidence
+          const mlPrediction = predictionData?.comprehensive_analysis?.ml_prediction || 
+                              predictionData?.predictions ||
+                              predictionData?.prediction?.predictions ||
+                              predictionData?.ml_prediction
+          
+          if (mlPrediction?.confidence !== undefined && mlPrediction?.confidence !== null) {
+            // Convert to percentage if it's a decimal (0-1 range)
+            aiConf = typeof mlPrediction.confidence === 'number' && mlPrediction.confidence <= 1
+              ? Math.round(mlPrediction.confidence * 100)
+              : Math.round(mlPrediction.confidence)
+          } 
+          // Try analysis.confidence
+          else if (predictionData?.analysis?.confidence !== undefined && predictionData?.analysis?.confidence !== null) {
+            aiConf = typeof predictionData.analysis.confidence === 'number' && predictionData.analysis.confidence <= 1
+              ? Math.round(predictionData.analysis.confidence * 100)
+              : Math.round(predictionData.analysis.confidence)
+          }
+          // Try top-level confidence
+          else if (predictionData?.confidence !== undefined && predictionData?.confidence !== null) {
+            aiConf = typeof predictionData.confidence === 'number' && predictionData.confidence <= 1
+              ? Math.round(predictionData.confidence * 100)
+              : Math.round(predictionData.confidence)
+          }
+        }
+      }
+
       const matchData = {
         homeTeam: match.homeTeam,
         awayTeam: match.awayTeam,
         league: match.league,
         matchId: match.matchId,
-        aiConf: quickPurchase?.confidenceScore || undefined,
+        aiConf,
         matchUrl: `${baseUrl}/match/${match.matchId}`,
         blogUrl: blogPost ? `${baseUrl}/blog/${blogPost.slug}` : undefined,
+      }
+
+      // Validate template requirements before generating
+      if (templateId) {
+        const template = TwitterGenerator.getTemplateById(templateId)
+        if (!template) {
+          return NextResponse.json({ 
+            success: false, 
+            error: `Template "${templateId}" not found` 
+          }, { status: 400 })
+        }
+        
+        if (template.requiresConfidence && aiConf === undefined) {
+          return NextResponse.json({ 
+            success: false, 
+            error: `Template "${template.name}" requires a confidence score, but this match doesn't have one available. Please select a different template.` 
+          }, { status: 400 })
+        }
       }
 
       const draft = TwitterGenerator.generateMatchPost(matchData, templateId)
