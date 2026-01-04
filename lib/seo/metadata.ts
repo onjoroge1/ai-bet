@@ -102,6 +102,16 @@ export function generateBlogMetadata({
   const baseUrl = process.env.NEXTAUTH_URL || "https://www.snapbet.bet"
   const canonical = `${baseUrl}/blog/${slug}`
   
+  // Try blog-specific image first, fallback to default OG image
+  // Use absolute URLs for X.com crawler compatibility
+  const blogSpecificImage = `${baseUrl}/blog-images/${slug}-og.jpg`
+  const fallbackImage = `${baseUrl}/og-image.jpg`
+  
+  // For now, use fallback image (default OG image) since blog-specific images may not exist
+  // In the future, implement dynamic OG image generation or pre-generate images
+  // When blog-specific images are available, change this to: blogSpecificImage
+  const ogImageUrl = fallbackImage
+  
   return {
     title,
     description,
@@ -124,7 +134,7 @@ export function generateBlogMetadata({
       tags: tags,
       images: [
         {
-          url: `/blog-images/${slug}-og.jpg`,
+          url: ogImageUrl,
           width: 1200,
           height: 630,
           alt: title,
@@ -136,7 +146,7 @@ export function generateBlogMetadata({
       card: "summary_large_image",
       title,
       description,
-      images: [`/blog-images/${slug}-og.jpg`],
+      images: [ogImageUrl],
     },
     robots: {
       index: true,

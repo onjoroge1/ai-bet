@@ -12,7 +12,7 @@ const LIVE_SYNC_INTERVAL = 30 * 1000 // 30 seconds in milliseconds
 const UPCOMING_SYNC_INTERVAL = 10 * 60 * 1000 // 10 minutes in milliseconds
 
 /**
- * Fetch matches from external API
+ * Fetch matches from external API with timeout
  */
 async function fetchMatchesFromAPI(status: 'upcoming' | 'live' | 'completed', limit: number = 100) {
   if (!BASE_URL) {
@@ -21,21 +21,51 @@ async function fetchMatchesFromAPI(status: 'upcoming' | 'live' | 'completed', li
 
   // Map 'completed' to 'finished' for API compatibility
   const apiStatus = status === 'completed' ? 'finished' : status
-  const url = `${BASE_URL}/market?status=${apiStatus}&limit=${limit}&include_v2=false`
   
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${API_KEY}`,
-    },
-    cache: 'no-store',
-  })
+  // Use lite mode for live matches (fast sync), full mode for others (complete data)
+  const useLiteMode = status === 'live'
+  const url = useLiteMode
+    ? `${BASE_URL}/market?status=${apiStatus}&mode=lite&limit=${limit}`
+    : `${BASE_URL}/market?status=${apiStatus}&limit=${limit}&include_v2=false`
+  
+  // Add timeout to prevent hanging (15 seconds - same as market API route)
+  const EXTERNAL_API_TIMEOUT = 15000
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => {
+    controller.abort()
+  }, EXTERNAL_API_TIMEOUT)
 
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`)
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${API_KEY}`,
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error')
+      throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`)
+    }
+
+    const data = await response.json()
+    return data.matches || []
+  } catch (error) {
+    clearTimeout(timeoutId)
+    
+    if (error instanceof Error && error.name === 'AbortError') {
+      logger.warn(`[Sync Manual] External API timeout after ${EXTERNAL_API_TIMEOUT}ms: ${url}`, {
+        tags: ['market', 'sync', 'manual', 'timeout'],
+        data: { status, limit, url },
+      })
+      throw new Error(`External API timeout - request took too long (>${EXTERNAL_API_TIMEOUT}ms)`)
+    }
+    
+    throw error
   }
-
-  const data = await response.json()
-  return data.matches || []
 }
 
 /**

@@ -79,6 +79,7 @@ async function syncParlaysFromVersion(version: 'v1' | 'v2'): Promise<{ synced: n
     const data: BackendParlaysResponse = await response.json()
     let synced = 0
     let errors = 0
+    let duplicatesSkipped = 0
 
     logger.info(`Fetched ${data.parlays.length} parlays from ${version} API`, {
       tags: ['api', 'parlays', 'sync'],
@@ -99,7 +100,84 @@ async function syncParlaysFromVersion(version: 'v1' | 'v2'): Promise<{ synced: n
       throw new Error('ParlayConsensus model not found. Run "npx prisma generate" and restart the server.')
     }
 
+    // DEDUPLICATION: Track seen leg combinations to prevent duplicates
+    // Key: sorted leg combination (match_id:outcome pairs)
+    // Value: { parlay_id, edge_pct } - keep the one with highest edge
+    const seenLegCombinations = new Map<string, { parlayId: string; edgePct: number; parlay: BackendParlay }>()
+
+    // First pass: identify duplicates and keep the best one (highest edge %)
     for (const parlay of data.parlays) {
+      // Skip parlays without legs (cannot create valid combination key)
+      if (!parlay.legs || parlay.legs.length === 0) {
+        continue
+      }
+
+      // Create unique key from leg combinations (match_id:outcome pairs, sorted)
+      const legKey = parlay.legs
+        .map(l => `${l.match_id}:${l.outcome}`)
+        .sort()
+        .join('|')
+
+      const existing = seenLegCombinations.get(legKey)
+      if (existing) {
+        // Duplicate found - keep the one with higher edge %
+        if (parlay.edge_pct > existing.edgePct) {
+          seenLegCombinations.set(legKey, {
+            parlayId: parlay.parlay_id,
+            edgePct: parlay.edge_pct,
+            parlay: parlay
+          })
+          duplicatesSkipped++
+          logger.info(`Duplicate parlay found - keeping higher edge: ${parlay.parlay_id} (${parlay.edge_pct}%) vs ${existing.parlayId} (${existing.edgePct}%)`, {
+            tags: ['api', 'parlays', 'sync', 'deduplication'],
+            data: {
+              version,
+              legKey,
+              kept: parlay.parlay_id,
+              skipped: existing.parlayId,
+              edgeKept: parlay.edge_pct,
+              edgeSkipped: existing.edgePct
+            }
+          })
+        } else {
+          duplicatesSkipped++
+          logger.info(`Duplicate parlay found - skipping lower edge: ${parlay.parlay_id} (${parlay.edge_pct}%) vs ${existing.parlayId} (${existing.edgePct}%)`, {
+            tags: ['api', 'parlays', 'sync', 'deduplication'],
+            data: {
+              version,
+              legKey,
+              kept: existing.parlayId,
+              skipped: parlay.parlay_id,
+              edgeKept: existing.edgePct,
+              edgeSkipped: parlay.edge_pct
+            }
+          })
+        }
+      } else {
+        // First occurrence of this leg combination
+        seenLegCombinations.set(legKey, {
+          parlayId: parlay.parlay_id,
+          edgePct: parlay.edge_pct,
+          parlay: parlay
+        })
+      }
+    }
+
+    // Get unique parlays (best ones for each leg combination)
+    const uniqueParlays = Array.from(seenLegCombinations.values()).map(item => item.parlay)
+    
+    logger.info(`Deduplication complete: ${data.parlays.length} total → ${uniqueParlays.length} unique parlays (${duplicatesSkipped} duplicates skipped)`, {
+      tags: ['api', 'parlays', 'sync', 'deduplication'],
+      data: {
+        version,
+        totalParlays: data.parlays.length,
+        uniqueParlays: uniqueParlays.length,
+        duplicatesSkipped
+      }
+    })
+
+    // Process only unique parlays
+    for (const parlay of uniqueParlays) {
       logger.info(`Processing parlay ${parlay.parlay_id}`, {
         tags: ['api', 'parlays', 'sync'],
         data: { 
@@ -245,6 +323,7 @@ async function syncParlaysFromVersion(version: 'v1' | 'v2'): Promise<{ synced: n
                 : (matchData?.awayTeam || leg.away_team || 'TBD')
 
               // CRITICAL: Use parlayConsensusId (internal Prisma ID), NOT parlay.parlay_id (backend UUID)
+              // CRITICAL: Prisma Decimal fields need to be strings or numbers (they auto-convert, but be explicit)
               const createdLeg = await prisma.parlayLeg.create({
                 data: {
                   parlayId: parlayConsensusId, // Internal Prisma ID, not backend UUID!
@@ -252,9 +331,9 @@ async function syncParlaysFromVersion(version: 'v1' | 'v2'): Promise<{ synced: n
                   outcome: leg.outcome,
                   homeTeam,
                   awayTeam,
-                  modelProb: leg.model_prob,
-                  decimalOdds: leg.decimal_odds,
-                  edge: leg.edge,
+                  modelProb: Number(leg.model_prob), // Prisma Decimal accepts number or string
+                  decimalOdds: Number(leg.decimal_odds),
+                  edge: Number(leg.edge),
                   legOrder: i + 1,
                 },
               })
@@ -297,9 +376,35 @@ async function syncParlaysFromVersion(version: 'v1' | 'v2'): Promise<{ synced: n
               data: { version, parlayId: parlay.parlay_id, legsCreated, totalLegs: parlay.legs.length }
             })
           } else {
+            // Log detailed error with sample leg data to help debug
+            const sampleLeg = parlay.legs[0]
             logger.error(`❌ Failed to create any legs for parlay ${parlay.parlay_id}`, {
               tags: ['api', 'parlays', 'sync'],
-              data: { version, parlayId: parlay.parlay_id, totalLegs: parlay.legs.length }
+              data: { 
+                version, 
+                parlayId: parlay.parlay_id, 
+                totalLegs: parlay.legs.length,
+                internalParlayId: parlayConsensusId,
+                sampleLeg: sampleLeg ? {
+                  match_id: sampleLeg.match_id,
+                  match_id_type: typeof sampleLeg.match_id,
+                  outcome: sampleLeg.outcome,
+                  home_team: sampleLeg.home_team,
+                  away_team: sampleLeg.away_team,
+                  model_prob: sampleLeg.model_prob,
+                  model_prob_type: typeof sampleLeg.model_prob,
+                  decimal_odds: sampleLeg.decimal_odds,
+                  decimal_odds_type: typeof sampleLeg.decimal_odds,
+                  edge: sampleLeg.edge,
+                  edge_type: typeof sampleLeg.edge,
+                } : null,
+                allLegs: parlay.legs.map(l => ({
+                  match_id: l.match_id,
+                  outcome: l.outcome,
+                  has_home_team: !!l.home_team,
+                  has_away_team: !!l.away_team,
+                }))
+              }
             })
           }
         }
@@ -327,7 +432,14 @@ async function syncParlaysFromVersion(version: 'v1' | 'v2'): Promise<{ synced: n
 
     logger.info(`Completed syncing parlays from ${version}`, {
       tags: ['api', 'parlays', 'sync'],
-      data: { version, synced, errors, total: data.parlays.length }
+      data: { 
+        version, 
+        synced, 
+        errors, 
+        total: data.parlays.length,
+        unique: uniqueParlays.length,
+        duplicatesSkipped
+      }
     })
 
     return { synced, errors }
@@ -376,31 +488,73 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const [parlays, total] = await Promise.all([
-      prisma.parlayConsensus.findMany({
-        where,
-        include: {
-          legs: {
-            orderBy: { legOrder: 'asc' },
-          },
-        },
-        orderBy: [
-          { edgePct: 'desc' },
-          { earliestKickoff: 'asc' },
-        ],
-        take: limit,
-        skip: offset,
-      }),
-      prisma.parlayConsensus.count({ where }),
-    ])
+    // Get UPCOMING match IDs from MarketMatch to filter parlays
+    const now = new Date()
+    const upcomingMatches = await prisma.marketMatch.findMany({
+      where: {
+        status: 'UPCOMING',
+        kickoffDate: { gt: now },
+        isActive: true,
+      },
+      select: { matchId: true },
+    })
+    const upcomingMatchIds = new Set(upcomingMatches.map(m => m.matchId))
 
-    // Log legs retrieval for debugging
-    logger.info(`Retrieved ${parlays.length} parlays from database`, {
+    logger.info(`Filtering parlays by UPCOMING matches`, {
       tags: ['api', 'parlays'],
       data: {
-        total,
-        returned: parlays.length,
-        legsCounts: parlays.map(p => ({
+        upcomingMatchCount: upcomingMatchIds.size,
+        sampleMatchIds: Array.from(upcomingMatchIds).slice(0, 5)
+      }
+    })
+
+    // Fetch all parlays (we'll filter by UPCOMING matches after)
+    const allParlays = await prisma.parlayConsensus.findMany({
+      where,
+      include: {
+        legs: {
+          orderBy: { legOrder: 'asc' },
+        },
+      },
+      orderBy: [
+        { edgePct: 'desc' },
+        { earliestKickoff: 'asc' },
+      ],
+      // Fetch more to account for filtering
+      take: limit * 3, // Get 3x more to filter down
+      skip: offset,
+    })
+
+    // Filter parlays: Only include those where ALL legs reference UPCOMING matches
+    const filteredParlays = allParlays.filter(parlay => {
+      if (!parlay.legs || parlay.legs.length === 0) return false
+      return parlay.legs.every(leg => upcomingMatchIds.has(leg.matchId))
+    }).slice(0, limit) // Apply limit after filtering
+
+    // Get total count of filtered parlays (for accurate pagination)
+    // First get all parlays matching the where clause, then filter
+    const allParlaysForCount = await prisma.parlayConsensus.findMany({
+      where,
+      include: {
+        legs: {
+          orderBy: { legOrder: 'asc' },
+        },
+      },
+    })
+    const totalFiltered = allParlaysForCount.filter(parlay => {
+      if (!parlay.legs || parlay.legs.length === 0) return false
+      return parlay.legs.every(leg => upcomingMatchIds.has(leg.matchId))
+    }).length
+
+    // Log legs retrieval for debugging
+    logger.info(`Retrieved ${filteredParlays.length} parlays filtered by UPCOMING matches`, {
+      tags: ['api', 'parlays'],
+      data: {
+        totalBeforeFilter: allParlays.length,
+        totalAfterFilter: filteredParlays.length,
+        totalFiltered,
+        upcomingMatchCount: upcomingMatchIds.size,
+        legsCounts: filteredParlays.map(p => ({
           parlayId: p.parlayId,
           legsCount: p.legs.length,
           legCount: p.legCount
@@ -409,8 +563,8 @@ export async function GET(request: NextRequest) {
     })
 
     return NextResponse.json({
-      count: total,
-      parlays: parlays.map((parlay) => ({
+      count: totalFiltered,
+      parlays: filteredParlays.map((parlay) => ({
         parlay_id: parlay.parlayId,
         api_version: parlay.apiVersion,
         leg_count: parlay.legCount,
@@ -455,12 +609,24 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/parlays - Sync parlays from backend APIs
+ * 
+ * Authentication:
+ * - Admin session (for manual UI requests)
+ * - CRON_SECRET (for automated cron jobs)
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || session.user.role.toLowerCase() !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // Check for CRON_SECRET authentication (for cron jobs)
+    const authHeader = request.headers.get('authorization')
+    const cronSecret = process.env.CRON_SECRET
+    const isCronRequest = cronSecret && authHeader === `Bearer ${cronSecret}`
+
+    // If not cron request, check for admin session (for manual UI requests)
+    if (!isCronRequest) {
+      const session = await getServerSession(authOptions)
+      if (!session?.user?.role || session.user.role.toLowerCase() !== 'admin') {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
     }
 
     const body = await request.json().catch(() => ({}))

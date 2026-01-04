@@ -12,8 +12,12 @@
   },
   "crons": [
     {
-      "path": "/api/admin/parlays/sync-scheduled",
+      "path": "/api/admin/parlays/sync-backend-scheduled",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/admin/parlays/sync-scheduled",
+      "schedule": "*/30 * * * *"
     },
     {
       "path": "/api/admin/market/sync-scheduled?type=live",

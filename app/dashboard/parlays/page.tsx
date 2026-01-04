@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Calendar, Trophy, TrendingUp, Loader2, Search, Filter, X, Layers, Zap, Target, RefreshCw, Info } from "lucide-react"
+import { Calendar, Trophy, TrendingUp, Loader2, Search, Filter, X, Layers, Zap, Target, RefreshCw, Info, ChevronRight } from "lucide-react"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -74,6 +75,7 @@ export default function ParlaysPage() {
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [loadingLegs, setLoadingLegs] = useState(false)
   const [hasPremiumAccess, setHasPremiumAccess] = useState<boolean | null>(null)
+  const [viewMode, setViewMode] = useState<"table" | "grid">("table") // New view mode state
   const [filters, setFilters] = useState<ParlayFilters>({
     search: "",
     status: "active",
@@ -248,6 +250,14 @@ export default function ParlaysPage() {
     })
   }
 
+  const formatDateCompact = (dateString: string) => {
+    const date = new Date(dateString)
+    return {
+      date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+    }
+  }
+
   const getOutcomeLabel = (outcome: string) => {
     switch (outcome) {
       case 'H': return 'Home Win'
@@ -266,9 +276,38 @@ export default function ParlaysPage() {
     }
   }
 
+  /**
+   * Normalize edge value - handles edge values that might be in percentage format
+   * Backend may send edge as percentage (8.3333 = 8.33%) or decimal (0.08333 = 8.33%)
+   * Typical edges: 5-30%, so values > 100 after multiplication indicate wrong format
+   */
+  const normalizeLegEdge = (edge: number): number => {
+    const numEdge = Number(edge)
+    if (isNaN(numEdge)) return 0
+    
+    // Standard assumption: edges come as decimals (0-1 range), multiply by 100
+    // But if edge > 1, it's likely already a percentage (backend sends as percentage)
+    // Typical decimal edges: 0.05-0.30 (5-30%)
+    // If edge is > 1, it's already in percentage format, don't multiply
+    
+    if (Math.abs(numEdge) > 1) {
+      // Already a percentage format (e.g., 8.3333 = 8.33%)
+      // However, if it's suspiciously high (>100), there might be an error
+      if (Math.abs(numEdge) > 100) {
+        // Likely error: divide by 10 to correct (e.g., 833.33 -> 83.33)
+        return numEdge / 10
+      }
+      return numEdge
+    }
+    
+    // Decimal format (0-1 range) - convert to percentage
+    return numEdge * 100
+  }
+
   const getEdgeColor = (edge: number) => {
-    if (edge >= 20) return 'text-emerald-400'
-    if (edge >= 10) return 'text-yellow-400'
+    const normalized = normalizeLegEdge(edge)
+    if (normalized >= 20) return 'text-emerald-400'
+    if (normalized >= 10) return 'text-yellow-400'
     return 'text-slate-400'
   }
 
@@ -326,6 +365,26 @@ export default function ParlaysPage() {
             </Button>
           )}
         </div>
+
+        {/* Edge Percentage Info Box */}
+        <Card className="bg-blue-500/10 border-blue-500/30 mb-6">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <Info className="h-5 w-5 text-blue-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-white mb-1">Understanding Edge Percentage</h3>
+                <p className="text-sm text-slate-300 leading-relaxed">
+                  <strong>Edge %</strong> represents the expected value advantage of our AI model's prediction compared to the bookmaker's odds. 
+                  A positive edge means our model believes the bet has better value than what the market suggests. 
+                  <strong> Typical edges range from 5-30%</strong> - values above 50% are extremely rare and may indicate data quality issues.
+                </p>
+                <p className="text-xs text-slate-400 mt-2">
+                  <strong>Formula:</strong> Edge = (Model Probability ÷ Implied Probability) - 1
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Filters */}
         <Card className="bg-slate-800/60 border-slate-700 mb-6">
@@ -411,7 +470,29 @@ export default function ParlaysPage() {
           </Card>
         )}
 
-        {/* Parlays Grid */}
+        {/* View Mode Toggle */}
+        <div className="flex justify-end mb-4">
+          <div className="flex gap-2 bg-slate-800/60 p-1 rounded-lg border border-slate-700">
+            <Button
+              variant={viewMode === "table" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("table")}
+              className={viewMode === "table" ? "bg-emerald-600 hover:bg-emerald-700" : "text-slate-400 hover:text-white"}
+            >
+              Table
+            </Button>
+            <Button
+              variant={viewMode === "grid" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("grid")}
+              className={viewMode === "grid" ? "bg-emerald-600 hover:bg-emerald-700" : "text-slate-400 hover:text-white"}
+            >
+              Grid
+            </Button>
+          </div>
+        </div>
+
+        {/* Parlays Display */}
         {filteredParlays.length === 0 ? (
           <Card className="bg-slate-800/60 border-slate-700">
             <CardContent className="p-12 text-center">
@@ -430,7 +511,114 @@ export default function ParlaysPage() {
               )}
             </CardContent>
           </Card>
+        ) : viewMode === "table" ? (
+          /* Compact Table View */
+          <Card className="bg-slate-800/60 border-slate-700">
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-slate-700 hover:bg-slate-700/30">
+                    <TableHead className="text-slate-300 font-semibold">Legs</TableHead>
+                    <TableHead className="text-slate-300 font-semibold">Edge %</TableHead>
+                    <TableHead className="text-slate-300 font-semibold">Odds</TableHead>
+                    <TableHead className="text-slate-300 font-semibold">Win Prob</TableHead>
+                    <TableHead className="text-slate-300 font-semibold">Matches</TableHead>
+                    <TableHead className="text-slate-300 font-semibold">Kickoff</TableHead>
+                    <TableHead className="text-slate-300 font-semibold">Confidence</TableHead>
+                    <TableHead className="w-[50px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredParlays.map((parlay) => (
+                    <TableRow
+                      key={parlay.parlay_id}
+                      className="border-slate-700 hover:bg-slate-700/40 cursor-pointer transition-colors group"
+                      onClick={async () => {
+                        setSelectedParlay(parlay)
+                        setShowDetailModal(true)
+                        
+                        if (!parlay.legs || parlay.legs.length === 0) {
+                          setLoadingLegs(true)
+                          try {
+                            const response = await fetch(`/api/parlays/${parlay.parlay_id}`)
+                            if (response.ok) {
+                              const parlayWithLegs = await response.json()
+                              setSelectedParlay(parlayWithLegs)
+                            }
+                          } catch (err) {
+                            console.error('Error fetching parlay legs:', err)
+                          } finally {
+                            setLoadingLegs(false)
+                          }
+                        }
+                      }}
+                    >
+                      <TableCell className="py-3">
+                        <div className="flex items-center gap-2">
+                          <Layers className="h-4 w-4 text-emerald-400 flex-shrink-0" />
+                          <span className="font-semibold text-white">{parlay.leg_count}</span>
+                          <Badge variant="outline" className="border-slate-600 text-slate-300 text-xs px-1.5 py-0">
+                            {parlay.api_version.toUpperCase()}
+                          </Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <div className={`font-bold text-lg ${getEdgeColor(Number(parlay.edge_pct))}`}>
+                          +{Number(parlay.edge_pct).toFixed(1)}%
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <div className="text-white font-medium">{Number(parlay.implied_odds).toFixed(2)}</div>
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <div className="text-white font-medium">{(Number(parlay.adjusted_prob) * 100).toFixed(1)}%</div>
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <div className="flex flex-col gap-1.5">
+                          {parlay.legs.slice(0, 2).map((leg, idx) => (
+                            <div key={idx} className="text-sm text-slate-300">
+                              <span className="font-medium">{leg.home_team}</span>
+                              <span className="text-slate-500 mx-1">vs</span>
+                              <span className="font-medium">{leg.away_team}</span>
+                              <span className="text-xs text-slate-500 ml-2">
+                                ({getOutcomeLabel(leg.outcome).charAt(0)})
+                              </span>
+                            </div>
+                          ))}
+                          {parlay.legs.length > 2 && (
+                            <div className="text-xs text-slate-400 italic">
+                              +{parlay.legs.length - 2} more match{parlay.legs.length - 2 > 1 ? 'es' : ''}
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <div className="flex flex-col text-sm">
+                          <div className="flex items-center gap-1 text-slate-300">
+                            <Calendar className="h-3 w-3 text-slate-400" />
+                            <span className="font-medium">{formatDateCompact(parlay.earliest_kickoff).date}</span>
+                          </div>
+                          <div className="text-xs text-slate-400 mt-0.5 ml-4">
+                            {formatDateCompact(parlay.earliest_kickoff).time}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <Badge className={getConfidenceColor(parlay.confidence_tier)}>
+                          {parlay.confidence_tier.toUpperCase()}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         ) : (
+          /* Original Grid View */
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {filteredParlays.map((parlay) => (
               <Card 
@@ -440,7 +628,6 @@ export default function ParlaysPage() {
                   setSelectedParlay(parlay)
                   setShowDetailModal(true)
                   
-                  // If legs are missing, fetch them
                   if (!parlay.legs || parlay.legs.length === 0) {
                     setLoadingLegs(true)
                     try {
@@ -519,7 +706,7 @@ export default function ParlaysPage() {
                           </div>
                           <div className="text-right">
                             <div className="text-sm font-semibold text-emerald-400">
-                              +{(Number(leg.edge) * 100).toFixed(2)}%
+                              +{normalizeLegEdge(Number(leg.edge)).toFixed(2)}%
                             </div>
                             <div className="text-xs text-slate-400">
                               {(Number(leg.model_prob) * 100).toFixed(1)}% prob
@@ -670,7 +857,7 @@ export default function ParlaysPage() {
                               </div>
                               <div className="text-right ml-4">
                                 <div className="text-2xl font-bold text-emerald-400">
-                                  +{(Number(leg.edge) * 100).toFixed(2)}%
+                                  +{normalizeLegEdge(Number(leg.edge)).toFixed(2)}%
                                 </div>
                                 <div className="text-xs text-slate-400">Edge</div>
                               </div>

@@ -68,8 +68,10 @@ export function HomepageMatches() {
 
       // Use Next.js API route instead of direct backend call
       // This ensures proper environment variable handling and avoids CORS issues
+      // Use lite mode for faster loading (50x+ speedup)
+      // No limit for upcoming matches - get all matches
       const upcomingResponse = await fetch(
-        "/api/market?status=upcoming&limit=50"
+        "/api/market?status=upcoming&mode=lite"
       )
 
       if (!upcomingResponse.ok) {
@@ -79,9 +81,10 @@ export function HomepageMatches() {
       const upcomingData: MatchesResponse = await upcomingResponse.json()
       setUpcomingMatches(upcomingData.matches || [])
 
-      // Fetch live matches - prevent browser caching for real-time data
+      // Fetch live matches - use lite mode and no limit (get all live matches)
+      // Lite mode provides 50x+ speedup (1.1s vs >60s)
       const liveResponse = await fetch(
-        "/api/market?status=live&limit=50",
+        "/api/market?status=live&mode=lite",
         {
           cache: 'no-store', // No browser caching for live matches
         }
@@ -208,46 +211,36 @@ export function HomepageMatches() {
           </div>
         )}
 
-        {/* Upcoming Matches Section */}
-        {(upcomingGrouped.today.length > 0 ||
-          upcomingGrouped.tomorrow.length > 0 ||
-          upcomingGrouped.upcoming.length > 0) && (
-          <div>
-            <Card className="bg-slate-800/60 border-slate-600/50">
-              <CardHeader>
-                <CardTitle className="text-white flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-emerald-400" />
-                  Upcoming Matches
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {/* Today's Upcoming Matches */}
-                {upcomingGrouped.today.length > 0 && (
-                  <div className="mb-8">
-                    <h3 className="text-xl font-semibold text-white mb-4">Today</h3>
-                    <MatchTable matches={upcomingGrouped.today} isLive={false} />
-                  </div>
-                )}
+        {/* Upcoming Matches Section - Always show, even if empty */}
+        <div>
+          <Card className="bg-slate-800/60 border-slate-600/50">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-emerald-400" />
+                Upcoming Matches
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {/* Today's Upcoming Matches */}
+              <div className="mb-8">
+                <h3 className="text-xl font-semibold text-white mb-4">Today</h3>
+                <MatchTable matches={upcomingGrouped.today} isLive={false} />
+              </div>
 
-                {/* Tomorrow's Upcoming Matches */}
-                {upcomingGrouped.tomorrow.length > 0 && (
-                  <div className="mb-8">
-                    <h3 className="text-xl font-semibold text-white mb-4">Tomorrow</h3>
-                    <MatchTable matches={upcomingGrouped.tomorrow} isLive={false} />
-                  </div>
-                )}
+              {/* Tomorrow's Upcoming Matches */}
+              <div className="mb-8">
+                <h3 className="text-xl font-semibold text-white mb-4">Tomorrow</h3>
+                <MatchTable matches={upcomingGrouped.tomorrow} isLive={false} />
+              </div>
 
-                {/* Other Upcoming Matches */}
-                {upcomingGrouped.upcoming.length > 0 && (
-                  <div className="mb-8">
-                    <h3 className="text-xl font-semibold text-white mb-4">Other Upcoming</h3>
-                    <MatchTable matches={upcomingGrouped.upcoming} isLive={false} />
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        )}
+              {/* Other Upcoming Matches */}
+              <div className="mb-8">
+                <h3 className="text-xl font-semibold text-white mb-4">Other Upcoming</h3>
+                <MatchTable matches={upcomingGrouped.upcoming} isLive={false} />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
         {upcomingMatches.length === 0 && liveMatches.length === 0 && (
           <div className="text-center py-20">
@@ -287,7 +280,14 @@ function MatchTable({ matches, isLive }: { matches: Match[]; isLive: boolean }) 
           </tr>
         </thead>
         <tbody>
-          {matches.map((match) => (
+          {matches.length === 0 ? (
+            <tr>
+              <td colSpan={5} className="py-8 px-4 text-center text-slate-400">
+                No matches scheduled
+              </td>
+            </tr>
+          ) : (
+            matches.map((match) => (
             <tr key={match.id} className="border-b border-slate-700 hover:bg-slate-700/30 transition-colors">
               <td className="py-4 px-4">
                 <div className="flex flex-col gap-2">
@@ -372,7 +372,8 @@ function MatchTable({ matches, isLive }: { matches: Match[]; isLive: boolean }) 
                 </div>
               </td>
             </tr>
-          ))}
+            ))
+          )}
         </tbody>
       </table>
     </div>

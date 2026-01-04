@@ -216,6 +216,12 @@ export function generateBlogMetadata(
   author?: string,
   tags: string[] = []
 ) {
+  // Use fallback to default OG image (which exists) for immediate X.com compatibility
+  // TODO: In the future, implement dynamic OG image generation or pre-generate blog-specific images
+  // When blog-specific images are available, switch to: `/blog-images/${slug}-og.jpg`
+  // The generateMetadata function will automatically convert this to an absolute URL
+  const imagePath = '/og-image.jpg'
+  
   return generateMetadata({
     title,
     description,
@@ -225,6 +231,7 @@ export function generateBlogMetadata(
     modifiedTime: modifiedAt,
     author,
     tags,
+    image: imagePath, // Will be converted to absolute URL by generateMetadata
     keywords: [
       'sports betting blog',
       'betting tips blog',

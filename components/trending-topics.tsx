@@ -124,8 +124,9 @@ const fetchUpcomingMatches = async (): Promise<HighlightMatch[]> => {
   const baseUrl = resolveAppBaseUrl()
 
   try {
+    // Use lite mode for fast loading
     const response = await fetch(
-      `${baseUrl}/api/market?status=upcoming&limit=16&include_v2=false`,
+      `${baseUrl}/api/market?status=upcoming&limit=16&mode=lite`,
       {
         headers: { 'Content-Type': 'application/json' },
         next: {

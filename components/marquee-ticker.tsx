@@ -36,7 +36,8 @@ export function MarqueeTicker() {
   const fetchLiveMatches = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/market?status=live&limit=5')
+      // Use lite mode for fast loading (50x+ speedup)
+      const response = await fetch('/api/market?status=live&mode=lite&limit=5')
       const data = await response.json()
       
       if (data.matches && data.matches.length > 0) {
