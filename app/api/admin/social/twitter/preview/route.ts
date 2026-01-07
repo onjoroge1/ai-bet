@@ -5,6 +5,7 @@ import prisma from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { TwitterGenerator } from '@/lib/social/twitter-generator'
 import { logger } from '@/lib/logger'
+import { buildSocialUrl } from '@/lib/social/url-utils'
 
 /**
  * POST /api/admin/social/twitter/preview - Generate preview of Twitter post (without saving)
@@ -55,7 +56,6 @@ export async function POST(request: NextRequest) {
 
       const quickPurchase = match.quickPurchases[0]
       const blogPost = match.blogPosts[0]
-      const baseUrl = TwitterGenerator.getBaseUrl()
 
       const matchData = {
         homeTeam: match.homeTeam,
@@ -63,8 +63,8 @@ export async function POST(request: NextRequest) {
         league: match.league,
         matchId: match.matchId,
         aiConf: quickPurchase?.confidenceScore || undefined,
-        matchUrl: `${baseUrl}/match/${match.matchId}`,
-        blogUrl: blogPost ? `${baseUrl}/blog/${blogPost.slug}` : undefined,
+        matchUrl: buildSocialUrl(`/match/${match.matchId}`),
+        blogUrl: blogPost ? buildSocialUrl(`/blog/${blogPost.slug}`) : undefined,
       }
 
       const draft = TwitterGenerator.generateMatchPost(matchData, templateId)
@@ -104,11 +104,9 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, error: 'Parlay not found' }, { status: 404 })
       }
 
-      const baseUrl = TwitterGenerator.getBaseUrl()
-
       const parlayData = {
         parlayId: parlay.parlayId,
-        parlayUrl: `${baseUrl}/dashboard/parlays/${parlay.parlayId}`,
+        parlayUrl: buildSocialUrl(`/dashboard/parlays/${parlay.parlayId}`),
         firstLeg: parlay.legs[0] ? {
           homeTeam: parlay.legs[0].homeTeam,
           awayTeam: parlay.legs[0].awayTeam,

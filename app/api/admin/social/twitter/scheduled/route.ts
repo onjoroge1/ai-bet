@@ -3,6 +3,7 @@ import { logger } from '@/lib/logger'
 import { TwitterGenerator } from '@/lib/social/twitter-generator'
 import prisma from '@/lib/db'
 import { Prisma } from '@prisma/client'
+import { buildSocialUrl } from '@/lib/social/url-utils'
 
 /**
  * GET /api/admin/social/twitter/scheduled - Scheduled Twitter post generation (for cron jobs)
@@ -34,7 +35,6 @@ export async function GET(request: NextRequest) {
       data: { startTime: new Date(startTime).toISOString() },
     })
 
-    const baseUrl = TwitterGenerator.getBaseUrl()
     let matchesGenerated = 0
     let parlaysGenerated = 0
     let skipped = 0
@@ -66,8 +66,8 @@ export async function GET(request: NextRequest) {
           league: match.league,
           matchId: match.matchId,
           aiConf: quickPurchase?.confidenceScore || undefined,
-          matchUrl: `${baseUrl}/match/${match.matchId}`,
-          blogUrl: blogPost ? `${baseUrl}/blog/${blogPost.slug}` : undefined,
+          matchUrl: buildSocialUrl(`/match/${match.matchId}`),
+          blogUrl: blogPost ? buildSocialUrl(`/blog/${blogPost.slug}`) : undefined,
         }
 
         const draft = TwitterGenerator.generateMatchPost(matchData)
@@ -129,7 +129,7 @@ export async function GET(request: NextRequest) {
         const firstLeg = parlay.legs[0]
         const parlayData = {
           parlayId: parlay.parlayId,
-          parlayUrl: `${baseUrl}/dashboard/parlays/${parlay.parlayId}`,
+          parlayUrl: buildSocialUrl(`/dashboard/parlays/${parlay.parlayId}`),
           firstLeg: firstLeg ? {
             homeTeam: firstLeg.homeTeam,
             awayTeam: firstLeg.awayTeam,

@@ -1758,6 +1758,9 @@ model ParlayConsensus {
   @@index([parlayType, status])
   @@index([apiVersion, status])
   @@index([syncedAt])
+  @@index([edgePct]) // For quality filtering and sorting
+  @@index([combinedProb]) // For quality filtering
+  @@index([status, edgePct, combinedProb]) // Composite index for common query pattern
 }
 
 model ParlayLeg {

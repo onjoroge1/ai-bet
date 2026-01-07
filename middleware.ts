@@ -12,6 +12,8 @@ const publicPaths = [
   '/',
   '/signin',
   '/signup',
+  '/parlays', // Public parlay generator page
+  '/pricing', // Public pricing page
   '/api/auth/signin',
   '/api/auth/signup',
   '/api/auth/callback',
@@ -26,6 +28,7 @@ const publicPaths = [
   '/api/predictions/history', // Public predictions history
   '/api/predictions/history/stats', // Public predictions history stats
   '/api/predictions/history/export', // Public predictions history export
+  '/api/parlays/preview', // Public parlay preview endpoint
   '/api/whatsapp/webhook', // WhatsApp webhook for Meta Business API
   '/api/whatsapp/send-test', // WhatsApp test endpoint for sending messages
   '/api/whatsapp/test-command', // WhatsApp test endpoint for menu commands

@@ -25,6 +25,14 @@ interface ParlayLeg {
   decimal_odds: number
 }
 
+interface ParlayQuality {
+  score: number
+  is_tradable: boolean
+  risk_level: 'low' | 'medium' | 'high' | 'very_high'
+  has_low_edge: boolean
+  has_low_probability: boolean
+}
+
 interface Parlay {
   parlay_id: string
   api_version: string
@@ -44,10 +52,16 @@ interface Parlay {
   status: string
   created_at: string
   synced_at: string
+  quality?: ParlayQuality
 }
 
 interface ParlaysResponse {
   count: number
+  filters?: {
+    tradableOnly: boolean
+    minEdge: number
+    minProb: number
+  }
   parlays: Parlay[]
 }
 
@@ -140,6 +154,10 @@ export default function ParlaysPage() {
       if (filters.status !== "all") params.append('status', filters.status)
       if (filters.confidence !== "all") params.append('confidence_tier', filters.confidence)
       if (filters.version !== "all") params.append('version', filters.version)
+      // Quality filtering (defaults to tradable only)
+      params.append('tradable_only', 'true') // Default to tradable only
+      params.append('min_edge', '5') // Minimum 5% edge
+      params.append('min_prob', '0.05') // Minimum 5% probability
       params.append('limit', '100')
 
       const response = await fetch(`/api/parlays?${params.toString()}`)
@@ -519,6 +537,7 @@ export default function ParlaysPage() {
                 <TableHeader>
                   <TableRow className="border-slate-700 hover:bg-slate-700/30">
                     <TableHead className="text-slate-300 font-semibold">Legs</TableHead>
+                    <TableHead className="text-slate-300 font-semibold">Quality</TableHead>
                     <TableHead className="text-slate-300 font-semibold">Edge %</TableHead>
                     <TableHead className="text-slate-300 font-semibold">Odds</TableHead>
                     <TableHead className="text-slate-300 font-semibold">Win Prob</TableHead>
@@ -560,6 +579,34 @@ export default function ParlaysPage() {
                           <Badge variant="outline" className="border-slate-600 text-slate-300 text-xs px-1.5 py-0">
                             {parlay.api_version.toUpperCase()}
                           </Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <div className="flex flex-col gap-1.5">
+                          {parlay.quality && (
+                            <>
+                              {parlay.quality.is_tradable ? (
+                                <Badge className="bg-emerald-600/20 text-emerald-400 border-emerald-500/30 text-xs">
+                                  ✓ Tradable
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-red-600/20 text-red-400 border-red-500/30 text-xs">
+                                  ⚠ Not Recommended
+                                </Badge>
+                              )}
+                              <Badge 
+                                variant="outline" 
+                                className={`text-xs ${
+                                  parlay.quality.risk_level === 'low' ? 'border-green-500/30 text-green-400' :
+                                  parlay.quality.risk_level === 'medium' ? 'border-yellow-500/30 text-yellow-400' :
+                                  parlay.quality.risk_level === 'high' ? 'border-orange-500/30 text-orange-400' :
+                                  'border-red-500/30 text-red-400'
+                                }`}
+                              >
+                                Risk: {parlay.quality.risk_level.replace('_', ' ')}
+                              </Badge>
+                            </>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="py-3">

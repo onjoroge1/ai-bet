@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { randomUUID } from 'crypto'
+import { areLegsCorrelated, calculateCorrelationPenalty } from '@/lib/parlays/quality-utils'
 
 // This endpoint is called by cron jobs
 // Uses CRON_SECRET for authentication instead of user session
@@ -168,58 +169,98 @@ async function generateAndSyncSGPs() {
     }
 
     if (legs.length >= 2) {
-      const safeLegs = legs.filter(l => l.probability >= 0.55).slice(0, 3)
-      if (safeLegs.length >= 2) {
-        for (let i = 0; i < safeLegs.length - 1; i++) {
-          for (let j = i + 1; j < safeLegs.length; j++) {
-            const leg1 = safeLegs[i]
-            const leg2 = safeLegs[j]
+      // Sort legs by probability (descending) to prioritize highest probability markets
+      const sortedLegs = legs
+        .filter(l => l.probability >= 0.55)
+        .sort((a, b) => b.probability - a.probability)
+        .slice(0, 5) // Take top 5 legs by probability
+      
+      if (sortedLegs.length >= 2) {
+        // Generate 2-leg combinations
+        for (let i = 0; i < sortedLegs.length - 1; i++) {
+          for (let j = i + 1; j < sortedLegs.length; j++) {
+            const leg1 = sortedLegs[i]
+            const leg2 = sortedLegs[j]
 
+            // Skip if same market, opposite sides
             if (leg1.market === leg2.market && leg1.side !== leg2.side) continue
+
+            // Check for correlation
+            const isCorrelated = areLegsCorrelated(
+              { market: leg1.market, side: leg1.side, matchId: match.matchId, outcome: leg1.outcome },
+              { market: leg2.market, side: leg2.side, matchId: match.matchId, outcome: leg2.outcome }
+            )
+            
+            if (isCorrelated) continue // Skip correlated legs
 
             const combinedProb = leg1.probability * leg2.probability
             const fairOdds = 1 / combinedProb
-            const correlationPenalty = 0.85
+            const correlationPenalty = calculateCorrelationPenalty(2, false) // 2 legs, no correlation (already checked)
             const adjustedProb = combinedProb * correlationPenalty
             const impliedOdds = 1 / adjustedProb
             const edgePct = ((impliedOdds - fairOdds) / fairOdds) * 100
 
-            sgps.push({
-              matchId: match.matchId,
-              homeTeam: match.homeTeam,
-              awayTeam: match.awayTeam,
-              league: match.league,
-              kickoffDate: match.kickoffDate,
-              legs: [leg1, leg2],
-              combinedProb,
-              fairOdds,
-              confidence: combinedProb >= 0.30 ? 'high' : combinedProb >= 0.20 ? 'medium' : 'low'
-            })
+            // Only add if meets minimum quality (edge >= 5%, prob >= 5%)
+            if (edgePct >= 5 && combinedProb >= 0.05) {
+              sgps.push({
+                matchId: match.matchId,
+                homeTeam: match.homeTeam,
+                awayTeam: match.awayTeam,
+                league: match.league,
+                kickoffDate: match.kickoffDate,
+                legs: [leg1, leg2],
+                combinedProb,
+                fairOdds,
+                confidence: combinedProb >= 0.30 ? 'high' : combinedProb >= 0.20 ? 'medium' : 'low'
+              })
+            }
 
-            if (safeLegs.length >= 3 && j < safeLegs.length - 1) {
-              for (let k = j + 1; k < safeLegs.length; k++) {
-                const leg3 = safeLegs[k]
+            // Generate 3-leg combinations (if we have enough legs)
+            if (sortedLegs.length >= 3 && j < sortedLegs.length - 1) {
+              for (let k = j + 1; k < sortedLegs.length; k++) {
+                const leg3 = sortedLegs[k]
+                
+                // Skip if same market, opposite sides
                 if (leg1.market === leg3.market && leg1.side !== leg3.side) continue
                 if (leg2.market === leg3.market && leg2.side !== leg3.side) continue
 
+                // Check for correlation between any pairs
+                const leg1Leg2Corr = areLegsCorrelated(
+                  { market: leg1.market, side: leg1.side, matchId: match.matchId, outcome: leg1.outcome },
+                  { market: leg2.market, side: leg2.side, matchId: match.matchId, outcome: leg2.outcome }
+                )
+                const leg1Leg3Corr = areLegsCorrelated(
+                  { market: leg1.market, side: leg1.side, matchId: match.matchId, outcome: leg1.outcome },
+                  { market: leg3.market, side: leg3.side, matchId: match.matchId, outcome: leg3.outcome }
+                )
+                const leg2Leg3Corr = areLegsCorrelated(
+                  { market: leg2.market, side: leg2.side, matchId: match.matchId, outcome: leg2.outcome },
+                  { market: leg3.market, side: leg3.side, matchId: match.matchId, outcome: leg3.outcome }
+                )
+                
+                if (leg1Leg2Corr || leg1Leg3Corr || leg2Leg3Corr) continue // Skip if any pair is correlated
+
                 const combinedProb3 = leg1.probability * leg2.probability * leg3.probability
                 const fairOdds3 = 1 / combinedProb3
-                const correlationPenalty3 = 0.80
+                const correlationPenalty3 = calculateCorrelationPenalty(3, false) // No correlation (already filtered out)
                 const adjustedProb3 = combinedProb3 * correlationPenalty3
                 const impliedOdds3 = 1 / adjustedProb3
                 const edgePct3 = ((impliedOdds3 - fairOdds3) / fairOdds3) * 100
 
-                sgps.push({
-                  matchId: match.matchId,
-                  homeTeam: match.homeTeam,
-                  awayTeam: match.awayTeam,
-                  league: match.league,
-                  kickoffDate: match.kickoffDate,
-                  legs: [leg1, leg2, leg3],
-                  combinedProb: combinedProb3,
-                  fairOdds: fairOdds3,
-                  confidence: combinedProb3 >= 0.20 ? 'medium' : 'low'
-                })
+                // Only add if meets minimum quality
+                if (edgePct3 >= 5 && combinedProb3 >= 0.05) {
+                  sgps.push({
+                    matchId: match.matchId,
+                    homeTeam: match.homeTeam,
+                    awayTeam: match.awayTeam,
+                    league: match.league,
+                    kickoffDate: match.kickoffDate,
+                    legs: [leg1, leg2, leg3],
+                    combinedProb: combinedProb3,
+                    fairOdds: fairOdds3,
+                    confidence: combinedProb3 >= 0.20 ? 'medium' : 'low'
+                  })
+                }
               }
             }
           }

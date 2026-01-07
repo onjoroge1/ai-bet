@@ -1,5 +1,6 @@
 import prisma from '@/lib/db'
 import { Prisma } from '@prisma/client'
+import { getProductionBaseUrl } from './url-utils'
 
 /**
  * Utility functions for Twitter automation
@@ -122,8 +123,9 @@ export async function hasExistingPostForParlay(parlayId: string, platform: strin
 
 /**
  * Get base URL for generating match/parlay URLs
+ * Uses centralized URL utility to ensure production URLs and prevent localhost in production
  */
 export function getBaseUrl(): string {
-  return process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://snapbet.ai'
+  return getProductionBaseUrl()
 }
 

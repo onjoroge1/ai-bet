@@ -197,7 +197,8 @@ export async function generateMetadata({ params }: MatchLayoutProps): Promise<Me
         card: 'summary_large_image',
         title,
         description,
-        creator: '@SnapBetAI',
+        images: [`${baseUrl}/og-image.jpg`],
+        creator: '@snapbet',
       },
       robots: {
         index: true,

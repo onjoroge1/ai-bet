@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { isTradable, getRiskLevel, calculateQualityScore } from '@/lib/parlays/quality-utils'
 
 /**
  * Parlays API Route
@@ -278,6 +279,12 @@ async function syncParlaysFromVersion(version: 'v1' | 'v2'): Promise<{ synced: n
               parlayData: JSON.stringify(parlay).substring(0, 200)
             }
           })
+          // Mark parlay as invalid if no legs
+          await prisma.parlayConsensus.update({
+            where: { id: parlayConsensusId },
+            data: { status: 'invalid' }
+          })
+          errors++
         } else {
           logger.info(`📋 Creating ${parlay.legs.length} legs for parlay ${parlay.parlay_id}`, {
             tags: ['api', 'parlays', 'sync'],
@@ -296,7 +303,30 @@ async function syncParlaysFromVersion(version: 'v1' | 'v2'): Promise<{ synced: n
           })
 
           // Get MarketMatch data to enrich team names if missing
-          const legMatchIds = parlay.legs.map(l => l.match_id.toString())
+          // CRITICAL: Normalize matchIds to strings for consistent comparison
+          const legMatchIds = parlay.legs.map(l => {
+            const matchId = l.match_id
+            if (matchId === null || matchId === undefined) {
+              logger.warn(`⚠️ Leg has null/undefined match_id`, {
+                tags: ['api', 'parlays', 'sync'],
+                data: { version, parlayId: parlay.parlay_id, leg }
+              })
+              return null
+            }
+            return String(matchId).trim()
+          }).filter((id): id is string => id !== null)
+
+          if (legMatchIds.length === 0) {
+            logger.error(`❌ No valid matchIds found for parlay ${parlay.parlay_id}`, {
+              tags: ['api', 'parlays', 'sync'],
+              data: { version, parlayId: parlay.parlay_id, legs: parlay.legs }
+            })
+            // Mark parlay as invalid and rollback
+            await prisma.parlayConsensus.delete({ where: { id: parlayConsensusId } })
+            errors++
+            continue
+          }
+
           const marketMatches = await prisma.marketMatch.findMany({
             where: {
               matchId: { in: legMatchIds }
@@ -310,11 +340,38 @@ async function syncParlaysFromVersion(version: 'v1' | 'v2'): Promise<{ synced: n
           const matchMap = new Map(marketMatches.map(m => [m.matchId, m]))
 
           let legsCreated = 0
+          const legErrors: Array<{ legIndex: number; error: string; leg: any }> = []
+
           for (let i = 0; i < parlay.legs.length; i++) {
             const leg = parlay.legs[i]
             try {
+              // Validate required fields
+              if (!leg.match_id && leg.match_id !== 0) {
+                throw new Error(`Missing match_id for leg ${i + 1}`)
+              }
+
+              // Normalize matchId to string for consistency
+              const normalizedMatchId = String(leg.match_id).trim()
+              if (!normalizedMatchId || normalizedMatchId === 'undefined' || normalizedMatchId === 'null') {
+                throw new Error(`Invalid match_id for leg ${i + 1}: ${leg.match_id}`)
+              }
+
+              // Validate outcome
+              if (!leg.outcome || !['H', 'D', 'A'].includes(leg.outcome)) {
+                throw new Error(`Invalid outcome for leg ${i + 1}: ${leg.outcome}`)
+              }
+
+              // Validate probability values
+              if (leg.model_prob === null || leg.model_prob === undefined || isNaN(Number(leg.model_prob))) {
+                throw new Error(`Invalid model_prob for leg ${i + 1}: ${leg.model_prob}`)
+              }
+
+              if (leg.decimal_odds === null || leg.decimal_odds === undefined || isNaN(Number(leg.decimal_odds))) {
+                throw new Error(`Invalid decimal_odds for leg ${i + 1}: ${leg.decimal_odds}`)
+              }
+
               // Enrich team names from MarketMatch if missing or "TBD"
-              const matchData = matchMap.get(leg.match_id.toString())
+              const matchData = matchMap.get(normalizedMatchId)
               const homeTeam = (leg.home_team && leg.home_team !== 'TBD') 
                 ? leg.home_team 
                 : (matchData?.homeTeam || leg.home_team || 'TBD')
@@ -327,13 +384,13 @@ async function syncParlaysFromVersion(version: 'v1' | 'v2'): Promise<{ synced: n
               const createdLeg = await prisma.parlayLeg.create({
                 data: {
                   parlayId: parlayConsensusId, // Internal Prisma ID, not backend UUID!
-                  matchId: leg.match_id.toString(),
+                  matchId: normalizedMatchId, // Normalized string matchId
                   outcome: leg.outcome,
                   homeTeam,
                   awayTeam,
                   modelProb: Number(leg.model_prob), // Prisma Decimal accepts number or string
                   decimalOdds: Number(leg.decimal_odds),
-                  edge: Number(leg.edge),
+                  edge: Number(leg.edge || 0), // Default to 0 if missing
                   legOrder: i + 1,
                 },
               })
@@ -345,7 +402,7 @@ async function syncParlaysFromVersion(version: 'v1' | 'v2'): Promise<{ synced: n
                   backendParlayId: parlay.parlay_id,
                   internalId: parlayConsensusId,
                   legOrder: i + 1,
-                  matchId: leg.match_id,
+                  matchId: normalizedMatchId,
                   outcome: leg.outcome,
                   homeTeam: leg.home_team,
                   awayTeam: leg.away_team,
@@ -353,6 +410,7 @@ async function syncParlaysFromVersion(version: 'v1' | 'v2'): Promise<{ synced: n
                 }
               })
             } catch (legError) {
+              const errorMessage = legError instanceof Error ? legError.message : 'Unknown error'
               logger.error(`❌ Error creating leg ${i + 1} for parlay ${parlay.parlay_id}`, {
                 tags: ['api', 'parlays', 'sync'],
                 data: { 
@@ -361,55 +419,84 @@ async function syncParlaysFromVersion(version: 'v1' | 'v2'): Promise<{ synced: n
                   internalId: parlayConsensusId,
                   legIndex: i,
                   legData: leg,
-                  error: legError instanceof Error ? legError.message : 'Unknown error',
+                  error: errorMessage,
                   errorStack: legError instanceof Error ? legError.stack : undefined
                 }
               })
-              // Don't throw - continue with other legs
+              legErrors.push({ legIndex: i, error: errorMessage, leg })
               errors++
             }
           }
           
-          if (legsCreated > 0) {
-            logger.info(`✅ Successfully created ${legsCreated}/${parlay.legs.length} legs for parlay ${parlay.parlay_id}`, {
-              tags: ['api', 'parlays', 'sync'],
-              data: { version, parlayId: parlay.parlay_id, legsCreated, totalLegs: parlay.legs.length }
-            })
-          } else {
-            // Log detailed error with sample leg data to help debug
-            const sampleLeg = parlay.legs[0]
-            logger.error(`❌ Failed to create any legs for parlay ${parlay.parlay_id}`, {
+          // CRITICAL: Validate legs were created successfully
+          if (legsCreated === 0) {
+            // No legs created - rollback parlay creation
+            logger.error(`❌ Failed to create any legs for parlay ${parlay.parlay_id}, rolling back parlay creation`, {
               tags: ['api', 'parlays', 'sync'],
               data: { 
                 version, 
                 parlayId: parlay.parlay_id, 
                 totalLegs: parlay.legs.length,
                 internalParlayId: parlayConsensusId,
-                sampleLeg: sampleLeg ? {
-                  match_id: sampleLeg.match_id,
-                  match_id_type: typeof sampleLeg.match_id,
-                  outcome: sampleLeg.outcome,
-                  home_team: sampleLeg.home_team,
-                  away_team: sampleLeg.away_team,
-                  model_prob: sampleLeg.model_prob,
-                  model_prob_type: typeof sampleLeg.model_prob,
-                  decimal_odds: sampleLeg.decimal_odds,
-                  decimal_odds_type: typeof sampleLeg.decimal_odds,
-                  edge: sampleLeg.edge,
-                  edge_type: typeof sampleLeg.edge,
+                legErrors,
+                sampleLeg: parlay.legs[0] ? {
+                  match_id: parlay.legs[0].match_id,
+                  match_id_type: typeof parlay.legs[0].match_id,
+                  outcome: parlay.legs[0].outcome,
+                  home_team: parlay.legs[0].home_team,
+                  away_team: parlay.legs[0].away_team,
+                  model_prob: parlay.legs[0].model_prob,
+                  model_prob_type: typeof parlay.legs[0].model_prob,
+                  decimal_odds: parlay.legs[0].decimal_odds,
+                  decimal_odds_type: typeof parlay.legs[0].decimal_odds,
+                  edge: parlay.legs[0].edge,
+                  edge_type: typeof parlay.legs[0].edge,
                 } : null,
-                allLegs: parlay.legs.map(l => ({
-                  match_id: l.match_id,
-                  outcome: l.outcome,
-                  has_home_team: !!l.home_team,
-                  has_away_team: !!l.away_team,
-                }))
               }
+            })
+            
+            // Rollback: Delete parlay if no legs created
+            await prisma.parlayConsensus.delete({ where: { id: parlayConsensusId } })
+            continue // Skip incrementing synced counter
+          } else if (legsCreated < parlay.legs.length) {
+            // Some legs failed - mark parlay as invalid
+            logger.warn(`⚠️ Only ${legsCreated}/${parlay.legs.length} legs created for parlay ${parlay.parlay_id}, marking as invalid`, {
+              tags: ['api', 'parlays', 'sync'],
+              data: { 
+                version, 
+                parlayId: parlay.parlay_id, 
+                legsCreated, 
+                totalLegs: parlay.legs.length,
+                legErrors
+              }
+            })
+            await prisma.parlayConsensus.update({
+              where: { id: parlayConsensusId },
+              data: { status: 'invalid' }
+            })
+          } else {
+            logger.info(`✅ Successfully created ${legsCreated}/${parlay.legs.length} legs for parlay ${parlay.parlay_id}`, {
+              tags: ['api', 'parlays', 'sync'],
+              data: { version, parlayId: parlay.parlay_id, legsCreated, totalLegs: parlay.legs.length }
             })
           }
         }
 
-        synced++
+        // Only increment synced if parlay has legs AND is valid
+        if (parlay.legs && parlay.legs.length > 0) {
+          const actualLegCount = await prisma.parlayLeg.count({
+            where: { parlayId: parlayConsensusId }
+          })
+          const parlayStatus = await prisma.parlayConsensus.findUnique({
+            where: { id: parlayConsensusId },
+            select: { status: true }
+          })
+          
+          // Only count as synced if parlay exists, has legs, and is active (not invalid)
+          if (actualLegCount > 0 && parlayStatus?.status === 'active') {
+            synced++
+          }
+        }
       } catch (error) {
         errors++
         logger.error(`Error syncing parlay ${parlay.parlay_id}`, {
@@ -463,6 +550,9 @@ export async function GET(request: NextRequest) {
     const confidenceTier = searchParams.get('confidence_tier')
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = parseInt(searchParams.get('offset') || '0')
+    const tradableOnly = searchParams.get('tradable_only') !== 'false' // Default to true (tradable only)
+    const minEdge = parseFloat(searchParams.get('min_edge') || '5') // Default 5%
+    const minProb = parseFloat(searchParams.get('min_prob') || '0.05') // Default 5%
 
     const where: any = {
       status,
@@ -489,6 +579,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get UPCOMING match IDs from MarketMatch to filter parlays
+    // CRITICAL: Normalize matchIds to strings for consistent comparison
     const now = new Date()
     const upcomingMatches = await prisma.marketMatch.findMany({
       where: {
@@ -498,7 +589,9 @@ export async function GET(request: NextRequest) {
       },
       select: { matchId: true },
     })
-    const upcomingMatchIds = new Set(upcomingMatches.map(m => m.matchId))
+    const upcomingMatchIds = new Set(
+      upcomingMatches.map(m => String(m.matchId).trim()).filter(id => id && id !== 'undefined' && id !== 'null')
+    )
 
     logger.info(`Filtering parlays by UPCOMING matches`, {
       tags: ['api', 'parlays'],
@@ -508,11 +601,42 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Fetch all parlays (we'll filter by UPCOMING matches after)
+    // Fetch parlays with legs - optimized query
+    // Note: We fetch limit * 2 instead of limit * 3 for better efficiency
+    // Quality filtering will reduce the count further
     const allParlays = await prisma.parlayConsensus.findMany({
       where,
-      include: {
+      select: {
+        id: true,
+        parlayId: true,
+        apiVersion: true,
+        legCount: true,
+        combinedProb: true,
+        correlationPenalty: true,
+        adjustedProb: true,
+        impliedOdds: true,
+        edgePct: true,
+        confidenceTier: true,
+        parlayType: true,
+        leagueGroup: true,
+        earliestKickoff: true,
+        latestKickoff: true,
+        kickoffWindow: true,
+        status: true,
+        createdAt: true,
+        syncedAt: true,
         legs: {
+          select: {
+            id: true,
+            matchId: true,
+            outcome: true,
+            homeTeam: true,
+            awayTeam: true,
+            modelProb: true,
+            decimalOdds: true,
+            edge: true,
+            legOrder: true,
+          },
           orderBy: { legOrder: 'asc' },
         },
       },
@@ -520,30 +644,94 @@ export async function GET(request: NextRequest) {
         { edgePct: 'desc' },
         { earliestKickoff: 'asc' },
       ],
-      // Fetch more to account for filtering
-      take: limit * 3, // Get 3x more to filter down
+      // Reduced multiplier: quality filtering + upcoming filtering should still yield enough results
+      take: limit * 2, // Get 2x more to filter down (reduced from 3x)
       skip: offset,
     })
 
     // Filter parlays: Only include those where ALL legs reference UPCOMING matches
-    const filteredParlays = allParlays.filter(parlay => {
+    // CRITICAL: Normalize matchIds for comparison (both are strings, but ensure consistency)
+    // Also apply quality filtering
+    let filteredParlays = allParlays.filter(parlay => {
       if (!parlay.legs || parlay.legs.length === 0) return false
-      return parlay.legs.every(leg => upcomingMatchIds.has(leg.matchId))
-    }).slice(0, limit) // Apply limit after filtering
+      // Ensure all legs have valid matchIds and all reference UPCOMING matches
+      const hasUpcomingMatches = parlay.legs.every(leg => {
+        if (!leg.matchId) return false
+        const normalizedMatchId = String(leg.matchId).trim()
+        return upcomingMatchIds.has(normalizedMatchId)
+      })
+      if (!hasUpcomingMatches) return false
+      
+      // Quality filtering
+      const edgePct = Number(parlay.edgePct)
+      const combinedProb = Number(parlay.combinedProb)
+      
+      // Minimum edge and probability thresholds
+      if (edgePct < minEdge) return false
+      if (combinedProb < minProb) return false
+      
+      // Tradability filter (default: only tradable)
+      if (tradableOnly && !isTradable(edgePct, combinedProb)) return false
+      
+      return true
+    })
+    
+    // Calculate quality scores for sorting
+    const parlaysWithScores = filteredParlays.map(parlay => ({
+      parlay,
+      qualityScore: calculateQualityScore(
+        Number(parlay.edgePct),
+        Number(parlay.combinedProb),
+        parlay.confidenceTier
+      )
+    }))
+    
+    // Sort by quality score (edge is primary, quality score is secondary)
+    parlaysWithScores.sort((a, b) => {
+      // Primary: edge (descending)
+      const edgeDiff = Number(b.parlay.edgePct) - Number(a.parlay.edgePct)
+      if (Math.abs(edgeDiff) > 0.1) {
+        return edgeDiff
+      }
+      // Secondary: quality score (descending)
+      return b.qualityScore - a.qualityScore
+    })
+    
+    filteredParlays = parlaysWithScores.map(item => item.parlay).slice(0, limit) // Apply limit after filtering
 
     // Get total count of filtered parlays (for accurate pagination)
-    // First get all parlays matching the where clause, then filter
+    // Optimized: Only select fields needed for filtering
     const allParlaysForCount = await prisma.parlayConsensus.findMany({
       where,
-      include: {
+      select: {
+        edgePct: true,
+        combinedProb: true,
+        confidenceTier: true,
         legs: {
-          orderBy: { legOrder: 'asc' },
+          select: {
+            matchId: true,
+          },
         },
       },
     })
     const totalFiltered = allParlaysForCount.filter(parlay => {
       if (!parlay.legs || parlay.legs.length === 0) return false
-      return parlay.legs.every(leg => upcomingMatchIds.has(leg.matchId))
+      // Normalize matchIds for comparison
+      const hasUpcomingMatches = parlay.legs.every(leg => {
+        if (!leg.matchId) return false
+        const normalizedMatchId = String(leg.matchId).trim()
+        return upcomingMatchIds.has(normalizedMatchId)
+      })
+      if (!hasUpcomingMatches) return false
+      
+      // Apply same quality filters for count
+      const edgePct = Number(parlay.edgePct)
+      const combinedProb = Number(parlay.combinedProb)
+      if (edgePct < minEdge) return false
+      if (combinedProb < minProb) return false
+      if (tradableOnly && !isTradable(edgePct, combinedProb)) return false
+      
+      return true
     }).length
 
     // Log legs retrieval for debugging
@@ -564,36 +752,55 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       count: totalFiltered,
-      parlays: filteredParlays.map((parlay) => ({
-        parlay_id: parlay.parlayId,
-        api_version: parlay.apiVersion,
-        leg_count: parlay.legCount,
-        legs: parlay.legs && parlay.legs.length > 0 
-          ? parlay.legs.map((leg) => ({
-              edge: Number(leg.edge),
-              outcome: leg.outcome,
-              match_id: parseInt(leg.matchId),
-              away_team: leg.awayTeam,
-              home_team: leg.homeTeam,
-              model_prob: Number(leg.modelProb),
-              decimal_odds: Number(leg.decimalOdds),
-            }))
-          : [], // Return empty array if no legs (not hardcoded - from DB)
-        combined_prob: Number(parlay.combinedProb),
-        correlation_penalty: Number(parlay.correlationPenalty),
-        adjusted_prob: Number(parlay.adjustedProb),
-        implied_odds: Number(parlay.impliedOdds),
-        edge_pct: Number(parlay.edgePct),
-        confidence_tier: parlay.confidenceTier,
-        parlay_type: parlay.parlayType,
-        league_group: parlay.leagueGroup,
-        earliest_kickoff: parlay.earliestKickoff.toISOString(),
-        latest_kickoff: parlay.latestKickoff.toISOString(),
-        kickoff_window: parlay.kickoffWindow,
-        status: parlay.status,
-        created_at: parlay.createdAt.toISOString(),
-        synced_at: parlay.syncedAt.toISOString(),
-      })),
+      filters: {
+        tradableOnly,
+        minEdge,
+        minProb,
+      },
+      parlays: filteredParlays.map((parlay) => {
+        const edgePct = Number(parlay.edgePct)
+        const combinedProb = Number(parlay.combinedProb)
+        const qualityScore = calculateQualityScore(edgePct, combinedProb, parlay.confidenceTier)
+        
+        return {
+          parlay_id: parlay.parlayId,
+          api_version: parlay.apiVersion,
+          leg_count: parlay.legCount,
+          legs: parlay.legs && parlay.legs.length > 0 
+            ? parlay.legs.map((leg) => ({
+                edge: Number(leg.edge),
+                outcome: leg.outcome,
+                match_id: parseInt(leg.matchId),
+                away_team: leg.awayTeam,
+                home_team: leg.homeTeam,
+                model_prob: Number(leg.modelProb),
+                decimal_odds: Number(leg.decimalOdds),
+              }))
+            : [], // Return empty array if no legs (not hardcoded - from DB)
+          combined_prob: combinedProb,
+          correlation_penalty: Number(parlay.correlationPenalty),
+          adjusted_prob: Number(parlay.adjustedProb),
+          implied_odds: Number(parlay.impliedOdds),
+          edge_pct: edgePct,
+          confidence_tier: parlay.confidenceTier,
+          parlay_type: parlay.parlayType,
+          league_group: parlay.leagueGroup,
+          earliest_kickoff: parlay.earliestKickoff.toISOString(),
+          latest_kickoff: parlay.latestKickoff.toISOString(),
+          kickoff_window: parlay.kickoffWindow,
+          status: parlay.status,
+          created_at: parlay.createdAt.toISOString(),
+          synced_at: parlay.syncedAt.toISOString(),
+          // Quality indicators
+          quality: {
+            score: qualityScore,
+            is_tradable: isTradable(edgePct, combinedProb),
+            risk_level: getRiskLevel(combinedProb),
+            has_low_edge: edgePct < 5,
+            has_low_probability: combinedProb < 0.05,
+          },
+        }
+      }),
     })
   } catch (error) {
     logger.error('Error fetching parlays', {

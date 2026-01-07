@@ -5,15 +5,7 @@ import prisma from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { TwitterGenerator } from '@/lib/social/twitter-generator'
 import { logger } from '@/lib/logger'
-
-/**
- * Get base URL for the application
- */
-function getBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL 
-    ? `https://${process.env.VERCEL_URL}` 
-    : 'http://localhost:3000'
-}
+import { buildSocialUrl } from '@/lib/social/url-utils'
 
 /**
  * Check if a match already has an existing scheduled/posted post
@@ -159,17 +151,16 @@ export async function GET(request: NextRequest) {
           const hasPost = await hasExistingPostForMatch(match.matchId)
           const quickPurchase = match.quickPurchases[0]
           const blogPost = match.blogPosts[0]
-          const baseUrl = getBaseUrl()
           
-          // Build matchData for template filtering
+          // Build matchData for template filtering using buildSocialUrl to prevent double slashes
           const matchData = {
             homeTeam: match.homeTeam,
             awayTeam: match.awayTeam,
             league: match.league,
             matchId: match.matchId,
             aiConf: quickPurchase?.confidenceScore || undefined,
-            matchUrl: `${baseUrl}/match/${match.matchId}`,
-            blogUrl: blogPost ? `${baseUrl}/blog/${blogPost.slug}` : undefined,
+            matchUrl: buildSocialUrl(`/match/${match.matchId}`),
+            blogUrl: blogPost ? buildSocialUrl(`/blog/${blogPost.slug}`) : undefined,
           }
           
           // Get available templates for this match (filter by match/post type, exclude live templates for UPCOMING)
@@ -190,8 +181,8 @@ export async function GET(request: NextRequest) {
             confidenceScore: quickPurchase?.confidenceScore || null,
             hasBlog: !!blogPost,
             hasExistingPost: hasPost,
-            matchUrl: `${baseUrl}/match/${match.matchId}`,
-            blogUrl: blogPost ? `${baseUrl}/blog/${blogPost.slug}` : undefined,
+            matchUrl: buildSocialUrl(`/match/${match.matchId}`),
+            blogUrl: blogPost ? buildSocialUrl(`/blog/${blogPost.slug}`) : undefined,
             availableTemplates: availableTemplates.map(t => ({
               id: t.id,
               name: t.name,
@@ -206,7 +197,6 @@ export async function GET(request: NextRequest) {
 
     if (type === 'parlays' || type === 'both') {
       const parlays = await TwitterGenerator.getEligibleParlays(20)
-      const baseUrl = getBaseUrl()
       
       // Get available templates for parlays
       const availableParlayTemplates = TwitterGenerator.getAvailableTemplates('parlay')
@@ -226,7 +216,7 @@ export async function GET(request: NextRequest) {
               awayTeam: firstLeg.awayTeam,
             } : undefined,
             hasExistingPost: hasPost,
-            parlayBuilderUrl: `${baseUrl}/dashboard/parlays/${parlay.parlayId}`,
+            parlayBuilderUrl: buildSocialUrl(`/dashboard/parlays/${parlay.parlayId}`),
             availableTemplates: availableParlayTemplates.map(t => ({
               id: t.id,
               name: t.name,
@@ -300,7 +290,6 @@ export async function POST(request: NextRequest) {
 
       const quickPurchase = match.quickPurchases[0]
       const blogPost = match.blogPosts[0]
-      const baseUrl = TwitterGenerator.getBaseUrl()
 
       // Extract confidence score - try multiple sources (same logic as predict endpoint)
       let aiConf: number | undefined = undefined
@@ -346,8 +335,8 @@ export async function POST(request: NextRequest) {
         league: match.league,
         matchId: match.matchId,
         aiConf,
-        matchUrl: `${baseUrl}/match/${match.matchId}`,
-        blogUrl: blogPost ? `${baseUrl}/blog/${blogPost.slug}` : undefined,
+        matchUrl: buildSocialUrl(`/match/${match.matchId}`),
+        blogUrl: blogPost ? buildSocialUrl(`/blog/${blogPost.slug}`) : undefined,
       }
 
       // Validate template requirements before generating
@@ -415,11 +404,10 @@ export async function POST(request: NextRequest) {
       }
 
       const firstLeg = parlay.legs[0]
-      const baseUrl = TwitterGenerator.getBaseUrl()
 
       const parlayData = {
         parlayId: parlay.parlayId,
-        parlayUrl: `${baseUrl}/dashboard/parlays/${parlay.parlayId}`,
+        parlayUrl: buildSocialUrl(`/dashboard/parlays/${parlay.parlayId}`),
         firstLeg: firstLeg ? {
           homeTeam: firstLeg.homeTeam,
           awayTeam: firstLeg.awayTeam,

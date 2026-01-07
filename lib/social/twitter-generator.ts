@@ -1,5 +1,6 @@
 import prisma from '@/lib/db'
 import { Prisma } from '@prisma/client'
+import { getProductionBaseUrl, buildSocialUrl } from './url-utils'
 
 export interface TwitterPostDraft {
   content: string
@@ -205,6 +206,7 @@ export class TwitterGenerator {
     }
 
     // Prefer blog URL if available, otherwise use match URL
+    // URLs are already normalized by buildSocialUrl in the calling code
     const url = matchData.blogUrl || matchData.matchUrl
 
     // Replace template variables
@@ -453,9 +455,10 @@ export class TwitterGenerator {
 
   /**
    * Get base URL for generating match/parlay URLs
+   * Uses centralized URL utility to ensure production URLs and prevent localhost in production
    */
   static getBaseUrl(): string {
-    return process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://snapbet.ai'
+    return getProductionBaseUrl()
   }
 }
 
