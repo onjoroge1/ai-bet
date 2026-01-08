@@ -38,17 +38,38 @@ export async function POST(request: Request) {
       }
     });
 
-    // Get default country for pricing (US as fallback)
-    const defaultCountry = await prisma.country.findFirst({
-      where: { code: 'US' }
+    // Get default country for pricing (try multiple countries, same as global sync)
+    let defaultCountry = await prisma.country.findFirst({
+      where: { 
+        code: { in: ['US', 'us', 'GB', 'gb', 'CA', 'ca'] },
+        isActive: true 
+      },
+      select: { id: true, code: true, currencyCode: true, currencySymbol: true }
     })
 
+    // Fallback to any active country if preferred countries not found
     if (!defaultCountry) {
+      console.log('[Predict API] Preferred countries not found, using first available active country');
+      defaultCountry = await prisma.country.findFirst({
+        where: { isActive: true },
+        select: { id: true, code: true, currencyCode: true, currencySymbol: true },
+        orderBy: { code: 'asc' } // Get consistent fallback
+      })
+    }
+
+    if (!defaultCountry) {
+      console.error('[Predict API] ❌ No active countries found in database');
       return NextResponse.json(
-        { error: 'Default country not found', details: 'US country must exist in database' },
+        { 
+          error: 'System configuration error', 
+          details: 'No active countries found in database. Please ensure at least one country is active.',
+          failurePoint: 'country_validation'
+        },
         { status: 500 }
       )
     }
+
+    console.log(`[Predict API] Using country for pricing: ${defaultCountry.code} (${defaultCountry.currencyCode})`);
 
     // Check if QuickPurchase exists
     let quickPurchase = await prisma.quickPurchase.findFirst({
@@ -64,14 +85,21 @@ export async function POST(request: Request) {
     });
 
     // Check if predictionData is valid (not null, not empty object, not JsonNull)
-    const hasValidPredictionData = quickPurchase?.predictionData && 
-      quickPurchase.predictionData !== null &&
-      quickPurchase.predictionData !== Prisma.JsonNull &&
-      JSON.stringify(quickPurchase.predictionData) !== '{}' &&
-      JSON.stringify(quickPurchase.predictionData) !== 'null'
+    let hasValidPredictionData = false
+    if (quickPurchase && quickPurchase.predictionData) {
+      try {
+        const jsonStr = JSON.stringify(quickPurchase.predictionData)
+        hasValidPredictionData = jsonStr !== '{}' && 
+                                 jsonStr !== 'null' && 
+                                 jsonStr !== '[]' &&
+                                 jsonStr !== '""'
+      } catch {
+        hasValidPredictionData = false
+      }
+    }
 
     // If QuickPurchase exists with valid predictionData, return it instead of calling backend
-    if (hasValidPredictionData) {
+    if (hasValidPredictionData && quickPurchase) {
       console.log(`[Predict API] Using existing predictionData from QuickPurchase for match ${match_id}`);
       return NextResponse.json({
         success: true,
@@ -126,7 +154,7 @@ export async function POST(request: Request) {
             matchId: matchIdStr,
             marketMatchId: marketMatch?.id || null,
             matchData: matchDataForQuickPurchase as any,
-            predictionData: null, // Will be filled after API call
+            // predictionData will be filled after API call - omit for now
             isPredictionActive: true,
             isActive: true
           },
@@ -139,11 +167,23 @@ export async function POST(request: Request) {
         })
         console.log(`[Predict API] ✅ Created QuickPurchase entry for match ${match_id} (ID: ${quickPurchase.id})`);
       } catch (createError) {
-        console.error(`[Predict API] ❌ Failed to create QuickPurchase for match ${match_id}:`, createError);
+        const errorMessage = createError instanceof Error ? createError.message : 'Unknown error';
+        console.error(`[Predict API] ❌ Failed to create QuickPurchase for match ${match_id}:`, {
+          error: errorMessage,
+          matchId: match_id,
+          matchIdStr,
+          hasMarketMatch: !!marketMatch,
+          marketMatchId: marketMatch?.id,
+          failurePoint: 'quickpurchase_creation'
+        });
+        
         return NextResponse.json(
           { 
             error: 'Failed to create QuickPurchase entry',
-            details: createError instanceof Error ? createError.message : 'Unknown error'
+            details: errorMessage,
+            failurePoint: 'quickpurchase_creation',
+            matchId: match_id,
+            fix: 'Check database connection and QuickPurchase table schema. Ensure all required fields are provided.'
           },
           { status: 500 }
         )
@@ -152,14 +192,19 @@ export async function POST(request: Request) {
 
     // Only call backend API if no QuickPurchase record exists or it has no valid predictionData
     console.log(`[Predict API] No valid predictionData found for match ${match_id}, calling backend API...`);
-    console.log(`[Predict API] Backend URL: ${process.env.BACKEND_URL}`);
+    console.log(`[Predict API] Backend URL: ${process.env.BACKEND_URL ? '✅ Set' : '❌ Missing'}`);
     console.log(`[Predict API] Match ID: ${match_id} (string: ${matchIdStr})`);
     
-    // Validate environment variables
+    // Validate environment variables with improved error messages
     if (!process.env.BACKEND_URL) {
       console.error('[Predict API] ❌ BACKEND_URL environment variable is not set');
       return NextResponse.json(
-        { error: 'Backend URL not configured', details: 'BACKEND_URL environment variable is missing' },
+        { 
+          error: 'Backend URL not configured', 
+          details: 'BACKEND_URL environment variable is missing',
+          failurePoint: 'environment_validation',
+          fix: 'Set BACKEND_URL environment variable in your deployment configuration'
+        },
         { status: 500 }
       );
     }
@@ -167,31 +212,88 @@ export async function POST(request: Request) {
     if (!process.env.BACKEND_API_KEY) {
       console.error('[Predict API] ❌ BACKEND_API_KEY environment variable is not set');
       return NextResponse.json(
-        { error: 'Backend API key not configured', details: 'BACKEND_API_KEY environment variable is missing' },
+        { 
+          error: 'Backend API key not configured', 
+          details: 'BACKEND_API_KEY environment variable is missing',
+          failurePoint: 'environment_validation',
+          fix: 'Set BACKEND_API_KEY environment variable in your deployment configuration'
+        },
         { status: 500 }
       );
     }
     
-    const response = await fetch(
-      `${process.env.BACKEND_URL}/predict`,
-      {
+    // Call backend API with timeout protection (same as global sync)
+    const backendUrl = `${process.env.BACKEND_URL}/predict`;
+    const requestStartTime = Date.now();
+    
+    console.log(`[Predict API] Calling backend API: ${backendUrl}`);
+    
+    let response: Response;
+    try {
+      response = await fetch(backendUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${process.env.BACKEND_API_KEY}`,
         },
         body: JSON.stringify({ match_id }),
-      }
-    );
+        signal: AbortSignal.timeout(30000) // 30 second timeout (same as global sync)
+      });
+    } catch (fetchError) {
+      const requestTime = Date.now() - requestStartTime;
+      const isTimeout = fetchError instanceof Error && 
+                       (fetchError.name === 'AbortError' || fetchError.message.includes('timeout'));
+      
+      console.error(`[Predict API] ❌ Backend API request failed for match ${match_id}:`, {
+        error: fetchError instanceof Error ? fetchError.message : String(fetchError),
+        isTimeout,
+        requestTime: `${requestTime}ms`,
+        failurePoint: isTimeout ? 'backend_timeout' : 'backend_connection'
+      });
+      
+      return NextResponse.json(
+        { 
+          error: isTimeout 
+            ? 'Backend API request timeout' 
+            : 'Backend API connection failed',
+          details: fetchError instanceof Error ? fetchError.message : 'Unknown error',
+          failurePoint: isTimeout ? 'backend_timeout' : 'backend_connection',
+          requestTime: `${requestTime}ms`,
+          fix: isTimeout 
+            ? 'Backend API took longer than 30 seconds to respond. Check backend server status.'
+            : 'Check backend URL and network connectivity.'
+        },
+        { status: 500 }
+      );
+    }
+
+    const requestTime = Date.now() - requestStartTime;
+    console.log(`[Predict API] Backend API response received in ${requestTime}ms`, {
+      status: response.status,
+      statusText: response.statusText
+    });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[Predict API] Backend API error for match ${match_id}:`, {
+      console.error(`[Predict API] ❌ Backend API error for match ${match_id}:`, {
         status: response.status,
         statusText: response.statusText,
-        error: errorText
+        error: errorText,
+        requestTime: `${requestTime}ms`,
+        failurePoint: 'backend_api_error'
       });
-      throw new Error(`Backend responded with status: ${response.status} - ${errorText}`);
+      
+      return NextResponse.json(
+        { 
+          error: 'Backend API error',
+          details: `Backend responded with status ${response.status}: ${errorText}`,
+          failurePoint: 'backend_api_error',
+          backendStatus: response.status,
+          backendStatusText: response.statusText,
+          requestTime: `${requestTime}ms`
+        },
+        { status: response.status >= 500 ? 502 : response.status } // Return backend status or 502 for 5xx
+      );
     }
 
     const predictionData = await response.json();
@@ -318,14 +420,27 @@ export async function POST(request: Request) {
         confidenceScore: quickPurchaseResult.confidenceScore
       })
     } catch (qpError) {
-      // Log but don't fail the request if QuickPurchase creation fails
-      console.error(`[Predict API] ❌ Error creating QuickPurchase for match ${match_id}:`, qpError)
+      const errorMessage = qpError instanceof Error ? qpError.message : 'Unknown error';
+      console.error(`[Predict API] ❌ Error updating QuickPurchase for match ${match_id}:`, {
+        error: errorMessage,
+        matchId: match_id,
+        matchIdStr,
+        quickPurchaseId: quickPurchase?.id,
+        hasPredictionData: !!predictionData,
+        failurePoint: 'quickpurchase_update'
+      });
+      
       // Return error response so frontend knows it failed
+      // Still include predictionData in case frontend wants to handle it
       return NextResponse.json(
         { 
           error: 'Failed to save prediction data to database',
-          details: qpError instanceof Error ? qpError.message : 'Unknown error',
-          predictionData: predictionData // Still return the data in case frontend wants to handle it
+          details: errorMessage,
+          failurePoint: 'quickpurchase_update',
+          matchId: match_id,
+          quickPurchaseId: quickPurchase?.id,
+          predictionData: predictionData, // Still return the data in case frontend wants to handle it
+          fix: 'Check database connection and QuickPurchase table. Prediction data was fetched but could not be saved.'
         },
         { status: 500 }
       )
@@ -337,11 +452,21 @@ export async function POST(request: Request) {
       message: 'Prediction data fetched and saved successfully'
     });
   } catch (error) {
-    console.error('[Predict API] ❌ Error getting prediction:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
+    console.error('[Predict API] ❌ Unexpected error getting prediction:', {
+      error: errorMessage,
+      stack: errorStack,
+      failurePoint: 'unexpected_error'
+    });
+    
     return NextResponse.json(
       { 
         error: 'Failed to get prediction',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: errorMessage,
+        failurePoint: 'unexpected_error',
+        fix: 'Check server logs for detailed error information. This is an unexpected error that occurred during request processing.'
       },
       { status: 500 }
     );

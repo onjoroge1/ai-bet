@@ -14,8 +14,10 @@ import { AdminLeagueManagement } from "@/components/admin/league-management" // 
 import { PredictionQuickPurchaseManager } from "@/components/admin/prediction-quickpurchase-manager" // Import new
 import { PricingManagement } from "@/components/admin/pricing-management" // Import new
 import { GlobalMatchSync } from "@/components/admin/global-match-sync" // Import new Global Sync
-import { MarketSyncButton } from "@/components/admin/market-sync-button" // Import Market Sync Button
+import { MarketSyncButton } from "@/components/admin/market-sync-button"
+import { AdditionalMarketsSyncButton } from "@/components/admin/additional-markets-sync-button" // Import Market Sync Button
 import { ParlayManagement } from "@/components/admin/parlay-management" // Import Parlay Management
+import { BestParlayGeneratorButton } from "@/components/admin/best-parlay-generator-button" // Import Best Parlay Generator
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { DollarSign, Target, ChevronDown, ShoppingBag, Layers } from "lucide-react"
 
@@ -35,6 +37,12 @@ export default function AdminPage() {
 
         {/* Market Data Sync - Manual Sync Button */}
         <MarketSyncButton />
+
+        {/* Additional Markets Data Sync */}
+        <AdditionalMarketsSyncButton />
+
+        {/* Best Parlay Generator */}
+        <BestParlayGeneratorButton />
 
         {/* System Monitoring - Full Width */}
         <AdminSystemMonitoring />

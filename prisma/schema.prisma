@@ -1775,11 +1775,14 @@ model ParlayLeg {
   edge        Decimal
   legOrder    Int // Order in parlay (1, 2, 3...)
 
-  parlay ParlayConsensus @relation(fields: [parlayId], references: [id], onDelete: Cascade)
+  parlay            ParlayConsensus @relation(fields: [parlayId], references: [id], onDelete: Cascade)
+  additionalMarket  AdditionalMarketData? @relation(fields: [additionalMarketId], references: [id], onDelete: SetNull)
+  additionalMarketId String?
 
   @@unique([parlayId, legOrder])
   @@index([matchId])
   @@index([parlayId])
+  @@index([additionalMarketId])
 }
 
 model ParlayPurchase {
@@ -1822,6 +1825,59 @@ model ParlayPerformance {
   parlay ParlayConsensus @relation(fields: [parlayId], references: [id])
 
   @@index([winRate, roi])
+}
+
+// Additional Market Data Table - Structured storage of advanced market data from additional_markets_v2
+model AdditionalMarketData {
+  id                String   @id @default(cuid())
+  matchId           String   // Links to MarketMatch.matchId
+  marketType        String   // "1X2", "BTTS", "TOTALS", "DNB", "ASIAN_HANDICAP", "TEAM_TOTALS", "DOUBLE_CHANCE", "WIN_TO_NIL", "CLEAN_SHEET", etc.
+  marketSubtype     String?  // "OVER_2_5", "UNDER_1_5", "HOME", "AWAY", "YES", "NO", etc.
+  line              Decimal? // For totals: 2.5, 1.5, etc. For AH: -0.5, +1.5, etc.
+  
+  // V1 Model Data
+  v1ModelProb       Decimal? // V1 model probability
+  v1Confidence      Decimal? // V1 model confidence
+  v1Pick            String?  // V1 recommended pick
+  
+  // V2 Model Data
+  v2ModelProb       Decimal? // V2 model probability
+  v2Confidence      Decimal? // V2 model confidence
+  v2Pick            String?  // V2 recommended pick
+  
+  // Consensus Calculation
+  consensusProb     Decimal  // Weighted consensus (v1 + v2)
+  consensusConfidence Decimal // Combined confidence
+  modelAgreement    Decimal  // Agreement score (0-1)
+  
+  // Market Odds
+  decimalOdds       Decimal? // Current market odds
+  impliedProb       Decimal? // 1 / decimalOdds
+  edgeV1            Decimal? // Edge using V1: (v1ModelProb / impliedProb) - 1
+  edgeV2            Decimal? // Edge using V2: (v2ModelProb / impliedProb) - 1
+  edgeConsensus     Decimal  // Edge using consensus: (consensusProb / impliedProb) - 1
+  
+  // Correlation & Risk
+  correlationTags   String[] // ["GOALS_LOW", "TOTALS", "UNDER", "HOME_WIN"]
+  riskLevel         String   // "low", "medium", "high"
+  settleType        String   // "WIN_LOSE", "WIN_LOSE_PUSH", "WIN_HALF_WIN_HALF_LOSE"
+  
+  // Metadata
+  lastUpdated       DateTime @default(now())
+  dataSource        String   @default("additional_markets_v2") // Preserves origin: "additional_markets_v2", "market_api", etc.
+  
+  // Relations
+  match             MarketMatch @relation(fields: [matchId], references: [matchId])
+  parlayLegs        ParlayLeg[]
+  
+  @@unique([matchId, marketType, marketSubtype, line])
+  @@map("additional_market_data")
+  @@index([matchId])
+  @@index([marketType, consensusProb])
+  @@index([edgeConsensus])
+  @@index([correlationTags])
+  @@index([riskLevel])
+  @@index([dataSource, lastUpdated])
 }
 
 model MarketMatch {
@@ -1897,9 +1953,10 @@ model MarketMatch {
   archivedAt DateTime?
 
   // Relations
-  quickPurchases   QuickPurchase[]
-  blogPosts        BlogPost[]
-  socialMediaPosts SocialMediaPost[]
+  quickPurchases       QuickPurchase[]
+  blogPosts            BlogPost[]
+  socialMediaPosts     SocialMediaPost[]
+  additionalMarketData AdditionalMarketData[]
 
   @@index([matchId])
   @@index([status, kickoffDate])

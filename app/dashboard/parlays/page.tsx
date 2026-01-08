@@ -1,19 +1,20 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Calendar, Trophy, TrendingUp, Loader2, Search, Filter, X, Layers, Zap, Target, RefreshCw, Info, ChevronRight } from "lucide-react"
+import { Calendar, Trophy, TrendingUp, Loader2, Search, Filter, X, Layers, Zap, Target, RefreshCw, Info, ChevronRight, Hammer } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { PremiumGate } from "@/components/premium-gate"
 import { ParlayAIAnalysis } from "@/components/premium/parlay-ai-analysis"
+import { MatchSelection } from "@/components/parlays/match-selection"
 
 interface ParlayLeg {
   edge: number
@@ -90,6 +91,7 @@ export default function ParlaysPage() {
   const [loadingLegs, setLoadingLegs] = useState(false)
   const [hasPremiumAccess, setHasPremiumAccess] = useState<boolean | null>(null)
   const [viewMode, setViewMode] = useState<"table" | "grid">("table") // New view mode state
+  const [activeTab, setActiveTab] = useState<"prebuilt" | "builder">("prebuilt") // Tab state
   const [filters, setFilters] = useState<ParlayFilters>({
     search: "",
     status: "active",
@@ -384,18 +386,38 @@ export default function ParlaysPage() {
           )}
         </div>
 
-        {/* Edge Percentage Info Box */}
-        <Card className="bg-blue-500/10 border-blue-500/30 mb-6">
-          <CardContent className="p-4">
-            <div className="flex items-start gap-3">
-              <Info className="h-5 w-5 text-blue-400 mt-0.5 flex-shrink-0" />
-              <div className="flex-1">
-                <h3 className="text-sm font-semibold text-white mb-1">Understanding Edge Percentage</h3>
-                <p className="text-sm text-slate-300 leading-relaxed">
-                  <strong>Edge %</strong> represents the expected value advantage of our AI model's prediction compared to the bookmaker's odds. 
-                  A positive edge means our model believes the bet has better value than what the market suggests. 
-                  <strong> Typical edges range from 5-30%</strong> - values above 50% are extremely rare and may indicate data quality issues.
-                </p>
+        {/* Tabs for Pre-built and Builder */}
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "prebuilt" | "builder")} className="mb-6">
+          <TabsList className="bg-slate-800/50 border border-slate-700">
+            <TabsTrigger 
+              value="prebuilt" 
+              className="data-[state=active]:bg-emerald-600 data-[state=active]:text-white"
+            >
+              <Layers className="h-4 w-4 mr-2" />
+              Pre-built Parlays
+            </TabsTrigger>
+            <TabsTrigger 
+              value="builder"
+              className="data-[state=active]:bg-emerald-600 data-[state=active]:text-white"
+            >
+              <Hammer className="h-4 w-4 mr-2" />
+              Build Your Own
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="prebuilt" className="mt-6">
+            {/* Edge Percentage Info Box */}
+            <Card className="bg-blue-500/10 border-blue-500/30 mb-6">
+              <CardContent className="p-4">
+                <div className="flex items-start gap-3">
+                  <Info className="h-5 w-5 text-blue-400 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <h3 className="text-sm font-semibold text-white mb-1">Understanding Edge Percentage</h3>
+                    <p className="text-sm text-slate-300 leading-relaxed">
+                      <strong>Edge %</strong> represents the expected value advantage of our AI model's prediction compared to the bookmaker's odds. 
+                      A positive edge means our model believes the bet has better value than what the market suggests. 
+                      <strong> Typical edges range from 5-30%</strong> - values above 50% are extremely rare and may indicate data quality issues.
+                    </p>
                 <p className="text-xs text-slate-400 mt-2">
                   <strong>Formula:</strong> Edge = (Model Probability ÷ Implied Probability) - 1
                 </p>
@@ -404,7 +426,7 @@ export default function ParlaysPage() {
           </CardContent>
         </Card>
 
-        {/* Filters */}
+            {/* Filters */}
         <Card className="bg-slate-800/60 border-slate-700 mb-6">
           <CardContent className="p-4">
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -781,16 +803,23 @@ export default function ParlaysPage() {
           </div>
         )}
 
-        {/* Stats Footer */}
-        {filteredParlays.length > 0 && (
-          <Card className="bg-slate-800/60 border-slate-700 mt-6">
-            <CardContent className="p-4">
+            {/* Stats Footer */}
+            {filteredParlays.length > 0 && (
+              <Card className="bg-slate-800/60 border-slate-700 mt-6">
+                <CardContent className="p-4">
               <div className="text-sm text-slate-400 text-center">
                 Showing {filteredParlays.length} of {parlays.length} parlays
               </div>
             </CardContent>
           </Card>
         )}
+
+          </TabsContent>
+
+          <TabsContent value="builder" className="mt-6">
+            <ParlayBuilder />
+          </TabsContent>
+        </Tabs>
 
         {/* Parlay Detail Modal */}
         <Dialog open={showDetailModal} onOpenChange={setShowDetailModal}>
@@ -1055,6 +1084,315 @@ export default function ParlaysPage() {
           </DialogContent>
         </Dialog>
       </div>
+    </div>
+  )
+}
+
+// Parlay Builder Component
+function ParlayBuilder() {
+  const [selectedMatches, setSelectedMatches] = useState<string[]>([])
+  const [selectedMarkets, setSelectedMarkets] = useState<Array<{
+    marketId: string
+    matchId: string
+    marketType: string
+    marketSubtype: string | null
+    line: number | null
+  }>>([])
+  const [showMarketModal, setShowMarketModal] = useState(false)
+  const [currentMatchId, setCurrentMatchId] = useState<string | null>(null)
+  const [markets, setMarkets] = useState<any[]>([])
+  const [loadingMarkets, setLoadingMarkets] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const handleMatchSelect = (matchId: string) => {
+    if (selectedMatches.includes(matchId)) {
+      // Check if this match has markets selected
+      const hasMarkets = selectedMarkets.some(m => m.matchId === matchId)
+      if (hasMarkets) {
+        toast.warning("Remove markets from this match first before deselecting it")
+        return
+      }
+      setSelectedMatches(selectedMatches.filter(id => id !== matchId))
+    } else {
+      // For multi-game: warn if trying to add second match with same match already selected
+      if (selectedMatches.length > 0 && selectedMatches.includes(matchId)) {
+        toast.info("This match is already selected. Select markets from different matches for multi-game parlays.")
+        return
+      }
+      setSelectedMatches([...selectedMatches, matchId])
+    }
+  }
+
+  const handleMatchDeselect = (matchId: string) => {
+    // Remove match and its markets
+    setSelectedMatches(selectedMatches.filter(id => id !== matchId))
+    setSelectedMarkets(selectedMarkets.filter(m => m.matchId !== matchId))
+  }
+
+  const handleMarketSelect = async (matchId: string) => {
+    setCurrentMatchId(matchId)
+    setShowMarketModal(true)
+    setLoadingMarkets(true)
+
+    try {
+      const response = await fetch(`/api/parlays/builder/markets/${matchId}`)
+      if (!response.ok) {
+        throw new Error("Failed to fetch markets")
+      }
+      const data = await response.json()
+      setMarkets(data.markets || [])
+    } catch (error) {
+      console.error("Error fetching markets:", error)
+      toast.error("Failed to load markets")
+    } finally {
+      setLoadingMarkets(false)
+    }
+  }
+
+  const addMarketToParlay = (market: any) => {
+    // Check if market already added
+    if (selectedMarkets.some(m => m.marketId === market.id)) {
+      toast.info("This market is already in your parlay")
+      return
+    }
+
+    // Check match diversification for multi-game parlays
+    if (selectedMatches.length > 1) {
+      // Multi-game: ensure one market per match
+      const existingMarketForMatch = selectedMarkets.find(m => m.matchId === currentMatchId)
+      if (existingMarketForMatch) {
+        toast.warning("For multi-game parlays, select one market per match. Remove the existing market from this match first.")
+        return
+      }
+    }
+
+    // Add market
+    setSelectedMarkets([
+      ...selectedMarkets,
+      {
+        marketId: market.id,
+        matchId: currentMatchId!,
+        marketType: market.marketType,
+        marketSubtype: market.marketSubtype,
+        line: market.line
+      }
+    ])
+    toast.success("Market added to parlay")
+  }
+
+  const removeMarket = (marketId: string) => {
+    setSelectedMarkets(selectedMarkets.filter(m => m.marketId !== marketId))
+  }
+
+  const handleSave = async () => {
+    if (selectedMarkets.length < 2) {
+      toast.error("Add at least 2 markets to create a parlay")
+      return
+    }
+
+    if (selectedMarkets.length > 5) {
+      toast.error("Maximum 5 markets per parlay")
+      return
+    }
+
+    setSaving(true)
+    try {
+      const response = await fetch("/api/parlays/builder/save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          legs: selectedMarkets
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to save parlay")
+      }
+
+      const data = await response.json()
+      toast.success("Parlay created successfully!")
+      
+      // Reset builder
+      setSelectedMatches([])
+      setSelectedMarkets([])
+      setShowMarketModal(false)
+      
+      // Optionally refresh pre-built parlays or navigate
+    } catch (error) {
+      console.error("Error saving parlay:", error)
+      toast.error(error instanceof Error ? error.message : "Failed to save parlay")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Calculate parlay preview
+  const calculateParlayPreview = () => {
+    if (selectedMarkets.length === 0) return null
+
+    // This would need to fetch market data to calculate properly
+    // For now, return a simple preview
+    return {
+      legCount: selectedMarkets.length,
+      isMultiGame: new Set(selectedMarkets.map(m => m.matchId)).size > 1
+    }
+  }
+
+  const preview = calculateParlayPreview()
+
+  return (
+    <div className="space-y-6">
+      <Card className="bg-slate-800/50 border-slate-700">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center gap-2">
+            <Hammer className="h-5 w-5 text-emerald-400" />
+            Build Your Parlay
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <p className="text-slate-300 text-sm">
+              Select matches and markets to build your custom parlay. For multi-game parlays, select markets from different matches.
+            </p>
+
+            {/* Selected Markets Preview */}
+            {selectedMarkets.length > 0 && (
+              <Card className="bg-emerald-900/20 border-emerald-500/50">
+                <CardContent className="p-4">
+                  <h3 className="text-sm font-semibold text-white mb-3">
+                    Selected Markets ({selectedMarkets.length}/5)
+                  </h3>
+                  <div className="space-y-2">
+                    {selectedMarkets.map((market, idx) => (
+                      <div
+                        key={market.marketId}
+                        className="flex items-center justify-between p-2 bg-slate-800/50 rounded border border-slate-700"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400">Leg {idx + 1}:</span>
+                          <span className="text-sm text-white">
+                            {market.marketType} {market.marketSubtype || ""} {market.line ? `(${market.line})` : ""}
+                          </span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeMarket(market.marketId)}
+                          className="h-6 w-6 p-0 text-red-400 hover:text-red-300"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  {preview && (
+                    <div className="mt-4 pt-4 border-t border-slate-700">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-slate-300">
+                          Type: {preview.isMultiGame ? "Multi-Game" : "Single-Game"} Parlay
+                        </span>
+                        <Button
+                          onClick={handleSave}
+                          disabled={saving || selectedMarkets.length < 2}
+                          className="bg-emerald-600 hover:bg-emerald-700"
+                        >
+                          {saving ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            "Save Parlay"
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Match Selection */}
+            <MatchSelection
+              selectedMatches={selectedMatches}
+              onMatchSelect={handleMatchSelect}
+              onMatchDeselect={handleMatchDeselect}
+              onMarketSelect={handleMarketSelect}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Market Selection Modal */}
+      <Dialog open={showMarketModal} onOpenChange={setShowMarketModal}>
+        <DialogContent className="max-w-4xl bg-slate-800 border-slate-700 text-white max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Select Market</DialogTitle>
+          </DialogHeader>
+          {loadingMarkets ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-emerald-400" />
+            </div>
+          ) : markets.length === 0 ? (
+            <div className="text-center py-12 text-slate-400">
+              No markets available for this match
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+              {markets.map((market) => (
+                <Card
+                  key={market.id}
+                  className="cursor-pointer bg-slate-700/50 border-slate-600 hover:border-emerald-500/50 transition-colors"
+                  onClick={() => addMarketToParlay(market)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between mb-2">
+                      <h4 className="font-semibold text-white">{market.displayLabel}</h4>
+                      <Badge variant="outline" className="border-slate-600 text-slate-300">
+                        {market.marketType}
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-slate-400">Probability:</span>
+                        <span className="ml-2 text-emerald-400 font-semibold">
+                          {(market.consensus.prob * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400">Agreement:</span>
+                        <span className="ml-2 text-white font-semibold">
+                          {(market.consensus.agreement * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                      {market.odds.decimal && (
+                        <div>
+                          <span className="text-slate-400">Odds:</span>
+                          <span className="ml-2 text-white font-semibold">
+                            {market.odds.decimal.toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-slate-400">Risk:</span>
+                        <span className={`ml-2 font-semibold ${
+                          market.riskLevel === 'low' ? 'text-emerald-400' :
+                          market.riskLevel === 'medium' ? 'text-yellow-400' : 'text-red-400'
+                        }`}>
+                          {market.riskLevel.toUpperCase()}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -17,6 +17,7 @@ export interface MatchData {
   aiConf?: number
   matchUrl: string
   blogUrl?: string
+  explanation?: string
 }
 
 export interface ParlayData {
@@ -70,7 +71,7 @@ export class TwitterGenerator {
       id: 'neutral-preview',
       name: 'Neutral Preview',
       category: 'Blog Summary',
-      content: `{LEAGUE} preview\n{TEAM_A} vs {TEAM_B} — AI match analysis now live on SnapBet.\n\nRead more 👉 {MATCH_URL}`,
+      content: `{LEAGUE} preview\n{TEAM_A} vs {TEAM_B}\n{EXPLANATION_SNIPPET}\n\nSee full AI breakdown 👉 {MATCH_URL}`,
       postType: 'match',
       hasLink: true,
     },
@@ -209,6 +210,37 @@ export class TwitterGenerator {
     // URLs are already normalized by buildSocialUrl in the calling code
     const url = matchData.blogUrl || matchData.matchUrl
 
+    // Process explanation snippet for neutral-preview template
+    let explanationSnippet = ''
+    if (template.id === 'neutral-preview') {
+      if (matchData.explanation && matchData.explanation.trim()) {
+        // Truncate explanation to 110 characters, trying to break at word boundary
+        const maxLength = 110
+        const explanation = matchData.explanation.trim()
+        
+        if (explanation.length > maxLength) {
+          // Try to break at word boundary
+          const truncated = explanation.substring(0, maxLength)
+          const lastSpace = truncated.lastIndexOf(' ')
+          const lastPeriod = truncated.lastIndexOf('.')
+          const lastBreak = Math.max(lastSpace, lastPeriod)
+          
+          if (lastBreak > maxLength * 0.7) {
+            // Use word boundary if it's not too early
+            explanationSnippet = explanation.substring(0, lastBreak) + '...'
+          } else {
+            // Just truncate at character limit
+            explanationSnippet = truncated + '...'
+          }
+        } else {
+          explanationSnippet = explanation
+        }
+      } else {
+        // Fallback message if no explanation available
+        explanationSnippet = 'AI-powered match analysis with detailed insights and betting intelligence.'
+      }
+    }
+
     // Replace template variables
     let content = template.content
       .replace(/{TEAM_A}/g, matchData.homeTeam)
@@ -217,6 +249,7 @@ export class TwitterGenerator {
       .replace(/{AI_CONF}/g, matchData.aiConf?.toString() || '')
       .replace(/{MATCH_URL}/g, url)
       .replace(/{LIVE_URL}/g, url) // For live templates, use same URL structure
+      .replace(/{EXPLANATION_SNIPPET}/g, explanationSnippet || '') // Replace with empty string if not neutral-preview template
 
     // For live templates, replace live-specific variables (if available)
     // TODO: Add support for {MATCH_MINUTE}, {MOMENTUM_SUMMARY}, {OBS_1}, {OBS_2} when live data is available

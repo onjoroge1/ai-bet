@@ -361,7 +361,33 @@ export class TemplateBlogGenerator {
       return this.sanitize(qp.analysisSummary)
     }
     
-    const confidence = qp.confidenceScore || 0
+    // Extract confidence from predictionData.predictions.confidence (same as main content)
+    let confidence = 0
+    const predictionData = qp.predictionData as any
+    const rawConfidence = predictionData?.predictions?.confidence
+    
+    if (rawConfidence !== undefined && rawConfidence !== null) {
+      // If it's a decimal (0-1 range), convert to percentage
+      if (typeof rawConfidence === 'number' && rawConfidence <= 1 && rawConfidence >= 0) {
+        confidence = Math.round(rawConfidence * 100)
+      } else if (typeof rawConfidence === 'number') {
+        // Already a percentage
+        confidence = Math.round(rawConfidence)
+      } else if (typeof rawConfidence === 'string') {
+        // Try to parse if it's a string
+        const parsed = parseFloat(rawConfidence)
+        if (!isNaN(parsed)) {
+          confidence = parsed <= 1 ? Math.round(parsed * 100) : Math.round(parsed)
+        }
+      }
+    } else {
+      // Fallback to confidenceScore if predictions.confidence is not available
+      confidence = qp.confidenceScore || 0
+    }
+    
+    // Ensure confidence is within valid range (0-100)
+    confidence = Math.max(0, Math.min(100, confidence))
+    
     return `${teams.homeTeam} vs ${teams.awayTeam} – AI confidence ${confidence}%. Get the full analysis and prediction now.`
   }
 
@@ -382,13 +408,42 @@ export class TemplateBlogGenerator {
     console.log(`[TemplateBlog] Teams:`, teams)
     console.log(`[TemplateBlog] Has predictionData:`, !!qp.predictionData)
     
-    const confidence = qp.confidenceScore || 0
     const predictionData = qp.predictionData as any
     
     if (!predictionData) {
       console.warn(`[TemplateBlog] No predictionData for ${qp.name}`)
       return `<p>Match preview for ${teams.homeTeam} vs ${teams.awayTeam}. No detailed prediction data available.</p>`
     }
+
+    // Extract confidence from predictionData.predictions.confidence (same as match detail page)
+    // This is the most accurate source according to user preference
+    let confidence = 0
+    const rawConfidence = predictionData.predictions?.confidence
+    
+    if (rawConfidence !== undefined && rawConfidence !== null) {
+      // If it's a decimal (0-1 range), convert to percentage (same as match detail page)
+      if (typeof rawConfidence === 'number' && rawConfidence <= 1 && rawConfidence >= 0) {
+        confidence = Math.round(rawConfidence * 100)
+      } else if (typeof rawConfidence === 'number') {
+        // Already a percentage
+        confidence = Math.round(rawConfidence)
+      } else if (typeof rawConfidence === 'string') {
+        // Try to parse if it's a string
+        const parsed = parseFloat(rawConfidence)
+        if (!isNaN(parsed)) {
+          confidence = parsed <= 1 ? Math.round(parsed * 100) : Math.round(parsed)
+        }
+      }
+    } else {
+      // Fallback to confidenceScore if predictions.confidence is not available
+      confidence = qp.confidenceScore || 0
+      console.log(`[TemplateBlog] Using confidenceScore fallback: ${confidence}%`)
+    }
+    
+    // Ensure confidence is within valid range (0-100)
+    confidence = Math.max(0, Math.min(100, confidence))
+    
+    console.log(`[TemplateBlog] Confidence extracted: ${confidence}% (from predictions.confidence: ${rawConfidence})`)
 
     // Helper functions
     const truncate = (text: string, length: number) => text.length > length ? text.substring(0, length) + '...' : text

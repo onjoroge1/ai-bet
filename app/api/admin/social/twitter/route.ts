@@ -291,8 +291,9 @@ export async function POST(request: NextRequest) {
       const quickPurchase = match.quickPurchases[0]
       const blogPost = match.blogPosts[0]
 
-      // Extract confidence score - try multiple sources (same logic as predict endpoint)
+      // Extract confidence score and explanation - try multiple sources (same logic as predict endpoint)
       let aiConf: number | undefined = undefined
+      let explanation: string | undefined = undefined
       
       if (quickPurchase) {
         // First try confidenceScore field
@@ -301,6 +302,13 @@ export async function POST(request: NextRequest) {
         } else if (quickPurchase.predictionData) {
           // Try to extract from predictionData (multiple possible structures)
           const predictionData = quickPurchase.predictionData as any
+          
+          // Extract explanation from analysis.explanation
+          if (predictionData?.analysis?.explanation) {
+            explanation = typeof predictionData.analysis.explanation === 'string' 
+              ? predictionData.analysis.explanation 
+              : undefined
+          }
           
           // Try comprehensive_analysis.ml_prediction.confidence
           const mlPrediction = predictionData?.comprehensive_analysis?.ml_prediction || 
@@ -337,6 +345,7 @@ export async function POST(request: NextRequest) {
         aiConf,
         matchUrl: buildSocialUrl(`/match/${match.matchId}`),
         blogUrl: blogPost ? buildSocialUrl(`/blog/${blogPost.slug}`) : undefined,
+        explanation,
       }
 
       // Validate template requirements before generating

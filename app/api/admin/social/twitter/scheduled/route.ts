@@ -60,6 +60,17 @@ export async function GET(request: NextRequest) {
         const quickPurchase = match.quickPurchases[0]
         const blogPost = match.blogPosts[0]
 
+        // Extract explanation from predictionData if available
+        let explanation: string | undefined = undefined
+        if (quickPurchase?.predictionData) {
+          const predictionData = quickPurchase.predictionData as any
+          if (predictionData?.analysis?.explanation) {
+            explanation = typeof predictionData.analysis.explanation === 'string' 
+              ? predictionData.analysis.explanation 
+              : undefined
+          }
+        }
+
         const matchData = {
           homeTeam: match.homeTeam,
           awayTeam: match.awayTeam,
@@ -68,6 +79,7 @@ export async function GET(request: NextRequest) {
           aiConf: quickPurchase?.confidenceScore || undefined,
           matchUrl: buildSocialUrl(`/match/${match.matchId}`),
           blogUrl: blogPost ? buildSocialUrl(`/blog/${blogPost.slug}`) : undefined,
+          explanation,
         }
 
         const draft = TwitterGenerator.generateMatchPost(matchData)
