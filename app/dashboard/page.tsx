@@ -1,175 +1,270 @@
 "use client"
 
-import { DashboardHeader } from "@/components/dashboard/dashboard-header"
-import dynamic from 'next/dynamic'
-import { Suspense } from 'react'
-import { Loader2 } from 'lucide-react'
+import dynamic from "next/dynamic"
+import { Suspense, useState, useEffect } from "react"
+import { Loader2, Trophy, Layers, Users, Zap, Crown, X, ArrowRight, BarChart3, Activity, CheckCircle } from "lucide-react"
+import { Card } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import Link from "next/link"
+import { useSearchParams } from "next/navigation"
+import { useDashboardData } from "@/hooks/use-dashboard-data"
 
 /**
- * DashboardPage - Server-Side First Architecture
+ * DashboardPage - Streamlined Overview
+ *
+ * Optimized for fast loading and clear purpose:
+ * - Welcome message with quick stats
+ * - Quick action navigation cards
+ * - Essential widgets only (Stats, Credits, Notifications, Live Matches)
+ * - Progressive loading (critical first, secondary after)
  * 
- * 🔥 REMOVED: Duplicate auth check (layout already handles server-side auth)
- * - DashboardLayout checks /api/auth/session and only renders children if authenticated
- * - This page trusts the layout's auth check
- * - useAuth() is used only for user data (non-blocking)
+ * Moved to standalone pages:
+ * - Referrals → /dashboard/referrals
+ * - Quiz Credits → /dashboard/rewards
+ * - Claimed Tips → /dashboard/my-bets
+ * - Upgrade Offers → Simplified or in /dashboard/premium
  */
 
-// Dynamically import heavy components
-const StatsOverview = dynamic(() => import('@/components/dashboard/stats-overview').then(mod => mod.StatsOverview), {
-  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
-})
+// ── Critical Components (Load First) ────────────────────────────────
+const StatsOverview = dynamic(
+  () => import("@/components/dashboard/stats-overview").then((mod) => mod.StatsOverview),
+  { loading: () => <WidgetSkeleton /> }
+)
 
-const PackageCredits = dynamic(() => import('@/components/dashboard/package-credits').then(mod => mod.PackageCredits), {
-  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
-})
+const PackageCredits = dynamic(
+  () => import("@/components/dashboard/package-credits").then((mod) => mod.PackageCredits),
+  { loading: () => <WidgetSkeleton /> }
+)
 
-const QuizCreditClaim = dynamic(() => import('@/components/quiz/QuizCreditClaim'), {
-  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
-})
+// ── Secondary Components (Load After Critical) ────────────────────────
+const NotificationsWidget = dynamic(
+  () => import("@/components/notifications-widget").then((mod) => mod.NotificationsWidget),
+  { loading: () => <WidgetSkeleton /> }
+)
 
-const QuizCredits = dynamic(() => import('@/components/dashboard/quiz-credits').then(mod => mod.QuizCredits), {
-  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
-})
+const LiveMatchesWidget = dynamic(
+  () => import("@/components/live-matches-widget").then((mod) => mod.LiveMatchesWidget),
+  { loading: () => <WidgetSkeleton /> }
+)
 
-const TimelineFeed = dynamic(() => import('@/components/dashboard/timeline-feed').then(mod => mod.TimelineFeed), {
-  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
-})
+// ── AI Recommendations ────────────────────────────────────────────────
+const AIRecommendations = dynamic(
+  () => import("@/components/dashboard/ai-recommendations").then((mod) => mod.AIRecommendations),
+  {
+    loading: () => <WidgetSkeleton />,
+    ssr: false,
+  }
+)
 
-const MyTipsWidget = dynamic(() => import('@/components/dashboard/my-tips-widget').then(mod => mod.MyTipsWidget), {
-  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
-})
+// ── Tertiary Components (Load Last or On-Demand) ──────────────────────
+const TimelineFeed = dynamic(
+  () => import("@/components/dashboard/timeline-feed").then((mod) => mod.TimelineFeed),
+  { 
+    loading: () => <WidgetSkeleton />,
+    ssr: false // Client-side only for better initial load
+  }
+)
 
-const ClaimedTipsSection = dynamic(() => import('@/components/dashboard/ClaimedTipsSection').then(mod => mod.ClaimedTipsSection), {
-  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
-})
+const UpgradeOffers = dynamic(
+  () => import("@/components/upgrade-offers").then((mod) => mod.UpgradeOffers),
+  { 
+    loading: () => <WidgetSkeleton />,
+    ssr: false // Client-side only
+  }
+)
 
-const UpgradeOffers = dynamic(() => import('@/components/upgrade-offers').then(mod => mod.UpgradeOffers), {
-  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
-})
+const PersonalizedOffers = dynamic(
+  () => import("@/components/personalized-offers").then((mod) => mod.PersonalizedOffers),
+  { 
+    loading: () => <WidgetSkeleton />,
+    ssr: false // Client-side only
+  }
+)
 
-const PersonalizedOffers = dynamic(() => import('@/components/personalized-offers').then(mod => mod.PersonalizedOffers), {
-  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
-})
+/** Shared loading skeleton for widget placeholders */
+function WidgetSkeleton() {
+  return (
+    <div className="h-48 flex items-center justify-center rounded-xl bg-slate-800/30 border border-slate-800/50">
+      <Loader2 className="h-6 w-6 animate-spin text-emerald-500/60" />
+    </div>
+  )
+}
 
-const NotificationsWidget = dynamic(() => import('@/components/notifications-widget').then(mod => mod.NotificationsWidget), {
-  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
-})
-
-
-const LiveMatchesWidget = dynamic(() => import('@/components/live-matches-widget').then(mod => mod.LiveMatchesWidget), {
-  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
-})
-
-const ReferralBanner = dynamic(() => import('@/components/referral-banner'), {
-  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
-})
-
-const ParlaysPreviewWidget = dynamic(() => import('@/components/dashboard/parlays-preview-widget').then(mod => mod.ParlaysPreviewWidget), {
-  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
-})
-
-const CLVPreviewWidget = dynamic(() => import('@/components/dashboard/clv-preview-widget').then(mod => mod.CLVPreviewWidget), {
-  loading: () => <div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
-})
+/** Quick action card links */
+const quickActions = [
+  {
+    href: "/dashboard/matches",
+    icon: Trophy,
+    title: "Browse Matches",
+    subtitle: "AI predictions",
+    gradient: "from-emerald-500/10 to-emerald-500/5",
+    border: "border-emerald-500/20 hover:border-emerald-500/40",
+    iconColor: "text-emerald-400",
+  },
+  {
+    href: "/dashboard/parlays",
+    icon: Layers,
+    title: "AI Parlays",
+    subtitle: "Curated picks",
+    gradient: "from-orange-500/10 to-orange-500/5",
+    border: "border-orange-500/20 hover:border-orange-500/40",
+    iconColor: "text-orange-400",
+  },
+  {
+    href: "/dashboard/my-tips",
+    icon: Users,
+    title: "My Tips",
+    subtitle: "Purchased picks",
+    gradient: "from-blue-500/10 to-blue-500/5",
+    border: "border-blue-500/20 hover:border-blue-500/40",
+    iconColor: "text-blue-400",
+  },
+  {
+    href: "/dashboard/daily-tips",
+    icon: Zap,
+    title: "Daily Tips",
+    subtitle: "Today's best",
+    gradient: "from-purple-500/10 to-purple-500/5",
+    border: "border-purple-500/20 hover:border-purple-500/40",
+    iconColor: "text-purple-400",
+  },
+]
 
 export default function DashboardPage() {
-  // 🔥 REMOVED: Duplicate auth check - DashboardLayout already handles server-side auth
-  // The layout checks /api/auth/session and only renders children if authenticated
-  // This page trusts the layout's auth check and renders content immediately
+  const { data, isLoading } = useDashboardData()
+  const searchParams = useSearchParams()
+  const showUpgrade = searchParams.get("upgrade") === "true"
+  const [upgradeVisible, setUpgradeVisible] = useState(false)
+
+  useEffect(() => {
+    if (showUpgrade) setUpgradeVisible(true)
+  }, [showUpgrade])
+
+  const firstName = data?.user?.fullName?.split(" ")[0] || "User"
+  const winStreak = data?.user?.winStreak || 0
+  const accuracy = data?.dashboard?.predictionAccuracy || "0%"
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 min-h-screen">
-      <DashboardHeader />
+    <div className="space-y-6 max-w-7xl mx-auto">
+      {/* ── Upgrade Banner (shown when redirected from premium route) ── */}
+      {upgradeVisible && (
+        <div className="relative overflow-hidden rounded-2xl border border-amber-500/40 bg-gradient-to-r from-amber-900/40 via-slate-800/80 to-slate-900/60 p-5 shadow-[0_0_30px_rgba(245,158,11,0.15)]">
+          <button
+            onClick={() => setUpgradeVisible(false)}
+            className="absolute top-3 right-3 text-slate-400 hover:text-white transition-colors"
+            aria-label="Dismiss"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div className="w-12 h-12 bg-amber-500/20 rounded-xl flex items-center justify-center border border-amber-500/30 shrink-0">
+              <Crown className="w-6 h-6 text-amber-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-white">Premium Required</h3>
+              <p className="text-slate-300 text-sm mt-1">
+                The page you tried to access requires a VIP subscription. Upgrade now to unlock
+                AI Parlays, Analytics, CLV Tracker, and the VIP Intelligence Feed.
+              </p>
+            </div>
+            <Link href="/pricing?plan=premium_intelligence">
+              <Button className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-semibold shadow-[0_0_15px_rgba(245,158,11,0.3)] border-0 whitespace-nowrap">
+                <Crown className="w-4 h-4 mr-2" />
+                View Plans
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </Link>
+          </div>
+        </div>
+      )}
 
-      {/* Top Row: Stats and Package Credits */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+      {/* ── Page Header ──────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white">
+            Welcome back, {firstName}!
+          </h1>
+          <p className="text-slate-400 mt-1">
+            {winStreak > 0 && (
+              <span className="text-emerald-400 font-semibold">{winStreak}-win streak</span>
+            )}
+            {winStreak > 0 && " • "}
+            {accuracy} accuracy • Here&apos;s your overview
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2 animate-pulse" />
+            AI Active
+          </Badge>
+        </div>
+      </div>
+
+      {/* ── Quick Actions Grid ───────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {quickActions.map((action) => (
+          <Link key={action.href} href={action.href}>
+            <Card
+              className={`bg-gradient-to-br ${action.gradient} ${action.border} border p-4 transition-all duration-200 cursor-pointer hover:shadow-lg group`}
+            >
+              <div className="flex items-center gap-3">
+                <action.icon className={`w-7 h-7 ${action.iconColor}`} />
+                <div>
+                  <p className="font-semibold text-white text-sm group-hover:text-emerald-300 transition-colors">
+                    {action.title}
+                  </p>
+                  <p className="text-xs text-slate-400">{action.subtitle}</p>
+                </div>
+              </div>
+            </Card>
+          </Link>
+        ))}
+      </div>
+
+      {/* ── Critical Content: Stats + Credits ──────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
-          <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
+          <Suspense fallback={<WidgetSkeleton />}>
             <StatsOverview />
           </Suspense>
         </div>
         <div>
-          <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
+          <Suspense fallback={<WidgetSkeleton />}>
             <PackageCredits />
           </Suspense>
         </div>
       </div>
 
-      {/* Quick Purchase Section - Full Width */}
-      <div className="mb-8">
-        <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
-          <UpgradeOffers />
+      {/* ── Secondary Content: Notifications + Live Matches ─────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Suspense fallback={<WidgetSkeleton />}>
+          <NotificationsWidget />
+        </Suspense>
+        <Suspense fallback={<WidgetSkeleton />}>
+          <LiveMatchesWidget />
         </Suspense>
       </div>
 
-      {/* Personalized Offers - Full Width */}
-      <div className="mb-8" data-section="personalized-offers">
-        <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
-          <PersonalizedOffers />
-        </Suspense>
-      </div>
+      {/* ── AI Intelligence Feed ──────────────────────────────────────────── */}
+      <Suspense fallback={<WidgetSkeleton />}>
+        <AIRecommendations />
+      </Suspense>
 
-      {/* Premium Features Preview - Parlays & CLV */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
-          <ParlaysPreviewWidget />
-        </Suspense>
-        <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
-          <CLVPreviewWidget />
-        </Suspense>
-      </div>
+      {/* ── Tertiary Content: Timeline Feed (Loads Last) ───────────────────────────── */}
+      <Suspense fallback={<WidgetSkeleton />}>
+        <TimelineFeed />
+      </Suspense>
 
-      {/* Middle Row: Notifications, Live Matches */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <div>
-          <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
-            <NotificationsWidget />
-          </Suspense>
-        </div>
-        <div>
-          <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
-            <LiveMatchesWidget />
-          </Suspense>
-        </div>
-      </div>
+      {/* ── Premium Packages (Loads Last, Client-Side Only) ──────────────────── */}
+      <Suspense fallback={<WidgetSkeleton />}>
+        <PersonalizedOffers />
+      </Suspense>
 
-      {/* Bottom Row: Timeline Feed, My Tips Widget */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
-          <TimelineFeed />
-        </Suspense>
-        <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
-          <MyTipsWidget />
-        </Suspense>
-      </div>
-
-      {/* Claimed Tips Section - Full Width */}
-      <div className="mb-8">
-        <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
-          <ClaimedTipsSection />
-        </Suspense>
-      </div>
-
-      {/* Referral Banner - Full Width */}
-      <div className="mb-8">
-        <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
-          <ReferralBanner />
-        </Suspense>
-      </div>
-
-      {/* Quiz Credits - Full Width */}
-      <div className="mb-8 pt-4">
-        <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
-          <QuizCredits />
-        </Suspense>
-      </div>
-
-      {/* Quiz Credit Claim - Full Width */}
-      <div className="mt-8">
-        <Suspense fallback={<div className="h-48 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>}>
-          <QuizCreditClaim />
-        </Suspense>
-      </div>
+      {/* ── Upgrade Offers (Loads Last, Client-Side Only) ──────────────────── */}
+      <Suspense fallback={<WidgetSkeleton />}>
+        <UpgradeOffers />
+      </Suspense>
     </div>
   )
 }

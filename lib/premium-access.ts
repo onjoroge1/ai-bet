@@ -17,6 +17,7 @@ export async function hasPremiumAccess(): Promise<boolean> {
       where: { id: session.user.id },
       select: {
         subscriptionPlan: true,
+        subscriptionStatus: true,
         subscriptionExpiresAt: true,
         role: true,
       },
@@ -42,7 +43,12 @@ export async function hasPremiumAccess(): Promise<boolean> {
     const isNotExpired = !!(user.subscriptionExpiresAt && 
       new Date(user.subscriptionExpiresAt) > new Date())
 
-    return !!(isPremiumPlan && isNotExpired)
+    // Check subscriptionStatus — block only explicitly cancelled/unpaid states
+    const blockedStatuses = ['canceled', 'cancelled', 'unpaid', 'incomplete_expired']
+    const isExplicitlyBlocked = !!user.subscriptionStatus &&
+      blockedStatuses.includes(user.subscriptionStatus.toLowerCase())
+
+    return !!(isPremiumPlan && isNotExpired && !isExplicitlyBlocked)
   } catch (error) {
     console.error('Error checking premium access:', error)
     return false
@@ -73,6 +79,7 @@ export async function getPremiumStatus(): Promise<{
       where: { id: session.user.id },
       select: {
         subscriptionPlan: true,
+        subscriptionStatus: true,
         subscriptionExpiresAt: true,
         role: true,
       },
@@ -105,8 +112,13 @@ export async function getPremiumStatus(): Promise<{
     const expiresAt = user.subscriptionExpiresAt
     const isExpired = !expiresAt || new Date(expiresAt) <= new Date()
 
+    // Block only explicitly cancelled/unpaid statuses
+    const blockedStatuses = ['canceled', 'cancelled', 'unpaid', 'incomplete_expired']
+    const isExplicitlyBlocked = !!user.subscriptionStatus &&
+      blockedStatuses.includes(user.subscriptionStatus.toLowerCase())
+
     return {
-      hasAccess: !!(isPremiumPlan && !isExpired),
+      hasAccess: !!(isPremiumPlan && !isExpired && !isExplicitlyBlocked),
       plan: user.subscriptionPlan,
       expiresAt,
       isExpired,

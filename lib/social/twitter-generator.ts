@@ -1,6 +1,9 @@
 import prisma from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { getProductionBaseUrl, buildSocialUrl } from './url-utils'
+import { generateMatchSlug } from '@/lib/match-slug'
+import OpenAI from 'openai'
+import { logger } from '@/lib/logger'
 
 export interface TwitterPostDraft {
   content: string
@@ -206,9 +209,10 @@ export class TwitterGenerator {
       throw new Error(`Template ${template.name} requires confidence score`)
     }
 
-    // Prefer blog URL if available, otherwise use match URL
-    // URLs are already normalized by buildSocialUrl in the calling code
-    const url = matchData.blogUrl || matchData.matchUrl
+    // Always use match URL with SEO slug (not blog URL)
+    // The match page is the primary destination with all info
+    const matchSlug = generateMatchSlug(matchData.homeTeam, matchData.awayTeam)
+    const url = buildSocialUrl(`/match/${matchSlug}`)
 
     // Process explanation snippet for neutral-preview template
     let explanationSnippet = ''
@@ -280,6 +284,127 @@ export class TwitterGenerator {
       url: template.hasLink ? url : undefined,
       templateId: template.id,
       postType: 'match',
+    }
+  }
+
+  /**
+   * Humanize a Twitter post using OpenAI to make it sound more natural and engaging
+   * Falls back to original content if OpenAI call fails
+   */
+  static async humanizePost(
+    originalContent: string,
+    matchData?: MatchData,
+    options?: { useLLM?: boolean }
+  ): Promise<string> {
+    // If LLM is disabled, return original
+    if (options?.useLLM === false) {
+      return originalContent
+    }
+
+    // Check if OpenAI API key is available
+    const apiKey = process.env.OPENAI_API_KEY
+    if (!apiKey) {
+      logger.warn('OPENAI_API_KEY not set, skipping LLM rewrite', {
+        tags: ['social', 'twitter', 'llm'],
+      })
+      return originalContent
+    }
+
+    try {
+      const openai = new OpenAI({ apiKey })
+
+      // Build context for the LLM (avoid AI-related terms)
+      const contextParts: string[] = []
+      if (matchData) {
+        contextParts.push(`Match: ${matchData.homeTeam} vs ${matchData.awayTeam}`)
+        contextParts.push(`League: ${matchData.league}`)
+        if (matchData.aiConf !== undefined) {
+          contextParts.push(`Win probability: ${matchData.aiConf}%`)
+        }
+        if (matchData.explanation) {
+          contextParts.push(`Analysis: ${matchData.explanation.substring(0, 200)}...`)
+        }
+      }
+
+      const systemPrompt = `You are a sharp sports betting analyst tweeting about upcoming matches. Rewrite this template tweet to sound natural, conversational, and engaging for Twitter/X.
+
+Rules:
+- Keep under 250 chars (leave room for URL which is ~23 chars)
+- Use the match data provided (confidence, league, form) to add a specific insight
+- Don't mention "SnapBet AI", "AI", "model", "algorithm", "machine learning", or any brand names — let the link do the branding
+- Vary your tone: sometimes questioning, sometimes confident, sometimes contrarian
+- No generic phrases like "flagged due to" or "based on form and matchup data"
+- NO EMOJIS — write in plain text only
+- End with a hook that makes people click the link
+- Sound like a real person, not a marketing bot or AI assistant
+- Be specific about what makes this match interesting
+- Write like a human tipster would — casual, opinionated, direct
+- Avoid any language that sounds automated or AI-generated`
+
+      const userMessage = `Match Context:
+${contextParts.join('\n')}
+
+Template Output:
+${originalContent}
+
+Rewrite this for Twitter (keep the URL if present):`
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage },
+        ],
+        max_tokens: 150,
+        temperature: 0.8, // Higher temperature for more variation
+      })
+
+      const humanized = response.choices[0]?.message?.content?.trim()
+      
+      if (!humanized) {
+        logger.warn('OpenAI returned empty response, using original', {
+          tags: ['social', 'twitter', 'llm'],
+        })
+        return originalContent
+      }
+
+      // Remove any emojis that might have been generated (safety check)
+      const emojiRegex = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu
+      let cleaned = humanized.replace(emojiRegex, '').trim()
+      
+      // Preserve URL if it was in the original (without emoji)
+      const urlMatch = originalContent.match(/(https?:\/\/[^\s]+)/)
+      if (urlMatch && !cleaned.includes(urlMatch[1])) {
+        // URL was in original but not in humanized, add it back (plain text, no emoji)
+        const url = urlMatch[1]
+        const cleanedWithoutUrl = cleaned.replace(/\s*👉\s*https?:\/\/[^\s]+/gi, '').replace(/\s*https?:\/\/[^\s]+/gi, '').trim()
+        cleaned = `${cleanedWithoutUrl} ${url}`
+      }
+
+      // Ensure we're within Twitter's limit (280 chars)
+      if (cleaned.length > 280) {
+        logger.warn('Humanized tweet exceeds 280 chars, truncating', {
+          tags: ['social', 'twitter', 'llm'],
+          data: { length: cleaned.length },
+        })
+        return cleaned.substring(0, 277) + '...'
+      }
+
+      logger.info('Successfully humanized tweet with LLM', {
+        tags: ['social', 'twitter', 'llm'],
+        data: {
+          originalLength: originalContent.length,
+          humanizedLength: cleaned.length,
+        },
+      })
+
+      return cleaned
+    } catch (error) {
+      logger.error('Failed to humanize tweet with LLM, using original', {
+        tags: ['social', 'twitter', 'llm', 'error'],
+        error: error instanceof Error ? error : undefined,
+      })
+      return originalContent
     }
   }
 
@@ -422,7 +547,7 @@ export class TwitterGenerator {
     id: string
     parlayId: string
     legCount: number
-    earliestKickoff: Date
+    earliestKickoff: Date | null
     legs: Array<{
       homeTeam: string
       awayTeam: string

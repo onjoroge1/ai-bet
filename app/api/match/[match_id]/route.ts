@@ -4,6 +4,8 @@ import prisma from '@/lib/db'
 import { authOptions } from '@/lib/auth'
 import { getDbCountryPricing } from '@/lib/server-pricing-service'
 import { isMarketMatchTooOld, transformMarketMatchToApiFormat } from '@/lib/market-match-helpers'
+import { isNumericSlug } from '@/lib/match-slug'
+import { resolveSlugToMatchId } from '@/lib/match-slug-server'
 
 // Use BACKEND_API_URL from environment (no hardcoded fallback)
 const BASE_URL = process.env.BACKEND_API_URL || process.env.BACKEND_URL
@@ -23,7 +25,18 @@ export async function GET(
   { params }: { params: Promise<{ match_id: string }> }
 ) {
   try {
-    const { match_id: matchId } = await params
+    const { match_id: rawSlug } = await params
+
+    // Resolve slug-based URLs to numeric matchId
+    let matchId = rawSlug
+    if (!isNumericSlug(rawSlug)) {
+      const resolved = await resolveSlugToMatchId(rawSlug)
+      if (!resolved) {
+        return NextResponse.json({ error: 'Match not found' }, { status: 404 })
+      }
+      matchId = resolved
+    }
+
     const session = await getServerSession(authOptions)
 
     // First, try to get from database via QuickPurchase (faster than API call)
@@ -94,6 +107,7 @@ export async function GET(
     // Check database first, then fallback to external API if data is too old or missing
     let backendMatchData = null
     let dbMatch = null
+    let dbDataIsFresh = false
     
     try {
       // Try to get from MarketMatch database first
@@ -102,44 +116,39 @@ export async function GET(
       })
 
       if (dbMatch) {
-        // ✅ FOR FINISHED MATCHES: Always use database (never expires, no API fallback needed)
+        // Always transform DB data as a ready fallback
+        const dbTransformed = transformMarketMatchToApiFormat(dbMatch)
+
         if (dbMatch.status === 'FINISHED') {
-          console.log(`[Match API] Using database for FINISHED match ${matchId}`, {
-            hasFinalResult: !!dbMatch.finalResult,
-            finalResult: dbMatch.finalResult,
-            status: dbMatch.status
-          })
-          // Transform database match to API format
-          backendMatchData = transformMarketMatchToApiFormat(dbMatch)
-          
-          // Log finalResult extraction for debugging
-          if (dbMatch.finalResult) {
-            const finalResult = dbMatch.finalResult as any
-            console.log(`[Match API] ✅ FinalResult from database for match ${matchId}:`, {
-              finalResult: finalResult,
-              hasScore: !!finalResult.score,
-              score: finalResult.score,
-              outcome: finalResult.outcome,
-              outcome_text: finalResult.outcome_text,
-              finalResultType: typeof finalResult,
-              finalResultKeys: finalResult ? Object.keys(finalResult) : null
-            })
+          // Check if we have real score data
+          const fr = dbMatch.finalResult as Record<string, unknown> | null
+          const cs = dbMatch.currentScore as Record<string, unknown> | null
+          const hasRealScore = !!(
+            (fr && typeof fr === 'object' && Object.keys(fr).length > 0 && (fr as Record<string, unknown>).score) ||
+            (cs && typeof cs === 'object' && (cs as Record<string, unknown>).home !== undefined)
+          )
+
+          if (hasRealScore) {
+            // ✅ FINISHED with score: use database, skip external API
+            console.log(`[Match API] Using database for FINISHED match ${matchId} (has real score)`)
+            backendMatchData = dbTransformed
+            dbDataIsFresh = true
           } else {
-            console.warn(`[Match API] ⚠️ FINISHED match ${matchId} in database but no finalResult field`, {
-              matchId: matchId,
-              status: dbMatch.status,
-              hasCurrentScore: !!dbMatch.currentScore,
-              currentScore: dbMatch.currentScore
-            })
+            // ⚠️ FINISHED but no score: use DB as fallback, try external API to get final score
+            console.log(`[Match API] ⚠️ FINISHED match ${matchId} has no score in DB — trying external API`)
+            backendMatchData = dbTransformed // Keep as fallback
+            dbDataIsFresh = false // Allow API fetch
           }
         } else if (!isMarketMatchTooOld(dbMatch)) {
-          // For LIVE/UPCOMING: Use database if not too old
-          console.log(`[Match API] Using database for match ${matchId} (status: ${dbMatch.status})`)
-          backendMatchData = transformMarketMatchToApiFormat(dbMatch)
+          // LIVE/UPCOMING with fresh data: use directly
+          console.log(`[Match API] Using fresh database for match ${matchId} (status: ${dbMatch.status})`)
+          backendMatchData = dbTransformed
+          dbDataIsFresh = true
         } else {
-          // For LIVE/UPCOMING: Data too old, fetch from API
-          console.log(`[Match API] Database data too old for match ${matchId} (status: ${dbMatch.status}), fetching from API`)
-          // Continue to API fetch below
+          // LIVE/UPCOMING with stale data: keep as fallback, try API
+          console.log(`[Match API] Database data stale for match ${matchId} (status: ${dbMatch.status}), trying API with DB fallback`)
+          backendMatchData = dbTransformed // Use as fallback
+          dbDataIsFresh = false
         }
       } else {
         console.log(`[Match API] Match ${matchId} not in database, fetching from API`)
@@ -149,31 +158,26 @@ export async function GET(
       // Continue to API fallback
     }
 
-    // If database data is not available or too old, fetch from external API
-    // ✅ SKIP API FETCH FOR FINISHED MATCHES - database is the source of truth
-    if (!backendMatchData && BASE_URL) {
-      // Check if match is FINISHED in database - if so, don't fetch from API
-      if (dbMatch && dbMatch.status === 'FINISHED') {
-        console.log(`[Match API] Match ${matchId} is FINISHED in database but no backendMatchData - this should not happen`)
-        // Still try to transform what we have
-        if (dbMatch) {
-          backendMatchData = transformMarketMatchToApiFormat(dbMatch)
-        }
-      }
-      
-      // Only fetch from API if not FINISHED or if match not in database
-      if (!dbMatch || dbMatch.status !== 'FINISHED') {
+    // If database data is stale or missing, try external API (with DB data as fallback)
+    // ✅ SKIP API FETCH when DB data is fresh
+    if (!dbDataIsFresh && BASE_URL) {
+      // Fetch from API when data isn't fresh (includes FINISHED matches with missing scores)
+      {
         // First try with status=live to get enhanced live data if match is live
         const liveMarketUrl = `${BASE_URL}/market?match_id=${matchId}&status=live`
         console.log(`[Match API] Fetching live match from: ${liveMarketUrl}`)
         
         try {
+          const liveAbort = new AbortController()
+          const liveTimeout = setTimeout(() => liveAbort.abort(), 5000)
           const liveMarketResponse = await fetch(liveMarketUrl, {
             headers: {
               Authorization: `Bearer ${API_KEY}`,
             },
-            cache: 'no-store' // Disable caching for live matches to get real-time data
+            cache: 'no-store', // Disable caching for live matches to get real-time data
+            signal: liveAbort.signal,
           })
+          clearTimeout(liveTimeout)
 
           if (liveMarketResponse.ok) {
             const liveData = await liveMarketResponse.json()
@@ -214,12 +218,16 @@ export async function GET(
           console.log(`[Match API] Fetching finished match from API: ${finishedMarketUrl}`)
           
           try {
+            const finAbort = new AbortController()
+            const finTimeout = setTimeout(() => finAbort.abort(), 5000)
             const finishedResponse = await fetch(finishedMarketUrl, {
               headers: {
                 Authorization: `Bearer ${API_KEY}`,
               },
-              next: { revalidate: 3600 } // Cache finished matches for 1 hour
+              next: { revalidate: 3600 }, // Cache finished matches for 1 hour
+              signal: finAbort.signal,
             })
+            clearTimeout(finTimeout)
 
             if (finishedResponse.ok) {
               const finishedData = await finishedResponse.json()
@@ -243,12 +251,16 @@ export async function GET(
           console.log(`[Match API] Fetching match from: ${marketUrl}`)
           
           try {
+            const upAbort = new AbortController()
+            const upTimeout = setTimeout(() => upAbort.abort(), 5000)
             const marketResponse = await fetch(marketUrl, {
               headers: {
                 Authorization: `Bearer ${API_KEY}`,
               },
-              next: { revalidate: 60 }
+              next: { revalidate: 60 },
+              signal: upAbort.signal,
             })
+            clearTimeout(upTimeout)
 
             if (marketResponse.ok) {
               const marketData = await marketResponse.json()
@@ -264,8 +276,6 @@ export async function GET(
             console.error(`[Match API] Error fetching match:`, error)
           }
         }
-      } else if (dbMatch && dbMatch.status === 'FINISHED') {
-        console.log(`[Match API] ✅ Skipping API fetch for FINISHED match ${matchId} - using database finalResult only`)
       }
     } else if (!BASE_URL) {
       console.error(`[Match API] Cannot fetch match ${matchId}: BACKEND_API_URL not configured`)
@@ -334,6 +344,19 @@ export async function GET(
               matchData.score = matchData.final_result.score
             }
             console.log(`[Match API] ✅ Created final_result:`, matchData.final_result)
+
+            // Persist the score back to the database so we don't need to fetch again
+            if (dbMatch) {
+              prisma.marketMatch.update({
+                where: { matchId: String(matchId) },
+                data: {
+                  finalResult: matchData.final_result as Record<string, unknown>,
+                  currentScore: matchData.final_result.score as Record<string, unknown>,
+                },
+              }).catch((err: unknown) => {
+                console.error(`[Match API] Failed to persist final_result for match ${matchId}:`, err)
+              })
+            }
           } else {
             console.warn(`[Match API] ⚠️ Cannot create final_result: no score found`, {
               hasScore: !!matchData.score,

@@ -1,14 +1,34 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { AlertCircle, Search, Book, Send, Plus, MessageCircle, Clock, CheckCircle, XCircle, Star, Zap, Shield, Users, Headphones } from "lucide-react"
+import { 
+  AlertCircle, 
+  Search, 
+  Book, 
+  Send, 
+  Plus, 
+  MessageCircle, 
+  Clock, 
+  CheckCircle, 
+  XCircle, 
+  Shield, 
+  Users, 
+  ChevronDown,
+  ChevronUp,
+  Mail,
+  HelpCircle,
+  RefreshCw,
+  Loader2
+} from "lucide-react"
+import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 
 // Types for support tickets
 interface SupportTicket {
@@ -54,7 +74,6 @@ export default function SupportPage() {
   // Ticket states
   const [tickets, setTickets] = useState<SupportTicket[]>([])
   const [loadingTickets, setLoadingTickets] = useState(false)
-  const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null)
   const [showTicketForm, setShowTicketForm] = useState(false)
   const [ticketForm, setTicketForm] = useState({
     subject: "",
@@ -116,7 +135,6 @@ export default function SupportPage() {
       const result = await response.json()
       
       if (response.ok) {
-        // Handle both old and new API response formats
         if (result.tickets) {
           setTickets(result.tickets || [])
         } else if (result.data) {
@@ -148,7 +166,6 @@ export default function SupportPage() {
     setSubmitStatus("idle")
 
     try {
-      // Send the support request to our API
       const response = await fetch('/api/support/contact', {
         method: 'POST',
         headers: {
@@ -161,8 +178,6 @@ export default function SupportPage() {
 
       if (response.ok && result.success) {
         setSubmitStatus("success")
-        
-        // Reset form after successful submission
         setContactForm({
           name: "",
           email: "",
@@ -171,13 +186,14 @@ export default function SupportPage() {
           category: "",
           message: ""
         })
+        toast.success("Message sent successfully!")
       } else {
         setSubmitStatus("error")
-        console.error('Support request failed:', result.error)
+        toast.error(result.error || "Failed to send message")
       }
     } catch (error) {
       setSubmitStatus("error")
-      console.error('Error submitting support request:', error)
+      toast.error("Error sending message. Please try again.")
     } finally {
       setIsSubmitting(false)
     }
@@ -207,10 +223,7 @@ export default function SupportPage() {
       const result = await response.json()
 
       if (response.ok && result.success) {
-        // Set success status
         setTicketSubmitStatus("success")
-        
-        // Reset form and hide ticket form
         setTicketForm({
           subject: "",
           description: "",
@@ -219,19 +232,16 @@ export default function SupportPage() {
           tags: []
         })
         setShowTicketForm(false)
-        
-        // Reload tickets to show the new one
         await loadTickets()
-        
-        // Clear success message after 3 seconds
+        toast.success("Ticket created successfully!")
         setTimeout(() => setTicketSubmitStatus("idle"), 3000)
       } else {
         setTicketSubmitStatus("error")
-        console.error('Failed to create ticket:', result.error)
+        toast.error(result.error || "Failed to create ticket")
       }
     } catch (error) {
       setTicketSubmitStatus("error")
-      console.error('Error creating ticket:', error)
+      toast.error("Error creating ticket. Please try again.")
     } finally {
       setSubmittingTicket(false)
     }
@@ -261,10 +271,7 @@ export default function SupportPage() {
       const result = await response.json()
 
       if (response.ok && result.success) {
-        // Clear response form for the specific ticket
         setResponseForms(prev => ({ ...prev, [ticketId]: "" }))
-        
-        // Instead of reloading all tickets, just add the new response to the current state
         const newResponse = result.response
         setTickets(prevTickets => 
           prevTickets.map(ticket => 
@@ -277,16 +284,13 @@ export default function SupportPage() {
               : ticket
           )
         )
-        
-        // Keep the ticket expanded
         setExpandedTickets(prev => new Set(prev).add(ticketId))
+        toast.success("Response added successfully!")
       } else {
-        console.error('Failed to add response:', result.error)
-        alert(`Failed to add response: ${result.error}`)
+        toast.error(result.error || "Failed to add response")
       }
     } catch (error) {
-      console.error('Error adding response:', error)
-      alert('Error adding response. Please try again.')
+      toast.error("Error adding response. Please try again.")
     } finally {
       setSubmittingResponse(false)
     }
@@ -311,30 +315,30 @@ export default function SupportPage() {
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
       case 'open':
-        return 'bg-gradient-to-r from-blue-500/20 to-cyan-500/20 text-blue-400 border-blue-500/30'
+        return 'bg-blue-500/20 text-blue-400 border-blue-500/30'
       case 'in_progress':
-        return 'bg-gradient-to-r from-yellow-500/20 to-orange-500/20 text-yellow-400 border-yellow-500/30'
+        return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
       case 'resolved':
-        return 'bg-gradient-to-r from-emerald-500/20 to-green-500/20 text-emerald-400 border-emerald-500/30'
+        return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
       case 'closed':
-        return 'bg-gradient-to-r from-gray-500/20 to-slate-500/20 text-gray-400 border-gray-500/30'
+        return 'bg-slate-500/20 text-slate-400 border-slate-500/30'
       default:
-        return 'bg-gradient-to-r from-gray-500/20 to-slate-500/20 text-gray-400 border-gray-500/30'
+        return 'bg-slate-500/20 text-slate-400 border-slate-500/30'
     }
   }
 
   const getPriorityColor = (priority: string) => {
     switch (priority.toLowerCase()) {
       case 'urgent':
-        return 'bg-gradient-to-r from-red-500/20 to-pink-500/20 text-red-400 border-red-500/30'
+        return 'bg-red-500/20 text-red-400 border-red-500/30'
       case 'high':
-        return 'bg-gradient-to-r from-orange-500/20 to-red-500/20 text-orange-400 border-orange-500/30'
+        return 'bg-orange-500/20 text-orange-400 border-orange-500/30'
       case 'medium':
-        return 'bg-gradient-to-r from-yellow-500/20 to-orange-500/20 text-yellow-400 border-yellow-500/30'
+        return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
       case 'low':
-        return 'bg-gradient-to-r from-emerald-500/20 to-blue-500/20 text-emerald-400 border-emerald-500/30'
+        return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
       default:
-        return 'bg-gradient-to-r from-gray-500/20 to-slate-500/20 text-gray-400 border-gray-500/30'
+        return 'bg-slate-500/20 text-slate-400 border-slate-500/30'
     }
   }
 
@@ -359,180 +363,195 @@ export default function SupportPage() {
     }
   }
 
+  // Stats
+  const stats = {
+    total: tickets.length,
+    resolved: tickets.filter(t => t.status === 'resolved').length,
+    open: tickets.filter(t => t.status === 'open').length,
+    responses: tickets.reduce((acc, t) => acc + (t.responses?.length || 0), 0)
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Hero Section */}
-      <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 via-blue-500/10 to-purple-500/10"></div>
-        <div className="relative px-6 py-12 text-center">
-          <div className="mx-auto max-w-4xl">
-            <div className="flex items-center justify-center mb-6">
-              <div className="p-3 bg-gradient-to-r from-emerald-500 to-blue-500 rounded-2xl mr-4">
-                <Headphones className="w-8 h-8 text-white" />
-              </div>
-              <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-emerald-400 via-blue-400 to-purple-400 bg-clip-text text-transparent">
-                Support Center
-              </h1>
-            </div>
-            <p className="text-xl text-slate-300 mb-8 max-w-2xl mx-auto">
-              Get help with your account, payments, predictions, and more. Our support team is here to assist you 24/7.
-            </p>
-            
-            {/* Quick Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-              <div className="bg-gradient-to-r from-emerald-500/10 to-emerald-600/10 border border-emerald-500/20 rounded-xl p-6 backdrop-blur-sm">
-                <div className="flex items-center justify-center mb-3">
-                  <div className="p-2 bg-emerald-500/20 rounded-lg">
-                    <CheckCircle className="w-6 h-6 text-emerald-400" />
-                  </div>
-                </div>
-                <div className="text-2xl font-bold text-emerald-400">{tickets.filter(t => t.status === 'resolved').length}</div>
-                <div className="text-slate-400 text-sm">Resolved Tickets</div>
-              </div>
-              
-              <div className="bg-gradient-to-r from-blue-500/10 to-blue-600/10 border border-blue-500/20 rounded-xl p-6 backdrop-blur-sm">
-                <div className="flex items-center justify-center mb-3">
-                  <div className="p-2 bg-blue-500/20 rounded-lg">
-                    <Clock className="w-6 h-6 text-blue-400" />
-                  </div>
-                </div>
-                <div className="text-2xl font-bold text-blue-400">{tickets.filter(t => t.status === 'open').length}</div>
-                <div className="text-slate-400 text-sm">Open Tickets</div>
-              </div>
-              
-              <div className="bg-gradient-to-r from-purple-500/10 to-purple-600/10 border border-purple-500/20 rounded-xl p-6 backdrop-blur-sm">
-                <div className="flex items-center justify-center mb-3">
-                  <div className="p-2 bg-purple-500/20 rounded-lg">
-                    <MessageCircle className="w-6 h-6 text-purple-400" />
-                  </div>
-                </div>
-                <div className="text-2xl font-bold text-purple-400">{tickets.reduce((acc, t) => acc + (t.responses?.length || 0), 0)}</div>
-                <div className="text-slate-400 text-sm">Total Responses</div>
-              </div>
-            </div>
-          </div>
+    <div className="space-y-6">
+      {/* ── Header ─────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Support Center</h1>
+          <p className="text-slate-400">
+            Get help with your account, payments, predictions, and more
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2 border-slate-700 text-slate-300 hover:bg-slate-800"
+            onClick={loadTickets}
+            disabled={loadingTickets}
+          >
+            <RefreshCw className={`w-4 h-4 ${loadingTickets ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
         </div>
       </div>
 
-      <div className="px-6 pb-12">
-        <div className="mx-auto max-w-7xl">
-          <Tabs defaultValue="faq" className="space-y-8">
-            {/* Enhanced Tabs Header */}
-            <div className="flex flex-col items-center">
-              <TabsList className="grid w-full max-w-2xl grid-cols-3 bg-gradient-to-r from-slate-800/50 to-slate-700/50 border border-slate-600/30 backdrop-blur-sm">
-                <TabsTrigger 
-                  value="faq" 
-                  className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-emerald-500/20 data-[state=active]:to-emerald-600/20 data-[state=active]:border-emerald-500/30 data-[state=active]:text-emerald-400 transition-all duration-300"
-                >
-                  <Book className="w-4 h-4 mr-2" />
-                  FAQ
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="tickets" 
-                  className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500/20 data-[state=active]:to-blue-600/20 data-[state=active]:border-blue-500/30 data-[state=active]:text-blue-400 transition-all duration-300"
-                >
-                  <MessageCircle className="w-4 h-4 mr-2" />
-                  My Tickets
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="contact" 
-                  className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500/20 data-[state=active]:to-purple-600/20 data-[state=active]:border-purple-500/30 data-[state=active]:text-purple-400 transition-all duration-300"
-                >
-                  <Send className="w-4 h-4 mr-2" />
-                  Contact Us
-                </TabsTrigger>
-              </TabsList>
+      {/* ── Stats Overview ─────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card className="bg-slate-800/60 border-slate-700 p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+              <CheckCircle className="w-5 h-5 text-emerald-400" />
             </div>
+            <div>
+              <p className="text-2xl font-bold text-emerald-400">{stats.resolved}</p>
+              <p className="text-xs text-slate-500">Resolved</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="bg-slate-800/60 border-slate-700 p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+              <Clock className="w-5 h-5 text-blue-400" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-blue-400">{stats.open}</p>
+              <p className="text-xs text-slate-500">Open</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="bg-slate-800/60 border-slate-700 p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
+              <MessageCircle className="w-5 h-5 text-purple-400" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-purple-400">{stats.responses}</p>
+              <p className="text-xs text-slate-500">Responses</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="bg-slate-800/60 border-slate-700 p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+              <Shield className="w-5 h-5 text-cyan-400" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-cyan-400">{stats.total}</p>
+              <p className="text-xs text-slate-500">Total Tickets</p>
+            </div>
+          </div>
+        </Card>
+      </div>
 
-            {/* FAQ Tab */}
-            <TabsContent value="faq" className="space-y-6">
-              <Card className="bg-gradient-to-r from-slate-800/50 to-slate-700/50 border-slate-600/30 backdrop-blur-sm p-8">
-                <div className="flex items-center justify-between mb-8">
-                  <div>
-                    <h2 className="text-3xl font-bold text-white mb-2">Frequently Asked Questions</h2>
-                    <p className="text-slate-400">Find answers to common questions about our platform</p>
-                  </div>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
-                    <Input
-                      placeholder="Search FAQ..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10 bg-slate-700/50 border-slate-600/30 text-white placeholder-slate-400 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
-                    />
-                  </div>
+      {/* ── Tabs ───────────────────────────────────────────── */}
+      <Tabs defaultValue="faq" className="space-y-6">
+        <TabsList className="grid w-full max-w-md grid-cols-3 bg-slate-800/60 border-slate-700">
+          <TabsTrigger value="faq" className="data-[state=active]:bg-emerald-600">
+            <Book className="w-4 h-4 mr-2" />
+            FAQ
+          </TabsTrigger>
+          <TabsTrigger value="tickets" className="data-[state=active]:bg-emerald-600">
+            <MessageCircle className="w-4 h-4 mr-2" />
+            My Tickets
+          </TabsTrigger>
+          <TabsTrigger value="contact" className="data-[state=active]:bg-emerald-600">
+            <Send className="w-4 h-4 mr-2" />
+            Contact
+          </TabsTrigger>
+        </TabsList>
+
+        {/* FAQ Tab */}
+        <TabsContent value="faq" className="space-y-4">
+          <Card className="bg-slate-800/60 border-slate-700">
+            <CardContent className="p-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+                <div>
+                  <h2 className="text-xl font-bold text-white mb-1">Frequently Asked Questions</h2>
+                  <p className="text-slate-400 text-sm">Find answers to common questions</p>
                 </div>
+                <div className="relative w-full sm:w-auto sm:min-w-[280px]">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+                  <Input
+                    placeholder="Search FAQ..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 bg-slate-700/50 border-slate-600 text-white placeholder-slate-400"
+                  />
+                </div>
+              </div>
 
-                <div className="grid gap-6">
-                  {filteredFaqs.map((faq, index) => (
-                    <div
-                      key={index}
-                      className="group bg-gradient-to-r from-slate-700/30 to-slate-600/30 border border-slate-600/20 rounded-xl p-6 hover:from-slate-700/50 hover:to-slate-600/50 hover:border-slate-500/40 transition-all duration-300 cursor-pointer transform hover:scale-[1.02]"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center mb-3">
-                            <div className="p-2 bg-gradient-to-r from-emerald-500/20 to-emerald-600/20 rounded-lg mr-3">
-                              <Star className="w-4 h-4 text-emerald-400" />
-                            </div>
-                            <h3 className="text-lg font-semibold text-white group-hover:text-emerald-400 transition-colors">
+              <div className="space-y-3">
+                {filteredFaqs.map((faq, index) => (
+                  <Card key={index} className="bg-slate-700/30 border-slate-600">
+                    <CardContent className="p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="p-2 bg-emerald-500/10 rounded-lg shrink-0">
+                          <HelpCircle className="w-4 h-4 text-emerald-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-4 mb-2">
+                            <h3 className="text-base font-semibold text-white">
                               {faq.question}
                             </h3>
+                            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs shrink-0">
+                              {faq.category}
+                            </Badge>
                           </div>
-                          <p className="text-slate-300 leading-relaxed">{faq.answer}</p>
+                          <p className="text-slate-300 text-sm leading-relaxed">{faq.answer}</p>
                         </div>
-                        <Badge className="bg-gradient-to-r from-blue-500/20 to-blue-600/20 text-blue-400 border-blue-500/30 text-xs px-3 py-1">
-                          {faq.category}
-                        </Badge>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            </TabsContent>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-            {/* Tickets Tab */}
-            <TabsContent value="tickets" className="space-y-6">
-              <Card className="bg-gradient-to-r from-slate-800/50 to-slate-700/50 border-slate-600/30 backdrop-blur-sm p-8">
-                <div className="flex items-center justify-between mb-8">
-                  <div>
-                    <h2 className="text-3xl font-bold text-white mb-2">Support Tickets</h2>
-                    <p className="text-slate-400">Track and manage your support requests</p>
-                  </div>
-                  <Button
-                    onClick={() => setShowTicketForm(!showTicketForm)}
-                    className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white px-6 py-3 rounded-xl transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-emerald-500/25"
-                  >
-                    <Plus className="w-5 h-5 mr-2" />
-                    New Ticket
-                  </Button>
+        {/* Tickets Tab */}
+        <TabsContent value="tickets" className="space-y-4">
+          <Card className="bg-slate-800/60 border-slate-700">
+            <CardContent className="p-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+                <div>
+                  <h2 className="text-xl font-bold text-white mb-1">Support Tickets</h2>
+                  <p className="text-slate-400 text-sm">Track and manage your support requests</p>
                 </div>
+                <Button
+                  onClick={() => setShowTicketForm(!showTicketForm)}
+                  className="bg-emerald-600 hover:bg-emerald-500"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Ticket
+                </Button>
+              </div>
 
-                {/* New Ticket Form */}
-                {showTicketForm && (
-                  <Card className="bg-gradient-to-r from-slate-700/50 to-slate-600/50 border-slate-500/30 mb-8 p-6 backdrop-blur-sm">
-                    <h3 className="text-xl font-semibold text-white mb-4">Create New Support Ticket</h3>
+              {/* New Ticket Form */}
+              {showTicketForm && (
+                <Card className="bg-slate-700/30 border-slate-600 mb-6">
+                  <CardContent className="p-5">
+                    <h3 className="text-lg font-semibold text-white mb-5">Create New Support Ticket</h3>
                     <form onSubmit={handleTicketSubmit} className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <Label htmlFor="ticket-subject" className="text-slate-300">Subject *</Label>
+                          <Label htmlFor="ticket-subject" className="text-slate-300 mb-2 block text-sm">Subject *</Label>
                           <Input
                             id="ticket-subject"
                             value={ticketForm.subject}
                             onChange={(e) => handleTicketInputChange("subject", e.target.value)}
                             required
-                            className="bg-slate-600/50 border-slate-500/30 text-white focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
-                            placeholder="Brief description of your issue"
+                            className="bg-slate-600/50 border-slate-500 text-white"
+                            placeholder="Brief description"
                           />
                         </div>
                         <div>
-                          <Label htmlFor="ticket-category" className="text-slate-300">Category *</Label>
+                          <Label htmlFor="ticket-category" className="text-slate-300 mb-2 block text-sm">Category *</Label>
                           <select
                             id="ticket-category"
                             value={ticketForm.category}
                             onChange={(e) => handleTicketInputChange("category", e.target.value)}
                             required
-                            className="w-full px-3 py-2 bg-slate-600/50 border border-slate-500/30 text-white rounded-md focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
+                            className="w-full px-3 py-2 bg-slate-600/50 border border-slate-500 text-white rounded-md"
                           >
                             <option value="">Select category</option>
                             <option value="Technical">Technical Issue</option>
@@ -544,50 +563,48 @@ export default function SupportPage() {
                         </div>
                       </div>
                       <div>
-                        <Label htmlFor="ticket-description" className="text-slate-300">Description *</Label>
+                        <Label htmlFor="ticket-description" className="text-slate-300 mb-2 block text-sm">Description *</Label>
                         <Textarea
                           id="ticket-description"
                           value={ticketForm.description}
                           onChange={(e) => handleTicketInputChange("description", e.target.value)}
                           required
-                          className="bg-slate-600/50 border-slate-500/30 text-white focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 min-h-[100px]"
-                          placeholder="Describe your issue in detail..."
+                          className="bg-slate-600/50 border-slate-500 text-white min-h-[100px] resize-none"
+                          placeholder="Describe your issue..."
                         />
                       </div>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-4">
-                          <div>
-                            <Label htmlFor="ticket-priority" className="text-slate-300">Priority</Label>
-                            <select
-                              id="ticket-priority"
-                              value={ticketForm.priority}
-                              onChange={(e) => handleTicketInputChange("priority", e.target.value)}
-                              className="px-3 py-2 bg-slate-600/50 border border-slate-500/30 text-white rounded-md focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
-                            >
-                              <option value="Low">Low</option>
-                              <option value="Medium">Medium</option>
-                              <option value="High">High</option>
-                              <option value="Urgent">Urgent</option>
-                            </select>
-                          </div>
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div>
+                          <Label htmlFor="ticket-priority" className="text-slate-300 mb-2 block text-sm">Priority</Label>
+                          <select
+                            id="ticket-priority"
+                            value={ticketForm.priority}
+                            onChange={(e) => handleTicketInputChange("priority", e.target.value)}
+                            className="px-3 py-2 bg-slate-600/50 border border-slate-500 text-white rounded-md"
+                          >
+                            <option value="Low">Low</option>
+                            <option value="Medium">Medium</option>
+                            <option value="High">High</option>
+                            <option value="Urgent">Urgent</option>
+                          </select>
                         </div>
-                        <div className="flex space-x-3">
+                        <div className="flex gap-2">
                           <Button
                             type="button"
                             variant="outline"
                             onClick={() => setShowTicketForm(false)}
-                            className="border-slate-500/30 text-slate-400 hover:bg-slate-600/50"
+                            className="border-slate-600 text-slate-300"
                           >
                             Cancel
                           </Button>
                           <Button
                             type="submit"
                             disabled={submittingTicket}
-                            className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white px-6"
+                            className="bg-emerald-600 hover:bg-emerald-500"
                           >
                             {submittingTicket ? (
                               <>
-                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                                 Creating...
                               </>
                             ) : (
@@ -600,380 +617,356 @@ export default function SupportPage() {
                         </div>
                       </div>
                     </form>
-                  </Card>
-                )}
+                  </CardContent>
+                </Card>
+              )}
 
-                {/* Status Messages */}
-                {ticketSubmitStatus === "success" && (
-                  <div className="mb-6 p-4 bg-gradient-to-r from-emerald-500/20 to-green-500/20 border border-emerald-500/30 rounded-xl">
-                    <p className="text-emerald-400 text-center flex items-center justify-center">
-                      <CheckCircle className="w-5 h-5 mr-2" />
-                      ✅ Ticket created successfully! We'll get back to you soon.
-                    </p>
-                  </div>
-                )}
-
-                {ticketSubmitStatus === "error" && (
-                  <div className="mb-6 p-4 bg-gradient-to-r from-red-500/20 to-pink-500/20 border border-red-500/30 rounded-xl">
-                    <p className="text-red-400 text-center flex items-center justify-center">
-                      <AlertCircle className="w-5 h-5 mr-2" />
-                      ❌ Failed to create ticket. Please try again.
-                    </p>
-                  </div>
-                )}
-
-                {/* Tickets List */}
-                {loadingTickets ? (
-                  <div className="text-center py-12">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mx-auto mb-4"></div>
-                    <p className="text-slate-400">Loading your tickets...</p>
-                  </div>
-                ) : tickets.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="p-4 bg-gradient-to-r from-slate-700/30 to-slate-600/30 rounded-full w-20 h-20 mx-auto mb-4 flex items-center justify-center">
-                      <MessageCircle className="w-10 h-10 text-slate-400" />
-                    </div>
-                    <h3 className="text-xl font-semibold text-white mb-2">No tickets yet</h3>
-                    <p className="text-slate-400 mb-6">Create your first support ticket to get started</p>
-                    <Button
-                      onClick={() => setShowTicketForm(true)}
-                      className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create First Ticket
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {tickets.map((ticket) => (
-                      <Card
-                        key={ticket.id}
-                        className="bg-gradient-to-r from-slate-700/30 to-slate-600/30 border border-slate-600/20 hover:border-slate-500/40 transition-all duration-300 overflow-hidden"
-                      >
-                        <div className="p-6">
-                          {/* Ticket Header */}
-                          <div className="flex items-start justify-between mb-4">
-                            <div className="flex-1">
-                              <div className="flex items-center space-x-3 mb-2">
-                                <h3 className="text-lg font-semibold text-white hover:text-emerald-400 transition-colors cursor-pointer">
-                                  {ticket.subject}
-                                </h3>
-                                <Badge className={getStatusColor(ticket.status)}>
-                                  {ticket.status.replace('_', ' ').toUpperCase()}
-                                </Badge>
-                                <Badge className={getPriorityColor(ticket.priority)}>
-                                  {ticket.priority}
-                                </Badge>
-                              </div>
-                              <p className="text-slate-400 text-sm mb-3">{ticket.description}</p>
-                              <div className="flex items-center space-x-4 text-xs text-slate-500">
-                                <span className="flex items-center">
-                                  <Clock className="w-3 h-3 mr-1" />
-                                  {formatDate(ticket.createdAt)}
-                                </span>
-                                <span className="flex items-center">
-                                  <MessageCircle className="w-3 h-3 mr-1" />
-                                  {(ticket.responses?.length || 0)} responses
-                                </span>
-                                <span className="flex items-center">
-                                  <Shield className="w-3 h-3 mr-1" />
-                                  {ticket.category}
-                                </span>
-                              </div>
-                            </div>
-                            <Button
-                              onClick={() => toggleTicketExpansion(ticket.id)}
-                              variant="ghost"
-                              size="sm"
-                              className="text-slate-400 hover:text-white hover:bg-slate-600/50"
-                            >
-                              {expandedTickets.has(ticket.id) ? (
-                                <XCircle className="w-4 h-4" />
-                              ) : (
-                                <MessageCircle className="w-4 h-4" />
-                              )}
-                            </Button>
-                          </div>
-                          
-                          {/* Expanded Content */}
-                          {expandedTickets.has(ticket.id) && (
-                            <div className="border-t border-slate-600/30 pt-6 space-y-6">
-                              {/* Responses Section */}
-                              <div>
-                                <h4 className="text-white font-semibold mb-4 flex items-center">
-                                  <MessageCircle className="w-5 h-5 mr-2 text-emerald-400" />
-                                  Conversation
-                                </h4>
-                                
-                                {/* Show existing responses */}
-                                {(ticket.responses?.length || 0) > 0 ? (
-                                  <div className="space-y-4 mb-6">
-                                    {ticket.responses?.map((response) => (
-                                      <div key={response.id} className={`p-4 rounded-xl ${
-                                        response.isStaff 
-                                          ? 'bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border border-blue-500/20' 
-                                          : 'bg-gradient-to-r from-slate-700/50 to-slate-600/50 border border-slate-600/30'
-                                      }`}>
-                                        <div className="flex items-center justify-between mb-3">
-                                          <div className="flex items-center space-x-3">
-                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                                              response.isStaff 
-                                                ? 'bg-gradient-to-r from-blue-500 to-cyan-500' 
-                                                : 'bg-gradient-to-r from-emerald-500 to-emerald-600'
-                                            }`}>
-                                              <Users className="w-4 h-4 text-white" />
-                                            </div>
-                                            <div>
-                                              <span className="text-sm font-medium text-white">
-                                                {response.user?.fullName || 'Unknown User'}
-                                              </span>
-                                              <div className="text-xs text-slate-400">
-                                                {response.isStaff ? 'Support Staff' : 'User'}
-                                              </div>
-                                            </div>
-                                          </div>
-                                          <span className="text-xs text-slate-400">
-                                            {formatDate(response.createdAt)}
-                                          </span>
-                                        </div>
-                                        <p className="text-slate-300 text-sm leading-relaxed">{response.message}</p>
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <div className="text-center py-8 bg-gradient-to-r from-slate-700/30 to-slate-600/30 rounded-xl border border-slate-600/20">
-                                    <MessageCircle className="w-12 h-12 text-slate-500 mx-auto mb-3" />
-                                    <p className="text-slate-400 text-sm">No responses yet. Start the conversation below.</p>
-                                  </div>
-                                )}
-                                
-                                {/* Add Response Form */}
-                                {ticket.status !== 'closed' && (
-                                  <div className="bg-gradient-to-r from-slate-700/50 to-slate-600/50 border border-slate-600/30 rounded-xl p-4">
-                                    <div className="flex items-start space-x-3">
-                                      <div className="flex-1">
-                                        <Textarea
-                                          value={responseForms[ticket.id] || ""}
-                                          onChange={(e) => handleResponseInputChange(ticket.id, e.target.value)}
-                                          placeholder="Type your message..."
-                                          className="bg-slate-600/50 border-slate-500/30 text-white min-h-[80px] resize-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
-                                          disabled={submittingResponse}
-                                        />
-                                      </div>
-                                      <Button
-                                        onClick={() => handleAddResponse(ticket.id)}
-                                        disabled={submittingResponse || !responseForms[ticket.id]?.trim()}
-                                        className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white px-6 py-2 rounded-xl transition-all duration-300 transform hover:scale-105"
-                                      >
-                                        {submittingResponse ? (
-                                          <>
-                                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                                            Sending...
-                                          </>
-                                        ) : (
-                                          <>
-                                            <Send className="w-4 h-4 mr-2" />
-                                            Send
-                                          </>
-                                        )}
-                                      </Button>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                              
-                              {/* Ticket Actions */}
-                              <div className="flex justify-between items-center pt-4 border-t border-slate-600/30">
-                                <div className="text-sm text-slate-400">
-                                  <span className="flex items-center">
-                                    <Clock className="w-4 h-4 mr-2" />
-                                    Ticket created: {formatDate(ticket.createdAt)}
-                                  </span>
-                                  {ticket.updatedAt !== ticket.createdAt && (
-                                    <span className="flex items-center ml-4">
-                                      <Zap className="w-4 h-4 mr-2" />
-                                      Last updated: {formatDate(ticket.updatedAt)}
-                                    </span>
-                                  )}
-                                </div>
-                                
-                                {ticket.status !== 'closed' && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="border-red-500/30 text-red-400 hover:bg-red-500/20 hover:border-red-500/50 transition-all duration-300"
-                                  >
-                                    <XCircle className="w-4 h-4 mr-2" />
-                                    Close Ticket
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            </TabsContent>
-
-            {/* Contact Form Tab */}
-            <TabsContent value="contact" className="space-y-6">
-              <Card className="bg-gradient-to-r from-slate-800/50 to-slate-700/50 border-slate-600/30 backdrop-blur-sm p-8">
-                <div className="text-center mb-8">
-                  <div className="p-4 bg-gradient-to-r from-purple-500/20 to-purple-600/20 rounded-2xl w-20 h-20 mx-auto mb-4 flex items-center justify-center">
-                    <Send className="w-10 h-10 text-purple-400" />
-                  </div>
-                  <h2 className="text-3xl font-bold text-white mb-2">Contact Support</h2>
-                  <p className="text-slate-400 max-w-2xl mx-auto">
-                    Need immediate assistance? Send us a message and we'll get back to you as soon as possible.
+              {/* Status Messages */}
+              {ticketSubmitStatus === "success" && (
+                <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                  <p className="text-emerald-400 text-sm flex items-center">
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Ticket created successfully!
                   </p>
                 </div>
+              )}
 
-                {/* Status Messages */}
-                {submitStatus === "success" && (
-                  <div className="mb-6 p-4 bg-gradient-to-r from-emerald-500/20 to-green-500/20 border border-emerald-500/30 rounded-xl">
-                    <p className="text-emerald-400 text-center flex items-center justify-center">
-                      <CheckCircle className="w-5 h-5 mr-2" />
-                      ✅ Your message has been sent successfully! We'll respond within 24 hours.
-                    </p>
-                  </div>
-                )}
+              {ticketSubmitStatus === "error" && (
+                <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                  <p className="text-red-400 text-sm flex items-center">
+                    <AlertCircle className="w-4 h-4 mr-2" />
+                    Failed to create ticket. Please try again.
+                  </p>
+                </div>
+              )}
 
-                {submitStatus === "error" && (
-                  <div className="mb-6 p-4 bg-gradient-to-r from-red-500/20 to-pink-500/20 border border-red-500/30 rounded-xl">
-                    <p className="text-red-400 text-center flex items-center justify-center">
-                      <AlertCircle className="w-5 h-5 mr-2" />
-                      ❌ There was an error sending your message. Please check your internet connection and try again. If the problem persists, please contact us directly at obadiah.kimani@snapbet.bet
-                    </p>
-                  </div>
-                )}
-
-                <form onSubmit={handleContactSubmit} className="max-w-4xl mx-auto">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                    <div>
-                      <Label htmlFor="name" className="text-slate-300 font-medium">
-                        Full Name *
-                      </Label>
-                      <Input
-                        id="name"
-                        value={contactForm.name}
-                        onChange={(e) => handleInputChange("name", e.target.value)}
-                        required
-                        className="bg-slate-700/50 border-slate-600/30 text-white focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-300"
-                        placeholder="Enter your full name"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="email" className="text-slate-300 font-medium">
-                        Email Address *
-                      </Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={contactForm.email}
-                        onChange={(e) => handleInputChange("email", e.target.value)}
-                        required
-                        className="bg-slate-700/50 border-slate-600/30 text-white focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-300"
-                        placeholder="Enter your email address"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                    <div>
-                      <Label htmlFor="subject" className="text-slate-300 font-medium">
-                        Subject *
-                      </Label>
-                      <Input
-                        id="subject"
-                        value={contactForm.subject}
-                        onChange={(e) => handleInputChange("subject", e.target.value)}
-                        required
-                        className="bg-slate-700/50 border-slate-600/30 text-white focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-300"
-                        placeholder="Brief description of your issue"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="priority" className="text-slate-300 font-medium">
-                        Priority
-                      </Label>
-                      <select
-                        id="priority"
-                        value={contactForm.priority}
-                        onChange={(e) => handleInputChange("priority", e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600/30 text-white rounded-lg focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-300"
-                      >
-                        <option value="Low">Low</option>
-                        <option value="Medium">Medium</option>
-                        <option value="High">High</option>
-                        <option value="Urgent">Urgent</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="mb-6">
-                    <Label htmlFor="category" className="text-slate-300 font-medium">
-                      Category
-                    </Label>
-                    <select
-                      id="category"
-                      value={contactForm.category}
-                      onChange={(e) => handleInputChange("category", e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600/30 text-white rounded-lg focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-300"
+              {/* Tickets List */}
+              {loadingTickets ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
+                  <p className="ml-3 text-slate-400">Loading tickets...</p>
+                </div>
+              ) : tickets.length === 0 ? (
+                <Card className="bg-slate-800/60 border-slate-700 p-12 text-center">
+                  <MessageCircle className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-white mb-2">No tickets yet</h3>
+                  <p className="text-slate-400 text-sm mb-4">Create your first support ticket to get started</p>
+                  <Button
+                    onClick={() => setShowTicketForm(true)}
+                    className="bg-emerald-600 hover:bg-emerald-500"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create First Ticket
+                  </Button>
+                </Card>
+              ) : (
+                <div className="space-y-4">
+                  {tickets.map((ticket) => (
+                    <Card
+                      key={ticket.id}
+                      className="bg-slate-800/60 border-slate-700"
                     >
-                      <option value="">Select a category</option>
-                      <option value="Technical">Technical Issue</option>
-                      <option value="Billing">Billing & Payment</option>
-                      <option value="Account">Account & Access</option>
-                      <option value="Feature">Feature Request</option>
-                      <option value="General">General Inquiry</option>
-                    </select>
-                  </div>
+                      <CardContent className="p-5">
+                        <div className="flex items-start justify-between gap-4 mb-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 mb-2">
+                              <h3 className="text-base font-semibold text-white">
+                                {ticket.subject}
+                              </h3>
+                              <Badge className={getStatusColor(ticket.status)}>
+                                {ticket.status.replace('_', ' ').toUpperCase()}
+                              </Badge>
+                              <Badge className={getPriorityColor(ticket.priority)}>
+                                {ticket.priority}
+                              </Badge>
+                            </div>
+                            <p className="text-slate-300 text-sm mb-3 line-clamp-2">{ticket.description}</p>
+                            <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {formatDate(ticket.createdAt)}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <MessageCircle className="w-3 h-3" />
+                                {(ticket.responses?.length || 0)} responses
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Shield className="w-3 h-3" />
+                                {ticket.category}
+                              </span>
+                            </div>
+                          </div>
+                          <Button
+                            onClick={() => toggleTicketExpansion(ticket.id)}
+                            variant="ghost"
+                            size="sm"
+                            className="text-slate-400 hover:text-white shrink-0"
+                          >
+                            {expandedTickets.has(ticket.id) ? (
+                              <ChevronUp className="w-4 h-4" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4" />
+                            )}
+                          </Button>
+                        </div>
+                        
+                        {/* Expanded Content */}
+                        {expandedTickets.has(ticket.id) && (
+                          <div className="border-t border-slate-700 pt-5 space-y-5 mt-5">
+                            <div>
+                              <h4 className="text-white font-semibold mb-4 flex items-center gap-2 text-sm">
+                                <MessageCircle className="w-4 h-4 text-emerald-400" />
+                                Conversation
+                              </h4>
+                              
+                              {(ticket.responses?.length || 0) > 0 ? (
+                                <div className="space-y-3 mb-5">
+                                  {ticket.responses?.map((response) => (
+                                    <div 
+                                      key={response.id} 
+                                      className={cn(
+                                        "p-3 rounded-lg border",
+                                        response.isStaff 
+                                          ? 'bg-blue-500/10 border-blue-500/20' 
+                                          : 'bg-slate-700/50 border-slate-600'
+                                      )}
+                                    >
+                                      <div className="flex items-center justify-between mb-2">
+                                        <div className="flex items-center gap-2">
+                                          <div className={cn(
+                                            "w-7 h-7 rounded-full flex items-center justify-center",
+                                            response.isStaff 
+                                              ? 'bg-blue-500' 
+                                              : 'bg-emerald-500'
+                                          )}>
+                                            <Users className="w-3.5 h-3.5 text-white" />
+                                          </div>
+                                          <div>
+                                            <span className="text-sm font-medium text-white">
+                                              {response.user?.fullName || 'Unknown User'}
+                                            </span>
+                                            <div className="text-xs text-slate-400">
+                                              {response.isStaff ? 'Support Staff' : 'User'}
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <span className="text-xs text-slate-400">
+                                          {formatDate(response.createdAt)}
+                                        </span>
+                                      </div>
+                                      <p className="text-slate-300 text-sm leading-relaxed">{response.message}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="text-center py-6 bg-slate-700/30 rounded-lg border border-slate-600 mb-5">
+                                  <MessageCircle className="w-10 h-10 text-slate-500 mx-auto mb-2" />
+                                  <p className="text-slate-400 text-sm">No responses yet. Start the conversation below.</p>
+                                </div>
+                              )}
+                              
+                              {ticket.status !== 'closed' && (
+                                <div className="bg-slate-700/50 border border-slate-600 rounded-lg p-3">
+                                  <div className="flex flex-col sm:flex-row items-start sm:items-end gap-2">
+                                    <div className="flex-1 w-full">
+                                      <Textarea
+                                        value={responseForms[ticket.id] || ""}
+                                        onChange={(e) => handleResponseInputChange(ticket.id, e.target.value)}
+                                        placeholder="Type your message..."
+                                        className="bg-slate-600/50 border-slate-500 text-white min-h-[70px] resize-none"
+                                        disabled={submittingResponse}
+                                      />
+                                    </div>
+                                    <Button
+                                      onClick={() => handleAddResponse(ticket.id)}
+                                      disabled={submittingResponse || !responseForms[ticket.id]?.trim()}
+                                      className="bg-emerald-600 hover:bg-emerald-500 shrink-0"
+                                    >
+                                      {submittingResponse ? (
+                                        <>
+                                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                          Sending...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Send className="w-4 h-4 mr-2" />
+                                          Send
+                                        </>
+                                      )}
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-                  <div className="mb-8">
-                    <Label htmlFor="message" className="text-slate-300 font-medium">
-                      Message *
+        {/* Contact Form Tab */}
+        <TabsContent value="contact" className="space-y-4">
+          <Card className="bg-slate-800/60 border-slate-700">
+            <CardContent className="p-6">
+              <div className="text-center mb-6">
+                <div className="inline-flex items-center justify-center mb-3">
+                  <div className="p-3 bg-purple-500/10 rounded-lg border border-purple-500/20">
+                    <Mail className="w-6 h-6 text-purple-400" />
+                  </div>
+                </div>
+                <h2 className="text-xl font-bold text-white mb-1">Contact Support</h2>
+                <p className="text-slate-400 text-sm">
+                  Need immediate assistance? Send us a message and we'll get back to you as soon as possible.
+                </p>
+              </div>
+
+              {/* Status Messages */}
+              {submitStatus === "success" && (
+                <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                  <p className="text-emerald-400 text-sm flex items-center justify-center">
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Your message has been sent successfully!
+                  </p>
+                </div>
+              )}
+
+              {submitStatus === "error" && (
+                <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                  <p className="text-red-400 text-sm flex items-center justify-center">
+                    <AlertCircle className="w-4 h-4 mr-2" />
+                    Error sending message. Please try again or contact obadiah.kimani@snapbet.bet
+                  </p>
+                </div>
+              )}
+
+              <form onSubmit={handleContactSubmit} className="max-w-2xl mx-auto space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="name" className="text-slate-300 mb-2 block text-sm">
+                      Full Name *
                     </Label>
-                    <Textarea
-                      id="message"
-                      value={contactForm.message}
-                      onChange={(e) => handleInputChange("message", e.target.value)}
+                    <Input
+                      id="name"
+                      value={contactForm.name}
+                      onChange={(e) => handleInputChange("name", e.target.value)}
                       required
-                      className="bg-slate-700/50 border-slate-600/30 text-white h-32 focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-300"
-                      placeholder="Describe your issue in detail..."
+                      className="bg-slate-700/50 border-slate-600 text-white"
+                      placeholder="Enter your full name"
                     />
                   </div>
-
-                  <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
-                    <p className="text-slate-400 text-sm">
-                      Your message will be sent to our support team
-                    </p>
-                    <Button 
-                      type="submit" 
-                      className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white px-8 py-3 rounded-xl transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-purple-500/25"
-                      disabled={isSubmitting}
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                          Sending...
-                        </>
-                      ) : (
-                        <>
-                          <Send className="w-5 h-5 mr-2" />
-                          Send Message
-                        </>
-                      )}
-                    </Button>
+                  <div>
+                    <Label htmlFor="email" className="text-slate-300 mb-2 block text-sm">
+                      Email Address *
+                    </Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={contactForm.email}
+                      onChange={(e) => handleInputChange("email", e.target.value)}
+                      required
+                      className="bg-slate-700/50 border-slate-600 text-white"
+                      placeholder="Enter your email"
+                    />
                   </div>
-                </form>
-              </Card>
-            </TabsContent>
-          </Tabs>
-        </div>
-      </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="subject" className="text-slate-300 mb-2 block text-sm">
+                      Subject *
+                    </Label>
+                    <Input
+                      id="subject"
+                      value={contactForm.subject}
+                      onChange={(e) => handleInputChange("subject", e.target.value)}
+                      required
+                      className="bg-slate-700/50 border-slate-600 text-white"
+                      placeholder="Brief description"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="priority" className="text-slate-300 mb-2 block text-sm">
+                      Priority
+                    </Label>
+                    <select
+                      id="priority"
+                      value={contactForm.priority}
+                      onChange={(e) => handleInputChange("priority", e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600 text-white rounded-md"
+                    >
+                      <option value="Low">Low</option>
+                      <option value="Medium">Medium</option>
+                      <option value="High">High</option>
+                      <option value="Urgent">Urgent</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="category" className="text-slate-300 mb-2 block text-sm">
+                    Category
+                  </Label>
+                  <select
+                    id="category"
+                    value={contactForm.category}
+                    onChange={(e) => handleInputChange("category", e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600 text-white rounded-md"
+                  >
+                    <option value="">Select a category</option>
+                    <option value="Technical">Technical Issue</option>
+                    <option value="Billing">Billing & Payment</option>
+                    <option value="Account">Account & Access</option>
+                    <option value="Feature">Feature Request</option>
+                    <option value="General">General Inquiry</option>
+                  </select>
+                </div>
+
+                <div>
+                  <Label htmlFor="message" className="text-slate-300 mb-2 block text-sm">
+                    Message *
+                  </Label>
+                  <Textarea
+                    id="message"
+                    value={contactForm.message}
+                    onChange={(e) => handleInputChange("message", e.target.value)}
+                    required
+                    className="bg-slate-700/50 border-slate-600 text-white h-32 resize-none"
+                    placeholder="Describe your issue..."
+                  />
+                </div>
+
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-2">
+                  <p className="text-slate-400 text-sm">
+                    Your message will be sent to our support team
+                  </p>
+                  <Button 
+                    type="submit" 
+                    className="bg-emerald-600 hover:bg-emerald-500 w-full sm:w-auto"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4 mr-2" />
+                        Send Message
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

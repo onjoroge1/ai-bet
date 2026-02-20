@@ -1,11 +1,34 @@
 /**
- * Best Parlay Generator Service
- * 
- * Generates high-quality parlays from AdditionalMarketData table
- * Supports both multi-game (different matches) and single-game (same match) parlays
+ * Curated Parlay Generator
+ *
+ * Generates a small set of high-quality, human-readable parlays from the
+ * AdditionalMarketData table.  Replaces the old "brute-force combinations"
+ * approach with a deliberate, rule-based strategy.
+ *
+ * Design principles
+ * ─────────────────
+ * 1.  Quality over quantity   – max ~12 parlays per run.
+ * 2.  Each match used at most once per parlay.
+ * 3.  No trivial legs         – Over 0.5 / Over 1.5 goals are banned.
+ * 4.  Minimum probability per leg enforced per market type.
+ * 5.  All previously-generated AI parlays are expired before creating new ones.
+ *
+ * Parlay types
+ * ────────────
+ *  A.  "Best Picks"   – 2-4 strongest match-winner picks (1X2 or DNB)
+ *                        from different matches.
+ *  B.  "Same-Game Parlay (SGP)" – 2-3 legs from the same match
+ *                        (Match Winner + Totals/BTTS).
+ *  C.  "Safe Combo"   – 2-4 high-probability picks (Double Chance ≥ 75%
+ *                        or DNB ≥ 65%) from different matches.
+ *  D.  "Mixed Market"  – best single-market pick from each of 2-3
+ *                         different matches, any market type.
  */
 
 import prisma from '@/lib/db'
+import { logger } from '@/lib/logger'
+
+// ── Public types ─────────────────────────────────────────────────────────────
 
 export interface CandidateLeg {
   id: string
@@ -21,6 +44,8 @@ export interface CandidateLeg {
   correlationTags: string[]
   decimalOdds: number | null
   impliedProb: number | null
+  /** Attached match info for display labels */
+  _matchInfo?: { homeTeam: string; awayTeam: string; league: string }
 }
 
 export interface ParlayCombination {
@@ -39,501 +64,458 @@ export interface ParlayCombination {
 }
 
 export interface GenerationConfig {
-  minLegEdge?: number // Minimum edge per leg (default: 6%)
-  minParlayEdge?: number // Minimum parlay-level edge (default: 8%)
-  minCombinedProb?: number // Minimum combined probability (default: 15%)
-  maxLegCount?: number // Maximum legs per parlay (default: 5)
-  minModelAgreement?: number // Minimum model agreement (default: 0.65)
-  maxResults?: number // Maximum results per leg count (default: 20)
-  parlayType?: 'multi_game' | 'single_game' | 'both' // Type of parlays to generate
+  minLegEdge?: number
+  minParlayEdge?: number
+  minCombinedProb?: number
+  maxLegCount?: number
+  minModelAgreement?: number
+  maxResults?: number
+  parlayType?: 'multi_game' | 'single_game' | 'both'
 }
 
-const DEFAULT_CONFIG: Required<GenerationConfig> = {
-  minLegEdge: 0.0, // Temporarily set to 0% since odds aren't populated yet
-  minParlayEdge: 5.0, // Lower threshold, will filter by probability instead
-  minCombinedProb: 0.15,
-  maxLegCount: 5,
-  minModelAgreement: 0.65,
-  maxResults: 20,
-  parlayType: 'both'
+// ── Internal constants ───────────────────────────────────────────────────────
+
+/** Minimum probability required for a leg to be eligible, per market type. */
+const MIN_PROB: Record<string, number> = {
+  '1X2': 0.55,
+  BTTS: 0.55,
+  TOTALS: 0.50,
+  DNB: 0.55,
+  DOUBLE_CHANCE: 0.72,
 }
+
+/** Totals lines that are trivially high and add no value to parlays. */
+const BANNED_TOTAL_LINES = new Set([0.5, 1.5])
+
+// ── Data layer ───────────────────────────────────────────────────────────────
 
 /**
- * Step 1: Generate candidate leg pool from AdditionalMarketData
+ * Fetch all eligible legs for upcoming matches, applying strict quality filters.
  */
-async function generateCandidateLegPool(config: Required<GenerationConfig>): Promise<CandidateLeg[]> {
-  const candidateLegs = await prisma.additionalMarketData.findMany({
+async function fetchEligibleLegs(): Promise<CandidateLeg[]> {
+  const now = new Date()
+  const cutoff = new Date(now.getTime() + 72 * 60 * 60 * 1000)
+
+  const raw = await prisma.additionalMarketData.findMany({
     where: {
-      // Only UPCOMING matches
       match: {
         status: 'UPCOMING',
-        kickoffDate: {
-          gte: new Date() // Future matches only
-        },
-        isActive: true
+        kickoffDate: { gte: now, lte: cutoff },
+        isActive: true,
       },
-      // Quality filters
-      ...(config.minLegEdge > 0 ? {
-        edgeConsensus: {
-          gte: config.minLegEdge / 100 // Convert percentage to decimal
-        }
-      } : {}), // Only filter by edge if threshold > 0
-      consensusProb: {
-        gte: 0.50 // Minimum 50% probability per leg
-      },
-      modelAgreement: {
-        gte: config.minModelAgreement
-      }
+      consensusProb: { gte: 0.45 }, // broad pre-filter; tightened per-market below
     },
     include: {
       match: {
         select: {
           matchId: true,
-          status: true,
-          kickoffDate: true
-        }
-      }
+          homeTeam: true,
+          awayTeam: true,
+          league: true,
+          kickoffDate: true,
+        },
+      },
     },
-    orderBy: [
-      { consensusProb: 'desc' }, // Sort by probability first (most important when edge is 0)
-      { modelAgreement: 'desc' },
-      { edgeConsensus: 'desc' }
-    ],
-    take: 100 // Limit to top 100 legs to avoid memory issues
+    orderBy: { consensusProb: 'desc' },
+    take: 600,
   })
 
-  return candidateLegs.map(market => ({
-    id: market.id,
-    matchId: market.matchId,
-    marketType: market.marketType,
-    marketSubtype: market.marketSubtype,
-    line: market.line ? Number(market.line) : null,
-    consensusProb: Number(market.consensusProb),
-    consensusConfidence: Number(market.consensusConfidence),
-    modelAgreement: Number(market.modelAgreement),
-    edgeConsensus: Number(market.edgeConsensus) * 100, // Convert to percentage
-    riskLevel: market.riskLevel,
-    correlationTags: market.correlationTags,
-    decimalOdds: market.decimalOdds ? Number(market.decimalOdds) : null,
-    impliedProb: market.impliedProb ? Number(market.impliedProb) : null
-  }))
-}
+  const legs: CandidateLeg[] = []
 
-/**
- * Step 2: Filter legs by correlation rules
- */
-function filterCorrelatedLegs(
-  legs: CandidateLeg[],
-  parlayType: 'multi_game' | 'single_game'
-): CandidateLeg[] {
-  if (parlayType === 'multi_game') {
-    // For multi-game: Group by matchId, take top 1-2 per match
-    const legsByMatch = new Map<string, CandidateLeg[]>()
-    
-    for (const leg of legs) {
-      if (!legsByMatch.has(leg.matchId)) {
-        legsByMatch.set(leg.matchId, [])
-      }
-      legsByMatch.get(leg.matchId)!.push(leg)
+  for (const m of raw) {
+    const prob = Number(m.consensusProb)
+    const line = m.line ? Number(m.line) : null
+
+    // ── Banned trivial totals ────────────────────────────────
+    if (m.marketType === 'TOTALS' && line !== null && BANNED_TOTAL_LINES.has(line)) {
+      continue
     }
-    
-    // Take top 1-2 legs per match (sorted by edge)
-    const filtered: CandidateLeg[] = []
-    for (const [, matchLegs] of legsByMatch) {
-      const sorted = matchLegs.sort((a, b) => b.edgeConsensus - a.edgeConsensus)
-      filtered.push(...sorted.slice(0, 2)) // Top 2 per match
-    }
-    
-    return filtered
-  } else {
-    // For single-game: All legs from same match, filter correlated markets
-    return legs.filter(leg => {
-      // Keep all legs (correlation will be handled in combination generation)
-      return true
+
+    // ── Per-market minimum probability ───────────────────────
+    const minProb = MIN_PROB[m.marketType] ?? 0.55
+    if (prob < minProb) continue
+
+    // ── Skip DRAW picks for 1X2 (too risky for parlays) ─────
+    if (m.marketType === '1X2' && m.marketSubtype === 'DRAW') continue
+
+    legs.push({
+      id: m.id,
+      matchId: m.matchId,
+      marketType: m.marketType,
+      marketSubtype: m.marketSubtype,
+      line,
+      consensusProb: prob,
+      consensusConfidence: Number(m.consensusConfidence),
+      modelAgreement: Number(m.modelAgreement),
+      edgeConsensus: Number(m.edgeConsensus) * 100,
+      riskLevel: m.riskLevel,
+      correlationTags: m.correlationTags,
+      decimalOdds: m.decimalOdds ? Number(m.decimalOdds) : null,
+      impliedProb: m.impliedProb ? Number(m.impliedProb) : null,
+      _matchInfo: {
+        homeTeam: m.match.homeTeam,
+        awayTeam: m.match.awayTeam,
+        league: m.match.league,
+      },
     })
   }
+
+  return legs
+}
+
+// ── Grouping helpers ─────────────────────────────────────────────────────────
+
+interface MatchMarkets {
+  matchId: string
+  matchInfo: { homeTeam: string; awayTeam: string; league: string }
+  /** Best leg per market type */
+  markets: Map<string, CandidateLeg>
 }
 
 /**
- * Check if two legs are correlated
+ * Group eligible legs by matchId, pick the single best leg per market type.
+ * For TOTALS, prefer line = 2.5 when available.
  */
-function areLegsCorrelated(leg1: CandidateLeg, leg2: CandidateLeg): boolean {
-  // Same match correlation checks
-  if (leg1.matchId === leg2.matchId) {
-    // Home Win + Over 2.5 correlation
-    if (
-      (leg1.marketType === '1X2' && leg1.marketSubtype === 'HOME' &&
-       leg2.marketType === 'TOTALS' && leg2.marketSubtype === 'OVER' && leg2.line && leg2.line >= 2.5) ||
-      (leg2.marketType === '1X2' && leg2.marketSubtype === 'HOME' &&
-       leg1.marketType === 'TOTALS' && leg1.marketSubtype === 'OVER' && leg1.line && leg1.line >= 2.5)
-    ) {
-      return true
+function groupAndPickBest(legs: CandidateLeg[]): Map<string, MatchMarkets> {
+  const map = new Map<string, MatchMarkets>()
+
+  for (const leg of legs) {
+    if (!map.has(leg.matchId)) {
+      map.set(leg.matchId, {
+        matchId: leg.matchId,
+        matchInfo: leg._matchInfo ?? { homeTeam: '?', awayTeam: '?', league: '?' },
+        markets: new Map(),
+      })
     }
-    
-    // Home Win + BTTS Yes correlation
-    if (
-      (leg1.marketType === '1X2' && leg1.marketSubtype === 'HOME' &&
-       leg2.marketType === 'BTTS' && leg2.marketSubtype === 'YES') ||
-      (leg2.marketType === '1X2' && leg2.marketSubtype === 'HOME' &&
-       leg1.marketType === 'BTTS' && leg1.marketSubtype === 'YES')
-    ) {
-      return true
-    }
-    
-    // Over 2.5 + BTTS Yes correlation
-    if (
-      (leg1.marketType === 'TOTALS' && leg1.marketSubtype === 'OVER' && leg1.line && leg1.line >= 2.5 &&
-       leg2.marketType === 'BTTS' && leg2.marketSubtype === 'YES') ||
-      (leg2.marketType === 'TOTALS' && leg2.marketSubtype === 'OVER' && leg2.line && leg2.line >= 2.5 &&
-       leg1.marketType === 'BTTS' && leg1.marketSubtype === 'YES')
-    ) {
-      return true
+
+    const mm = map.get(leg.matchId)!
+    const key = leg.marketType
+    const current = mm.markets.get(key)
+
+    if (!current) {
+      mm.markets.set(key, leg)
+    } else if (key === 'TOTALS') {
+      // Prefer line 2.5 (the standard over/under line)
+      if (leg.line === 2.5 && current.line !== 2.5) {
+        mm.markets.set(key, leg)
+      } else if (leg.line === 2.5 && current.line === 2.5 && leg.consensusProb > current.consensusProb) {
+        mm.markets.set(key, leg)
+      } else if (current.line !== 2.5 && leg.consensusProb > current.consensusProb) {
+        mm.markets.set(key, leg)
+      }
+    } else {
+      if (leg.consensusProb > current.consensusProb) {
+        mm.markets.set(key, leg)
+      }
     }
   }
-  
-  return false
+
+  return map
 }
 
-/**
- * Calculate correlation penalty
- */
-function calculateCorrelationPenalty(
-  legCount: number,
-  hasCorrelation: boolean,
-  isMultiGame: boolean
-): number {
-  if (isMultiGame) {
-    // Multi-game parlays: Lower penalty (different matches)
-    const basePenalty = {
-      2: 0.92, // 8% penalty
-      3: 0.90, // 10% penalty
-      4: 0.88, // 12% penalty
-      5: 0.85  // 15% penalty
-    }[legCount] || 0.85
-    
-    return hasCorrelation ? basePenalty * 0.95 : basePenalty
-  } else {
-    // Single-game parlays: Higher penalty (same match)
-    const basePenalty = {
-      2: 0.85, // 15% penalty
-      3: 0.80, // 20% penalty
-      4: 0.75, // 25% penalty
-      5: 0.70  // 30% penalty
-    }[legCount] || 0.70
-    
-    return hasCorrelation ? basePenalty * 0.90 : basePenalty
-  }
-}
+// ── Parlay maths ─────────────────────────────────────────────────────────────
 
-/**
- * Calculate quality score (0-100)
- */
-function calculateQualityScore(parlay: ParlayCombination): number {
-  // Edge weight: 35%
-  const edgeScore = Math.min(parlay.parlayEdge, 50) / 50 * 35
-  
-  // Probability weight: 25%
-  const probScore = Math.min(parlay.adjustedProb * 100, 100) * 0.25
-  
-  // Model agreement weight: 20%
-  const avgAgreement = parlay.legs.reduce((sum, leg) => sum + leg.modelAgreement, 0) / parlay.legCount
-  const agreementScore = avgAgreement * 20
-  
-  // Diversification weight: 10%
-  const uniqueMatches = new Set(parlay.matchIds).size
-  const diversityScore = parlay.isMultiGame 
-    ? (uniqueMatches === parlay.legCount ? 1.0 : 0.5) * 10
-    : 0.5 * 10 // SGPs get lower diversity score
-  
-  // Risk adjustment: 10%
-  const avgRiskScore = parlay.legs.reduce((sum, leg) => {
-    const riskValue = leg.riskLevel === 'low' ? 1.0 : leg.riskLevel === 'medium' ? 0.8 : 0.6
-    return sum + riskValue
-  }, 0) / parlay.legCount
-  const riskScore = avgRiskScore * 10
-  
-  return edgeScore + probScore + agreementScore + diversityScore + riskScore
-}
-
-/**
- * Generate combinations efficiently with early termination
- * Uses iterative approach with limited depth to avoid stack overflow
- */
-function* generateCombinations(
+function calcCombined(
   legs: CandidateLeg[],
-  legCount: number,
-  isMultiGame: boolean,
-  maxCombinations: number = 10000
-): Generator<CandidateLeg[], void, unknown> {
-  if (legCount === 0) {
-    yield []
-    return
-  }
-  if (legs.length < legCount) return
-  
-  let count = 0
-  
-  if (isMultiGame) {
-    // Multi-game: Each leg must be from different match
-    const legsByMatch = new Map<string, CandidateLeg[]>()
-    for (const leg of legs) {
-      if (!legsByMatch.has(leg.matchId)) {
-        legsByMatch.set(leg.matchId, [])
-      }
-      legsByMatch.get(leg.matchId)!.push(leg)
-    }
-    
-    const uniqueMatchIds = Array.from(legsByMatch.keys())
-    if (uniqueMatchIds.length < legCount) {
-      return // Not enough different matches
-    }
-    
-    // Limit to top 20 matches for performance
-    const limitedMatchIds = uniqueMatchIds.slice(0, 20)
-    if (limitedMatchIds.length < legCount) {
-      return
-    }
-    
-    // Iterative approach using a stack
-    const stack: Array<{ current: CandidateLeg[], availableMatches: string[], remaining: number }> = [
-      { current: [], availableMatches: limitedMatchIds, remaining: legCount }
-    ]
-    
-    while (stack.length > 0 && count < maxCombinations) {
-      const { current, availableMatches, remaining } = stack.pop()!
-      
-      if (remaining === 0) {
-        yield [...current]
-        count++
-        continue
-      }
-      
-      // Limit how many matches we explore to prevent explosion
-      const matchesToExplore = availableMatches.slice(0, Math.min(10, availableMatches.length))
-      
-      for (let i = matchesToExplore.length - 1; i >= 0; i--) {
-        const matchId = matchesToExplore[i]
-        const matchLegs = legsByMatch.get(matchId) || []
-        
-        // Only take top leg per match for performance
-        const topLeg = matchLegs[0]
-        if (topLeg) {
-          stack.push({
-            current: [...current, topLeg],
-            availableMatches: matchesToExplore.slice(i + 1),
-            remaining: remaining - 1
-          })
-        }
-      }
-    }
-  } else {
-    // Single-game: All legs from same match
-    // Group by match first
-    const legsByMatch = new Map<string, CandidateLeg[]>()
-    for (const leg of legs) {
-      if (!legsByMatch.has(leg.matchId)) {
-        legsByMatch.set(leg.matchId, [])
-      }
-      legsByMatch.get(leg.matchId)!.push(leg)
-    }
-    
-    // Generate for each match separately
-    for (const [, matchLegs] of legsByMatch) {
-      if (matchLegs.length < legCount) continue
-      
-      // Limit to top 10 legs per match
-      const limitedLegs = matchLegs.slice(0, 10)
-      
-      // Iterative approach
-      const stack: Array<{ current: CandidateLeg[], start: number, remaining: number }> = [
-        { current: [], start: 0, remaining: legCount }
-      ]
-      
-      while (stack.length > 0 && count < maxCombinations) {
-        const { current, start, remaining } = stack.pop()!
-        
-        if (remaining === 0) {
-          yield [...current]
-          count++
-          continue
-        }
-        
-        const end = Math.min(start + remaining + 5, limitedLegs.length) // Limit search space
-        
-        for (let i = end - 1; i >= start; i--) {
-          const leg = limitedLegs[i]
-          stack.push({
-            current: [...current, leg],
-            start: i + 1,
-            remaining: remaining - 1
-          })
-        }
-      }
-      
-      if (count >= maxCombinations) break
-    }
+  isSameGame: boolean
+): { combinedProb: number; adjustedProb: number; correlationPenalty: number } {
+  const combinedProb = legs.reduce((p, l) => p * l.consensusProb, 1)
+
+  const penalty = isSameGame
+    ? legs.length === 2 ? 0.88 : legs.length === 3 ? 0.82 : 0.75
+    : legs.length === 2 ? 0.95 : legs.length === 3 ? 0.92 : legs.length === 4 ? 0.88 : 0.85
+
+  return { combinedProb, adjustedProb: combinedProb * penalty, correlationPenalty: penalty }
+}
+
+function qualityScore(legs: CandidateLeg[], adjustedProb: number): number {
+  const avgProb = legs.reduce((s, l) => s + l.consensusProb, 0) / legs.length
+  const probScore = avgProb * 40
+  const combinedScore = Math.min(adjustedProb * 100, 30)
+  const legBonus = legs.length >= 2 && legs.length <= 3 ? 10 : 5
+  const uniqueMarkets = new Set(legs.map(l => l.marketType)).size
+  const diversityScore = (uniqueMarkets / Math.max(legs.length, 1)) * 20
+  return probScore + combinedScore + legBonus + diversityScore
+}
+
+function confidenceTier(score: number): string {
+  if (score >= 50) return 'high'
+  if (score >= 35) return 'medium'
+  return 'low'
+}
+
+function buildParlay(
+  legs: CandidateLeg[],
+  type: 'multi_game' | 'single_game'
+): ParlayCombination {
+  const isSameGame = type === 'single_game'
+  const { combinedProb, adjustedProb, correlationPenalty } = calcCombined(legs, isSameGame)
+  const impliedOdds = adjustedProb > 0 ? 1 / adjustedProb : 999
+  const fairOdds = combinedProb > 0 ? 1 / combinedProb : 999
+  const parlayEdge = fairOdds > 0 ? Math.max(((impliedOdds - fairOdds) / fairOdds) * 100, 0) : 0
+  const score = qualityScore(legs, adjustedProb)
+
+  return {
+    legs,
+    legCount: legs.length,
+    combinedProb,
+    correlationPenalty,
+    adjustedProb,
+    impliedOdds,
+    parlayEdge,
+    qualityScore: score,
+    confidenceTier: confidenceTier(score),
+    parlayType: type,
+    isMultiGame: type === 'multi_game',
+    matchIds: legs.map(l => l.matchId),
   }
 }
 
+// ── Parlay type generators ───────────────────────────────────────────────────
+
 /**
- * Step 3: Generate parlay combinations
+ * Type A: "Best Picks" — strongest match-winner picks (1X2 or DNB)
+ * from different matches. 2-4 legs.
  */
-function generateParlayCombinations(
-  filteredLegs: CandidateLeg[],
-  config: Required<GenerationConfig>,
-  parlayType: 'multi_game' | 'single_game'
+function generateBestPicks(
+  matches: Map<string, MatchMarkets>,
+  max: number
 ): ParlayCombination[] {
-  const isMultiGame = parlayType === 'multi_game'
-  const parlays: ParlayCombination[] = []
-  
-  for (let legCount = 2; legCount <= config.maxLegCount; legCount++) {
-    const combinationGenerator = generateCombinations(filteredLegs, legCount, isMultiGame, 5000)
-    let combinationCount = 0
-    
-    for (const legs of combinationGenerator) {
-      combinationCount++
-      
-      // Limit total combinations processed
-      if (combinationCount > 10000) {
-        break
-      }
-      // Calculate combined probability
-      const combinedProb = legs.reduce((prod, leg) => prod * leg.consensusProb, 1)
-      
-      // Check correlation
-      let hasCorrelation = false
-      for (let i = 0; i < legs.length; i++) {
-        for (let j = i + 1; j < legs.length; j++) {
-          if (areLegsCorrelated(legs[i], legs[j])) {
-            hasCorrelation = true
-            break
-          }
-        }
-        if (hasCorrelation) break
-      }
-      
-      // Calculate correlation penalty
-      const correlationPenalty = calculateCorrelationPenalty(legCount, hasCorrelation, isMultiGame)
-      const adjustedProb = combinedProb * correlationPenalty
-      
-      // Calculate parlay-level edge
-      const impliedOdds = 1 / adjustedProb
-      const fairOdds = 1 / combinedProb
-      const parlayEdge = ((impliedOdds - fairOdds) / fairOdds) * 100
-      
-      // Filter by thresholds
-      if (parlayEdge < config.minParlayEdge || adjustedProb < config.minCombinedProb) {
-        continue
-      }
-      
-      // Calculate average model agreement
-      const avgAgreement = legs.reduce((sum, leg) => sum + leg.modelAgreement, 0) / legCount
-      
-      // Determine confidence tier
-      let confidenceTier = 'low'
-      if (avgAgreement >= 0.80 && parlayEdge >= 15) {
-        confidenceTier = 'high'
-      } else if (avgAgreement >= 0.70 && parlayEdge >= 10) {
-        confidenceTier = 'medium'
-      }
-      
-      const matchIds = legs.map(l => l.matchId)
-      
-      const parlay: ParlayCombination = {
-        legs,
-        legCount,
-        combinedProb,
-        correlationPenalty,
-        adjustedProb,
-        impliedOdds,
-        parlayEdge,
-        qualityScore: 0, // Will calculate after
-        confidenceTier,
-        parlayType,
-        isMultiGame,
-        matchIds
-      }
-      
-      // Calculate quality score
-      parlay.qualityScore = calculateQualityScore(parlay)
-      
-      parlays.push(parlay)
-    }
+  const picks: Array<{ matchId: string; leg: CandidateLeg }> = []
+
+  for (const [matchId, mm] of matches) {
+    // Prefer 1X2 over DNB
+    const leg1x2 = mm.markets.get('1X2')
+    const legDnb = mm.markets.get('DNB')
+
+    const best = leg1x2 && leg1x2.consensusProb >= 0.55
+      ? leg1x2
+      : legDnb && legDnb.consensusProb >= 0.55
+        ? legDnb
+        : null
+
+    if (best) picks.push({ matchId, leg: best })
   }
-  
+
+  picks.sort((a, b) => b.leg.consensusProb - a.leg.consensusProb)
+
+  const parlays: ParlayCombination[] = []
+  for (const legCount of [2, 3, 4]) {
+    if (picks.length < legCount || parlays.length >= max) continue
+    const selected = picks.slice(0, legCount)
+    const parlay = buildParlay(selected.map(s => s.leg), 'multi_game')
+    if (parlay.adjustedProb >= 0.08) parlays.push(parlay)
+  }
+
   return parlays
 }
 
 /**
- * Main function: Generate best parlays
+ * Type B: "SGP" — same-game parlays. Match winner + secondary market.
+ */
+function generateSGPs(
+  matches: Map<string, MatchMarkets>,
+  max: number
+): ParlayCombination[] {
+  const parlays: ParlayCombination[] = []
+
+  for (const [, mm] of matches) {
+    if (parlays.length >= max) break
+
+    // Anchor: 1X2 (>= 55%) or DNB (>= 55%)
+    const anchor = (mm.markets.get('1X2')?.consensusProb ?? 0) >= 0.55
+      ? mm.markets.get('1X2')!
+      : (mm.markets.get('DNB')?.consensusProb ?? 0) >= 0.55
+        ? mm.markets.get('DNB')!
+        : null
+
+    if (!anchor) continue
+
+    const totals = mm.markets.get('TOTALS')
+    const btts = mm.markets.get('BTTS')
+
+    // 3-leg: Anchor + Totals + BTTS
+    if (totals && btts && totals.consensusProb >= 0.50 && btts.consensusProb >= 0.55) {
+      const p = buildParlay([anchor, totals, btts], 'single_game')
+      if (p.adjustedProb >= 0.06) { parlays.push(p); continue }
+    }
+
+    // 2-leg: Anchor + Totals
+    if (totals && totals.consensusProb >= 0.50) {
+      const p = buildParlay([anchor, totals], 'single_game')
+      if (p.adjustedProb >= 0.10) { parlays.push(p); continue }
+    }
+
+    // 2-leg: Anchor + BTTS
+    if (btts && btts.consensusProb >= 0.55) {
+      const p = buildParlay([anchor, btts], 'single_game')
+      if (p.adjustedProb >= 0.10) { parlays.push(p); continue }
+    }
+  }
+
+  return parlays
+}
+
+/**
+ * Type C: "Safe Combo" — high-probability picks (Double Chance ≥ 75%
+ * or DNB ≥ 65%) from different matches. Lower odds but higher win rate.
+ */
+function generateSafeCombos(
+  matches: Map<string, MatchMarkets>,
+  usedMatchIds: Set<string>,
+  max: number
+): ParlayCombination[] {
+  const picks: Array<{ matchId: string; leg: CandidateLeg }> = []
+
+  for (const [matchId, mm] of matches) {
+    if (usedMatchIds.has(matchId)) continue
+
+    const dc = mm.markets.get('DOUBLE_CHANCE')
+    const dnb = mm.markets.get('DNB')
+
+    // Prefer DC at >= 75% (covers 2 of 3 outcomes), else DNB at >= 65%
+    const best = dc && dc.consensusProb >= 0.75
+      ? dc
+      : dnb && dnb.consensusProb >= 0.65
+        ? dnb
+        : null
+
+    if (best) picks.push({ matchId, leg: best })
+  }
+
+  picks.sort((a, b) => b.leg.consensusProb - a.leg.consensusProb)
+
+  const parlays: ParlayCombination[] = []
+  for (const legCount of [3, 4]) {
+    if (picks.length < legCount || parlays.length >= max) continue
+    const selected = picks.slice(0, legCount)
+    const parlay = buildParlay(selected.map(s => s.leg), 'multi_game')
+    if (parlay.adjustedProb >= 0.15) parlays.push(parlay)
+  }
+
+  return parlays
+}
+
+/**
+ * Type D: "Mixed Market" — best single-market pick from each of 2-3
+ * different matches. Excludes DOUBLE_CHANCE for better odds.
+ */
+function generateMixed(
+  matches: Map<string, MatchMarkets>,
+  usedMatchIds: Set<string>,
+  max: number
+): ParlayCombination[] {
+  const picks: Array<{ matchId: string; leg: CandidateLeg }> = []
+
+  for (const [matchId, mm] of matches) {
+    if (usedMatchIds.has(matchId)) continue
+
+    let best: CandidateLeg | null = null
+    for (const [, leg] of mm.markets) {
+      if (leg.marketType === 'DOUBLE_CHANCE') continue // exclude DC for mixed
+      if (!best || leg.consensusProb > best.consensusProb) {
+        best = leg
+      }
+    }
+
+    if (best && best.consensusProb >= 0.55) {
+      picks.push({ matchId, leg: best })
+    }
+  }
+
+  picks.sort((a, b) => b.leg.consensusProb - a.leg.consensusProb)
+
+  const parlays: ParlayCombination[] = []
+  for (const legCount of [2, 3]) {
+    if (picks.length < legCount || parlays.length >= max) continue
+    const selected = picks.slice(0, legCount)
+    const parlay = buildParlay(selected.map(s => s.leg), 'multi_game')
+    if (parlay.adjustedProb >= 0.10) parlays.push(parlay)
+
+    // Alternative: skip the #1 pick and use #2..N+1
+    if (picks.length > legCount && parlays.length < max) {
+      const alt = picks.slice(1, 1 + legCount)
+      if (alt.length === legCount) {
+        const p = buildParlay(alt.map(s => s.leg), 'multi_game')
+        if (p.adjustedProb >= 0.10) parlays.push(p)
+      }
+    }
+  }
+
+  return parlays
+}
+
+// ── Main entry point ─────────────────────────────────────────────────────────
+
+/**
+ * Generate curated, high-quality parlays.
+ *
+ * @returns Up to ~12 parlays across all types.
  */
 export async function generateBestParlays(
   config: GenerationConfig = {}
 ): Promise<ParlayCombination[]> {
-  const finalConfig = { ...DEFAULT_CONFIG, ...config }
-  
-  // Step 1: Generate candidate leg pool
-  const candidateLegs = await generateCandidateLegPool(finalConfig)
-  
-  if (candidateLegs.length === 0) {
-    return []
-  }
-  
-  const allParlays: ParlayCombination[] = []
-  
-  // Generate multi-game parlays
-  if (finalConfig.parlayType === 'both' || finalConfig.parlayType === 'multi_game') {
-    const multiGameLegs = filterCorrelatedLegs(candidateLegs, 'multi_game')
-    const multiGameParlays = generateParlayCombinations(multiGameLegs, finalConfig, 'multi_game')
-    allParlays.push(...multiGameParlays)
-  }
-  
-  // Generate single-game parlays
-  if (finalConfig.parlayType === 'both' || finalConfig.parlayType === 'single_game') {
-    // Group by match for SGP generation
-    const legsByMatch = new Map<string, CandidateLeg[]>()
-    for (const leg of candidateLegs) {
-      if (!legsByMatch.has(leg.matchId)) {
-        legsByMatch.set(leg.matchId, [])
-      }
-      legsByMatch.get(leg.matchId)!.push(leg)
-    }
-    
-    for (const [, matchLegs] of legsByMatch) {
-      if (matchLegs.length >= 2) {
-        const sgpLegs = filterCorrelatedLegs(matchLegs, 'single_game')
-        const sgps = generateParlayCombinations(sgpLegs, finalConfig, 'single_game')
-        allParlays.push(...sgps)
-      }
-    }
-  }
-  
-  // Sort by quality score and edge
-  allParlays.sort((a, b) => {
-    if (Math.abs(a.qualityScore - b.qualityScore) > 0.1) {
-      return b.qualityScore - a.qualityScore
-    }
-    return b.parlayEdge - a.parlayEdge
+  logger.info('Starting curated parlay generation', {
+    tags: ['parlays', 'generator'],
+    data: { config },
   })
-  
-  // Limit results per leg count
-  const resultMap = new Map<number, ParlayCombination[]>()
-  for (const parlay of allParlays) {
-    if (!resultMap.has(parlay.legCount)) {
-      resultMap.set(parlay.legCount, [])
-    }
-    const legCountParlays = resultMap.get(parlay.legCount)!
-    if (legCountParlays.length < finalConfig.maxResults) {
-      legCountParlays.push(parlay)
-    }
-  }
-  
-  // Flatten and return
-  const results: ParlayCombination[] = []
-  for (const [, parlays] of resultMap) {
-    results.push(...parlays)
-  }
-  
-  return results.sort((a, b) => b.qualityScore - a.qualityScore)
-}
 
+  // Step 1 — fetch & filter
+  const allLegs = await fetchEligibleLegs()
+  logger.info(`Fetched ${allLegs.length} eligible legs`, { tags: ['parlays', 'generator'] })
+
+  if (allLegs.length === 0) return []
+
+  // Step 2 — group by match, best per market
+  const matchMap = groupAndPickBest(allLegs)
+  logger.info(`${matchMap.size} unique matches after grouping`, { tags: ['parlays', 'generator'] })
+
+  // Step 3 — generate each type
+  const allParlays: ParlayCombination[] = []
+  const usedMatchIds = new Set<string>()
+
+  // A. Best Picks (match-winner cross-match)
+  const bestPicks = generateBestPicks(matchMap, 3)
+  allParlays.push(...bestPicks)
+  logger.info(`Type A (Best Picks): ${bestPicks.length}`, { tags: ['parlays', 'generator'] })
+
+  // B. Same-Game Parlays
+  const sgps = generateSGPs(matchMap, 5)
+  allParlays.push(...sgps)
+  // Mark SGP matches so Safe/Mixed don't reuse them
+  for (const sgp of sgps) {
+    for (const id of sgp.matchIds) usedMatchIds.add(id)
+  }
+  logger.info(`Type B (SGP): ${sgps.length}`, { tags: ['parlays', 'generator'] })
+
+  // C. Safe Combos (high-prob, lower odds)
+  const safes = generateSafeCombos(matchMap, usedMatchIds, 2)
+  allParlays.push(...safes)
+  for (const s of safes) {
+    for (const id of s.matchIds) usedMatchIds.add(id)
+  }
+  logger.info(`Type C (Safe Combo): ${safes.length}`, { tags: ['parlays', 'generator'] })
+
+  // D. Mixed Market
+  const mixed = generateMixed(matchMap, usedMatchIds, 3)
+  allParlays.push(...mixed)
+  logger.info(`Type D (Mixed): ${mixed.length}`, { tags: ['parlays', 'generator'] })
+
+  // Step 4 — sort by quality, cap at maxResults
+  allParlays.sort((a, b) => b.qualityScore - a.qualityScore)
+  const maxResults = config.maxResults ?? 15
+  const results = allParlays.slice(0, maxResults)
+
+  logger.info(`Returning ${results.length} curated parlays`, {
+    tags: ['parlays', 'generator'],
+    data: {
+      bestPicks: bestPicks.length,
+      sgps: sgps.length,
+      safes: safes.length,
+      mixed: mixed.length,
+      total: results.length,
+    },
+  })
+
+  return results
+}

@@ -16,18 +16,30 @@ export function DashboardBreadcrumb() {
         return "Matches"
       case "/dashboard/daily-tips":
         return "Daily Tips"
-      case "/dashboard/weekend-special":
-        return "Weekend Special"
       case "/dashboard/vip":
-        return "VIP Zone"
+        return "VIP Intelligence"
       case "/dashboard/settings":
         return "Settings"
       case "/dashboard/support":
         return "Support"
       case "/dashboard/analytics":
         return "Analytics"
-      case "/dashboard/predictions":
-        return "Predictions"
+      case "/dashboard/my-tips":
+        return "My Tips"
+      case "/dashboard/my-bets":
+        return "My Bets"
+      case "/dashboard/saved-bets":
+        return "Saved Bets"
+      case "/dashboard/parlays":
+        return "Parlays"
+      case "/dashboard/clv":
+        return "CLV Tracker"
+      case "/dashboard/rewards":
+        return "Rewards"
+      case "/dashboard/referrals":
+        return "Referrals"
+      case "/dashboard/tools":
+        return "Bet Tools"
       default:
         return "Dashboard"
     }

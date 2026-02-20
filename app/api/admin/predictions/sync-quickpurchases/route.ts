@@ -38,96 +38,93 @@ function probToImpliedOdds(pred?: {home_win?: number; draw?: number; away_win?: 
   }
 }
 
-// Helper function to find matches that have prediction data (ready for updates)
-async function findMatchesWithPredictionData(leagueId?: string) {
+/**
+ * Find ALL upcoming QuickPurchase matches (with or without existing prediction data).
+ * Used for the "Sync & Enrich All" flow — we want to refresh every upcoming match,
+ * not just those that already have data.
+ */
+async function findAllUpcomingMatches(leagueId?: string) {
   const now = new Date()
-  const cutoffDate = new Date(now.getTime() + (72 * 60 * 60 * 1000)) // 72 hours from now
+  const cutoffDate = new Date(now.getTime() + 72 * 60 * 60 * 1000) // next 72 h
 
   if (leagueId && leagueId !== 'all') {
-    // Find matches that already have prediction data
     const rawQuery = `
-      SELECT * FROM "QuickPurchase" 
-      WHERE "matchId" IS NOT NULL 
+      SELECT * FROM "QuickPurchase"
+      WHERE "matchId" IS NOT NULL
         AND "isPredictionActive" = true
-        AND "predictionData" IS NOT NULL
-        AND ("matchData"->>'date')::timestamp >= '${now.toISOString()}'::timestamp
-        AND ("matchData"->>'date')::timestamp <= '${cutoffDate.toISOString()}'::timestamp
+        AND ("matchData"->>'date')::timestamptz >= '${now.toISOString()}'::timestamptz
+        AND ("matchData"->>'date')::timestamptz <= '${cutoffDate.toISOString()}'::timestamptz
         AND ("matchData"->>'league') = '${leagueId}'
-      ORDER BY "createdAt" ASC 
+      ORDER BY ("matchData"->>'date')::timestamptz ASC
       LIMIT 100
     `
-    
-    return await prisma.$queryRawUnsafe(rawQuery)
-  } else {
-    // Find matches that already have prediction data
-    const rawQuery = `
-      SELECT * FROM "QuickPurchase" 
-      WHERE "matchId" IS NOT NULL 
-        AND "isPredictionActive" = true
-        AND "predictionData" IS NOT NULL
-        AND ("matchData"->>'date')::timestamp >= '${now.toISOString()}'::timestamp
-        AND ("matchData"->>'date')::timestamp <= '${cutoffDate.toISOString()}'::timestamp
-      ORDER BY "createdAt" ASC 
-      LIMIT 100
-    `
-    
     return await prisma.$queryRawUnsafe(rawQuery)
   }
+
+  const rawQuery = `
+    SELECT * FROM "QuickPurchase"
+    WHERE "matchId" IS NOT NULL
+      AND "isPredictionActive" = true
+      AND ("matchData"->>'date')::timestamptz >= '${now.toISOString()}'::timestamptz
+      AND ("matchData"->>'date')::timestamptz <= '${cutoffDate.toISOString()}'::timestamptz
+    ORDER BY ("matchData"->>'date')::timestamptz ASC
+    LIMIT 100
+  `
+  return await prisma.$queryRawUnsafe(rawQuery)
 }
 
-// Helper function to find matches by time window
+/**
+ * Find upcoming matches within a specific time window.
+ * The cutoff is the UPPER bound — we look for matches between now and cutoff.
+ */
 async function findMatchesByTimeWindow(timeWindow: string, leagueId?: string, limit: number = 50) {
   const now = new Date()
-  let startTime: Date
+  let cutoff: Date
 
   switch (timeWindow) {
     case '72h':
-      startTime = new Date(now.getTime() + 72 * 60 * 60 * 1000)
+      cutoff = new Date(now.getTime() + 72 * 60 * 60 * 1000)
       break
     case '48h':
-      startTime = new Date(now.getTime() + 48 * 60 * 60 * 1000)
+      cutoff = new Date(now.getTime() + 48 * 60 * 60 * 1000)
       break
     case '24h':
-      startTime = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+      cutoff = new Date(now.getTime() + 24 * 60 * 60 * 1000)
       break
     case 'urgent':
-      startTime = new Date(now.getTime() + 6 * 60 * 60 * 1000)
+      cutoff = new Date(now.getTime() + 6 * 60 * 60 * 1000)
       break
     default:
-      startTime = new Date(now.getTime() + 72 * 60 * 60 * 1000)
-  }
-
-  const whereClause: Prisma.QuickPurchaseWhereInput = {
-    matchId: { not: null },
-    isPredictionActive: true,
-    matchData: {
-      path: ['date'],
-      gte: startTime.toISOString()
-    }
+      cutoff = new Date(now.getTime() + 72 * 60 * 60 * 1000)
   }
 
   if (leagueId) {
-    // Use raw query for league filtering
-    const leagueFilter = `AND (qp."matchData"->>'league_id') = '${leagueId}'`
-    
     const rawQuery = `
       SELECT qp.* FROM "QuickPurchase" qp
-      WHERE qp."matchId" IS NOT NULL 
-      AND qp."isPredictionActive" = true
-      AND (qp."matchData"->>'date') >= '${startTime.toISOString()}'
-      ${leagueFilter}
-      ORDER BY qp."createdAt" DESC
+      WHERE qp."matchId" IS NOT NULL
+        AND qp."isPredictionActive" = true
+        AND (qp."matchData"->>'date')::timestamptz >= '${now.toISOString()}'::timestamptz
+        AND (qp."matchData"->>'date')::timestamptz <= '${cutoff.toISOString()}'::timestamptz
+        AND (qp."matchData"->>'league_id') = '${leagueId}'
+      ORDER BY (qp."matchData"->>'date')::timestamptz ASC
       LIMIT ${limit}
     `
-    
     return await prisma.$queryRawUnsafe(rawQuery)
-  } else {
-    return await prisma.quickPurchase.findMany({
-      where: whereClause,
-      orderBy: { createdAt: 'desc' },
-      take: limit
-    })
   }
+
+  return await prisma.quickPurchase.findMany({
+    where: {
+      matchId: { not: null },
+      isPredictionActive: true,
+      matchData: {
+        path: ['date'],
+        gte: now.toISOString(),
+        lte: cutoff.toISOString(),
+      },
+    },
+    orderBy: { createdAt: 'asc' },
+    take: limit,
+  })
 }
 
 // Helper function to clear prediction data
@@ -248,7 +245,9 @@ async function performDirectEnrichment(matches: any[], timeWindow: string, leagu
           }
         })
 
-        // Fetch prediction from backend
+        // Fetch prediction from backend with a 30-second timeout
+        const abortController = new AbortController()
+        const timeoutId = setTimeout(() => abortController.abort(), 30_000)
         const response = await fetch(`${process.env.BACKEND_URL}/predict`, {
           method: 'POST',
           headers: {
@@ -258,8 +257,10 @@ async function performDirectEnrichment(matches: any[], timeWindow: string, leagu
           body: JSON.stringify({
             match_id: matchId,
             include_analysis: true
-          })
+          }),
+          signal: abortController.signal,
         })
+        clearTimeout(timeoutId)
 
         if (!response.ok) {
           const errorText = await response.text()
@@ -431,13 +432,13 @@ export async function POST(req: NextRequest) {
 
     // Step 1: Get matches to sync
     let matchesToSync: any[] = []
-    
+
     if (syncAll) {
-    logger.info('🔍 Fetching matches that already have prediction data', {
-      tags: ['api', 'admin', 'predictions', 'sync'],
-      data: { leagueId: leagueId || 'all' }
-    })
-    matchesToSync = await findMatchesWithPredictionData(leagueId)
+      logger.info('🔍 Fetching ALL upcoming matches for sync & enrich', {
+        tags: ['api', 'admin', 'predictions', 'sync'],
+        data: { leagueId: leagueId || 'all' }
+      })
+      matchesToSync = await findAllUpcomingMatches(leagueId)
     } else {
       matchesToSync = await findMatchesByTimeWindow(timeWindow, leagueId, limit)
     }

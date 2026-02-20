@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Crown, CreditCard, MessageCircle, Sparkles, Zap, Gift, Target, Star, TrendingUp, Clock, Users } from "lucide-react"
+import { Crown, CreditCard, MessageCircle, Sparkles, Zap, Target } from "lucide-react"
 import { useUserCountry } from "@/contexts/user-country-context"
 import Link from "next/link"
 
@@ -25,25 +25,25 @@ export function QuickActions() {
       isNew: true,
     },
     {
-      title: "Weekend Special",
-      description: `${convertPrice(350)} - 3 premium picks`,
-      icon: Gift,
-      color: "bg-gradient-to-r from-purple-500 to-pink-500",
+      title: "VIP Intelligence",
+      description: "Premium AI picks & parlays",
+      icon: Crown,
+      color: "bg-gradient-to-r from-amber-500 to-orange-500",
       textColor: "text-white",
-      emoji: "🎁",
-      hoverEffect: "hover:from-purple-400 hover:to-pink-400",
-      href: "/dashboard/weekend-special",
+      emoji: "👑",
+      hoverEffect: "hover:from-amber-400 hover:to-orange-400",
+      href: "/dashboard/vip",
       isHot: true,
     },
     {
-      title: "Upgrade to VIP",
-      description: "Unlimited access",
-      icon: Crown,
+      title: "Browse Matches",
+      description: "AI predictions & analysis",
+      icon: Target,
       color: "bg-gradient-to-r from-yellow-500 to-orange-500",
       textColor: "text-white",
-      emoji: "👑",
+      emoji: "🎯",
       hoverEffect: "hover:from-yellow-400 hover:to-orange-400",
-      href: "/dashboard/vip",
+      href: "/dashboard/matches",
     },
     {
       title: "Add Funds",

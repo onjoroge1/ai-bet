@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
@@ -46,15 +46,31 @@ export function PrivacySettings() {
     exportFrequency: 'monthly' // 'weekly' | 'monthly' | 'quarterly'
   })
 
+  // Fetch existing privacy preferences from DB on mount
+  useEffect(() => {
+    fetch('/api/user/settings')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.privacy) {
+          setPrivacySettings(prev => ({ ...prev, ...data.privacy }))
+        }
+      })
+      .catch(() => { /* use defaults */ })
+  }, [])
+
   const handleSave = async () => {
     setIsLoading(true)
     setMessage(null)
     
     try {
-      // TODO: Implement API call to save privacy settings
-      await new Promise(resolve => setTimeout(resolve, 1000)) // Simulate API call
+      const res = await fetch('/api/user/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ privacy: privacySettings }),
+      })
+      if (!res.ok) throw new Error('Failed to save')
       setMessage({ type: 'success', text: 'Privacy settings saved successfully!' })
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'Failed to save settings. Please try again.' })
     } finally {
       setIsLoading(false)
@@ -66,10 +82,19 @@ export function PrivacySettings() {
     setMessage(null)
     
     try {
-      // TODO: Implement API call to export user data
-      await new Promise(resolve => setTimeout(resolve, 2000)) // Simulate API call
-      setMessage({ type: 'success', text: 'Data export started! You will receive an email when ready.' })
-    } catch (error) {
+      const res = await fetch('/api/user/settings?action=export', { method: 'POST' })
+      if (!res.ok) throw new Error('Failed to export')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'snapbet-data-export.json'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      setMessage({ type: 'success', text: 'Data exported successfully! Check your downloads.' })
+    } catch {
       setMessage({ type: 'error', text: 'Failed to export data. Please try again.' })
     } finally {
       setIsLoading(false)
@@ -77,8 +102,7 @@ export function PrivacySettings() {
   }
 
   const handleDeleteAccount = () => {
-    // TODO: Implement account deletion flow with confirmation
-    setMessage({ type: 'error', text: 'Account deletion requires additional confirmation. Please contact support.' })
+    setMessage({ type: 'error', text: 'Account deletion requires additional confirmation. Please contact support at /dashboard/support.' })
   }
 
   const updateSetting = (key: keyof typeof privacySettings, value: boolean | string | number) => {

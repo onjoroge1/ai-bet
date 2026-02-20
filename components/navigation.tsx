@@ -34,7 +34,10 @@ export function Navigation() {
   // 🔥 SECURITY: Never show authenticated state on /signin page
   // This prevents the nav bar from showing "logged in" when user visits /signin
   const isOnSignInPage = pathname === '/signin'
-  
+
+  // Hide global nav on /dashboard routes — the sidebar layout handles navigation
+  const isDashboardRoute = pathname.startsWith('/dashboard')
+
   // ✅ OPTIMIZED: Single source of truth - useSession() only
   // refetchOnMount ensures session is checked on page load, eliminating delays
   const isAuthenticated = status === 'authenticated' && !!session?.user && !isOnSignInPage
@@ -55,7 +58,6 @@ export function Navigation() {
     window.location.href = url.toString()
   }
 
-  // ✅ FIX: Move useEffect BEFORE early return to prevent React Hooks violation
   // Close mobile menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -72,6 +74,10 @@ export function Navigation() {
       document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [isOpen])
+
+  // Hide global nav on /dashboard routes — the sidebar layout handles navigation
+  // ⚠️ Must be AFTER all hooks to avoid "fewer hooks" React error
+  if (isDashboardRoute) return null
 
   // ✅ FIX: Show loading skeleton while checking auth to prevent flicker
   // This must come AFTER all hooks to maintain hook order

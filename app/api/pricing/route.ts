@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
         ],
         popular: true,
         planType: 'subscription',
-        stripePriceId: process.env.STRIPE_PARLAY_PRO_PRICE_ID || '' // Set in env
+        stripePriceId: process.env.STRIPE_PARLAY_PRO_PRICE_ID || undefined // Falls back to price_data in checkout
       },
       {
         id: 'premium_intelligence',

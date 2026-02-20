@@ -452,12 +452,6 @@ async function syncMatchAdditionalMarkets(
           })
           created++
         }
-
-        if (existing) {
-          updated++
-        } else {
-          created++
-        }
       } catch (error) {
         errors++
         logger.error(`Failed to upsert market data for match ${matchId}`, {

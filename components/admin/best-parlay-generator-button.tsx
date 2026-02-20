@@ -1,7 +1,8 @@
 /**
- * Best Parlay Generator Button Component
- * 
- * Allows admin to manually trigger best parlay generation
+ * Curated Parlay Generator Button Component
+ *
+ * Allows admin to manually trigger the curated parlay generation.
+ * Expires old AI parlays first, then creates a fresh set.
  */
 
 "use client"
@@ -14,6 +15,7 @@ import { toast } from "sonner"
 interface GenerationResult {
   success: boolean
   message: string
+  expired: number
   parlaysGenerated: number
   parlaysCreated: number
   parlaysSkipped: number
@@ -21,12 +23,7 @@ interface GenerationResult {
   summary?: {
     multiGame: number
     singleGame: number
-    byLegCount: {
-      2: number
-      3: number
-      4: number
-      5: number
-    }
+    byLegCount: Record<string, number>
   }
 }
 
@@ -41,19 +38,12 @@ export function BestParlayGeneratorButton() {
     try {
       const response = await fetch("/api/admin/parlays/generate-best", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           config: {
-            minLegEdge: 0.0, // No edge filter (odds not populated yet)
-            minParlayEdge: 5.0, // Lower threshold, focus on probability
-            minCombinedProb: 0.15,
-            maxLegCount: 5,
-            minModelAgreement: 0.60, // Slightly lower to get more results
-            maxResults: 20,
-            parlayType: "both"
-          }
+            maxResults: 15,
+            parlayType: "both",
+          },
         }),
       })
 
@@ -64,15 +54,13 @@ export function BestParlayGeneratorButton() {
       }
 
       setLastResult(data)
-      toast.success("Best parlays generated successfully!", {
-        description: `${data.parlaysCreated} parlays created from ${data.parlaysGenerated} generated`
+      toast.success("Curated parlays generated!", {
+        description: `${data.parlaysCreated} created, ${data.expired} old expired`,
       })
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error"
-      toast.error("Failed to generate parlays", {
-        description: errorMessage
-      })
-      console.error("Error generating best parlays:", error)
+      const msg = error instanceof Error ? error.message : "Unknown error"
+      toast.error("Failed to generate parlays", { description: msg })
+      console.error("Error generating parlays:", error)
     } finally {
       setIsGenerating(false)
     }
@@ -85,10 +73,10 @@ export function BestParlayGeneratorButton() {
           <Sparkles className="w-6 h-6 text-emerald-500" />
           <div>
             <h3 className="text-lg font-semibold text-white">
-              Best Parlay Generator
+              Curated Parlay Generator
             </h3>
             <p className="text-sm text-slate-400">
-              Generate high-quality parlays from AdditionalMarketData
+              Generate a fresh set of high-quality AI parlays
             </p>
           </div>
         </div>
@@ -105,7 +93,7 @@ export function BestParlayGeneratorButton() {
           ) : (
             <>
               <Sparkles className="w-4 h-4 mr-2" />
-              Generate Best Parlays
+              Generate Parlays
             </>
           )}
         </Button>
@@ -121,56 +109,44 @@ export function BestParlayGeneratorButton() {
             )}
             <div className="flex-1 space-y-2">
               <p className="text-sm text-white font-medium">{lastResult.message}</p>
-              
+
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3">
                 <div>
+                  <p className="text-xs text-slate-400">Old Expired</p>
+                  <p className="text-lg font-semibold text-slate-300">{lastResult.expired}</p>
+                </div>
+                <div>
                   <p className="text-xs text-slate-400">Generated</p>
-                  <p className="text-lg font-semibold text-white">
-                    {lastResult.parlaysGenerated}
-                  </p>
+                  <p className="text-lg font-semibold text-white">{lastResult.parlaysGenerated}</p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-400">Created</p>
-                  <p className="text-lg font-semibold text-emerald-500">
-                    {lastResult.parlaysCreated}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-400">Skipped</p>
-                  <p className="text-lg font-semibold text-yellow-500">
-                    {lastResult.parlaysSkipped}
-                  </p>
+                  <p className="text-lg font-semibold text-emerald-500">{lastResult.parlaysCreated}</p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-400">Errors</p>
-                  <p className="text-lg font-semibold text-red-500">
-                    {lastResult.errors}
-                  </p>
+                  <p className="text-lg font-semibold text-red-500">{lastResult.errors}</p>
                 </div>
               </div>
 
               {lastResult.summary && (
                 <div className="mt-4 pt-4 border-t border-slate-700">
                   <p className="text-xs text-slate-400 mb-2">Breakdown:</p>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
                     <div>
-                      <p className="text-xs text-slate-400">Multi-Game</p>
-                      <p className="text-sm font-semibold text-white">
-                        {lastResult.summary.multiGame}
-                      </p>
+                      <p className="text-xs text-slate-400">Cross-Match</p>
+                      <p className="text-sm font-semibold text-white">{lastResult.summary.multiGame}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-slate-400">Single-Game</p>
-                      <p className="text-sm font-semibold text-white">
-                        {lastResult.summary.singleGame}
-                      </p>
+                      <p className="text-xs text-slate-400">Same-Game</p>
+                      <p className="text-sm font-semibold text-white">{lastResult.summary.singleGame}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-slate-400">By Leg Count</p>
+                      <p className="text-xs text-slate-400">By Legs</p>
                       <div className="text-xs text-slate-300 mt-1">
                         {Object.entries(lastResult.summary.byLegCount).map(([count, num]) => (
                           <span key={count} className="mr-2">
-                            {count}L: {num}
+                            {count}L: {num as number}
                           </span>
                         ))}
                       </div>
@@ -184,12 +160,12 @@ export function BestParlayGeneratorButton() {
       )}
 
       <div className="mt-4 text-xs text-slate-400 space-y-1">
-        <p>• Generates parlays from AdditionalMarketData table</p>
-        <p>• Supports multi-game (different matches) and single-game parlays</p>
-        <p>• Prioritizes match diversification for optimal risk distribution</p>
-        <p>• Filters by edge, probability, and model agreement</p>
+        <p>• Expires all previous AI parlays, then generates a fresh curated set</p>
+        <p>• Best Picks: top match-result favourites across different matches</p>
+        <p>• SGP: same-game parlays (Match Result + Over/Under + BTTS)</p>
+        <p>• Mixed: best single-market picks from different matches</p>
+        <p>• Excludes trivial legs (Over 0.5, Over 1.5) and draws</p>
       </div>
     </div>
   )
 }
-

@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { normalizeBaseUrl, buildSitemapUrl } from '@/lib/sitemap-helpers'
+import { generateMatchSlug } from '@/lib/match-slug'
 import prisma from '@/lib/db'
 
 // Prevent pre-rendering during build
@@ -38,6 +39,8 @@ export async function GET(request: NextRequest) {
       },
       select: {
         matchId: true,
+        homeTeam: true,
+        awayTeam: true,
         status: true,
         updatedAt: true,
         kickoffDate: true,
@@ -85,6 +88,8 @@ export async function GET(request: NextRequest) {
       },
       select: {
         matchId: true,
+        homeTeam: true,
+        awayTeam: true,
         status: true,
         updatedAt: true,
         kickoffDate: true,
@@ -155,8 +160,14 @@ export async function GET(request: NextRequest) {
           ? quickPurchaseUpdatedAt
           : match.updatedAt
 
+      // Build SEO-friendly slug when team names are available, fallback to numeric ID
+      const slug =
+        match.homeTeam && match.awayTeam
+          ? generateMatchSlug(match.homeTeam, match.awayTeam)
+          : match.matchId
+
       return {
-        url: buildSitemapUrl(baseUrl, `/match/${match.matchId}`),
+        url: buildSitemapUrl(baseUrl, `/match/${slug}`),
         lastModified: lastModified.toISOString(),
         changeFrequency,
         priority,

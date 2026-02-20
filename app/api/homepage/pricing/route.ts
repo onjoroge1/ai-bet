@@ -49,7 +49,8 @@ export async function GET(request: NextRequest) {
     }))
 
     // Get premium package prices from PackageCountryPrice
-    const premiumPackageTypes = ["prediction", "weekend_pass", "weekly_pass", "monthly_sub"]
+    // Note: "prediction" (Single Tip) is excluded - removed from offerings
+    const premiumPackageTypes = ["weekend_pass", "weekly_pass", "monthly_sub", "vip"]
     const premiumPackages = await prisma.packageCountryPrice.findMany({
       where: {
         countryId: country.id,
@@ -70,22 +71,6 @@ export async function GET(request: NextRequest) {
       colorGradientTo: string
       displayOrder: number
     }> = {
-      prediction: {
-        name: 'Single Tip',
-        description: 'One premium prediction with detailed analysis',
-        tipCount: 1,
-        validityDays: 1,
-        features: [
-          '1 Premium Tip',
-          'Detailed Analysis',
-          'Confidence Score',
-          '24-Hour Validity'
-        ],
-        iconName: 'Zap',
-        colorGradientFrom: '#3B82F6',
-        colorGradientTo: '#1D4ED8',
-        displayOrder: 1
-      },
       weekend_pass: {
         name: 'Weekend Package',
         description: 'Weekend special with 5 tips (Friday-Sunday)',
@@ -101,7 +86,7 @@ export async function GET(request: NextRequest) {
         iconName: 'Calendar',
         colorGradientFrom: '#8B5CF6',
         colorGradientTo: '#7C3AED',
-        displayOrder: 2
+        displayOrder: 1
       },
       weekly_pass: {
         name: 'Weekly Package',
@@ -118,20 +103,37 @@ export async function GET(request: NextRequest) {
         iconName: 'TrendingUp',
         colorGradientFrom: '#10B981',
         colorGradientTo: '#059669',
-        displayOrder: 3
+        displayOrder: 2
       },
       monthly_sub: {
-        name: 'Monthly Subscription',
-        description: 'VIP Zone - Unlimited tips for the entire month',
+        name: 'Monthly Package',
+        description: 'Unlimited tips for the entire month — best value',
         tipCount: -1, // -1 indicates unlimited
         validityDays: 30,
         features: [
           'Unlimited Tips',
-          'VIP Zone Access',
-          'Priority Support',
+          'Monthly Coverage',
           'Advanced Analytics',
+          'Priority Support',
           '30-Day Validity',
-          'Exclusive Content'
+        ],
+        iconName: 'Crown',
+        colorGradientFrom: '#3B82F6',
+        colorGradientTo: '#2563EB',
+        displayOrder: 3
+      },
+      vip: {
+        name: 'VIP Package',
+        description: 'Full platform access — all premium features unlocked',
+        tipCount: -1,
+        validityDays: 30,
+        features: [
+          'Everything in Monthly',
+          'VIP Intelligence Feed',
+          'CLV Tracker',
+          'AI Parlay Builder',
+          'Hourly CLV Alerts',
+          'Cancel Anytime'
         ],
         iconName: 'Crown',
         colorGradientFrom: '#F59E0B',

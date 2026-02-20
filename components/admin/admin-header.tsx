@@ -1,91 +1,154 @@
+"use client"
+
+import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Shield, Bell, Settings, Download, RefreshCw, FileText, Mail, Twitter, Target } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Shield, Bell, Settings, Download, RefreshCw, FileText, Mail, Twitter, Target, Menu, X } from "lucide-react"
 import Link from "next/link"
 
 export function AdminHeader() {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+
+  const navigationLinks = [
+    { href: "/admin/emails", label: "Email Templates", icon: Mail },
+    { href: "/admin/blogs", label: "Blog", icon: FileText },
+    { href: "/admin/blog-automation", label: "Blog Automation", icon: FileText },
+    { href: "/admin/social-automation", label: "Social Automation", icon: Twitter },
+    { href: "/admin/matches", label: "Matches", icon: Target },
+  ]
+
   return (
     <div className="mb-8">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-white mb-2 flex items-center space-x-2">
-            <Shield className="w-8 h-8 text-emerald-400" />
-            <span>Admin Dashboard</span>
-          </h1>
-          <p className="text-slate-300">Platform management and analytics overview</p>
+      <div className="flex flex-col gap-4 mb-6">
+        {/* Title and Badge Row */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2 flex items-center space-x-2">
+              <Shield className="w-6 h-6 sm:w-8 sm:h-8 text-emerald-400" />
+              <span>Admin Dashboard</span>
+            </h1>
+            <p className="text-sm sm:text-base text-slate-300">Platform management and analytics overview</p>
+          </div>
+
+          {/* Desktop: Badge and Action Buttons */}
+          <div className="hidden md:flex items-center gap-3">
+            <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 whitespace-nowrap">
+              <Shield className="w-4 h-4 mr-2" />
+              Super Admin
+            </Badge>
+            <Button variant="ghost" size="sm" className="text-slate-300 hover:text-white relative">
+              <Bell className="w-4 h-4" />
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping" />
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full" />
+            </Button>
+            <Button variant="ghost" size="sm" className="text-slate-300 hover:text-white">
+              <RefreshCw className="w-4 h-4" />
+            </Button>
+            <Button variant="ghost" size="sm" className="text-slate-300 hover:text-white">
+              <Settings className="w-4 h-4" />
+            </Button>
+          </div>
+
+          {/* Mobile: Badge and Menu Button */}
+          <div className="flex md:hidden items-center justify-between gap-3">
+            <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+              <Shield className="w-3 h-3 mr-1" />
+              <span className="text-xs">Super Admin</span>
+            </Badge>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" className="text-slate-300 hover:text-white relative p-2">
+                <Bell className="w-4 h-4" />
+                <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full" />
+              </Button>
+              <DropdownMenu open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="border-slate-600 text-slate-300 hover:bg-slate-700">
+                    {isMobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700 w-56">
+                  {navigationLinks.map((link) => {
+                    const Icon = link.icon
+                    return (
+                      <DropdownMenuItem key={link.href} asChild>
+                        <Link href={link.href} className="flex items-center cursor-pointer">
+                          <Icon className="w-4 h-4 mr-2" />
+                          {link.label}
+                        </Link>
+                      </DropdownMenuItem>
+                    )
+                  })}
+                  <DropdownMenuItem asChild>
+                    <Link href="#" className="flex items-center cursor-pointer">
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Refresh
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="#" className="flex items-center cursor-pointer">
+                      <Settings className="w-4 h-4 mr-2" />
+                      Settings
+                    </Link>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center space-x-4 mt-4 md:mt-0">
-          <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
-            <Shield className="w-4 h-4 mr-2" />
-            Super Admin
-          </Badge>
-          <Button asChild variant="outline" size="sm" className="border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white">
-            <Link href="/admin/emails">
-              <Mail className="w-4 h-4 mr-2" />
-              Email Templates
-            </Link>
-          </Button>
-          <Button asChild variant="outline" size="sm" className="border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white">
-            <Link href="/admin/blogs">
-              <FileText className="w-4 h-4 mr-2" />
-              Blog
-            </Link>
-          </Button>
-          <Button asChild variant="outline" size="sm" className="border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white">
-            <Link href="/admin/blog-automation">
-              <FileText className="w-4 h-4 mr-2" />
-              Blog Automation
-            </Link>
-          </Button>
-          <Button asChild variant="outline" size="sm" className="border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white">
-            <Link href="/admin/social-automation">
-              <Twitter className="w-4 h-4 mr-2" />
-              Social Automation
-            </Link>
-          </Button>
-          <Button asChild variant="outline" size="sm" className="border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white">
-            <Link href="/admin/matches">
-              <Target className="w-4 h-4 mr-2" />
-              Matches
-            </Link>
-          </Button>
-          <Button variant="ghost" size="sm" className="text-slate-300 hover:text-white relative">
-            <Bell className="w-4 h-4" />
-            <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping" />
-            <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full" />
-          </Button>
-          <Button variant="ghost" size="sm" className="text-slate-300 hover:text-white">
-            <RefreshCw className="w-4 h-4" />
-          </Button>
-          <Button variant="ghost" size="sm" className="text-slate-300 hover:text-white">
-            <Settings className="w-4 h-4" />
-          </Button>
+        {/* Desktop: Navigation Links */}
+        <div className="hidden md:flex items-center gap-2 flex-wrap">
+          {navigationLinks.map((link) => {
+            const Icon = link.icon
+            return (
+              <Button
+                key={link.href}
+                asChild
+                variant="outline"
+                size="sm"
+                className="border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white"
+              >
+                <Link href={link.href}>
+                  <Icon className="w-4 h-4 mr-2" />
+                  {link.label}
+                </Link>
+              </Button>
+            )
+          })}
         </div>
       </div>
 
       {/* System Status Bar */}
-      <Card className="bg-slate-800/50 border-slate-700 p-4">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-emerald-400 rounded-full animate-pulse" />
-              <span className="text-emerald-400 text-sm font-medium">All Systems Operational</span>
+      <Card className="bg-slate-800/50 border-slate-700 p-3 sm:p-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 bg-emerald-400 rounded-full animate-pulse" />
+              <span className="text-emerald-400 text-xs sm:text-sm font-medium">All Systems Operational</span>
             </div>
-            <div className="text-slate-400 text-sm">Last updated: 2 minutes ago</div>
+            <div className="text-slate-400 text-xs sm:text-sm">Last updated: 2 minutes ago</div>
           </div>
 
-          <div className="flex items-center space-x-4 mt-4 md:mt-0">
-            <div className="text-slate-300 text-sm">
-              <span className="font-medium">50,234</span> Active Users
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <div className="flex items-center gap-4 text-xs sm:text-sm">
+              <div className="text-slate-300">
+                <span className="font-medium">50,234</span> <span className="hidden sm:inline">Active Users</span><span className="sm:hidden">Users</span>
+              </div>
+              <div className="text-slate-300">
+                <span className="font-medium">₦2.4M</span> <span className="hidden sm:inline">Revenue Today</span><span className="sm:hidden">Revenue</span>
+              </div>
             </div>
-            <div className="text-slate-300 text-sm">
-              <span className="font-medium">₦2.4M</span> Revenue Today
-            </div>
-            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white">
+            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white w-full sm:w-auto">
               <Download className="w-4 h-4 mr-2" />
-              Export Report
+              <span className="hidden sm:inline">Export Report</span>
+              <span className="sm:hidden">Export</span>
             </Button>
           </div>
         </div>

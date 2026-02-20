@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Menu, X, Home, Zap, Gift, Crown, Settings, BarChart3, Target, HeadphonesIcon, History, Bell, Activity, Layers, Sparkles } from "lucide-react"
+import { Menu, X, Home, Zap, Crown, Settings, BarChart3, Target, HeadphonesIcon, History, Bell, Activity, Layers, Sparkles } from "lucide-react"
 import { NotificationBell } from "@/components/notifications/NotificationBell"
 import { Badge } from "@/components/ui/badge"
 
@@ -19,20 +19,18 @@ export function DashboardNavHeader() {
     { href: "/dashboard", label: "Overview", icon: Home, category: "core" },
     
     // Premium Features
-    { href: "/dashboard/premium", label: "Premium Hub", icon: Sparkles, category: "premium", badge: "Premium" },
+    { href: "/dashboard/vip", label: "VIP Intelligence", icon: Crown, category: "premium", badge: "VIP" },
     
     // Predictions & Tips
     { href: "/dashboard/matches", label: "Live Matches", icon: Target, category: "predictions" },
     { href: "/dashboard/parlays", label: "Parlays", icon: Layers, category: "predictions" },
     { href: "/dashboard/daily-tips", label: "Daily Tips", icon: Zap, category: "predictions" },
-    { href: "/dashboard/weekend-special", label: "Weekend Special", icon: Gift, category: "predictions" },
-    { href: "/dashboard/vip", label: "VIP Zone", icon: Crown, category: "predictions" },
     { href: "/dashboard/clv", label: "CLV Tracker", icon: Activity, category: "predictions", badge: "Live" },
     
     // User Content
     { href: "/dashboard/my-tips", label: "My Tips", icon: Target, category: "user" },
-    { href: "/tips-history", label: "History", icon: History, category: "user" },
-    { href: "/dashboard/predictions", label: "All Predictions", icon: BarChart3, category: "user" },
+    { href: "/dashboard/my-bets", label: "My Bets", icon: History, category: "user" },
+    { href: "/dashboard/saved-bets", label: "Saved Bets", icon: BarChart3, category: "user" },
     
     // Account & Support
     { href: "/dashboard/notifications", label: "Notifications", icon: Bell, category: "account" },

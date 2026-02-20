@@ -1,120 +1,238 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Check, Crown, Zap, Globe, Layers, TrendingUp, Loader2, AlertCircle } from "lucide-react"
+import {
+  Check,
+  Crown,
+  Zap,
+  Loader2,
+  AlertCircle,
+  ArrowRight,
+  Star,
+  Clock,
+  TrendingUp,
+  Calendar,
+  Gift,
+  BarChart3,
+  Activity,
+  Layers,
+  Shield,
+  CheckCircle,
+  Sparkles,
+} from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
+import { QuickPurchaseModal } from "@/components/quick-purchase-modal"
+import { useUserCountry } from "@/contexts/user-country-context"
+import {
+  PACKAGES,
+  type PackageDefinition,
+  getTipCountText,
+  getValidityText,
+} from "@/lib/packages-config"
 
-interface PricingPlan {
+/** Shape returned by /api/homepage/pricing for tip packages */
+interface PackageOffer {
   id: string
   name: string
+  packageType: string
   description: string
-  price: number | null
-  originalPrice: number | null
-  period: string
-  discount?: number
+  tipCount: number
+  validityDays: number
   features: string[]
-  popular: boolean
-  planType: string
-  currencyCode?: string
-  currencySymbol?: string
-  countrySpecific?: boolean
-  comingSoon?: boolean
-  stripePriceId?: string
+  iconName: string
+  colorGradientFrom: string
+  colorGradientTo: string
+  displayOrder: number
+  isActive: boolean
+  countryPrices: {
+    id: string
+    price: number
+    originalPrice?: number
+    currencyCode: string
+    currencySymbol: string
+    country: {
+      name: string
+      code: string
+      currencyCode: string
+      currencySymbol: string
+    }
+  }[]
+}
+
+/** Merged view: static definition + optional DB pricing */
+interface DisplayPackage extends PackageDefinition {
+  displayPrice: number
+  displayOriginalPrice?: number
+  currencySymbol: string
+  dbOffer?: PackageOffer
 }
 
 /**
- * PricingContent - Client component that uses useSearchParams
- * This component is wrapped in Suspense in the parent page component
+ * PricingContent – Unified pricing page.
+ *
+ * Shows 4 selectable package cards (Weekend, Weekly, Monthly, VIP) that
+ * mirror the dashboard's "Premium Packages" section, plus a feature comparison
+ * table and FAQ section.
  */
 export function PricingContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [plans, setPlans] = useState<PricingPlan[]>([])
+  const { userCountry } = useUserCountry()
+
+  const [dbPackages, setDbPackages] = useState<PackageOffer[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null)
+  const [isPremium, setIsPremium] = useState<boolean | null>(null)
+  const [currentPlan, setCurrentPlan] = useState<string | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [selectedOffer, setSelectedOffer] = useState<any>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+
+  // Highlight a plan when linked with ?plan=…
+  const highlightedPlan = searchParams.get("plan")
+
+  // ── Fetch packages from /api/homepage/pricing ──
+  const fetchPackages = useCallback(
+    async (countryCode: string) => {
+      try {
+        setLoading(true)
+        setError(null)
+        const response = await fetch(`/api/homepage/pricing?country=${countryCode}`)
+        if (!response.ok) throw new Error("Failed to fetch packages")
+        const data = await response.json()
+
+        const packageOffers = (data.plans as PackageOffer[]).filter(
+          (p) =>
+            p.countryPrices &&
+            Array.isArray(p.countryPrices) &&
+            p.countryPrices.length > 0 &&
+            p.packageType !== "prediction" &&
+            p.name !== "Single Tip"
+        )
+        setDbPackages(packageOffers)
+      } catch (err) {
+        console.error("Error fetching packages:", err)
+        setError(err instanceof Error ? err.message : "Failed to load pricing")
+      } finally {
+        setLoading(false)
+      }
+    },
+    []
+  )
 
   useEffect(() => {
-    fetchPricing()
-    // Check for plan parameter in URL
-    const planParam = searchParams.get('plan')
-    if (planParam) {
-      setSelectedPlan(planParam === 'parlay' ? 'parlay_pro' : planParam)
-    }
-  }, [searchParams])
+    if (!userCountry) return
+    fetchPackages(userCountry.toLowerCase())
+  }, [userCountry, fetchPackages])
 
-  const fetchPricing = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const response = await fetch('/api/pricing')
-      if (!response.ok) {
-        throw new Error('Failed to fetch pricing')
-      }
-      const data = await response.json()
-      setPlans(data.plans || [])
-    } catch (err) {
-      console.error('Error fetching pricing:', err)
-      setError(err instanceof Error ? err.message : 'Failed to load pricing')
-    } finally {
-      setLoading(false)
-    }
-  }
+  // Check premium status + current plan
+  useEffect(() => {
+    fetch("/api/premium/check")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setIsPremium(d?.hasAccess ?? false))
+      .catch(() => setIsPremium(false))
 
-  const handleSubscribe = (planId: string) => {
-    if (planId === 'free') {
-      router.push('/signup')
+    fetch("/api/subscriptions/manage", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.plan) setCurrentPlan(d.plan)
+      })
+      .catch(() => {})
+  }, [])
+
+  // ── Merge static PACKAGES with DB country pricing ──
+  // packages-config.ts is the source of truth for USD prices.
+  // DB country-specific prices are only used for non-USD currencies.
+  const displayPackages: DisplayPackage[] = PACKAGES.map((pkg) => {
+    const dbOffer = dbPackages.find(
+      (o) => o.packageType === pkg.id || o.id.endsWith(`_${pkg.id}`)
+    )
+    const countryPrice = dbOffer?.countryPrices?.[0]
+    const useDbPrice = countryPrice && countryPrice.currencyCode !== "USD"
+
+    return {
+      ...pkg,
+      displayPrice: useDbPrice ? countryPrice.price : pkg.basePrice,
+      displayOriginalPrice: useDbPrice
+        ? countryPrice.originalPrice
+        : pkg.baseOriginalPrice,
+      currencySymbol: countryPrice?.currencySymbol ?? "$",
+      dbOffer,
+    }
+  })
+
+  // ── Handlers ──
+  const handlePurchase = (pkg: DisplayPackage) => {
+    if (pkg.purchaseType === "subscription") {
+      router.push(`/subscribe/${pkg.subscriptionPlanId ?? "premium_intelligence"}`)
       return
     }
 
-    if (planId === 'complete') {
-      // Coming soon
-      return
+    const item = {
+      id: pkg.dbOffer?.id ?? pkg.id,
+      name: pkg.name,
+      price: pkg.displayPrice,
+      originalPrice: pkg.displayOriginalPrice,
+      description: pkg.description,
+      features: pkg.features,
+      type: "package" as const,
+      iconName: pkg.iconName,
+      colorGradientFrom: pkg.colorGradientFrom,
+      colorGradientTo: pkg.colorGradientTo,
+      tipCount: pkg.tipCount,
+      validityDays: pkg.validityDays,
+      packageType: pkg.id,
     }
-
-    // Redirect to subscription checkout
-    router.push(`/subscribe/${planId}`)
+    setSelectedOffer(item)
+    setIsModalOpen(true)
   }
 
-  const formatPrice = (plan: PricingPlan): string => {
-    if (plan.price === null) return 'Contact Us'
-    if (plan.price === 0) return 'Free'
-    
-    const symbol = plan.currencySymbol || '$'
-    return `${symbol}${plan.price.toFixed(2)}`
-  }
-
-  const getPlanIcon = (planId: string) => {
-    switch (planId) {
-      case 'parlay_pro':
-        return Layers
-      case 'premium_intelligence':
+  const getIconComponent = (iconName: string) => {
+    switch (iconName) {
+      case "Zap":
+        return Zap
+      case "Calendar":
+        return Calendar
+      case "TrendingUp":
         return TrendingUp
-      case 'complete':
+      case "Crown":
         return Crown
       default:
-        return Zap
+        return Gift
     }
+  }
+
+  const isCurrentPlan = (pkgId: string): boolean => {
+    if (!currentPlan) return false
+    const plan = currentPlan.toLowerCase()
+    if (pkgId === "vip") {
+      return (
+        plan.includes("vip") ||
+        plan.includes("premium_intelligence") ||
+        plan.includes("premium")
+      )
+    }
+    return plan.includes(pkgId)
   }
 
   // Feature comparison data
   const comparisonFeatures = [
-    { name: 'Parlays Access', free: false, parlay: true, premium: false, complete: true },
-    { name: 'Premium Dashboard', free: false, parlay: false, premium: true, complete: true },
-    { name: 'CLV Tracker', free: false, parlay: false, premium: true, complete: true },
-    { name: 'AI Analysis', free: true, parlay: true, premium: true, complete: true },
-    { name: 'Quality Filtering', free: false, parlay: true, premium: true, complete: true },
-    { name: 'Risk Assessment', free: false, parlay: true, premium: true, complete: true },
-    { name: 'Email Alerts', free: false, parlay: true, premium: true, complete: true },
-    { name: 'Priority Support', free: false, parlay: true, premium: true, complete: true },
-    { name: 'Historical Performance', free: false, parlay: true, premium: false, complete: true },
-    { name: 'Advanced Analytics', free: false, parlay: false, premium: true, complete: true },
+    { name: "AI Match Predictions", free: "3/day", weekend: true, weekly: true, monthly: "Unlimited", vip: "Unlimited" },
+    { name: "Premium Tips", free: false, weekend: "5 Tips", weekly: "8 Tips", monthly: "Unlimited", vip: "Unlimited" },
+    { name: "VIP Intelligence Feed", free: false, weekend: false, weekly: false, monthly: false, vip: true },
+    { name: "Advanced Analytics", free: false, weekend: false, weekly: false, monthly: true, vip: true },
+    { name: "CLV Tracker", free: false, weekend: false, weekly: false, monthly: false, vip: true },
+    { name: "AI Parlay Builder", free: false, weekend: false, weekly: false, monthly: false, vip: true },
+    { name: "Live Updates", free: false, weekend: true, weekly: true, monthly: true, vip: true },
+    { name: "Priority Support", free: false, weekend: true, weekly: true, monthly: true, vip: true },
+    { name: "Validity", free: "—", weekend: "3 Days", weekly: "7 Days", monthly: "30 Days", vip: "30 Days" },
   ]
 
+  // ── Loading / Error states ──
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
@@ -133,7 +251,11 @@ export function PricingContent() {
           <CardContent className="p-6 text-center">
             <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
             <p className="text-red-400 mb-4">{error}</p>
-            <Button onClick={fetchPricing} variant="outline" className="border-red-500/30 text-red-400">
+            <Button
+              onClick={() => userCountry && fetchPackages(userCountry.toLowerCase())}
+              variant="outline"
+              className="border-red-500/30 text-red-400"
+            >
               Try Again
             </Button>
           </CardContent>
@@ -144,105 +266,197 @@ export function PricingContent() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      <div className="max-w-7xl mx-auto px-4 py-12">
-        {/* Header */}
+      <div className="max-w-6xl mx-auto px-4 py-12">
+        {/* ── Header ── */}
         <div className="text-center mb-12">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm mb-4">
+            <Sparkles className="w-4 h-4" />
+            AI-Powered Betting Intelligence
+          </div>
           <h1 className="text-4xl font-bold text-white mb-4">Choose Your Plan</h1>
-          <p className="text-xl text-slate-300 mb-2">Unlock Premium Features</p>
-          <p className="text-slate-400">Start free, upgrade when you're ready</p>
+          <p className="text-xl text-slate-300 mb-2">
+            Unlock Premium Features &amp; AI Insights
+          </p>
+          <p className="text-slate-400 max-w-2xl mx-auto">
+            Start free with 3 daily AI predictions. Choose a tip package for on-demand picks, or
+            go VIP for full platform access including analytics, CLV tracking, and the VIP
+            intelligence feed.
+          </p>
         </div>
 
-        {/* Pricing Cards */}
+        {/* ── 4 Package Cards ── */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-          {plans.map((plan) => {
-            const Icon = getPlanIcon(plan.id)
-            const isSelected = selectedPlan === plan.id
-            
+          {displayPackages.map((pkg) => {
+            const Icon = getIconComponent(pkg.iconName)
+            const isCurrent = isCurrentPlan(pkg.id)
+            const isHighlighted = highlightedPlan === pkg.id || highlightedPlan === pkg.subscriptionPlanId
+            const discount =
+              pkg.displayOriginalPrice && pkg.displayOriginalPrice > pkg.displayPrice
+                ? Math.round(
+                    ((pkg.displayOriginalPrice - pkg.displayPrice) /
+                      pkg.displayOriginalPrice) *
+                      100
+                  )
+                : 0
+
             return (
               <Card
-                key={plan.id}
-                className={`relative ${
-                  plan.popular
-                    ? 'bg-gradient-to-b from-emerald-900/50 to-slate-800/50 border-emerald-500/50 ring-2 ring-emerald-500/30'
-                    : 'bg-slate-800/50 border-slate-700'
-                } ${isSelected ? 'ring-2 ring-blue-500' : ''}`}
+                key={pkg.id}
+                className={`relative overflow-hidden flex flex-col transition-all duration-300 hover:scale-[1.02] ${
+                  isCurrent
+                    ? "border-emerald-500/50 bg-gradient-to-b from-emerald-900/20 to-slate-800/60 ring-2 ring-emerald-500/30"
+                    : pkg.recommended
+                      ? "border-blue-500/50 bg-gradient-to-b from-blue-900/20 to-slate-800/60 ring-2 ring-blue-500/30"
+                      : isHighlighted
+                        ? "border-amber-500/50 ring-2 ring-amber-500/30 bg-slate-800/50"
+                        : "border-slate-700 bg-slate-800/50"
+                }`}
               >
-                {plan.popular && (
-                  <Badge className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-emerald-600 text-white">
-                    Most Popular
-                  </Badge>
-                )}
-                {plan.discount && (
-                  <Badge className="absolute -top-3 right-4 bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
-                    {plan.discount}% OFF
-                  </Badge>
-                )}
-                {plan.comingSoon && (
-                  <Badge className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-blue-500/20 text-blue-400 border-blue-500/30">
-                    Coming Soon
-                  </Badge>
-                )}
+                {/* Top Badges */}
+                <div className="flex items-center gap-2 p-5 pb-0 min-h-[32px]">
+                  {isCurrent && (
+                    <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/40 text-[10px]">
+                      CURRENT PLAN
+                    </Badge>
+                  )}
+                  {pkg.recommended && !isCurrent && (
+                    <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/40 text-[10px]">
+                      RECOMMENDED
+                    </Badge>
+                  )}
+                  {discount > 0 && (
+                    <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-[10px]">
+                      -{discount}%
+                    </Badge>
+                  )}
+                </div>
 
-                <CardHeader>
+                <CardContent className="flex-1 flex flex-col p-5 pt-3">
+                  {/* Icon + Name */}
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 bg-emerald-500/20 rounded-lg">
-                      <Icon className="h-6 w-6 text-emerald-400" />
+                    <div
+                      className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                      style={{
+                        background: `linear-gradient(135deg, ${pkg.colorGradientFrom}, ${pkg.colorGradientTo})`,
+                      }}
+                    >
+                      <Icon className="w-6 h-6 text-white" />
                     </div>
-                    <CardTitle className="text-white text-xl">{plan.name}</CardTitle>
+                    <div>
+                      <h3 className="text-white font-bold text-lg leading-tight">{pkg.name}</h3>
+                      <p className="text-slate-400 text-sm">{getTipCountText(pkg.tipCount)}</p>
+                    </div>
                   </div>
-                  
-                  <div className="space-y-2">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-bold text-white">{formatPrice(plan)}</span>
-                      {plan.price !== null && plan.price > 0 && (
-                        <span className="text-slate-400">/{plan.period}</span>
+
+                  {/* Price */}
+                  <div className="mb-4">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-3xl font-bold text-white">
+                        {pkg.currencySymbol}
+                        {pkg.displayPrice.toFixed(2)}
+                      </span>
+                      {pkg.purchaseType === "subscription" && (
+                        <span className="text-slate-400 text-sm">/mo</span>
                       )}
                     </div>
-                    {plan.originalPrice && plan.originalPrice > plan.price! && (
-                      <div className="text-slate-500 line-through text-lg">
-                        {plan.currencySymbol || '$'}{plan.originalPrice.toFixed(2)}/{plan.period}
-                      </div>
+                    {pkg.displayOriginalPrice && pkg.displayOriginalPrice > pkg.displayPrice && (
+                      <span className="text-slate-500 line-through text-sm">
+                        {pkg.currencySymbol}
+                        {pkg.displayOriginalPrice.toFixed(2)}
+                      </span>
                     )}
-                    <p className="text-slate-400 text-sm">{plan.description}</p>
                   </div>
-                </CardHeader>
 
-                <CardContent className="space-y-4">
-                  <ul className="space-y-3">
-                    {plan.features.map((feature, idx) => (
-                      <li key={idx} className="flex items-start gap-2 text-slate-300">
-                        <Check className="h-5 w-5 text-emerald-400 flex-shrink-0 mt-0.5" />
-                        <span className="text-sm">{feature}</span>
-                      </li>
+                  {/* Description */}
+                  <p className="text-slate-400 text-sm mb-4 min-h-[2.5rem]">{pkg.description}</p>
+
+                  {/* Features */}
+                  <div className="space-y-2 mb-5 flex-1">
+                    {pkg.features.map((feature, idx) => (
+                      <div key={idx} className="flex items-center gap-2 text-slate-300 text-sm">
+                        <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>{feature}</span>
+                      </div>
                     ))}
-                  </ul>
+                  </div>
 
-                  <Button
-                    onClick={() => handleSubscribe(plan.id)}
-                    disabled={plan.comingSoon}
-                    className={`w-full ${
-                      plan.popular
-                        ? 'bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800'
-                        : plan.id === 'free'
-                        ? 'bg-slate-700 hover:bg-slate-600'
-                        : 'bg-slate-700 hover:bg-slate-600'
-                    } text-white`}
-                  >
-                    {plan.id === 'free' && 'Get Started'}
-                    {plan.id !== 'free' && !plan.comingSoon && 'Subscribe'}
-                    {plan.comingSoon && 'Coming Soon'}
-                  </Button>
+                  {/* Validity */}
+                  <div className="flex items-center gap-2 text-blue-400 text-sm mb-5 pt-4 border-t border-slate-600/40">
+                    <Clock className="w-4 h-4" />
+                    <span className="font-medium">{getValidityText(pkg.validityDays)}</span>
+                  </div>
+
+                  {/* CTA */}
+                  {isCurrent ? (
+                    <Button
+                      disabled
+                      className="w-full bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 cursor-default"
+                    >
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Current Plan
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={() => handlePurchase(pkg)}
+                      className="w-full text-white font-semibold py-5 h-auto"
+                      style={{
+                        background: `linear-gradient(135deg, ${pkg.colorGradientFrom}, ${pkg.colorGradientTo})`,
+                      }}
+                    >
+                      {pkg.purchaseType === "subscription" ? (
+                        <>
+                          <Crown className="w-5 h-5 mr-2" />
+                          Subscribe Now
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-5 h-5 mr-2" />
+                          Get Package
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             )
           })}
         </div>
 
-        {/* Feature Comparison Table */}
+        {/* ── Suggested next plan ── */}
+        {!isPremium && !isCurrentPlan("monthly_sub") && (
+          <div className="mb-12 p-6 bg-blue-900/20 rounded-2xl border border-blue-500/30">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center border border-blue-500/30 shrink-0">
+                  <Crown className="w-6 h-6 text-blue-400" />
+                </div>
+                <div>
+                  <h4 className="text-blue-300 font-semibold">
+                    We Recommend: Monthly Package
+                  </h4>
+                  <p className="text-slate-400 text-sm">
+                    Unlimited tips for $49.99/month — our most popular choice for serious bettors
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={() =>
+                  handlePurchase(displayPackages.find((p) => p.id === "monthly_sub")!)
+                }
+                className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold px-6 shrink-0"
+              >
+                Get Monthly
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Feature Comparison Table ── */}
         <Card className="bg-slate-800/50 border-slate-700 mb-12">
           <CardHeader>
             <CardTitle className="text-white text-2xl">Feature Comparison</CardTitle>
-            <p className="text-slate-400">Compare features across all plans</p>
+            <p className="text-slate-400">Compare what you get across all plans</p>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -250,44 +464,53 @@ export function PricingContent() {
                 <thead>
                   <tr className="border-b border-slate-700">
                     <th className="text-left py-4 px-4 text-slate-300 font-semibold">Feature</th>
-                    <th className="text-center py-4 px-4 text-slate-300 font-semibold">Free</th>
-                    <th className="text-center py-4 px-4 text-slate-300 font-semibold">Parlay Pro</th>
-                    <th className="text-center py-4 px-4 text-slate-300 font-semibold">Premium</th>
-                    <th className="text-center py-4 px-4 text-slate-300 font-semibold">Complete</th>
+                    <th className="text-center py-4 px-3 text-slate-300 font-semibold">Free</th>
+                    <th className="text-center py-4 px-3 text-slate-300 font-semibold">Weekend</th>
+                    <th className="text-center py-4 px-3 text-slate-300 font-semibold">Weekly</th>
+                    <th className="text-center py-4 px-3 font-semibold">
+                      <span className="text-blue-400">Monthly</span>
+                    </th>
+                    <th className="text-center py-4 px-3 font-semibold">
+                      <span className="text-amber-400">VIP</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {comparisonFeatures.map((feature, idx) => (
                     <tr key={idx} className="border-b border-slate-700/50">
                       <td className="py-4 px-4 text-white font-medium">{feature.name}</td>
-                      <td className="py-4 px-4 text-center">
-                        {feature.free ? (
-                          <Check className="h-5 w-5 text-emerald-400 mx-auto" />
-                        ) : (
-                          <span className="text-slate-500">—</span>
-                        )}
-                      </td>
-                      <td className="py-4 px-4 text-center">
-                        {feature.parlay ? (
-                          <Check className="h-5 w-5 text-emerald-400 mx-auto" />
-                        ) : (
-                          <span className="text-slate-500">—</span>
-                        )}
-                      </td>
-                      <td className="py-4 px-4 text-center">
-                        {feature.premium ? (
-                          <Check className="h-5 w-5 text-emerald-400 mx-auto" />
-                        ) : (
-                          <span className="text-slate-500">—</span>
-                        )}
-                      </td>
-                      <td className="py-4 px-4 text-center">
-                        {feature.complete ? (
-                          <Check className="h-5 w-5 text-emerald-400 mx-auto" />
-                        ) : (
-                          <span className="text-slate-500">—</span>
-                        )}
-                      </td>
+                      {(["free", "weekend", "weekly", "monthly", "vip"] as const).map((col) => {
+                        const val = feature[col]
+                        return (
+                          <td key={col} className="py-4 px-3 text-center">
+                            {typeof val === "string" ? (
+                              <span
+                                className={`text-sm font-medium ${
+                                  col === "vip"
+                                    ? "text-amber-400"
+                                    : col === "monthly"
+                                      ? "text-blue-400"
+                                      : "text-slate-400"
+                                }`}
+                              >
+                                {val}
+                              </span>
+                            ) : val ? (
+                              <Check
+                                className={`h-5 w-5 mx-auto ${
+                                  col === "vip"
+                                    ? "text-amber-400"
+                                    : col === "monthly"
+                                      ? "text-blue-400"
+                                      : "text-emerald-400"
+                                }`}
+                              />
+                            ) : (
+                              <span className="text-slate-500">—</span>
+                            )}
+                          </td>
+                        )
+                      })}
                     </tr>
                   ))}
                 </tbody>
@@ -296,32 +519,127 @@ export function PricingContent() {
           </CardContent>
         </Card>
 
-        {/* FAQ Section */}
+        {/* ── How It Works ── */}
+        <Card className="bg-slate-800/50 border-slate-700 mb-12">
+          <CardHeader>
+            <CardTitle className="text-white text-2xl">How It Works</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="text-center p-4">
+                <div className="w-12 h-12 bg-emerald-500/20 rounded-xl flex items-center justify-center mx-auto mb-3 border border-emerald-500/30">
+                  <span className="text-emerald-400 font-bold text-lg">1</span>
+                </div>
+                <h3 className="text-white font-semibold mb-2">Choose Your Package</h3>
+                <p className="text-slate-400 text-sm">
+                  Pick from Weekend, Weekly, Monthly, or go all-in with VIP for full platform
+                  access.
+                </p>
+              </div>
+              <div className="text-center p-4">
+                <div className="w-12 h-12 bg-emerald-500/20 rounded-xl flex items-center justify-center mx-auto mb-3 border border-emerald-500/30">
+                  <span className="text-emerald-400 font-bold text-lg">2</span>
+                </div>
+                <h3 className="text-white font-semibold mb-2">Get AI Predictions</h3>
+                <p className="text-slate-400 text-sm">
+                  Access AI-powered match predictions with confidence scores, value ratings, and
+                  detailed analysis.
+                </p>
+              </div>
+              <div className="text-center p-4">
+                <div className="w-12 h-12 bg-emerald-500/20 rounded-xl flex items-center justify-center mx-auto mb-3 border border-emerald-500/30">
+                  <span className="text-emerald-400 font-bold text-lg">3</span>
+                </div>
+                <h3 className="text-white font-semibold mb-2">Track &amp; Win</h3>
+                <p className="text-slate-400 text-sm">
+                  Use analytics, CLV tracking, and the VIP feed to refine your strategy and
+                  maximise returns.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* ── FAQ Section ── */}
         <Card className="bg-slate-800/50 border-slate-700">
           <CardHeader>
             <CardTitle className="text-white text-2xl">Frequently Asked Questions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
             <div>
-              <h3 className="text-white font-semibold mb-2">Can I cancel anytime?</h3>
-              <p className="text-slate-400">Yes, you can cancel your subscription at any time. Your access will continue until the end of your billing period.</p>
+              <h3 className="text-white font-semibold mb-2">
+                What&apos;s the difference between the packages?
+              </h3>
+              <p className="text-slate-400">
+                Weekend, Weekly, and Monthly packages are one-time purchases that give you a set
+                number of premium tips within a validity period. The VIP Package is a monthly
+                subscription that unlocks the full platform — VIP Intelligence Feed, Advanced
+                Analytics, CLV Tracker, AI Parlay Builder, and unlimited AI picks.
+              </p>
             </div>
             <div>
-              <h3 className="text-white font-semibold mb-2">What payment methods are accepted?</h3>
-              <p className="text-slate-400">We accept all major credit cards, debit cards, and regional payment methods through Stripe.</p>
+              <h3 className="text-white font-semibold mb-2">Which plan do you recommend?</h3>
+              <p className="text-slate-400">
+                We recommend the <strong className="text-blue-400">Monthly Package</strong> for
+                most users. It gives you unlimited tips for an entire month at a great price. If you
+                want full platform access with analytics and the VIP feed, go for the VIP Package.
+              </p>
             </div>
             <div>
-              <h3 className="text-white font-semibold mb-2">Is pricing country-specific?</h3>
-              <p className="text-slate-400">Premium Intelligence pricing varies by country. Parlay Pro uses standard USD pricing with promotional discount.</p>
+              <h3 className="text-white font-semibold mb-2">Can I cancel VIP anytime?</h3>
+              <p className="text-slate-400">
+                Yes, you can cancel your VIP subscription at any time. Your access will continue
+                until the end of your current billing period.
+              </p>
+            </div>
+            <div>
+              <h3 className="text-white font-semibold mb-2">
+                What payment methods are accepted?
+              </h3>
+              <p className="text-slate-400">
+                We accept all major credit cards, debit cards, and regional payment methods through
+                Stripe.
+              </p>
             </div>
             <div>
               <h3 className="text-white font-semibold mb-2">Do you offer refunds?</h3>
-              <p className="text-slate-400">We offer a 30-day money-back guarantee for all subscriptions. Contact support for assistance.</p>
+              <p className="text-slate-400">
+                We offer a 30-day money-back guarantee for VIP subscriptions. Tip packages are
+                non-refundable once tips have been claimed.
+              </p>
             </div>
           </CardContent>
         </Card>
+
+        {/* ── Bottom CTA ── */}
+        {!isPremium && (
+          <div className="text-center mt-12 mb-8">
+            <p className="text-slate-400 mb-4">
+              Ready to take your betting to the next level?
+            </p>
+            <Button
+              onClick={() =>
+                handlePurchase(displayPackages.find((p) => p.id === "monthly_sub")!)
+              }
+              size="lg"
+              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold shadow-[0_0_20px_rgba(59,130,246,0.3)] border-0 px-10 py-4 text-lg"
+            >
+              <Crown className="w-5 h-5 mr-2" />
+              Get Monthly Package — $49.99
+              <ArrowRight className="w-5 h-5 ml-2" />
+            </Button>
+          </div>
+        )}
       </div>
+
+      {/* Quick Purchase Modal for tip packages */}
+      {selectedOffer && (
+        <QuickPurchaseModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          item={selectedOffer}
+        />
+      )}
     </div>
   )
 }
-

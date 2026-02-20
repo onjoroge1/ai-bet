@@ -3,9 +3,18 @@ import prisma from "@/lib/db"
 import { getDbCountryPricing } from "@/lib/server-pricing-service"
 
 // GET /api/matches - Public endpoint for matches data (no authentication required)
-export async function GET() {
+// Supports optional pagination: ?page=1&limit=20
+// When ?page is omitted the full array is returned for backward compatibility.
+export async function GET(request: Request) {
   try {
-    console.log('Fetching public matches data...')
+    const { searchParams } = new URL(request.url)
+    const pageParam = searchParams.get('page')
+    const paginated = pageParam !== null
+    const page = Math.max(1, parseInt(pageParam ?? '1', 10))
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)))
+    const skip = (page - 1) * limit
+
+    console.log(`Fetching public matches data (page=${page}, limit=${limit})...`)
     
     // Get all active quick purchases from all countries
     const quickPurchases = await prisma.quickPurchase.findMany({
@@ -97,9 +106,27 @@ export async function GET() {
     // Filter out null results
     const validTransformedMatches = transformedMatches.filter(match => match !== null)
 
-    console.log(`Returning ${validTransformedMatches.length} transformed matches with proper pricing`)
+    const total = validTransformedMatches.length
 
-    return NextResponse.json(validTransformedMatches)
+    // Return flat array for legacy callers; paginated envelope when ?page is specified
+    if (!paginated) {
+      console.log(`Returning ${total} transformed matches (flat, no pagination)`)
+      return NextResponse.json(validTransformedMatches)
+    }
+
+    const pageData = validTransformedMatches.slice(skip, skip + limit)
+    console.log(`Returning ${pageData.length}/${total} transformed matches (paginated)`)
+
+    return NextResponse.json({
+      data: pageData,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasMore: skip + limit < total,
+      },
+    })
   } catch (error) {
     console.error('Error fetching public matches:', error)
     return NextResponse.json(

@@ -26,6 +26,7 @@ import Link from 'next/link'
 import { generateMetadata } from '@/lib/seo-helpers'
 import { BlogSearch } from '@/components/blog-search'
 import { NewsletterSignup } from '@/components/newsletter-signup'
+import { TeamLogoGenerator } from '@/components/blog/team-logo-generator'
 
 interface BlogMedia {
   id: string
@@ -55,6 +56,31 @@ interface BlogPost {
   isPublished: boolean
   isActive: boolean
   media?: BlogMedia[]
+}
+
+/** Map raw prediction outcomes to human-readable labels, or return a title-based fallback. */
+const RAW_PREDICTION_MAP: Record<string, string> = {
+  h_win: 'Home Win', a_win: 'Away Win', draw: 'Draw',
+  home_win: 'Home Win', away_win: 'Away Win',
+  btts_yes: 'Both Teams to Score', btts_no: 'Clean Sheet Expected',
+  over_2_5: 'Over 2.5 Goals', under_2_5: 'Under 2.5 Goals',
+}
+
+function formatExcerpt(excerpt: string, title: string): string {
+  if (!excerpt) return `Read our AI-powered analysis and prediction for this match.`
+  const trimmed = excerpt.trim()
+  const mapped = RAW_PREDICTION_MAP[trimmed.toLowerCase()]
+  if (mapped) {
+    const vsMatch = title.match(/(.+?)\s+vs?\s+(.+?)\s+Prediction/i)
+    if (vsMatch) {
+      return `Our AI predicts ${mapped} for ${vsMatch[1].trim()} vs ${vsMatch[2].trim()}. Read the full analysis, key stats, and betting insights.`
+    }
+    return `AI Prediction: ${mapped}. Read our detailed match analysis and betting insights.`
+  }
+  if (trimmed.length < 20 && /^[a-z_]+$/i.test(trimmed)) {
+    return `Read our AI-powered analysis and prediction for this match.`
+  }
+  return excerpt
 }
 
 export const metadata: Metadata = generateMetadata({
@@ -89,55 +115,68 @@ async function getAllBlogPosts(): Promise<BlogPost[]> {
   }
 }
 
-// Media Display Component for Blog Cards
+// Media Display Component for Blog Cards (with team logo support)
 function BlogCardMedia({ media, title }: { media?: BlogMedia[], title: string }) {
+  // Try to extract team names for sports posts
+  const isSportsPost = title.toLowerCase().includes('vs') ||
+    title.toLowerCase().includes('prediction') ||
+    title.toLowerCase().includes('match')
+
   if (!media || media.length === 0) {
+    if (isSportsPost) {
+      const vsMatch = title.match(/(.+?)\s+vs?\s+(.+?)\s+Prediction/i)
+      if (vsMatch) {
+        return (
+          <div className="h-48 bg-gradient-to-br from-slate-800 to-slate-700 relative overflow-hidden rounded-t-lg">
+            <div className="absolute inset-0 flex items-center justify-center p-4">
+              <TeamLogoGenerator
+                homeTeam={vsMatch[1].trim()}
+                awayTeam={vsMatch[2].trim()}
+                className="w-full h-full"
+              />
+            </div>
+          </div>
+        )
+      }
+    }
+
     return (
-      <div className="h-48 bg-gradient-to-br from-slate-700 to-slate-600 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent" />
+      <div className="h-48 bg-gradient-to-br from-emerald-600/20 via-blue-600/20 to-purple-600/20 relative overflow-hidden rounded-t-lg">
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-slate-900/40 to-transparent" />
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="text-center">
-            <BookOpen className="w-12 h-12 text-slate-500 mx-auto mb-2" />
-            <p className="text-slate-400 text-sm">No Media</p>
+            <div className="p-4 bg-slate-800/50 rounded-full mb-3 backdrop-blur-sm">
+              <BookOpen className="w-12 h-12 text-emerald-400" />
+            </div>
+            <p className="text-slate-300 text-sm font-medium">Featured Article</p>
           </div>
         </div>
       </div>
     )
   }
 
-  // Get the first image or video
   const firstMedia = media.find(item => item.type === 'image') || media[0]
 
   if (firstMedia.type === 'image') {
     return (
-      <div className="h-48 relative overflow-hidden">
+      <div className="h-48 relative overflow-hidden rounded-t-lg">
         <img
           src={firstMedia.url}
           alt={firstMedia.alt || title}
           className="w-full h-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent" />
-        <div className="absolute top-4 left-4">
-          <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
-            {firstMedia.type}
-          </Badge>
-        </div>
       </div>
     )
   } else {
     return (
-      <div className="h-48 relative overflow-hidden">
+      <div className="h-48 relative overflow-hidden rounded-t-lg">
         <video
           src={firstMedia.url}
           className="w-full h-full object-cover"
           preload="metadata"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent" />
-        <div className="absolute top-4 left-4">
-          <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">
-            {firstMedia.type}
-          </Badge>
-        </div>
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="p-3 bg-black/50 rounded-full">
             <Play className="w-8 h-8 text-white" />
@@ -288,7 +327,7 @@ export default async function BlogAllPage() {
                 </h3>
                 
                 <p className="text-slate-300 mb-4 leading-relaxed overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
-                  {post.excerpt}
+                  {formatExcerpt(post.excerpt, post.title)}
                 </p>
                 
                 <div className="flex items-center justify-between text-sm text-slate-400 mb-4">

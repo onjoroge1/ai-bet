@@ -212,7 +212,10 @@ export function transformMarketMatchToApiFormat(match: MarketMatch): any {
       currentScoreValue: currentScore
     })
     
-    if (finalResult) {
+    // Treat empty {} as if finalResult is missing
+    const hasMeaningfulFinalResult = finalResult && typeof finalResult === 'object' && Object.keys(finalResult).length > 0
+
+    if (hasMeaningfulFinalResult) {
       // ✅ Direct read from marketMatch.finalResult - format: {"score":{"away":1,"home":1},"outcome":"D","outcome_text":"Draw"}
       apiMatch.final_result = finalResult
       

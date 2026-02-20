@@ -10,7 +10,6 @@ import { AdvancedBreadcrumb } from '@/components/advanced-breadcrumb'
 import { 
   Plus, 
   Search, 
-  Filter, 
   Edit, 
   Trash2, 
   Eye, 
@@ -22,17 +21,18 @@ import {
   BookOpen,
   Send,
   Bot,
-  AlertTriangle,
-  Megaphone,
-  Settings,
-  Clock,
-  Trophy,
-  RefreshCw,
-  Download,
-  Zap,
-  Play,
-  Square
+  Star,
+  MoreVertical,
+  ArrowUpDown
 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu'
+import { Checkbox } from '@/components/ui/checkbox'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -47,7 +47,8 @@ interface BlogPost {
   tags: string[]
   geoTarget: string[]
   featured: boolean
-  publishedAt: string
+  publishedAt: string | null
+  createdAt?: string
   viewCount: number
   shareCount: number
   readTime: number
@@ -57,67 +58,21 @@ interface BlogPost {
   sourceUrl?: string
 }
 
-interface BreakingNews {
-  id: string
-  title: string
-  message: string
-  priority: number
-  isActive: boolean
-  expiresAt?: string
-  createdAt: string
-  updatedAt: string
-  sourceType?: string // Added for completed matches
-}
-
-interface CompletedMatch {
-  id: string;
-  homeTeam: string;
-  awayTeam: string;
-  homeScore: number;
-  awayScore: number;
-  league: string;
-  matchDate: string;
-  venue?: string;
-  referee?: string;
-  syncedToBreakingNews?: boolean;
-  syncedAt?: string;
-}
 
 export default function AdminBlogsPage() {
   const [blogs, setBlogs] = useState<BlogPost[]>([])
-  const [breakingNews, setBreakingNews] = useState<BreakingNews[]>([])
-  const [completedMatches, setCompletedMatches] = useState<CompletedMatch[]>([])
   const [loading, setLoading] = useState(true)
-  const [breakingNewsLoading, setBreakingNewsLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [showBreakingNewsForm, setShowBreakingNewsForm] = useState(false)
-  const [breakingNewsForm, setBreakingNewsForm] = useState({
-    title: '',
-    message: '',
-    priority: 1,
-    isActive: true,
-    expiresAt: ''
-  })
-  const [showBreakingNewsModal, setShowBreakingNewsModal] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [cronStatus, setCronStatus] = useState({
-    isRunning: false,
-    activeIntervals: 0,
-    nextSyncIn: 'Not running',
-    nextCleanupIn: 'Not running'
-  })
-  const [breakingNewsCollapsed, setBreakingNewsCollapsed] = useState(false)
-  const [completedMatchesCollapsed, setCompletedMatchesCollapsed] = useState(true)
-  const [automatedSyncCollapsed, setAutomatedSyncCollapsed] = useState(true)
+  const [sortBy, setSortBy] = useState<'date' | 'views' | 'title'>('date')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [selectedBlogs, setSelectedBlogs] = useState<Set<string>>(new Set())
+  const [bulkActionLoading, setBulkActionLoading] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
     fetchBlogs()
-    fetchBreakingNews()
-    fetchCompletedMatches()
-    fetchCronStatus()
   }, [])
 
   const fetchBlogs = async () => {
@@ -135,30 +90,6 @@ export default function AdminBlogsPage() {
     }
   }
 
-  const fetchBreakingNews = async () => {
-    try {
-      const response = await fetch('/api/admin/breaking-news')
-      const data = await response.json()
-      
-      if (data.success) {
-        setBreakingNews(data.data)
-      }
-    } catch (error) {
-      console.error('Error fetching breaking news:', error)
-    }
-  }
-
-  const fetchCompletedMatches = async () => {
-    try {
-      const response = await fetch('/api/admin/match-results?action=list')
-      const data = await response.json()
-      if (data.matches) {
-        setCompletedMatches(data.matches)
-      }
-    } catch (error) {
-      console.error('Error fetching completed matches:', error)
-    }
-  }
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this blog post?')) return
@@ -184,285 +115,214 @@ export default function AdminBlogsPage() {
 
   const handlePublish = async (id: string) => {
     try {
-      const response = await fetch(`/api/blogs/${id}/publish`, {
-        method: 'POST'
+      const blog = blogs.find(b => b.id === id)
+      if (!blog) return
+
+      // Use PUT endpoint to update isPublished (works for all posts)
+      const response = await fetch(`/api/blogs/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...blog,
+          isPublished: true,
+          publishedAt: blog.publishedAt || new Date().toISOString()
+        })
       })
-      
+
       if (response.ok) {
+        toast.success('Blog post published successfully')
         fetchBlogs() // Refresh the list
+      } else {
+        const data = await response.json()
+        toast.error(data.error || 'Failed to publish blog post')
       }
     } catch (error) {
       console.error('Error publishing blog:', error)
+      toast.error('Failed to publish blog post')
     }
   }
 
-  const handleBreakingNewsSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setBreakingNewsLoading(true)
-    
+  const handleToggleFeatured = async (id: string, currentFeatured: boolean) => {
     try {
-      const response = await fetch('/api/admin/breaking-news', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(breakingNewsForm)
-      })
-      
-      if (response.ok) {
-        setBreakingNewsForm({ title: '', message: '', priority: 1, isActive: true, expiresAt: '' })
-        setShowBreakingNewsForm(false)
-        fetchBreakingNews()
-      }
-    } catch (error) {
-      console.error('Error creating breaking news:', error)
-    } finally {
-      setBreakingNewsLoading(false)
-    }
-  }
+      const blog = blogs.find(b => b.id === id)
+      if (!blog) return
 
-  const handleBreakingNewsToggle = async (id: string, isActive: boolean) => {
-    try {
-      const newsItem = breakingNews.find(item => item.id === id)
-      if (!newsItem) return
-      
-      const response = await fetch('/api/admin/breaking-news', {
+      const response = await fetch(`/api/blogs/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...newsItem, isActive: !isActive })
+        body: JSON.stringify({ ...blog, featured: !currentFeatured })
       })
-      
+
       if (response.ok) {
-        fetchBreakingNews()
+        toast.success(currentFeatured ? 'Removed from featured' : 'Added to featured')
+        fetchBlogs()
+      } else {
+        toast.error('Failed to update featured status')
       }
     } catch (error) {
-      console.error('Error updating breaking news:', error)
+      console.error('Error toggling featured:', error)
+      toast.error('Failed to update featured status')
     }
   }
 
-  const handleBreakingNewsDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this breaking news item?')) return
-    
-    try {
-      const response = await fetch(`/api/admin/breaking-news?id=${id}`, {
-        method: 'DELETE'
-      })
-      
-      if (response.ok) {
-        fetchBreakingNews()
-      }
-    } catch (error) {
-      console.error('Error deleting breaking news:', error)
+  const handleAutoFeatureLatest = async () => {
+    if (!confirm('This will unfeature all current featured posts and feature the latest published post. Continue?')) {
+      return
     }
-  }
 
-  const toggleBreakingNewsStatus = async (id: string) => {
     try {
-      const newsItem = breakingNews.find(item => item.id === id)
-      if (!newsItem) return
+      setBulkActionLoading(true)
       
-      const response = await fetch('/api/admin/breaking-news', {
+      // Get the latest published post
+      const publishedBlogs = blogs.filter(b => b.isPublished).sort((a, b) => 
+        new Date(b.publishedAt || b.createdAt).getTime() - new Date(a.publishedAt || a.createdAt).getTime()
+      )
+      
+      if (publishedBlogs.length === 0) {
+        toast.error('No published posts found')
+        return
+      }
+
+      const latestPost = publishedBlogs[0]
+
+      // Unfeature all current featured posts
+      const featuredPosts = blogs.filter(b => b.featured && b.id !== latestPost.id)
+      const unfeaturePromises = featuredPosts.map(blog =>
+        fetch(`/api/blogs/${blog.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...blog, featured: false })
+        })
+      )
+
+      // Feature the latest post
+      const featurePromise = fetch(`/api/blogs/${latestPost.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...newsItem, isActive: !newsItem.isActive })
+        body: JSON.stringify({ ...latestPost, featured: true })
       })
+
+      await Promise.all([...unfeaturePromises, featurePromise])
       
-      if (response.ok) {
-        fetchBreakingNews()
-      }
+      toast.success(`Featured "${latestPost.title}" as the latest post`)
+      fetchBlogs()
+      setSelectedBlogs(new Set())
     } catch (error) {
-      console.error('Error toggling breaking news status:', error)
+      console.error('Error auto-featuring latest:', error)
+      toast.error('Failed to auto-feature latest post')
+    } finally {
+      setBulkActionLoading(false)
     }
   }
 
-  const deleteBreakingNews = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this breaking news item?')) return
-    
+  const handleBulkAction = async (action: 'delete' | 'publish' | 'unpublish' | 'feature' | 'unfeature') => {
+    if (selectedBlogs.size === 0) {
+      toast.error('Please select at least one blog post')
+      return
+    }
+
+    const actionText = {
+      delete: 'delete',
+      publish: 'publish',
+      unpublish: 'unpublish',
+      feature: 'feature',
+      unfeature: 'unfeature'
+    }[action]
+
+    if (!confirm(`Are you sure you want to ${actionText} ${selectedBlogs.size} post(s)?`)) {
+      return
+    }
+
     try {
-      const response = await fetch(`/api/admin/breaking-news?id=${id}`, {
-        method: 'DELETE'
+      setBulkActionLoading(true)
+      const promises = Array.from(selectedBlogs).map(async (id) => {
+        const blog = blogs.find(b => b.id === id)
+        if (!blog) return
+
+        if (action === 'delete') {
+          return fetch(`/api/blogs/${id}`, { method: 'DELETE' })
+        } else if (action === 'publish') {
+          // Use PUT endpoint for publishing (works for all posts)
+          return fetch(`/api/blogs/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...blog,
+              isPublished: true,
+              publishedAt: blog.publishedAt || new Date().toISOString()
+            })
+          })
+        } else {
+          const updateData: any = { ...blog }
+          if (action === 'unpublish') updateData.isPublished = false
+          if (action === 'feature') updateData.featured = true
+          if (action === 'unfeature') updateData.featured = false
+
+          return fetch(`/api/blogs/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updateData)
+          })
+        }
       })
+
+      await Promise.all(promises)
+      toast.success(`Successfully ${actionText}ed ${selectedBlogs.size} post(s)`)
+      fetchBlogs()
+      setSelectedBlogs(new Set())
+    } catch (error) {
+      console.error(`Error ${action}ing blogs:`, error)
+      toast.error(`Failed to ${actionText} posts`)
+    } finally {
+      setBulkActionLoading(false)
+    }
+  }
+
+  const toggleSelectBlog = (id: string) => {
+    const newSelected = new Set(selectedBlogs)
+    if (newSelected.has(id)) {
+      newSelected.delete(id)
+    } else {
+      newSelected.add(id)
+    }
+    setSelectedBlogs(newSelected)
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedBlogs.size === filteredBlogs.length) {
+      setSelectedBlogs(new Set())
+    } else {
+      setSelectedBlogs(new Set(filteredBlogs.map(b => b.id)))
+    }
+  }
+
+
+  const filteredBlogs = blogs
+    .filter(blog => {
+      const matchesSearch = blog.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           blog.excerpt.toLowerCase().includes(searchTerm.toLowerCase())
+      const matchesCategory = categoryFilter === 'all' || blog.category === categoryFilter
+      const matchesStatus = statusFilter === 'all' || 
+                           (statusFilter === 'published' && blog.isPublished) ||
+                           (statusFilter === 'draft' && !blog.isPublished)
+
+      return matchesSearch && matchesCategory && matchesStatus
+    })
+    .sort((a, b) => {
+      let comparison = 0
       
-      if (response.ok) {
-        fetchBreakingNews()
+      if (sortBy === 'date') {
+        const dateA = new Date(a.publishedAt || a.createdAt).getTime()
+        const dateB = new Date(b.publishedAt || b.createdAt).getTime()
+        comparison = dateA - dateB
+      } else if (sortBy === 'views') {
+        comparison = a.viewCount - b.viewCount
+      } else if (sortBy === 'title') {
+        comparison = a.title.localeCompare(b.title)
       }
-    } catch (error) {
-      console.error('Error deleting breaking news:', error)
-    }
-  }
-
-  const handleTestApi = async () => {
-    setIsLoading(true)
-    try {
-      const response = await fetch('/api/admin/match-results?action=test')
-      const data = await response.json()
-      if (data.success) {
-        const summary = data.summary
-        const resultsText = data.results.map((r: any) => 
-          `${r.league} (${r.date}): ${r.totalFixtures} fixtures${r.statuses.length > 0 ? ` (${r.statuses.join(', ')})` : ''}`
-        ).join('\n')
-        
-        alert(`API Test Successful!\n\nSummary:\nTotal Dates: ${summary.totalDates}\nTotal Leagues: ${summary.totalLeagues}\nDates with Fixtures: ${summary.datesWithFixtures}\nLeagues with Fixtures: ${summary.leaguesWithFixtures}\nTotal Fixtures: ${summary.totalFixtures}\n\nDetailed Results:\n${resultsText}\n\nCheck console for full API responses.`)
-        console.log('API Test Result:', data)
-      } else {
-        alert('API test failed. Check console for details.')
-      }
-    } catch (error) {
-      console.error('Error testing API:', error)
-      alert('Failed to test API connection.')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleFetchMatches = async () => {
-    setIsLoading(true)
-    try {
-      const response = await fetch('/api/admin/match-results?action=fetch')
-      const data = await response.json()
-      if (data.success) {
-        fetchCompletedMatches()
-        alert('Completed matches fetched successfully!')
-      } else {
-        alert('Failed to fetch completed matches.')
-      }
-    } catch (error) {
-      console.error('Error fetching matches:', error)
-      alert('Failed to fetch completed matches.')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleSyncToNews = async () => {
-    setIsLoading(true)
-    try {
-      const response = await fetch('/api/admin/match-results?action=sync')
-      const data = await response.json()
-      if (data.success) {
-        fetchCompletedMatches()
-        alert('Completed matches synced to news successfully!')
-      } else {
-        alert('Failed to sync completed matches to news.')
-      }
-    } catch (error) {
-      console.error('Error syncing matches to news:', error)
-      alert('Failed to sync completed matches to news.')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleManualSync = async () => {
-    setIsLoading(true)
-    try {
-      const response = await fetch('/api/admin/match-results', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'manual-sync' })
-      })
-      const data = await response.json()
-      if (data.success) {
-        fetchCompletedMatches()
-        alert('Full sync completed successfully!')
-      } else {
-        alert('Failed to perform full sync.')
-      }
-    } catch (error) {
-      console.error('Error performing full sync:', error)
-      alert('Failed to perform full sync.')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleSyncMatch = async (id: string) => {
-    if (!confirm('Are you sure you want to sync this match to breaking news?')) return
-    setIsLoading(true)
-    try {
-      // For individual match sync, we'll use the sync action which will process all unsynced matches
-      const response = await fetch('/api/admin/match-results?action=sync')
-      const data = await response.json()
-      if (data.success) {
-        fetchCompletedMatches()
-        alert('Match synced to breaking news successfully!')
-      } else {
-        alert('Failed to sync match to breaking news.')
-      }
-    } catch (error) {
-      console.error('Error syncing match:', error)
-      alert('Failed to sync match to breaking news.')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const fetchCronStatus = async () => {
-    try {
-      const response = await fetch('/api/admin/cron')
-      const data = await response.json()
-      if (data.success) {
-        setCronStatus(data.status)
-      }
-    } catch (error) {
-      console.error('Error fetching cron status:', error)
-    }
-  }
-
-  const handleStartCron = async () => {
-    setIsLoading(true)
-    try {
-      const response = await fetch('/api/admin/cron', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'start' })
-      })
-      const data = await response.json()
-      if (data.success) {
-        fetchCronStatus()
-        alert('Automated sync started successfully!')
-      } else {
-        alert('Failed to start automated sync.')
-      }
-    } catch (error) {
-      console.error('Error starting cron:', error)
-      alert('Failed to start automated sync.')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleStopCron = async () => {
-    setIsLoading(true)
-    try {
-      const response = await fetch('/api/admin/cron', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'stop' })
-      })
-      const data = await response.json()
-      if (data.success) {
-        fetchCronStatus()
-        alert('Automated sync stopped successfully!')
-      } else {
-        alert('Failed to stop automated sync.')
-      }
-    } catch (error) {
-      console.error('Error stopping cron:', error)
-      alert('Failed to stop automated sync.')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const filteredBlogs = blogs.filter(blog => {
-    const matchesSearch = blog.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         blog.excerpt.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesCategory = categoryFilter === 'all' || blog.category === categoryFilter
-    const matchesStatus = statusFilter === 'all' || 
-                         (statusFilter === 'published' && blog.isPublished) ||
-                         (statusFilter === 'draft' && !blog.isPublished)
-
-    return matchesSearch && matchesCategory && matchesStatus
-  })
+      
+      return sortOrder === 'asc' ? comparison : -comparison
+    })
 
   const categories = ['all', 'predictions', 'strategy', 'analysis', 'technology', 'success-stories', 'tips']
   const statuses = ['all', 'published', 'draft']
@@ -543,6 +403,9 @@ export default function AdminBlogsPage() {
                   <p className="text-2xl font-bold text-white">
                     {blogs.filter(b => b.isPublished).length}
                   </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {blogs.filter(b => !b.isPublished).length} drafts
+                  </p>
                 </div>
                 <div className="p-3 bg-green-500/20 rounded-lg">
                   <Eye className="w-6 h-6 text-green-400" />
@@ -575,9 +438,16 @@ export default function AdminBlogsPage() {
                   <p className="text-2xl font-bold text-white">
                     {blogs.filter(b => b.featured).length}
                   </p>
+                  <button
+                    onClick={handleAutoFeatureLatest}
+                    disabled={bulkActionLoading}
+                    className="text-xs text-emerald-400 hover:text-emerald-300 mt-1 disabled:opacity-50"
+                  >
+                    Auto-feature latest
+                  </button>
                 </div>
                 <div className="p-3 bg-yellow-500/20 rounded-lg">
-                  <Tag className="w-6 h-6 text-yellow-400" />
+                  <Star className="w-6 h-6 text-yellow-400" />
                 </div>
               </div>
             </CardContent>
@@ -585,383 +455,12 @@ export default function AdminBlogsPage() {
         </div>
       </div>
 
-      {/* Breaking News Management */}
+
+      {/* Filters and Bulk Actions */}
       <div className="px-8">
         <Card className="bg-slate-800 border-slate-700 mb-6">
-          <CardHeader className="cursor-pointer" onClick={() => setBreakingNewsCollapsed(!breakingNewsCollapsed)}>
-            <CardTitle className="flex items-center justify-between text-white">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-red-400" />
-                Breaking News Management
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-400">
-                  {breakingNewsCollapsed ? 'Click to expand' : 'Click to collapse'}
-                </span>
-                <div className={`transform transition-transform duration-200 ${breakingNewsCollapsed ? 'rotate-180' : ''}`}>
-                  ▼
-                </div>
-              </div>
-            </CardTitle>
-          </CardHeader>
-          {!breakingNewsCollapsed && (
-          <CardContent>
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-slate-300 text-sm">
-                Manage breaking news items that appear in the blog ticker
-              </p>
-              <Button 
-                onClick={() => setShowBreakingNewsForm(true)}
-                className="bg-red-600 hover:bg-red-700"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Add Breaking News
-              </Button>
-            </div>
-            
-            {/* Breaking News Form */}
-            {showBreakingNewsForm && (
-              <form onSubmit={handleBreakingNewsSubmit} className="bg-slate-700/50 rounded-lg p-4 mb-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm text-slate-300 mb-2 block">Title</label>
-                    <Input
-                      placeholder="Breaking news title"
-                      value={breakingNewsForm.title}
-                      onChange={(e) => setBreakingNewsForm(prev => ({ ...prev, title: e.target.value }))}
-                      className="bg-slate-600 border-slate-500 text-white"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-slate-300 mb-2 block">Priority</label>
-                    <Select 
-                      value={breakingNewsForm.priority.toString()} 
-                      onValueChange={(value) => setBreakingNewsForm(prev => ({ ...prev, priority: parseInt(value) }))}
-                    >
-                      <SelectTrigger className="bg-slate-600 border-slate-500 text-white">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">Low Priority</SelectItem>
-                        <SelectItem value="2">Medium Priority</SelectItem>
-                        <SelectItem value="3">High Priority</SelectItem>
-                        <SelectItem value="4">Critical</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="text-sm text-slate-300 mb-2 block">Message</label>
-                    <Input
-                      placeholder="Full breaking news message"
-                      value={breakingNewsForm.message}
-                      onChange={(e) => setBreakingNewsForm(prev => ({ ...prev, message: e.target.value }))}
-                      className="bg-slate-600 border-slate-500 text-white"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-slate-300 mb-2 block">Expires At (Optional)</label>
-                    <Input
-                      type="datetime-local"
-                      value={breakingNewsForm.expiresAt}
-                      onChange={(e) => setBreakingNewsForm(prev => ({ ...prev, expiresAt: e.target.value }))}
-                      className="bg-slate-600 border-slate-500 text-white"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="isActive"
-                      checked={breakingNewsForm.isActive}
-                      onChange={(e) => setBreakingNewsForm(prev => ({ ...prev, isActive: e.target.checked }))}
-                      className="rounded border-slate-500 bg-slate-600 text-red-500 focus:ring-red-500"
-                    />
-                    <label htmlFor="isActive" className="text-sm text-slate-300">Active immediately</label>
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <Button 
-                    type="submit" 
-                    className="bg-red-600 hover:bg-red-700"
-                    disabled={breakingNewsLoading}
-                  >
-                    {breakingNewsLoading ? 'Creating...' : 'Create Breaking News'}
-                  </Button>
-                </div>
-              </form>
-            )}
-
-            {/* Breaking News List */}
-            <div className="space-y-3">
-              {breakingNews.map((news) => (
-                <div key={news.id} className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg border border-slate-600">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-semibold text-white">{news.title}</h4>
-                      <Badge className={`${
-                        news.priority === 4 ? 'bg-red-500/20 text-red-400 border-red-500/30' :
-                        news.priority === 3 ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' :
-                        news.priority === 2 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' :
-                        'bg-blue-500/20 text-blue-400 border-blue-500/30'
-                      }`}>
-                        Priority {news.priority}
-                      </Badge>
-                      {news.isActive ? (
-                        <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Active</Badge>
-                      ) : (
-                        <Badge className="bg-slate-500/20 text-slate-400 border-slate-500/30">Inactive</Badge>
-                      )}
-                    </div>
-                    <p className="text-slate-300 text-sm mb-2">{news.message}</p>
-                    <div className="flex items-center gap-4 text-xs text-slate-400">
-                      <span>Created: {new Date(news.createdAt).toLocaleDateString()}</span>
-                      {news.expiresAt && (
-                        <span>Expires: {new Date(news.expiresAt).toLocaleDateString()}</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleBreakingNewsToggle(news.id, news.isActive)}
-                      className={`${
-                        news.isActive 
-                          ? 'border-orange-500 text-orange-400 hover:bg-orange-500/20' 
-                          : 'border-green-500 text-green-400 hover:bg-green-500/20'
-                      }`}
-                    >
-                      {news.isActive ? 'Deactivate' : 'Activate'}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleBreakingNewsDelete(news.id)}
-                      className="border-red-500 text-red-400 hover:bg-red-500/20"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-              {breakingNews.length === 0 && (
-                <div className="text-center py-8 text-slate-400">
-                  <Megaphone className="w-12 h-12 mx-auto mb-4 text-slate-600" />
-                  <p>No breaking news items yet</p>
-                  <p className="text-sm">Create your first breaking news item to get started</p>
-                </div>
-              )}
-            </div>
-          </CardContent>
-          )}
-        </Card>
-      </div>
-
-      {/* Completed Matches Management */}
-      <div className="px-8">
-        <Card className="bg-slate-800 border-slate-700 mb-6">
-          <CardHeader className="cursor-pointer" onClick={() => setCompletedMatchesCollapsed(!completedMatchesCollapsed)}>
-            <CardTitle className="flex items-center justify-between text-white">
-              <div className="flex items-center gap-2">
-                <Trophy className="w-5 h-5 text-emerald-400" />
-                Completed Matches Management
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-400">
-                  {completedMatchesCollapsed ? 'Click to expand' : 'Click to collapse'}
-                </span>
-                <div className={`transform transition-transform duration-200 ${completedMatchesCollapsed ? 'rotate-180' : ''}`}>
-                  ▼
-                </div>
-              </div>
-            </CardTitle>
-          </CardHeader>
-          {!completedMatchesCollapsed && (
-          <CardContent>
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-slate-300 text-sm">
-                Automatically sync completed matches from RapidAPI to breaking news
-              </p>
-              <div className="flex gap-2">
-                <Button 
-                  onClick={handleTestApi}
-                  disabled={isLoading}
-                  className="bg-orange-600 hover:bg-orange-700"
-                >
-                  {isLoading ? (
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Play className="w-4 h-4 mr-2" />
-                  )}
-                  Test API
-                </Button>
-                <Button 
-                  onClick={handleFetchMatches}
-                  disabled={isLoading}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  {isLoading ? (
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Download className="w-4 h-4 mr-2" />
-                  )}
-                  Fetch Matches
-                </Button>
-                <Button 
-                  onClick={handleSyncToNews}
-                  disabled={isLoading}
-                  className="bg-emerald-600 hover:bg-emerald-700"
-                >
-                  {isLoading ? (
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                  )}
-                  Sync to News
-                </Button>
-                <Button 
-                  onClick={handleManualSync}
-                  disabled={isLoading}
-                  className="bg-purple-600 hover:bg-purple-700"
-                >
-                  {isLoading ? (
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Zap className="w-4 h-4 mr-2" />
-                  )}
-                  Full Sync
-                </Button>
-              </div>
-            </div>
-            
-            {/* Completed Matches List */}
-            <div className="space-y-3">
-              {completedMatches.map((match) => (
-                <div key={match.id} className="flex items-center justify-between p-3 bg-slate-700 rounded-lg">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-medium text-white">
-                        {match.homeTeam} {match.homeScore} - {match.awayScore} {match.awayTeam}
-                      </h4>
-                      <Badge variant="outline" className="text-blue-400 border-blue-400">
-                        {match.league}
-                      </Badge>
-                      {match.syncedToBreakingNews && (
-                        <Badge variant="outline" className="text-emerald-400 border-emerald-400">
-                          Synced
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-4 mt-2 text-xs text-slate-400">
-                      <span>Date: {new Date(match.matchDate).toLocaleDateString()}</span>
-                      <span>Venue: {match.venue || 'N/A'}</span>
-                      <span>Referee: {match.referee || 'N/A'}</span>
-                      {match.syncedAt && (
-                        <span>Synced: {new Date(match.syncedAt).toLocaleDateString()}</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {!match.syncedToBreakingNews && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleSyncMatch(match.id)}
-                        disabled={isLoading}
-                        className="border-emerald-500 text-emerald-500 hover:bg-emerald-500/10"
-                      >
-                        Sync Now
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-          )}
-        </Card>
-      </div>
-
-      {/* Automated Sync Management */}
-      <div className="px-8">
-        <Card className="bg-slate-800 border-slate-700 mb-6">
-          <CardHeader className="cursor-pointer" onClick={() => setAutomatedSyncCollapsed(!automatedSyncCollapsed)}>
-            <CardTitle className="flex items-center justify-between text-white">
-              <div className="flex items-center gap-2">
-                <Settings className="w-5 h-5 text-blue-400" />
-                Automated Sync Management
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-400">
-                  {automatedSyncCollapsed ? 'Click to expand' : 'Click to collapse'}
-                </span>
-                <div className={`transform transition-transform duration-200 ${automatedSyncCollapsed ? 'rotate-180' : ''}`}>
-                  ▼
-                </div>
-              </div>
-            </CardTitle>
-          </CardHeader>
-          {!automatedSyncCollapsed && (
-          <CardContent>
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-slate-300 text-sm">
-                Control automated sync tasks that run every 2 hours to fetch new matches and sync to breaking news
-              </p>
-              <div className="flex gap-2">
-                <Button 
-                  onClick={handleStartCron}
-                  disabled={isLoading}
-                  className="bg-green-600 hover:bg-green-700"
-                >
-                  <Play className="w-4 h-4 mr-2" />
-                  Start Auto-Sync
-                </Button>
-                <Button 
-                  onClick={handleStopCron}
-                  disabled={isLoading}
-                  variant="outline"
-                  className="border-red-500 text-red-500 hover:bg-red-500/10"
-                >
-                  <Square className="w-4 h-4 mr-2" />
-                  Stop Auto-Sync
-                </Button>
-              </div>
-            </div>
-            
-            {/* Cron Status */}
-            <div className="bg-slate-700 rounded-lg p-4">
-              <h4 className="font-medium text-white mb-3">Sync Task Status</h4>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-slate-400">Status:</span>
-                  <span className={`ml-2 font-medium ${cronStatus.isRunning ? 'text-green-400' : 'text-red-400'}`}>
-                    {cronStatus.isRunning ? 'Running' : 'Stopped'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-400">Next Sync:</span>
-                  <span className="ml-2 text-white">{cronStatus.nextSyncIn}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400">Next Cleanup:</span>
-                  <span className="ml-2 text-white">{cronStatus.nextCleanupIn}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400">Active Tasks:</span>
-                  <span className="ml-2 text-white">{cronStatus.activeIntervals}</span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-          )}
-        </Card>
-      </div>
-
-      {/* Filters */}
-      <div className="px-8">
-        <Card className="bg-slate-800 border-slate-700 mb-6">
-          <CardContent className="p-6">
+          <CardContent className="p-6 space-y-4">
+            {/* Search and Filters Row */}
             <div className="flex flex-col md:flex-row gap-4">
               <div className="flex-1">
                 <div className="relative">
@@ -1000,7 +499,109 @@ export default function AdminBlogsPage() {
                   ))}
                 </SelectContent>
               </Select>
+
+              <Select value={`${sortBy}-${sortOrder}`} onValueChange={(value) => {
+                const [by, order] = value.split('-') as ['date' | 'views' | 'title', 'asc' | 'desc']
+                setSortBy(by)
+                setSortOrder(order)
+              }}>
+                <SelectTrigger className="w-full md:w-48 bg-slate-700 border-slate-600 text-white">
+                  <div className="flex items-center gap-2">
+                    <ArrowUpDown className="w-4 h-4" />
+                    <SelectValue placeholder="Sort" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="date-desc">Newest First</SelectItem>
+                  <SelectItem value="date-asc">Oldest First</SelectItem>
+                  <SelectItem value="views-desc">Most Views</SelectItem>
+                  <SelectItem value="views-asc">Least Views</SelectItem>
+                  <SelectItem value="title-asc">Title A-Z</SelectItem>
+                  <SelectItem value="title-desc">Title Z-A</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+
+            {/* Bulk Actions Bar */}
+            {selectedBlogs.size > 0 && (
+              <div className="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg border border-slate-600">
+                <div className="flex items-center gap-4">
+                  <span className="text-sm text-slate-300">
+                    {selectedBlogs.size} post(s) selected
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={toggleSelectAll}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    {selectedBlogs.size === filteredBlogs.length ? 'Deselect All' : 'Select All'}
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={bulkActionLoading}
+                        className="border-slate-600 text-slate-300"
+                      >
+                        Bulk Actions
+                        <MoreVertical className="w-4 h-4 ml-2" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700">
+                      <DropdownMenuItem
+                        onClick={() => handleBulkAction('publish')}
+                        className="text-green-400"
+                      >
+                        <Send className="w-4 h-4 mr-2" />
+                        Publish Selected
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleBulkAction('unpublish')}
+                        className="text-orange-400"
+                      >
+                        <Eye className="w-4 h-4 mr-2" />
+                        Unpublish Selected
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => handleBulkAction('feature')}
+                        className="text-yellow-400"
+                      >
+                        <Star className="w-4 h-4 mr-2" />
+                        Feature Selected
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleBulkAction('unfeature')}
+                        className="text-slate-400"
+                      >
+                        <Star className="w-4 h-4 mr-2" />
+                        Unfeature Selected
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => handleBulkAction('delete')}
+                        className="text-red-400"
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete Selected
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedBlogs(new Set())}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -1008,14 +609,24 @@ export default function AdminBlogsPage() {
       {/* Blog List */}
       <div className="px-8 space-y-4">
         {filteredBlogs.map((blog) => (
-          <Card key={blog.id} className="bg-slate-800 border-slate-700 hover:border-slate-600 transition-colors">
+          <Card key={blog.id} className={`bg-slate-800 border-slate-700 hover:border-slate-600 transition-colors ${selectedBlogs.has(blog.id) ? 'border-emerald-500/50 bg-emerald-900/10' : ''}`}>
             <CardContent className="p-6">
-              <div className="flex items-start justify-between">
+              <div className="flex items-start gap-4">
+                {/* Checkbox for bulk selection */}
+                <div className="pt-1">
+                  <Checkbox
+                    checked={selectedBlogs.has(blog.id)}
+                    onCheckedChange={() => toggleSelectBlog(blog.id)}
+                    className="border-slate-600"
+                  />
+                </div>
+
                 <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
+                  <div className="flex items-center gap-3 mb-2 flex-wrap">
                     <h3 className="text-lg font-semibold text-white">{blog.title}</h3>
                     {blog.featured && (
                       <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
+                        <Star className="w-3 h-3 mr-1" />
                         Featured
                       </Badge>
                     )}
@@ -1034,14 +645,14 @@ export default function AdminBlogsPage() {
                   
                   <p className="text-slate-300 mb-3 line-clamp-2">{blog.excerpt}</p>
                   
-                  <div className="flex items-center gap-6 text-sm text-slate-400">
+                  <div className="flex items-center gap-6 text-sm text-slate-400 flex-wrap">
                     <div className="flex items-center gap-1">
                       <User className="w-4 h-4" />
                       {blog.author}
                     </div>
                     <div className="flex items-center gap-1">
                       <Calendar className="w-4 h-4" />
-                      {new Date(blog.publishedAt).toLocaleDateString()}
+                      {new Date(blog.publishedAt || blog.createdAt).toLocaleDateString()}
                     </div>
                     <div className="flex items-center gap-1">
                       <Eye className="w-4 h-4" />
@@ -1058,42 +669,59 @@ export default function AdminBlogsPage() {
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-2 ml-4">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => router.push(`/blog/${blog.slug}`)}
-                    className="text-blue-400 hover:text-blue-300"
-                  >
-                    <Eye className="w-4 h-4" />
-                  </Button>
-                  {!blog.isPublished && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handlePublish(blog.id)}
-                      className="text-green-400 hover:text-green-300"
-                      title="Publish post"
-                    >
-                      <Send className="w-4 h-4" />
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => router.push(`/admin/blogs/${blog.id}`)}
-                    className="text-emerald-400 hover:text-emerald-300"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDelete(blog.id)}
-                    className="text-red-400 hover:text-red-300"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                <div className="flex items-center gap-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-slate-400 hover:text-white"
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700">
+                      <DropdownMenuItem
+                        onClick={() => router.push(`/blog/${blog.slug}`)}
+                        className="text-blue-400"
+                      >
+                        <Eye className="w-4 h-4 mr-2" />
+                        View Post
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => router.push(`/admin/blogs/${blog.id}`)}
+                        className="text-emerald-400"
+                      >
+                        <Edit className="w-4 h-4 mr-2" />
+                        Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      {!blog.isPublished && (
+                        <DropdownMenuItem
+                          onClick={() => handlePublish(blog.id)}
+                          className="text-green-400"
+                        >
+                          <Send className="w-4 h-4 mr-2" />
+                          Publish
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem
+                        onClick={() => handleToggleFeatured(blog.id, blog.featured)}
+                        className={blog.featured ? "text-orange-400" : "text-yellow-400"}
+                      >
+                        <Star className="w-4 h-4 mr-2" />
+                        {blog.featured ? 'Unfeature' : 'Feature'}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => handleDelete(blog.id)}
+                        className="text-red-400"
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
             </CardContent>

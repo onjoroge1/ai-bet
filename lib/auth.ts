@@ -108,6 +108,9 @@ declare module "next-auth" {
       name?: string | null
       role: string
       referralCode?: string | null
+      subscriptionPlan?: string | null
+      subscriptionStatus?: string | null
+      subscriptionExpiresAt?: string | null
     }
   }
 }
@@ -231,7 +234,7 @@ export const authOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user, account }: { token: any; user: any; account: any }) {
+    async jwt({ token, user, account, trigger }: { token: any; user: any; account: any; trigger?: string }) {
       if (user) {
         // Initial sign in - only log in development
         if (process.env.NODE_ENV === 'development') {
@@ -246,7 +249,49 @@ export const authOptions = {
         token.name = user.name
         token.role = user.role
         token.referralCode = user.referralCode
+
+        // Embed subscription status so middleware can gate premium routes
+        // without a DB call on every request
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: user.id },
+            select: {
+              subscriptionPlan: true,
+              subscriptionStatus: true,
+              subscriptionExpiresAt: true,
+            },
+          })
+          token.subscriptionPlan = dbUser?.subscriptionPlan ?? null
+          token.subscriptionStatus = dbUser?.subscriptionStatus ?? null
+          token.subscriptionExpiresAt = dbUser?.subscriptionExpiresAt?.toISOString() ?? null
+        } catch {
+          // Non-fatal – subscription will be re-checked client-side
+          token.subscriptionPlan = null
+          token.subscriptionStatus = null
+          token.subscriptionExpiresAt = null
+        }
       }
+
+      // When the client calls useSession().update() (e.g. after a purchase),
+      // re-read subscription fields from DB so the token reflects the new status.
+      if (trigger === 'update' && token.id) {
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: token.id as string },
+            select: {
+              subscriptionPlan: true,
+              subscriptionStatus: true,
+              subscriptionExpiresAt: true,
+            },
+          })
+          token.subscriptionPlan = dbUser?.subscriptionPlan ?? null
+          token.subscriptionStatus = dbUser?.subscriptionStatus ?? null
+          token.subscriptionExpiresAt = dbUser?.subscriptionExpiresAt?.toISOString() ?? null
+        } catch {
+          // Retain existing token values on error
+        }
+      }
+
       // Token refresh - no logging (happens frequently, expected behavior)
       return token
     },
@@ -259,6 +304,22 @@ export const authOptions = {
         session.user.name = token.name
         session.user.role = token.role
         session.user.referralCode = token.referralCode
+        // Propagate subscription status to client session
+        session.user.subscriptionPlan = token.subscriptionPlan ?? null
+        session.user.subscriptionStatus = token.subscriptionStatus ?? null
+        session.user.subscriptionExpiresAt = token.subscriptionExpiresAt ?? null
+
+        // Derive and propagate isPremium so API routes can use it directly
+        const plan = (token.subscriptionPlan ?? '') as string
+        const status = (token.subscriptionStatus ?? '') as string
+        const expiresAt = token.subscriptionExpiresAt as string | null
+        const isAdminRole = (token.role as string)?.toLowerCase() === 'admin'
+        const isPremiumPlan =
+          plan.toLowerCase().includes('premium') ||
+          plan.toLowerCase().includes('monthly') ||
+          plan.toLowerCase().includes('vip')
+        const isNotExpired = expiresAt ? new Date(expiresAt) > new Date() : false
+        session.user.isPremium = isAdminRole || (isPremiumPlan && isNotExpired)
       } else {
         // Only log if there's an issue (no token when expected)
         if (process.env.NODE_ENV === 'development') {

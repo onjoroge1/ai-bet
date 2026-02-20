@@ -3,7 +3,7 @@ import type React from "react"
 import type { Metadata, Viewport } from "next"
 import { Inter } from "next/font/google"
 import { Navigation } from "@/components/navigation"
-import { Footer } from "@/components/footer"
+import { ConditionalFooter } from "@/components/conditional-footer"
 import { Providers } from "./providers"
 import { SkipToMainContent, LiveRegion } from "@/components/ui/accessibility"
 import { AllSchemaMarkup } from "@/components/schema-markup"
@@ -97,11 +97,11 @@ export const metadata: Metadata = {
       "max-snippet": -1,
     },
   },
-  verification: {
-    google: "your-google-verification-code", // Add when you have Google Search Console
-    yandex: "your-yandex-verification-code", // Add if targeting Russian market
-    yahoo: "your-yahoo-verification-code", // Add if needed
-  },
+  // verification: {
+  //   google: "REAL_CODE_HERE",   // Uncomment once you register in Google Search Console
+  //   yandex: "REAL_CODE_HERE",   // Uncomment if targeting Russian market
+  //   yahoo: "REAL_CODE_HERE",    // Uncomment if needed
+  // },
   other: {
     "application-name": "SnapBet AI",
     "apple-mobile-web-app-title": "SnapBet AI",
@@ -166,7 +166,7 @@ export default function RootLayout({
           <main id="main-content" className="pb-16 md:pb-0" role="main" tabIndex={-1}>
             {children}
           </main>
-          <Footer />
+          <ConditionalFooter />
         </Providers>
         
         {/* PWA Components */}

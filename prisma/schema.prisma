@@ -367,6 +367,11 @@ model User {
 
   subscriptionPlan String?
 
+  // Stripe subscription fields
+  stripeCustomerId     String?  @unique // Stripe customer ID (cus_xxx)
+  stripeSubscriptionId String?  @unique // Stripe subscription ID (sub_xxx)
+  subscriptionStatus   String?  // "active", "past_due", "canceled", "trialing", "unpaid", "incomplete"
+
   totalWinnings Decimal @default(0)
 
   winStreak Int @default(0)
@@ -450,6 +455,34 @@ model User {
   blogComments BlogComment[]
 
   parlayPurchases ParlayPurchase[]
+
+  savedBets SavedBet[]
+}
+
+// Saved Bets — persisted bet slips with auto-settlement from match results
+model SavedBet {
+  id           String    @id @default(cuid())
+  userId       String
+  name         String?
+  betType      String    @default("single") // "single", "parlay", "roundrobin"
+  totalOdds    Decimal
+  stake        Decimal?
+  status       String    @default("pending") // "pending", "won", "lost", "void", "partial"
+  items        Json      // Array of {matchId, pick, odds, league, market, result?, homeTeam?, awayTeam?}
+  sportsbook   String?
+  notes        String?
+  potentialReturn Decimal?
+  actualReturn    Decimal?
+  settledAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([status, createdAt])
+  @@index([createdAt])
+  @@map("saved_bets")
 }
 
 model UserPrediction {
@@ -1740,9 +1773,9 @@ model ParlayConsensus {
   confidenceTier     String // "high", "medium", "low"
   parlayType         String // "same_league", "cross_league", etc.
   leagueGroup        String?
-  earliestKickoff    DateTime
-  latestKickoff      DateTime
-  kickoffWindow      String // "today", "tomorrow", "this_week"
+  earliestKickoff    DateTime? // Nullable to handle legacy data
+  latestKickoff      DateTime? // Nullable to handle legacy data
+  kickoffWindow      String? // "today", "tomorrow", "this_week"
   status             String   @default("active") // "active", "expired", "settled"
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt

@@ -118,7 +118,7 @@ async function generateDraftForMarketMatch(marketMatch: MarketMatchWithQP): Prom
 
   try {
     console.log(`[TemplateBlog] Starting draft generation for ${marketMatch.homeTeam} vs ${marketMatch.awayTeam}`)
-    const draft = TemplateBlogGenerator.generateTemplateOnlyDraft(quickPurchase, marketMatch)
+    const draft = await TemplateBlogGenerator.generateTemplateOnlyDraft(quickPurchase, marketMatch, { useLLM: true })
     console.log(`[TemplateBlog] Draft generated successfully`)
 
     // Generate slug from title

@@ -102,7 +102,7 @@ export class NotificationService {
       message,
       type: isWin ? 'success' : 'info',
       category: 'prediction',
-      actionUrl: `/dashboard/predictions`,
+      actionUrl: `/dashboard/my-tips`,
       metadata: {
         predictionId,
         matchId,
@@ -129,7 +129,7 @@ export class NotificationService {
       message: `A new ${predictionType} prediction with ${confidenceScore}% confidence is ready for you!`,
       type: 'prediction',
       category: 'prediction',
-      actionUrl: `/dashboard/predictions`,
+      actionUrl: `/dashboard/my-tips`,
       metadata: {
         predictionId,
         matchId,
@@ -510,7 +510,7 @@ export class NotificationService {
           message: `${highConfidencePredictions.length} high-confidence prediction${highConfidencePredictions.length > 1 ? 's' : ''} with ${highConfidencePredictions[0].confidence}%+ confidence are ready for you!`,
           type: 'prediction',
           category: 'prediction',
-          actionUrl: `/dashboard/predictions`,
+          actionUrl: `/dashboard/my-tips`,
           metadata: {
             predictions: highConfidencePredictions,
             count: highConfidencePredictions.length,
@@ -700,7 +700,7 @@ export class NotificationService {
       message: `Your tip "${tipName}" has been purchased for ${currencySymbol}${amount.toFixed(2)}. Check your dashboard to view the prediction details.`,
       type: 'success',
       category: 'payment',
-      actionUrl: `/dashboard/predictions`,
+      actionUrl: `/dashboard/my-tips`,
       metadata: {
         amount,
         tipName,
@@ -774,7 +774,7 @@ export class NotificationService {
       message: `You've successfully claimed "${tipName}" using ${creditsUsed} credit${creditsUsed > 1 ? 's' : ''}. You have ${creditsRemaining} credit${creditsRemaining !== 1 ? 's' : ''} remaining.`,
       type: 'success',
       category: 'payment',
-      actionUrl: `/dashboard/predictions`,
+      actionUrl: `/dashboard/my-tips`,
       metadata: {
         tipName,
         matchDetails,

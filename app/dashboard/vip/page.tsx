@@ -1,383 +1,598 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Crown, Star, CheckCircle, Zap, MessageCircle, Video, BarChart3, Shield, Sparkles } from "lucide-react"
-import { DashboardBreadcrumb } from "@/components/dashboard-breadcrumb"
+import { Button } from "@/components/ui/button"
+import { PremiumGate } from "@/components/premium-gate"
+import { ConfidenceRing } from "@/components/match/shared"
+import Link from "next/link"
+import { cn } from "@/lib/utils"
+import { generateMatchSlug } from "@/lib/match-slug"
+import {
+  Crown,
+  Activity,
+  Layers,
+  Target,
+  Clock,
+  ChevronRight,
+  RefreshCw,
+  Loader2,
+  ArrowUpRight,
+  Brain,
+} from "lucide-react"
 
-export default function VIPPage() {
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null)
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-  const vipPlans = [
-    {
-      id: "monthly",
-      name: "VIP Monthly",
-      price: "KES 2,500",
-      originalPrice: "KES 3,500",
-      period: "/month",
-      description: "Perfect for trying VIP features",
-      features: [
-        "Unlimited daily tips",
-        "VIP-only predictions",
-        "Live chat support",
-        "Video analysis",
-        "Early access to specials",
-        "Mobile app access",
-      ],
-      popular: false,
-      savings: 29,
-    },
-    {
-      id: "quarterly",
-      name: "VIP Quarterly",
-      price: "KES 6,000",
-      originalPrice: "KES 10,500",
-      period: "/3 months",
-      description: "Best value for serious bettors",
-      features: [
-        "Everything in Monthly",
-        "Personal betting advisor",
-        "Custom betting strategies",
-        "Priority customer support",
-        "Exclusive VIP events",
-        "Advanced analytics dashboard",
-        "Money management tools",
-      ],
-      popular: true,
-      savings: 43,
-    },
-    {
-      id: "yearly",
-      name: "VIP Yearly",
-      price: "KES 18,000",
-      originalPrice: "KES 42,000",
-      period: "/year",
-      description: "Maximum savings for professionals",
-      features: [
-        "Everything in Quarterly",
-        "One-on-one strategy sessions",
-        "Custom betting bot access",
-        "Insider information network",
-        "VIP-only telegram group",
-        "Annual strategy review",
-        "Guaranteed profit tracking",
-        "Tax optimization advice",
-      ],
-      popular: false,
-      savings: 57,
-    },
-  ]
+interface VIPMatch {
+  id: string
+  name: string
+  homeTeam: string
+  awayTeam: string
+  league: string
+  startTime: string
+  confidence: number
+  prediction: string
+  odds: number
+  valueRating: string
+  analysisSummary: string | null
+}
 
-  const vipFeatures = [
-    {
-      icon: Crown,
-      title: "Exclusive Predictions",
-      description: "Access to VIP-only tips with 90%+ accuracy rate",
-      color: "text-yellow-400",
-    },
-    {
-      icon: Video,
-      title: "Video Analysis",
-      description: "Detailed video breakdowns of each prediction",
-      color: "text-purple-400",
-    },
-    {
-      icon: MessageCircle,
-      title: "Direct Expert Access",
-      description: "Chat directly with our prediction experts",
-      color: "text-emerald-400",
-    },
-    {
-      icon: BarChart3,
-      title: "Advanced Analytics",
-      description: "Comprehensive performance tracking and insights",
-      color: "text-blue-400",
-    },
-    {
-      icon: Shield,
-      title: "Profit Guarantee",
-      description: "Monthly profit guarantee or money back",
-      color: "text-red-400",
-    },
-    {
-      icon: Zap,
-      title: "Instant Alerts",
-      description: "Real-time notifications for breaking opportunities",
-      color: "text-cyan-400",
-    },
-  ]
+interface VIPParlay {
+  parlayId: string
+  legCount: number
+  edgePct: number
+  impliedOdds: number
+  confidenceTier: string
+  parlayType: string
+  legs: Array<{
+    homeTeam: string
+    awayTeam: string
+    outcome: string
+    modelProb: number
+    decimalOdds: number
+  }>
+  earliestKickoff: string
+}
 
-  const vipStats = [
-    { label: "VIP Win Rate", value: "92%", color: "text-emerald-400" },
-    { label: "Avg Monthly Profit", value: "KES 45,000", color: "text-yellow-400" },
-    { label: "Active VIP Members", value: "1,247", color: "text-purple-400" },
-    { label: "Customer Satisfaction", value: "98%", color: "text-blue-400" },
-  ]
+interface CLVOpportunity {
+  alertId: string
+  homeTeam: string
+  awayTeam: string
+  league: string
+  outcome: string
+  bestOdds: number
+  clvPct: number
+  expiresAt: string
+}
 
-  const testimonials = [
-    {
-      name: "David Kimani",
-      location: "Nairobi",
-      membership: "VIP Yearly",
-      profit: "KES 180,000",
-      text: "VIP membership changed my life. The exclusive tips and personal advisor helped me build a sustainable betting strategy.",
-      rating: 5,
-      months: 8,
-    },
-    {
-      name: "Sarah Wanjiru",
-      location: "Mombasa",
-      membership: "VIP Quarterly",
-      profit: "KES 95,000",
-      text: "The video analysis and advanced analytics are game-changers. I finally understand the science behind successful betting.",
-      rating: 5,
-      months: 6,
-    },
-    {
-      name: "Michael Odhiambo",
-      location: "Kisumu",
-      membership: "VIP Monthly",
-      profit: "KES 32,000",
-      text: "Even as a monthly member, the value is incredible. The VIP predictions have a much higher success rate.",
-      rating: 5,
-      months: 3,
-    },
-  ]
+interface VIPFeedData {
+  topMatches: VIPMatch[]
+  topParlays: VIPParlay[]
+  clvOpportunities: CLVOpportunity[]
+  generatedAt: string
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const getRelativeTime = (iso: string): string => {
+  const diff = new Date(iso).getTime() - Date.now()
+  if (diff <= 0) return "Started"
+  const mins = Math.floor(diff / 60000)
+  const hours = Math.floor(mins / 60)
+  const days = Math.floor(hours / 24)
+  if (days > 0) return `${days}d ${hours % 24}h`
+  if (hours > 0) return `${hours}h ${mins % 60}m`
+  return `${mins}m`
+}
+
+const getConfidenceColor = (confidence: number) => {
+  if (confidence >= 75) return "emerald"
+  if (confidence >= 60) return "blue"
+  return "amber"
+}
+
+const getValueBadge = (value: string) => {
+  switch (value?.toLowerCase()) {
+    case "high":
+    case "excellent":
+      return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+    case "medium":
+      return "bg-blue-500/20 text-blue-400 border-blue-500/30"
+    default:
+      return "bg-slate-500/20 text-slate-400 border-slate-500/30"
+  }
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export default function VIPIntelligencePage() {
+  const [hasPremiumAccess, setHasPremiumAccess] = useState<boolean | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [feed, setFeed] = useState<VIPFeedData | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [activeSection, setActiveSection] = useState<"all" | "matches" | "parlays" | "clv">("all")
+
+  // Premium access check
+  useEffect(() => {
+    async function checkAccess() {
+      try {
+        const [sessionRes, premRes] = await Promise.all([
+          fetch("/api/auth/session", { cache: "no-store", credentials: "include" }),
+          fetch("/api/premium/check"),
+        ])
+        const session = await sessionRes.json()
+        setIsAdmin(session?.user?.role?.toLowerCase() === "admin")
+        if (premRes.ok) {
+          const prem = await premRes.json()
+          setHasPremiumAccess(prem.hasAccess)
+        } else {
+          setHasPremiumAccess(false)
+        }
+      } catch {
+        setHasPremiumAccess(false)
+      }
+    }
+    checkAccess()
+  }, [])
+
+  const fetchFeed = useCallback(async (silent = false) => {
+    if (!silent) setIsLoading(true)
+    else setIsRefreshing(true)
+    try {
+      const res = await fetch("/api/vip/intelligence-feed", { credentials: "include" })
+      if (res.ok) setFeed(await res.json())
+    } catch {
+      /* handled silently */
+    } finally {
+      setIsLoading(false)
+      setIsRefreshing(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (hasPremiumAccess || isAdmin) fetchFeed()
+  }, [hasPremiumAccess, isAdmin, fetchFeed])
+
+  if (hasPremiumAccess === false && !isAdmin) {
+    return (
+      <PremiumGate
+        title="VIP Intelligence Feed"
+        description="Access our premium AI Intelligence Feed — hand-picked high-confidence matches, curated parlays, and real-time CLV edge opportunities updated hourly."
+        featureName="VIP Intelligence"
+      />
+    )
+  }
+
+  const matches = feed?.topMatches ?? []
+  const parlays = feed?.topParlays ?? []
+  const clv = feed?.clvOpportunities ?? []
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-800 p-4">
-      <div className="max-w-6xl mx-auto">
-        <DashboardBreadcrumb />
-        {/* OR */}
-        {/* <DashboardNavHeader /> */}
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center space-x-3 mb-4">
-            <Crown className="w-10 h-10 text-yellow-400" />
-            <h1 className="text-4xl font-bold text-white">VIP Membership</h1>
-            <Sparkles className="w-8 h-8 text-purple-400 animate-pulse" />
+    <div className="min-h-screen bg-slate-900 text-slate-100">
+      {/* ── Depth blobs ───────────────────────────────────────────── */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden -z-10">
+        <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-amber-500/3 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 right-0 w-[500px] h-[500px] bg-emerald-500/3 rounded-full blur-3xl" />
+        <div className="absolute top-1/3 right-1/3 w-[400px] h-[400px] bg-purple-500/3 rounded-full blur-3xl" />
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+
+        {/* ── Hero Header ───────────────────────────────────────────── */}
+        <div className="relative overflow-hidden bg-gradient-to-br from-slate-800/80 via-slate-800/60 to-amber-900/20 rounded-2xl p-6 border border-amber-500/20">
+          <div className="absolute top-4 right-8 w-48 h-48 bg-amber-400/5 rounded-full blur-2xl pointer-events-none" />
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-amber-500/20 rounded-xl flex items-center justify-center border border-amber-500/30 shadow-[0_0_20px_rgba(245,158,11,0.15)]">
+                <Crown className="w-6 h-6 text-amber-400" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-white">VIP Intelligence Feed</h1>
+                <p className="text-slate-400 text-sm mt-0.5">
+                  AI-curated high-confidence picks · Updated hourly
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              {feed?.generatedAt && (
+                <span className="text-xs text-slate-500">
+                  Updated {getRelativeTime(feed.generatedAt)} ago
+                </span>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fetchFeed(true)}
+                disabled={isRefreshing}
+                className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 text-xs"
+              >
+                {isRefreshing ? (
+                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                )}
+                Refresh
+              </Button>
+            </div>
           </div>
-          <p className="text-slate-300 text-xl max-w-3xl mx-auto">
-            Join the elite circle of successful bettors. Get exclusive access to our highest-accuracy predictions,
-            personal betting advisors, and guaranteed monthly profits.
-          </p>
+
+          {/* Stats row */}
+          <div className="grid grid-cols-3 gap-4 mt-6">
+            {[
+              { icon: Target, label: "Top Matches", value: matches.length, color: "emerald" },
+              { icon: Layers, label: "AI Parlays", value: parlays.length, color: "blue" },
+              { icon: Activity, label: "CLV Edges", value: clv.length, color: "amber" },
+            ].map(stat => (
+              <div
+                key={stat.label}
+                className={cn(
+                  "flex items-center gap-3 p-3 rounded-xl bg-slate-800/50 border",
+                  stat.color === "emerald" && "border-emerald-500/20",
+                  stat.color === "blue" && "border-blue-500/20",
+                  stat.color === "amber" && "border-amber-500/20"
+                )}
+              >
+                <div
+                  className={cn(
+                    "w-8 h-8 rounded-lg flex items-center justify-center",
+                    stat.color === "emerald" && "bg-emerald-500/15",
+                    stat.color === "blue" && "bg-blue-500/15",
+                    stat.color === "amber" && "bg-amber-500/15"
+                  )}
+                >
+                  <stat.icon
+                    className={cn(
+                      "w-4 h-4",
+                      stat.color === "emerald" && "text-emerald-400",
+                      stat.color === "blue" && "text-blue-400",
+                      stat.color === "amber" && "text-amber-400"
+                    )}
+                  />
+                </div>
+                <div>
+                  <p
+                    className={cn(
+                      "text-xl font-bold",
+                      stat.color === "emerald" && "text-emerald-400",
+                      stat.color === "blue" && "text-blue-400",
+                      stat.color === "amber" && "text-amber-400"
+                    )}
+                  >
+                    {isLoading ? "—" : stat.value}
+                  </p>
+                  <p className="text-xs text-slate-500">{stat.label}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* VIP Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          {vipStats.map((stat, index) => (
-            <Card key={index} className="bg-slate-800/50 border-slate-700 text-center">
-              <CardContent className="p-4">
-                <div className={`text-2xl font-bold ${stat.color}`}>{stat.value}</div>
-                <div className="text-slate-400 text-sm">{stat.label}</div>
-              </CardContent>
-            </Card>
+        {/* ── Section Filters ───────────────────────────────────────── */}
+        <div className="flex gap-2 flex-wrap">
+          {(["all", "matches", "parlays", "clv"] as const).map(section => (
+            <button
+              key={section}
+              onClick={() => setActiveSection(section)}
+              className={cn(
+                "px-4 py-1.5 rounded-full text-sm font-medium transition-all",
+                activeSection === section
+                  ? "bg-amber-500/20 text-amber-400 border border-amber-500/40"
+                  : "text-slate-400 hover:text-white border border-slate-700/50 hover:border-slate-600"
+              )}
+            >
+              {section === "all" ? "All Intelligence" : section === "clv" ? "CLV Edges" : section.charAt(0).toUpperCase() + section.slice(1)}
+            </button>
           ))}
         </div>
 
-        <Tabs defaultValue="plans" className="space-y-8">
-          <TabsList className="bg-slate-800 border-slate-700 grid w-full grid-cols-3">
-            <TabsTrigger value="plans" className="data-[state=active]:bg-purple-600">
-              VIP Plans
-            </TabsTrigger>
-            <TabsTrigger value="features" className="data-[state=active]:bg-purple-600">
-              Features
-            </TabsTrigger>
-            <TabsTrigger value="testimonials" className="data-[state=active]:bg-purple-600">
-              Success Stories
-            </TabsTrigger>
-          </TabsList>
+        {/* ── Loading ───────────────────────────────────────────────── */}
+        {isLoading && (
+          <div className="flex flex-col items-center justify-center py-20 gap-4">
+            <div className="w-12 h-12 bg-amber-500/10 rounded-full flex items-center justify-center">
+              <Loader2 className="w-6 h-6 animate-spin text-amber-400" />
+            </div>
+            <p className="text-slate-400 text-sm">Loading intelligence feed…</p>
+          </div>
+        )}
 
-          <TabsContent value="plans" className="space-y-8">
-            {/* Pricing Plans */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {vipPlans.map((plan) => (
-                <Card
-                  key={plan.id}
-                  className={`bg-slate-800/50 border-slate-700 relative transition-all duration-300 cursor-pointer ${
-                    plan.popular ? "ring-2 ring-purple-500 scale-105" : ""
-                  } ${selectedPlan === plan.id ? "ring-2 ring-yellow-400" : ""}`}
-                  onClick={() => setSelectedPlan(plan.id)}
-                >
-                  {plan.popular && (
-                    <Badge className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-purple-500 text-white px-4 py-1">
-                      MOST POPULAR
+        {!isLoading && (
+          <div className="space-y-8">
+
+            {/* ── Top Matches ───────────────────────────────────────── */}
+            {(activeSection === "all" || activeSection === "matches") && (
+              <section>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 bg-emerald-500/15 rounded-lg flex items-center justify-center">
+                      <Target className="w-4 h-4 text-emerald-400" />
+                    </div>
+                    <h2 className="text-lg font-semibold text-white">High-Confidence Matches</h2>
+                    <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">
+                      ≥70% confidence
                     </Badge>
-                  )}
-
-                  {plan.savings > 0 && (
-                    <Badge className="absolute top-4 right-4 bg-emerald-500 text-white">Save {plan.savings}%</Badge>
-                  )}
-
-                  <CardHeader className="text-center pb-4">
-                    <CardTitle className="text-white text-2xl">{plan.name}</CardTitle>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-center space-x-2">
-                        <span className="text-4xl font-bold text-purple-400">{plan.price}</span>
-                        <span className="text-slate-400">{plan.period}</span>
-                      </div>
-                      {plan.originalPrice && Number(plan.originalPrice) !== Number(plan.price) && (
-                        <div className="text-slate-500 line-through text-lg">{plan.originalPrice}</div>
-                      )}
-                    </div>
-                    <p className="text-slate-400">{plan.description}</p>
-                  </CardHeader>
-
-                  <CardContent className="space-y-6">
-                    <ul className="space-y-3">
-                      {plan.features.map((feature, idx) => (
-                        <li key={idx} className="flex items-center space-x-3 text-slate-300">
-                          <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0" />
-                          <span>{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-
-                    <Button
-                      className={`w-full ${
-                        plan.popular
-                          ? "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-                          : "bg-slate-700 hover:bg-slate-600"
-                      } text-white`}
-                    >
-                      <Crown className="w-4 h-4 mr-2" />
-                      {selectedPlan === plan.id ? "Selected" : "Choose Plan"}
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-
-            {/* Money Back Guarantee */}
-            <Card className="bg-gradient-to-r from-emerald-600/20 to-cyan-600/20 border-emerald-500/30">
-              <CardContent className="p-6 text-center">
-                <Shield className="w-12 h-12 text-emerald-400 mx-auto mb-4" />
-                <h3 className="text-2xl font-bold text-white mb-2">30-Day Money Back Guarantee</h3>
-                <p className="text-slate-300 max-w-2xl mx-auto">
-                  Not satisfied with your VIP experience? Get a full refund within 30 days, no questions asked. We're
-                  confident you'll see significant profits in your first month.
-                </p>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="features" className="space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {vipFeatures.map((feature, index) => (
-                <Card
-                  key={index}
-                  className="bg-slate-800/50 border-slate-700 hover:border-purple-500 transition-all duration-300"
-                >
-                  <CardContent className="p-6 text-center">
-                    <feature.icon className={`w-12 h-12 ${feature.color} mx-auto mb-4`} />
-                    <h3 className="text-xl font-bold text-white mb-3">{feature.title}</h3>
-                    <p className="text-slate-300">{feature.description}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-
-            {/* Feature Comparison */}
-            <Card className="bg-slate-800/50 border-slate-700">
-              <CardHeader>
-                <CardTitle className="text-white text-center">VIP vs Regular Comparison</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="border-b border-slate-700">
-                        <th className="text-slate-400 p-3">Feature</th>
-                        <th className="text-slate-400 p-3 text-center">Regular</th>
-                        <th className="text-purple-400 p-3 text-center">VIP</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-slate-300">
-                      <tr className="border-b border-slate-700/50">
-                        <td className="p-3">Daily Tips</td>
-                        <td className="p-3 text-center">3-5 tips</td>
-                        <td className="p-3 text-center text-emerald-400">Unlimited</td>
-                      </tr>
-                      <tr className="border-b border-slate-700/50">
-                        <td className="p-3">Win Rate</td>
-                        <td className="p-3 text-center">75-80%</td>
-                        <td className="p-3 text-center text-emerald-400">90%+</td>
-                      </tr>
-                      <tr className="border-b border-slate-700/50">
-                        <td className="p-3">Video Analysis</td>
-                        <td className="p-3 text-center">❌</td>
-                        <td className="p-3 text-center text-emerald-400">✅</td>
-                      </tr>
-                      <tr className="border-b border-slate-700/50">
-                        <td className="p-3">Personal Advisor</td>
-                        <td className="p-3 text-center">❌</td>
-                        <td className="p-3 text-center text-emerald-400">✅</td>
-                      </tr>
-                      <tr className="border-b border-slate-700/50">
-                        <td className="p-3">Profit Guarantee</td>
-                        <td className="p-3 text-center">❌</td>
-                        <td className="p-3 text-center text-emerald-400">✅</td>
-                      </tr>
-                    </tbody>
-                  </table>
+                  </div>
+                  <Link
+                    href="/dashboard/matches"
+                    className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+                  >
+                    View all <ChevronRight className="w-3 h-3" />
+                  </Link>
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
 
-          <TabsContent value="testimonials" className="space-y-8">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {testimonials.map((testimonial, index) => (
-                <Card key={index} className="bg-slate-800/50 border-slate-700">
-                  <CardContent className="p-6">
-                    <div className="flex items-center space-x-3 mb-4">
-                      <div className="w-12 h-12 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full flex items-center justify-center text-white font-bold text-lg">
-                        {testimonial.name.charAt(0)}
-                      </div>
-                      <div>
-                        <div className="text-white font-semibold">{testimonial.name}</div>
-                        <div className="text-slate-400 text-sm">{testimonial.location}</div>
-                        <Badge className="bg-purple-500 text-white text-xs mt-1">{testimonial.membership}</Badge>
-                      </div>
+                {matches.length === 0 ? (
+                  <Card className="bg-slate-800/30 border-slate-700/50">
+                    <CardContent className="py-10 text-center text-slate-500 text-sm">
+                      No high-confidence matches available right now. Check back soon.
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {matches.map(match => {
+                      const color = getConfidenceColor(match.confidence)
+                      const slug = generateMatchSlug(match.homeTeam, match.awayTeam)
+                      return (
+                        <Link key={match.id} href={`/match/${slug}`}>
+                          <Card
+                            className={cn(
+                              "group relative overflow-hidden bg-slate-800/50 border-slate-700/50 hover:border-emerald-500/40 transition-all duration-200 cursor-pointer",
+                              `hover:shadow-[0_0_20px_rgba(16,185,129,0.12)]`
+                            )}
+                          >
+                            {/* Left accent */}
+                            <div
+                              className={cn(
+                                "absolute left-0 top-0 bottom-0 w-0.5",
+                                color === "emerald" && "bg-emerald-500",
+                                color === "blue" && "bg-blue-500",
+                                color === "amber" && "bg-amber-500"
+                              )}
+                            />
+                            <CardContent className="p-4 pl-5">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs text-slate-400 mb-1 truncate">{match.league}</p>
+                                  <p className="text-white font-semibold text-sm leading-tight truncate">
+                                    {match.homeTeam} <span className="text-slate-500">vs</span> {match.awayTeam}
+                                  </p>
+                                  <div className="flex items-center gap-2 mt-2">
+                                    <Badge
+                                      className={cn(
+                                        "text-xs font-medium",
+                                        color === "emerald" && "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+                                        color === "blue" && "bg-blue-500/20 text-blue-400 border-blue-500/30",
+                                        color === "amber" && "bg-amber-500/20 text-amber-400 border-amber-500/30"
+                                      )}
+                                    >
+                                      {match.prediction}
+                                    </Badge>
+                                    <Badge className={cn("text-xs", getValueBadge(match.valueRating))}>
+                                      {match.valueRating}
+                                    </Badge>
+                                  </div>
+                                  {match.analysisSummary && (
+                                    <p className="text-xs text-slate-500 mt-2 line-clamp-2">
+                                      {match.analysisSummary}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="shrink-0 flex flex-col items-center gap-1">
+                                  <ConfidenceRing score={match.confidence} size={44} />
+                                  <div className="flex items-center gap-1 text-xs text-slate-400">
+                                    <Clock className="w-3 h-3" />
+                                    {getRelativeTime(match.startTime)}
+                                  </div>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* ── AI Parlays ────────────────────────────────────────── */}
+            {(activeSection === "all" || activeSection === "parlays") && (
+              <section>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 bg-blue-500/15 rounded-lg flex items-center justify-center">
+                      <Layers className="w-4 h-4 text-blue-400" />
                     </div>
+                    <h2 className="text-lg font-semibold text-white">Curated AI Parlays</h2>
+                    <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
+                      Best edge
+                    </Badge>
+                  </div>
+                  <Link
+                    href="/dashboard/parlays?tab=prebuilt"
+                    className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                  >
+                    View all <ChevronRight className="w-3 h-3" />
+                  </Link>
+                </div>
 
-                    <div className="mb-4">
-                      <div className="text-emerald-400 font-bold text-xl">Profit: {testimonial.profit}</div>
-                      <div className="text-slate-400 text-sm">In {testimonial.months} months</div>
+                {parlays.length === 0 ? (
+                  <Card className="bg-slate-800/30 border-slate-700/50">
+                    <CardContent className="py-10 text-center text-slate-500 text-sm">
+                      No AI parlays generated yet. Check back after the next sync.
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {parlays.map((parlay, idx) => (
+                      <Link key={parlay.parlayId} href="/dashboard/parlays?tab=prebuilt">
+                        <Card className="group bg-slate-800/50 border-slate-700/50 hover:border-blue-500/40 transition-all hover:shadow-[0_0_20px_rgba(59,130,246,0.12)] cursor-pointer overflow-hidden">
+                          <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 bg-blue-500/20 rounded-md flex items-center justify-center text-xs font-bold text-blue-400">
+                                  {idx + 1}
+                                </div>
+                                <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
+                                  {parlay.legCount}-Leg Parlay
+                                </Badge>
+                                <Badge className="bg-slate-700/50 text-slate-300 border-slate-600/30 text-xs">
+                                  {parlay.confidenceTier}
+                                </Badge>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-lg font-bold text-blue-400">
+                                  {parlay.impliedOdds.toFixed(2)}x
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  +{parlay.edgePct.toFixed(1)}% edge
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Legs */}
+                            <div className="space-y-1.5">
+                              {parlay.legs.map((leg, i) => (
+                                <div
+                                  key={i}
+                                  className="flex items-center justify-between text-xs p-1.5 rounded-md bg-slate-700/30"
+                                >
+                                  <span className="text-slate-300 truncate flex-1 min-w-0">
+                                    {leg.homeTeam} vs {leg.awayTeam}
+                                  </span>
+                                  <div className="flex items-center gap-1.5 ml-2 shrink-0">
+                                    <Badge className="bg-slate-600/50 text-slate-300 border-0 text-xs px-1.5 py-0">
+                                      {leg.outcome}
+                                    </Badge>
+                                    <span className="text-emerald-400 font-medium">
+                                      {leg.decimalOdds > 0 ? leg.decimalOdds.toFixed(2) : (1 / leg.modelProb).toFixed(2)}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="flex items-center justify-between mt-3 text-xs text-slate-500">
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                First kick-off {getRelativeTime(parlay.earliestKickoff)}
+                              </span>
+                              <span className="text-blue-400 flex items-center gap-0.5">
+                                Add to slip <ArrowUpRight className="w-3 h-3" />
+                              </span>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* ── CLV Opportunities ─────────────────────────────────── */}
+            {(activeSection === "all" || activeSection === "clv") && (
+              <section>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 bg-amber-500/15 rounded-lg flex items-center justify-center">
+                      <Activity className="w-4 h-4 text-amber-400" />
                     </div>
+                    <h2 className="text-lg font-semibold text-white">Closing Line Value Edges</h2>
+                    <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-xs">
+                      Real-time
+                    </Badge>
+                  </div>
+                  <Link
+                    href="/dashboard/clv"
+                    className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1"
+                  >
+                    Full tracker <ChevronRight className="w-3 h-3" />
+                  </Link>
+                </div>
 
-                    <p className="text-slate-300 mb-4">"{testimonial.text}"</p>
+                {clv.length === 0 ? (
+                  <Card className="bg-slate-800/30 border-slate-700/50">
+                    <CardContent className="py-10 text-center text-slate-500 text-sm">
+                      No CLV opportunities at this time. The tracker checks every 15 minutes.
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {clv.map(opp => (
+                      <Link key={opp.alertId} href="/dashboard/clv">
+                        <Card className="group bg-slate-800/50 border-slate-700/50 hover:border-amber-500/40 transition-all hover:shadow-[0_0_20px_rgba(245,158,11,0.12)] cursor-pointer">
+                          <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-amber-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          <CardContent className="p-4">
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs text-slate-400 truncate">{opp.league}</p>
+                                <p className="text-white text-sm font-semibold leading-snug">
+                                  {opp.homeTeam} vs {opp.awayTeam}
+                                </p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="text-lg font-bold text-amber-400">
+                                  +{opp.clvPct.toFixed(1)}%
+                                </p>
+                                <p className="text-xs text-slate-500">CLV</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between text-xs">
+                              <div className="flex items-center gap-1.5">
+                                <Badge className="bg-slate-700/50 text-slate-300 border-0 text-xs">
+                                  {opp.outcome === "H" ? "Home Win" : opp.outcome === "A" ? "Away Win" : opp.outcome === "D" ? "Draw" : opp.outcome}
+                                </Badge>
+                                <span className="text-emerald-400 font-medium">@{opp.bestOdds.toFixed(2)}</span>
+                              </div>
+                              <span className="text-slate-500 flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {getRelativeTime(opp.expiresAt)}
+                              </span>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
 
-                    <div className="flex space-x-1">
-                      {[...Array(testimonial.rating)].map((_, i) => (
-                        <Star key={i} className="w-4 h-4 text-yellow-400 fill-current" />
-                      ))}
+            {/* ── AI Insight Banner ─────────────────────────────────── */}
+            {activeSection === "all" && !isLoading && (
+              <Card className="bg-gradient-to-br from-slate-800/60 via-slate-800/40 to-amber-900/20 border border-amber-500/20 overflow-hidden">
+                <CardContent className="p-6">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                    <div className="w-12 h-12 bg-amber-500/15 rounded-xl flex items-center justify-center shrink-0 border border-amber-500/30">
+                      <Brain className="w-6 h-6 text-amber-400" />
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-
-            {/* Join VIP CTA */}
-            <Card className="bg-gradient-to-r from-purple-600 to-pink-600 border-none">
-              <CardContent className="p-8 text-center">
-                <Crown className="w-16 h-16 text-yellow-400 mx-auto mb-4" />
-                <h2 className="text-3xl font-bold text-white mb-4">Ready to Join the VIP Circle?</h2>
-                <p className="text-purple-100 text-lg mb-6 max-w-2xl mx-auto">
-                  Don't let another profitable opportunity slip away. Join over 1,200 successful VIP members who are
-                  consistently winning with our exclusive predictions and expert guidance.
-                </p>
-                <Button className="bg-yellow-500 hover:bg-yellow-600 text-black font-bold px-8 py-3 text-lg">
-                  <Crown className="w-5 h-5 mr-2" />
-                  Upgrade to VIP Now
-                </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                    <div className="flex-1">
+                      <h3 className="text-white font-semibold mb-1">
+                        How this feed works
+                      </h3>
+                      <p className="text-slate-400 text-sm">
+                        Our AI scans hundreds of upcoming matches every hour, selecting only those with{" "}
+                        <span className="text-amber-400 font-medium">≥70% model confidence</span>, strong
+                        bookmaker consensus, and positive CLV. Parlays are curated from the highest-quality
+                        single-match combinations to maximise edge while minimising correlation risk.
+                      </p>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <Link href="/dashboard/matches">
+                        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs shadow-[0_0_15px_rgba(16,185,129,0.25)]">
+                          <Target className="w-3.5 h-3.5 mr-1.5" />
+                          Browse Matches
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

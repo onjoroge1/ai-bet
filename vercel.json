@@ -6,6 +6,9 @@
     "app/api/admin/market/**/*.ts": {
       "maxDuration": 60
     },
+    "app/api/admin/parlays/**/*.ts": {
+      "maxDuration": 60
+    },
     "app/api/**/*.ts": {
       "maxDuration": 30
     }
@@ -14,6 +17,14 @@
     {
       "path": "/api/admin/parlays/sync-backend-scheduled",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/admin/additional-markets/sync-scheduled",
+      "schedule": "0 */3 * * *"
+    },
+    {
+      "path": "/api/admin/parlays/generate-best-scheduled",
+      "schedule": "30 */3 * * *"
     },
     {
       "path": "/api/admin/parlays/sync-scheduled",
@@ -45,6 +56,14 @@
     },
     {
       "path": "/api/admin/social/twitter/post-scheduled",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/admin/settle-saved-bets",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/admin/clv/sync-scheduled",
       "schedule": "*/30 * * * *"
     }
   ],

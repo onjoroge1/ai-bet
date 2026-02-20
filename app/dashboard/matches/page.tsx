@@ -1,66 +1,33 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Calendar, MapPin, Trophy, Target, TrendingUp, Eye, CheckCircle, Loader2, Search, Filter, X, CreditCard } from "lucide-react"
+import {
+  Calendar, MapPin, Trophy, Target, TrendingUp, Loader2, Search, Filter,
+  Zap, BarChart3, Clock, Star, ChevronRight, Sparkles, Shield, Timer, Eye
+} from "lucide-react"
 import { useRouter } from "next/navigation"
-import { decodeQuickPurchasesData } from "@/lib/optimized-data-decoder"
 import { QuickPurchaseModal } from "@/components/quick-purchase-modal"
-import { toast } from "sonner"
+import { generateMatchSlug } from "@/lib/match-slug"
+import {
+  ConfidenceRing,
+  SkeletonCard,
+  getConfidenceColor,
+  getRelativeTime,
+  getUrgency,
+  formatPrediction,
+  getMatchStatus as sharedGetMatchStatus,
+  type Match,
+  type MatchData,
+  type MatchFilters,
+} from "@/components/match/shared"
 
-interface MatchData {
-  home_team?: string
-  away_team?: string
-  league?: string
-  date?: string
-  venue?: string
-}
+// ─── Types (local-only) ──────────────────────────────────────────────────────
 
-interface Match {
-  id: string
-  name: string
-  price: number
-  originalPrice?: number
-  type: string
-  matchId?: string
-  matchData?: MatchData
-  predictionData?: unknown
-  predictionType?: string
-  confidenceScore?: number
-  odds?: number
-  valueRating?: string
-  analysisSummary?: string
-  isActive: boolean
-  createdAt: string
-  country?: {
-    currencyCode: string
-    currencySymbol: string
-  }
-  features?: string[]
-  iconName?: string
-  colorGradientFrom?: string
-  colorGradientTo?: string
-  isUrgent?: boolean
-  timeLeft?: string
-  isPopular?: boolean
-  discountPercentage?: number
-  tipCount?: number
-}
-
-interface MatchFilters {
-  search: string
-  status: string
-  confidence: string
-  valueRating: string
-  sortBy: string
-}
-
-// Add QuickPurchaseItem type for modal (matches QuickPurchaseModal interface)
 interface QuickPurchaseItem {
   id: string
   name: string
@@ -94,24 +61,16 @@ interface QuickPurchaseItem {
   analysisSummary?: string
 }
 
-/**
- * MatchesPage - Server-Side First Authentication
- * 
- * 🔥 NEW ARCHITECTURE: Uses /api/auth/session as primary source of truth
- * - Checks server-side session directly (no waiting for useSession() sync)
- * - Fast and reliable authentication decisions
- * - No blocking on client-side auth sync
- */
+// ─── Main Component ───────────────────────────────────────────────────────────
+
 export default function MatchesPage() {
   const router = useRouter()
   const [matches, setMatches] = useState<Match[]>([])
-  const [filteredMatches, setFilteredMatches] = useState<Match[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedMatch, setSelectedMatch] = useState<Match | null>(null)
   const [modalItem, setModalItem] = useState<QuickPurchaseItem | null>(null)
   const [showPurchaseModal, setShowPurchaseModal] = useState(false)
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false) // Server-side auth state
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
   const [filters, setFilters] = useState<MatchFilters>({
     search: "",
     status: "all",
@@ -120,250 +79,114 @@ export default function MatchesPage() {
     sortBy: "date"
   })
 
-  // 🔥 NEW: Check server-side session on mount (fast, non-blocking)
+  // Check auth and fetch matches on mount
   useEffect(() => {
-    const checkAuth = async () => {
+    const checkAuthAndFetch = async () => {
       try {
         const res = await fetch('/api/auth/session', {
           cache: 'no-store',
           credentials: 'include',
         })
         const session = await res.json()
-        const serverIsAuthenticated = !!session?.user
-        setIsAuthenticated(serverIsAuthenticated)
-        
-        if (!serverIsAuthenticated) {
-          router.push('/matches')
-          return
-        }
-        
-        // Fetch matches immediately if authenticated
+        const authenticated = !!session?.user
+        setIsAuthenticated(authenticated)
+        if (!authenticated) { router.push('/matches'); return }
         fetchMatches()
-      } catch (error) {
-        console.error('[MatchesPage] Auth check error:', error)
+      } catch {
         setIsAuthenticated(false)
         router.push('/matches')
       }
     }
-    checkAuth()
+    checkAuthAndFetch()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router]) // Only check on mount
-
-  const applyFilters = useCallback(() => {
-    let filtered = [...matches]
-
-    // Search filter
-    if (filters.search) {
-      const searchLower = filters.search.toLowerCase()
-      filtered = filtered.filter(match => 
-        match.name.toLowerCase().includes(searchLower) ||
-        (match.matchData?.home_team && match.matchData.home_team.toLowerCase().includes(searchLower)) ||
-        (match.matchData?.away_team && match.matchData.away_team.toLowerCase().includes(searchLower)) ||
-        (match.matchData?.league && match.matchData.league.toLowerCase().includes(searchLower))
-      )
-    }
-
-    // Status filter (upcoming, scheduled)
-    if (filters.status !== "all") {
-      filtered = filtered.filter(match => {
-        const matchDate = match.matchData?.date ? new Date(match.matchData.date) : null
-        const now = new Date()
-        
-        if (filters.status === "upcoming") {
-          // Show matches starting within next 2 hours
-          const twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000)
-          return matchDate && matchDate > now && matchDate <= twoHoursFromNow
-        } else if (filters.status === "scheduled") {
-          // Show matches scheduled for later (more than 2 hours away)
-          const twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000)
-          return matchDate && matchDate > twoHoursFromNow
-        }
-        return true
-      })
-    }
-
-    // Confidence filter
-    if (filters.confidence !== "all") {
-      filtered = filtered.filter(match => {
-        const confidence = match.confidenceScore || 0
-        switch (filters.confidence) {
-          case "high": return confidence >= 80
-          case "medium": return confidence >= 60 && confidence < 80
-          case "low": return confidence < 60
-          default: return true
-        }
-      })
-    }
-
-    // Value rating filter
-    if (filters.valueRating !== "all") {
-      filtered = filtered.filter(match => 
-        match.valueRating?.toLowerCase() === filters.valueRating
-      )
-    }
-
-    // Sort
-    filtered.sort((a, b) => {
-      switch (filters.sortBy) {
-        case "confidence":
-          return (b.confidenceScore || 0) - (a.confidenceScore || 0)
-        case "date":
-          const dateA = a.matchData?.date ? new Date(a.matchData.date) : new Date(0)
-          const dateB = b.matchData?.date ? new Date(b.matchData.date) : new Date(0)
-          return dateA.getTime() - dateB.getTime()
-        case "price":
-          return a.price - b.price
-        case "name":
-          return a.name.localeCompare(b.name)
-        default:
-          return 0
-      }
-    })
-
-    setFilteredMatches(filtered)
-  }, [matches, filters])
-
-  // 🔥 REMOVED: No longer blocking on isAuthenticated from useAuth()
-  // Matches are fetched immediately after server-side auth check
-
-  useEffect(() => {
-    console.log('MatchesPage useEffect - applying filters')
-    applyFilters()
-  }, [matches, filters, applyFilters])
-
-  // Handle escape key to close modal
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && showPurchaseModal) {
-        setShowPurchaseModal(false)
-        setSelectedMatch(null)
-      }
-    }
-
-    document.addEventListener('keydown', handleEscape)
-    return () => document.removeEventListener('keydown', handleEscape)
-  }, [showPurchaseModal])
+  }, [router])
 
   const fetchMatches = async () => {
     try {
       setLoading(true)
       setError(null)
-      console.log('Fetching matches from /api/quick-purchases...')
-      
-      const response = await fetch('/api/quick-purchases')
-      console.log('Response status:', response.status)
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch matches: ${response.status} ${response.statusText}`)
-      }
-      
-      const data = await response.json()
-      console.log('Raw API response:', data)
-      console.log('Total items received:', data.length)
-      
-      // Decode the optimized data structure
-      const decodedData = decodeQuickPurchasesData(data)
-      console.log('Decoded data:', decodedData.length, 'items')
-      
-      // Filter to only show prediction/tip type items that have match data
-      const predictionMatches = (decodedData as Match[]).filter((item) => {
-        // Basic filters
-        const hasValidType = (item.type === 'prediction' || item.type === 'tip')
-        const hasMatchId = !!item.matchId
-        const isActive = !!item.isActive
-        
-        // Filter out completed matches
-        const matchDate = item.matchData?.date ? new Date(item.matchData.date) : null
-        const isNotCompleted = matchDate ? matchDate > new Date() : false
-        
-        // Filter out matches with no confidence or zero confidence
-        const hasValidConfidence = item.confidenceScore && item.confidenceScore > 0
-        
-        return hasValidType && hasMatchId && isActive && isNotCompleted && hasValidConfidence
-      })
-      
-      console.log('Filtered prediction matches:', predictionMatches.length)
-      console.log('Sample match data:', predictionMatches[0])
-      
-      setMatches(predictionMatches)
-    } catch (error) {
-      console.error('Error fetching matches:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
-      setError(errorMessage)
-      // Set empty array to prevent infinite loading
+      const response = await fetch('/api/quick-purchases?view=matches&limit=100')
+      if (!response.ok) throw new Error(`Failed to fetch matches: ${response.status} ${response.statusText}`)
+      const data: Match[] = await response.json()
+      setMatches(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error occurred')
       setMatches([])
     } finally {
       setLoading(false)
     }
   }
 
-  const getMatchStatus = (match: Match) => {
-    const matchDate = match.matchData?.date ? new Date(match.matchData.date) : null
-    if (!matchDate) return "unknown"
-    
-    const now = new Date()
-    const timeDiff = matchDate.getTime() - now.getTime()
-    const hoursDiff = timeDiff / (1000 * 60 * 60)
-    
-    // Since we filter out completed matches, we only have upcoming and scheduled
-    if (hoursDiff <= 2) return "upcoming"
-    return "scheduled"
-  }
+  /** Apply client-side filters */
+  const filteredMatches = useMemo(() => {
+    let filtered = [...matches]
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "upcoming":
-        return <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30">Upcoming</Badge>
-      case "scheduled":
-        return <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">Scheduled</Badge>
-      default:
-        return <Badge className="bg-gray-500/20 text-gray-400 border-gray-500/30">Unknown</Badge>
+    if (filters.search) {
+      const q = filters.search.toLowerCase()
+      filtered = filtered.filter(m =>
+        m.name.toLowerCase().includes(q) ||
+        m.matchData?.home_team?.toLowerCase().includes(q) ||
+        m.matchData?.away_team?.toLowerCase().includes(q) ||
+        m.matchData?.league?.toLowerCase().includes(q)
+      )
     }
-  }
 
-  const getConfidenceBadge = (confidence: number) => {
-    let colorClass = 'bg-red-500/20 text-red-400 border-red-500/30'
-    if (confidence >= 80) {
-      colorClass = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-    } else if (confidence >= 60) {
-      colorClass = 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+    if (filters.status !== "all") {
+      const now = Date.now()
+      const twoH = 2 * 60 * 60 * 1000
+      filtered = filtered.filter(m => {
+        const t = m.matchData?.date ? new Date(m.matchData.date).getTime() - now : null
+        if (t === null) return false
+        if (filters.status === "upcoming") return t > 0 && t <= twoH
+        if (filters.status === "scheduled") return t > twoH
+        return true
+      })
     }
-    
-    return (
-      <Badge className={colorClass}>
-        {confidence}%
-      </Badge>
-    )
-  }
 
-  const getValueRatingBadge = (rating: string) => {
-    switch (rating?.toLowerCase()) {
-      case "very high":
-        return <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">Very High</Badge>
-      case "high":
-        return <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">High</Badge>
-      case "medium":
-        return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">Medium</Badge>
-      case "low":
-        return <Badge className="bg-red-500/20 text-red-400 border-red-500/30">Low</Badge>
-      default:
-        return <Badge className="bg-gray-500/20 text-gray-400 border-gray-500/30">Unknown</Badge>
+    if (filters.confidence !== "all") {
+      filtered = filtered.filter(m => {
+        const c = m.confidenceScore || 0
+        if (filters.confidence === "high") return c >= 80
+        if (filters.confidence === "medium") return c >= 60 && c < 80
+        if (filters.confidence === "low") return c < 60
+        return true
+      })
     }
-  }
 
-  const formatMatchDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+    if (filters.valueRating !== "all") {
+      filtered = filtered.filter(m =>
+        m.valueRating?.toLowerCase() === filters.valueRating
+      )
+    }
+
+    filtered.sort((a, b) => {
+      switch (filters.sortBy) {
+        case "confidence": return (b.confidenceScore || 0) - (a.confidenceScore || 0)
+        case "date": {
+          const dA = a.matchData?.date ? new Date(a.matchData.date).getTime() : 0
+          const dB = b.matchData?.date ? new Date(b.matchData.date).getTime() : 0
+          return dA - dB
+        }
+        case "price": return a.price - b.price
+        case "name": return a.name.localeCompare(b.name)
+        default: return 0
+      }
     })
-  }
+    return filtered
+  }, [matches, filters])
+
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showPurchaseModal) { setShowPurchaseModal(false); setModalItem(null) }
+    }
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [showPurchaseModal])
+
+  const getMatchStatus = sharedGetMatchStatus
 
   const handlePurchaseClick = (match: Match) => {
-    const quickPurchaseItem: QuickPurchaseItem = {
+    setModalItem({
       id: match.id,
       name: match.name,
       price: match.price,
@@ -391,315 +214,391 @@ export default function MatchesPage() {
       odds: match.odds,
       valueRating: match.valueRating,
       analysisSummary: match.analysisSummary
-    }
-    setModalItem(quickPurchaseItem)
+    })
     setShowPurchaseModal(true)
   }
 
-  // 🔥 REMOVED: No longer blocking on authLoading
-  // Server-side auth check happens on mount, page loads immediately
+  const stats = useMemo(() => ({
+    total: filteredMatches.length,
+    highConfidence: filteredMatches.filter(m => (m.confidenceScore || 0) >= 80).length,
+    upcoming: filteredMatches.filter(m => getMatchStatus(m) === "upcoming").length,
+    veryHighValue: filteredMatches.filter(m => m.valueRating?.toLowerCase() === "very high").length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [filteredMatches])
 
+  // ── Auth gate ──────────────────────────────────────────────────────────
   if (!isAuthenticated) {
-    console.log('MatchesPage - not authenticated, showing auth required state')
     return (
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="text-red-400 text-lg font-semibold mb-2">Authentication Required</div>
-            <div className="text-slate-400 text-sm mb-4">You need to be logged in to view this page.</div>
-            <Button onClick={() => window.location.href = '/signin'} variant="outline">
-              Go to Sign In
-            </Button>
-          </div>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <Shield className="h-12 w-12 text-slate-500 mx-auto" />
+          <div className="text-red-400 text-lg font-semibold">Authentication Required</div>
+          <div className="text-slate-400 text-sm">You need to be logged in to view this page.</div>
+          <Button onClick={() => window.location.href = '/signin'} variant="outline">Go to Sign In</Button>
         </div>
       </div>
     )
   }
 
-  console.log('MatchesPage - authenticated, proceeding with normal render')
-
-  if (loading) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="text-red-400 text-lg font-semibold mb-2">Error Loading Matches</div>
-            <div className="text-slate-400 text-sm mb-4">{error}</div>
-            <Button onClick={fetchMatches} variant="outline">
-              Try Again
-            </Button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
+  // ── Render ─────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">Upcoming Matches</h1>
-        <p className="text-slate-400">
-          Browse and filter through upcoming match predictions with confidence scores
-        </p>
+    <div className="relative min-h-screen">
+      {/* ── Background effects ─────────────────────────────────────────── */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden -z-10">
+        <div className="absolute -top-40 -right-40 w-[600px] h-[600px] bg-emerald-500/[0.03] rounded-full blur-3xl" />
+        <div className="absolute top-1/3 -left-60 w-[500px] h-[500px] bg-blue-500/[0.03] rounded-full blur-3xl" />
+        <div className="absolute bottom-0 right-1/4 w-[400px] h-[400px] bg-purple-500/[0.02] rounded-full blur-3xl" />
       </div>
 
-      {/* Filters */}
-      <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-6 mb-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+        {/* ── Hero Header ───────────────────────────────────────────────── */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800/80 via-slate-800/60 to-emerald-900/20 border border-slate-700/50 p-8">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4" />
           <div className="relative">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-            <Input
-              placeholder="Search matches..."
-              value={filters.search}
-              onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-              className="pl-10"
-            />
+            <div className="flex items-center gap-3 mb-3">
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30">
+                <Sparkles className="h-5 w-5 text-emerald-400" />
+              </div>
+              <h1 className="text-3xl font-bold text-white tracking-tight">Upcoming Matches</h1>
+            </div>
+            <p className="text-slate-400 max-w-2xl">
+              AI-powered predictions for upcoming fixtures. Each prediction includes confidence scoring,
+              value ratings, and detailed analysis from our machine learning models.
+            </p>
           </div>
-          
-          <Select value={filters.status} onValueChange={(value) => setFilters({ ...filters, status: value })}>
-            <SelectTrigger>
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="upcoming">Upcoming (Next 2 hours)</SelectItem>
-              <SelectItem value="scheduled">Scheduled</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={filters.confidence} onValueChange={(value) => setFilters({ ...filters, confidence: value })}>
-            <SelectTrigger>
-              <SelectValue placeholder="Confidence" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Confidence</SelectItem>
-              <SelectItem value="high">80%+ Confidence</SelectItem>
-              <SelectItem value="medium">60-79% Confidence</SelectItem>
-              <SelectItem value="low">&lt;60% Confidence</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={filters.valueRating} onValueChange={(value) => setFilters({ ...filters, valueRating: value })}>
-            <SelectTrigger>
-              <SelectValue placeholder="Value Rating" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Ratings</SelectItem>
-              <SelectItem value="very high">Very High</SelectItem>
-              <SelectItem value="high">High</SelectItem>
-              <SelectItem value="medium">Medium</SelectItem>
-              <SelectItem value="low">Low</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={filters.sortBy} onValueChange={(value) => setFilters({ ...filters, sortBy: value })}>
-            <SelectTrigger>
-              <SelectValue placeholder="Sort by" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="date">Date</SelectItem>
-              <SelectItem value="confidence">Confidence</SelectItem>
-              <SelectItem value="price">Price</SelectItem>
-              <SelectItem value="name">Name</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Button 
-            variant="outline" 
-            onClick={() => setFilters({
-              search: "",
-              status: "all",
-              confidence: "all",
-              valueRating: "all",
-              sortBy: "date"
-            })}
-          >
-            <Filter className="h-4 w-4 mr-2" />
-            Clear
-          </Button>
         </div>
-      </Card>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-4 hover:bg-slate-800/70 transition-colors">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-white">{filteredMatches.length}</div>
-            <div className="text-slate-400 text-sm">Total Matches</div>
-          </div>
-        </Card>
-        <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-4 hover:bg-slate-800/70 transition-colors">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-emerald-400">
-              {filteredMatches.filter(m => (m.confidenceScore || 0) >= 80).length}
-            </div>
-            <div className="text-slate-400 text-sm">80%+ Confidence</div>
-          </div>
-        </Card>
-        <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-4 hover:bg-slate-800/70 transition-colors">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-orange-400">
-              {filteredMatches.filter(m => getMatchStatus(m) === "upcoming").length}
-            </div>
-            <div className="text-slate-400 text-sm">Upcoming</div>
-          </div>
-        </Card>
-        <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-4 hover:bg-slate-800/70 transition-colors">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-purple-400">
-              {filteredMatches.filter(m => m.valueRating?.toLowerCase() === "very high").length}
-            </div>
-            <div className="text-slate-400 text-sm">Very High Value</div>
-          </div>
-        </Card>
-      </div>
+        {/* ── Filters ───────────────────────────────────────────────────── */}
+        <Card className="bg-slate-800/40 border-slate-700/50 backdrop-blur-sm">
+          <CardContent className="p-4 sm:p-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+              <div className="relative lg:col-span-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                <Input
+                  placeholder="Search teams, leagues..."
+                  value={filters.search}
+                  onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                  className="pl-10 bg-slate-900/50 border-slate-700/60 text-sm placeholder:text-slate-500"
+                />
+              </div>
 
-      {/* Matches Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-        {filteredMatches.map((match) => {
-          const status = getMatchStatus(match)
-          const matchData = match.matchData || {}
-          
-          return (
-            <Card key={match.id} className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm hover:border-slate-500/70 hover:bg-slate-800/70 transition-all duration-200">
-              <CardHeader className="pb-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-white text-lg mb-2">
-                      {matchData.home_team || "Home Team"} vs {matchData.away_team || "Away Team"}
-                    </CardTitle>
-                    <div className="flex items-center space-x-2 mb-2">
-                      <Trophy className="h-4 w-4 text-slate-400" />
-                      <span className="text-slate-400 text-sm">{matchData.league || "Unknown League"}</span>
-                    </div>
-                    {matchData.venue && (
-                      <div className="flex items-center space-x-2">
-                        <MapPin className="h-4 w-4 text-slate-400" />
-                        <span className="text-slate-400 text-sm">{matchData.venue}</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col items-end space-y-2">
-                    {getStatusBadge(status)}
-                    {match.confidenceScore && getConfidenceBadge(match.confidenceScore)}
-                    {match.valueRating && getValueRatingBadge(match.valueRating)}
-                  </div>
+              <Select value={filters.status} onValueChange={(v) => setFilters({ ...filters, status: v })}>
+                <SelectTrigger className="bg-slate-900/50 border-slate-700/60 text-sm">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="upcoming">Starting Soon (&lt;2h)</SelectItem>
+                  <SelectItem value="scheduled">Scheduled</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={filters.confidence} onValueChange={(v) => setFilters({ ...filters, confidence: v })}>
+                <SelectTrigger className="bg-slate-900/50 border-slate-700/60 text-sm">
+                  <SelectValue placeholder="Confidence" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Confidence</SelectItem>
+                  <SelectItem value="high">80%+ High</SelectItem>
+                  <SelectItem value="medium">60-79% Medium</SelectItem>
+                  <SelectItem value="low">&lt;60% Low</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={filters.valueRating} onValueChange={(v) => setFilters({ ...filters, valueRating: v })}>
+                <SelectTrigger className="bg-slate-900/50 border-slate-700/60 text-sm">
+                  <SelectValue placeholder="Value" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Ratings</SelectItem>
+                  <SelectItem value="very high">Very High</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={filters.sortBy} onValueChange={(v) => setFilters({ ...filters, sortBy: v })}>
+                <SelectTrigger className="bg-slate-900/50 border-slate-700/60 text-sm">
+                  <SelectValue placeholder="Sort" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="date">Kick-off Time</SelectItem>
+                  <SelectItem value="confidence">Confidence</SelectItem>
+                  <SelectItem value="price">Price</SelectItem>
+                  <SelectItem value="name">Name</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Button
+                variant="outline"
+                className="border-slate-700/60 text-slate-400 hover:text-white text-sm"
+                onClick={() => setFilters({ search: "", status: "all", confidence: "all", valueRating: "all", sortBy: "date" })}
+              >
+                <Filter className="h-3.5 w-3.5 mr-1.5" />
+                Reset
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* ── Stats Strip ───────────────────────────────────────────────── */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { label: "Total Matches", value: stats.total, icon: BarChart3, color: "text-white", iconBg: "bg-slate-700/60" },
+            { label: "High Confidence", value: stats.highConfidence, icon: Zap, color: "text-emerald-400", iconBg: "bg-emerald-500/15" },
+            { label: "Starting Soon", value: stats.upcoming, icon: Timer, color: "text-orange-400", iconBg: "bg-orange-500/15" },
+            { label: "Very High Value", value: stats.veryHighValue, icon: Star, color: "text-purple-400", iconBg: "bg-purple-500/15" },
+          ].map((stat) => (
+            <Card key={stat.label} className="bg-slate-800/40 border-slate-700/40 hover:border-slate-600/60 transition-colors">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className={`flex items-center justify-center w-10 h-10 rounded-lg ${stat.iconBg}`}>
+                  <stat.icon className={`h-5 w-5 ${stat.color}`} />
                 </div>
-              </CardHeader>
-
-              <CardContent className="space-y-4">
-                {/* Match Date */}
-                {matchData.date && (
-                  <div className="flex items-center space-x-2 text-slate-400">
-                    <Calendar className="h-4 w-4" />
-                    <span className="text-sm">{formatMatchDate(matchData.date)}</span>
-                  </div>
-                )}
-
-                {/* Prediction Details */}
-                {match.predictionType && (
-                  <div className="bg-slate-700/30 rounded-lg p-3">
-                    <div className="mb-2">
-                      <span className="text-emerald-400 font-medium">Our Prediction</span>
-                    </div>
-                    <div className="text-white font-semibold mb-1">
-                      {match.predictionType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                    </div>
-                    {match.confidenceScore && (
-                      <div className="text-slate-400 text-sm">
-                        {match.confidenceScore}% confidence
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Analysis Summary */}
-                {match.analysisSummary && (
-                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-4">
-                    <div className="flex items-center mb-2">
-                      <TrendingUp className="h-4 w-4 text-emerald-400 mr-2" />
-                      <span className="text-emerald-400 font-medium text-sm">Analysis</span>
-                    </div>
-                    <div className="text-slate-200 text-sm leading-relaxed">
-                      {match.analysisSummary}
-                    </div>
-                  </div>
-                )}
-
-                {/* Price and Actions */}
-                <div className="flex items-center justify-between pt-4 border-t border-slate-700">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-white font-bold">
-                      {match.country?.currencySymbol}{match.price}
-                    </span>
-                    {match.originalPrice && match.originalPrice > match.price && (
-                      <span className="text-slate-400 line-through text-sm">
-                        {match.country?.currencySymbol}{match.originalPrice}
-                      </span>
-                    )}
-                  </div>
-                  <Button 
-                    size="sm" 
-                    onClick={() => handlePurchaseClick(match)}
-                    className="bg-emerald-600 hover:bg-emerald-700"
-                  >
-                    <Target className="h-4 w-4 mr-1" />
-                    Purchase
-                  </Button>
+                <div>
+                  <div className={`text-xl font-bold ${stat.color}`}>{stat.value}</div>
+                  <div className="text-slate-500 text-xs">{stat.label}</div>
                 </div>
               </CardContent>
             </Card>
-          )
-        })}
+          ))}
+        </div>
+
+        {/* ── Loading State ─────────────────────────────────────────────── */}
+        {loading && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+            {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+          </div>
+        )}
+
+        {/* ── Error State ───────────────────────────────────────────────── */}
+        {error && !loading && (
+          <Card className="bg-red-950/20 border-red-500/20 p-10">
+            <div className="text-center space-y-3">
+              <div className="text-red-400 text-lg font-semibold">Error Loading Matches</div>
+              <div className="text-slate-400 text-sm">{error}</div>
+              <Button onClick={fetchMatches} variant="outline" className="border-red-500/30 text-red-400 hover:bg-red-500/10">
+                Try Again
+              </Button>
+            </div>
+          </Card>
+        )}
+
+        {/* ── Matches Grid ──────────────────────────────────────────────── */}
+        {!loading && !error && filteredMatches.length > 0 && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+            {filteredMatches.map((match) => {
+              const matchData = match.matchData || {}
+              const confidence = match.confidenceScore || 0
+              const confColors = getConfidenceColor(confidence)
+              const urgency = getUrgency(matchData.date)
+              const status = getMatchStatus(match)
+
+              return (
+                <Card
+                  key={match.id}
+                  className={`group relative overflow-hidden bg-slate-800/50 border-slate-700/50 backdrop-blur-sm
+                    hover:border-slate-600/70 hover:shadow-lg ${confColors.glow} transition-all duration-300
+                    ${urgency === "hot" ? "ring-1 ring-orange-500/30" : ""}`}
+                >
+                  {/* Confidence accent bar */}
+                  <div className={`absolute top-0 left-0 w-1 h-full ${
+                    confidence >= 80 ? 'bg-emerald-500' :
+                    confidence >= 60 ? 'bg-yellow-500' :
+                    confidence >= 40 ? 'bg-orange-500' : 'bg-red-500'
+                  }`} />
+
+                  {/* Urgency pulse for matches starting soon */}
+                  {urgency === "hot" && (
+                    <div className="absolute top-3 right-3">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-orange-500" />
+                      </span>
+                    </div>
+                  )}
+
+                  <CardHeader className="pb-3 pl-5">
+                    <div className="flex items-start gap-4">
+                      {/* Left: Match info */}
+                      <div className="flex-1 min-w-0">
+                        <CardTitle className="text-white text-base font-semibold leading-tight mb-2 group-hover:text-emerald-50 transition-colors">
+                          {matchData.home_team || "TBD"} vs {matchData.away_team || "TBD"}
+                        </CardTitle>
+                        <div className="flex items-center gap-1.5 text-slate-400 text-xs mb-1">
+                          <Trophy className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{matchData.league || "Unknown"}</span>
+                        </div>
+                        {matchData.venue && (
+                          <div className="flex items-center gap-1.5 text-slate-500 text-xs">
+                            <MapPin className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{matchData.venue}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Right: Confidence ring */}
+                      <ConfidenceRing score={confidence} />
+                    </div>
+
+                    {/* Date & status row */}
+                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-700/40">
+                      {matchData.date && (
+                        <div className="flex items-center gap-1.5">
+                          <Clock className={`h-3.5 w-3.5 ${urgency === "hot" ? "text-orange-400" : "text-slate-500"}`} />
+                          <span className={`text-xs font-medium ${urgency === "hot" ? "text-orange-400" : "text-slate-400"}`}>
+                            {getRelativeTime(matchData.date)}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1.5">
+                        {status === "upcoming" ? (
+                          <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-[10px] px-2 py-0">
+                            Starting Soon
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-blue-500/15 text-blue-400 border-blue-500/25 text-[10px] px-2 py-0">
+                            Scheduled
+                          </Badge>
+                        )}
+                        {match.valueRating && (
+                          <Badge className={`text-[10px] px-2 py-0 ${
+                            match.valueRating.toLowerCase() === "very high" ? "bg-purple-500/20 text-purple-400 border-purple-500/30" :
+                            match.valueRating.toLowerCase() === "high" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :
+                            match.valueRating.toLowerCase() === "medium" ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" :
+                            "bg-slate-600/30 text-slate-400 border-slate-600/40"
+                          }`}>
+                            {match.valueRating}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="space-y-3 pl-5 pt-0">
+                    {/* Prediction & Odds */}
+                    {match.predictionType && (
+                      <div className={`rounded-lg p-3 ${confColors.bg} border ${
+                        confidence >= 80 ? "border-emerald-500/20" :
+                        confidence >= 60 ? "border-yellow-500/20" :
+                        confidence >= 40 ? "border-orange-500/20" : "border-red-500/20"
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-0.5">Prediction</div>
+                            <div className="text-white font-semibold text-sm">
+                              {formatPrediction(match.predictionType)}
+                            </div>
+                          </div>
+                          {match.odds && (
+                            <div className="text-right">
+                              <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-0.5">Odds</div>
+                              <div className="text-white font-bold text-lg">{Number(match.odds).toFixed(2)}</div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Analysis summary (only show meaningful text, not raw types) */}
+                    {match.analysisSummary && match.analysisSummary.length > 20 && (
+                      <div className="bg-slate-900/40 rounded-lg p-3 border border-slate-700/30">
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <TrendingUp className="h-3 w-3 text-emerald-400" />
+                          <span className="text-emerald-400 font-medium text-[10px] uppercase tracking-wider">AI Analysis</span>
+                        </div>
+                        <p className="text-slate-300 text-xs leading-relaxed line-clamp-3">
+                          {match.analysisSummary}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Price & CTAs */}
+                    <div className="flex items-center justify-between pt-3 border-t border-slate-700/40">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-white font-bold text-lg">
+                          {match.country?.currencySymbol}{match.price}
+                        </span>
+                        {match.originalPrice && match.originalPrice > match.price && (
+                          <span className="text-slate-500 line-through text-xs">
+                            {match.country?.currencySymbol}{match.originalPrice}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {match.matchId && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const homeTeam = match.matchData?.home_team
+                              const awayTeam = match.matchData?.away_team
+                              const slug = homeTeam && awayTeam
+                                ? generateMatchSlug(homeTeam, awayTeam)
+                                : match.matchId
+                              router.push(`/match/${slug}`)
+                            }}
+                            className="border-slate-600/60 text-slate-300 hover:text-white hover:border-slate-500 text-xs font-medium px-3 transition-all hover:bg-slate-700/40"
+                          >
+                            <Eye className="h-3.5 w-3.5 mr-1" />
+                            Match
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          onClick={() => handlePurchaseClick(match)}
+                          className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium px-4 shadow-lg shadow-emerald-900/30 transition-all hover:shadow-emerald-800/40 hover:scale-[1.02]"
+                        >
+                          <span>View Prediction</span>
+                          <ChevronRight className="h-3.5 w-3.5 ml-1" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        )}
+
+        {/* ── Empty State ───────────────────────────────────────────────── */}
+        {!loading && !error && filteredMatches.length === 0 && (
+          <Card className="bg-slate-800/40 border-slate-700/40 p-12">
+            <div className="text-center space-y-4">
+              <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-slate-700/40 mx-auto">
+                <Target className="h-8 w-8 text-slate-500" />
+              </div>
+              <h3 className="text-lg font-semibold text-white">
+                {matches.length === 0 ? "No upcoming matches available" : "No matches found"}
+              </h3>
+              <p className="text-slate-400 text-sm max-w-md mx-auto">
+                {matches.length === 0
+                  ? "There are no upcoming match predictions at the moment. New predictions are added regularly — check back soon!"
+                  : "Try adjusting your filters or search terms to find what you're looking for."}
+              </p>
+              {matches.length > 0 && (
+                <Button
+                  variant="outline"
+                  className="border-slate-700/60"
+                  onClick={() => setFilters({ search: "", status: "all", confidence: "all", valueRating: "all", sortBy: "date" })}
+                >
+                  Clear all filters
+                </Button>
+              )}
+            </div>
+          </Card>
+        )}
       </div>
 
-      {/* Purchase Modal */}
+      {/* ── Purchase Modal ──────────────────────────────────────────────── */}
       {showPurchaseModal && modalItem && (
         <QuickPurchaseModal
           isOpen={showPurchaseModal}
-          onClose={() => {
-            setShowPurchaseModal(false)
-            setModalItem(null)
-          }}
+          onClose={() => { setShowPurchaseModal(false); setModalItem(null) }}
           item={modalItem}
         />
       )}
-
-      {/* Empty State */}
-      {filteredMatches.length === 0 && !loading && (
-        <Card className="bg-slate-800/60 border-slate-600/50 backdrop-blur-sm p-12">
-          <div className="text-center">
-            <Target className="h-12 w-12 text-slate-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-white mb-2">No matches found</h3>
-            <p className="text-slate-400 mb-4">
-              Try adjusting your filters or search terms
-            </p>
-            <Button 
-              variant="outline" 
-              onClick={() => setFilters({
-                search: "",
-                status: "all",
-                confidence: "all",
-                valueRating: "all",
-                sortBy: "date"
-              })}
-            >
-              Clear all filters
-            </Button>
-          </div>
-        </Card>
-      )}
     </div>
   )
-} 
+}

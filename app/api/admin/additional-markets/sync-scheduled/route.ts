@@ -3,10 +3,21 @@ import { syncAdditionalMarketsForUpcomingMatches } from '@/lib/market/sync-addit
 import { logger } from '@/lib/logger'
 
 /**
- * POST /api/admin/additional-markets/sync-scheduled - Cron job endpoint for automatic sync
+ * GET /api/admin/additional-markets/sync-scheduled - Cron job endpoint (Vercel crons use GET)
+ */
+export async function GET(req: NextRequest) {
+  return handleRequest(req)
+}
+
+/**
+ * POST /api/admin/additional-markets/sync-scheduled - Manual trigger endpoint
  * Uses CRON_SECRET for authentication
  */
 export async function POST(req: NextRequest) {
+  return handleRequest(req)
+}
+
+async function handleRequest(req: NextRequest) {
   try {
     // Verify CRON_SECRET
     const authHeader = req.headers.get('authorization')

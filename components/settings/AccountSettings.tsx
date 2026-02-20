@@ -1,83 +1,164 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { 
-  User, 
-  Mail, 
-  Phone, 
-  Lock, 
-  Eye, 
-  EyeOff, 
-  Save, 
+import {
+  User,
+  Mail,
+  Phone,
+  Lock,
+  Eye,
+  EyeOff,
+  Save,
   Calendar,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Loader2,
 } from "lucide-react"
 import { useAuth } from "@/components/auth-provider"
 
+/**
+ * AccountSettings — wires profile updates and password changes to real API endpoints.
+ * Profile: PATCH /api/user/profile
+ * Password: POST  /api/user/change-password
+ */
 export function AccountSettings() {
   const { user } = useAuth()
-  const [showPassword, setShowPassword] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+  const [showCurrentPw, setShowCurrentPw] = useState(false)
+  const [isProfileLoading, setIsProfileLoading] = useState(false)
+  const [isPasswordLoading, setIsPasswordLoading] = useState(false)
+  const [isDataLoading, setIsDataLoading] = useState(true)
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const [memberSince, setMemberSince] = useState<string | null>(null)
+  const [emailVerified, setEmailVerified] = useState(false)
 
   const [profile, setProfile] = useState({
-    firstName: user?.name?.split(' ')[0] || '',
-    lastName: user?.name?.split(' ').slice(1).join(' ') || '',
-    email: user?.email || '',
-    phone: '' // TODO: Add phone field to User type if needed
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
   })
 
   const [password, setPassword] = useState({
-    current: '',
-    new: '',
-    confirm: ''
+    current: "",
+    new: "",
+    confirm: "",
   })
 
+  // Load real profile data from API
+  useEffect(() => {
+    const fetchProfile = async () => {
+      setIsDataLoading(true)
+      try {
+        const res = await fetch("/api/user/profile", { credentials: "include" })
+        if (res.ok) {
+          const data = await res.json()
+          const nameParts = (data.fullName || user?.name || "").split(" ")
+          setProfile({
+            firstName: nameParts[0] || "",
+            lastName: nameParts.slice(1).join(" ") || "",
+            email: data.email || user?.email || "",
+            phone: data.phone || "",
+          })
+          if (data.createdAt) {
+            setMemberSince(
+              new Date(data.createdAt).toLocaleDateString("en-US", {
+                month: "long",
+                year: "numeric",
+              })
+            )
+          }
+          setEmailVerified(data.emailVerified ?? false)
+        }
+      } catch (err) {
+        // Fallback to session data
+        const nameParts = (user?.name || "").split(" ")
+        setProfile(prev => ({
+          ...prev,
+          firstName: nameParts[0] || "",
+          lastName: nameParts.slice(1).join(" ") || "",
+          email: user?.email || "",
+        }))
+      } finally {
+        setIsDataLoading(false)
+      }
+    }
+    fetchProfile()
+  }, [user])
+
   const handleProfileSave = async () => {
-    setIsLoading(true)
+    setIsProfileLoading(true)
     setMessage(null)
-    
     try {
-      // TODO: Implement API call to update profile
-      await new Promise(resolve => setTimeout(resolve, 1000)) // Simulate API call
-      setMessage({ type: 'success', text: 'Profile updated successfully!' })
-    } catch (error) {
-      setMessage({ type: 'error', text: 'Failed to update profile. Please try again.' })
+      const res = await fetch("/api/user/profile", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName: `${profile.firstName} ${profile.lastName}`.trim(),
+          phone: profile.phone,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to update profile")
+      setMessage({ type: "success", text: "Profile updated successfully!" })
+    } catch (err) {
+      setMessage({
+        type: "error",
+        text: err instanceof Error ? err.message : "Failed to update profile. Please try again.",
+      })
     } finally {
-      setIsLoading(false)
+      setIsProfileLoading(false)
     }
   }
 
   const handlePasswordChange = async () => {
     if (password.new !== password.confirm) {
-      setMessage({ type: 'error', text: 'New passwords do not match.' })
+      setMessage({ type: "error", text: "New passwords do not match." })
       return
     }
-
     if (password.new.length < 8) {
-      setMessage({ type: 'error', text: 'Password must be at least 8 characters long.' })
+      setMessage({ type: "error", text: "Password must be at least 8 characters long." })
       return
     }
-
-    setIsLoading(true)
+    setIsPasswordLoading(true)
     setMessage(null)
-    
     try {
-      // TODO: Implement API call to change password
-      await new Promise(resolve => setTimeout(resolve, 1000)) // Simulate API call
-      setMessage({ type: 'success', text: 'Password changed successfully!' })
-      setPassword({ current: '', new: '', confirm: '' })
-    } catch (error) {
-      setMessage({ type: 'error', text: 'Failed to change password. Please try again.' })
+      const res = await fetch("/api/user/change-password", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentPassword: password.current,
+          newPassword: password.new,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to change password")
+      setMessage({ type: "success", text: "Password changed successfully!" })
+      setPassword({ current: "", new: "", confirm: "" })
+    } catch (err) {
+      setMessage({
+        type: "error",
+        text: err instanceof Error ? err.message : "Failed to change password. Please try again.",
+      })
     } finally {
-      setIsLoading(false)
+      setIsPasswordLoading(false)
     }
+  }
+
+  if (isDataLoading) {
+    return (
+      <div className="space-y-6 animate-pulse">
+        <div className="h-8 bg-slate-700 rounded w-48" />
+        <div className="h-64 bg-slate-800/50 rounded-lg" />
+        <div className="h-48 bg-slate-800/50 rounded-lg" />
+      </div>
+    )
   }
 
   return (
@@ -91,17 +172,19 @@ export function AccountSettings() {
         <p className="text-slate-400 mt-2">Manage your profile information and account security</p>
       </div>
 
-      {/* Message Display */}
+      {/* Message */}
       {message && (
-        <div className={`p-4 rounded-lg flex items-center space-x-2 ${
-          message.type === 'success' 
-            ? 'bg-green-500/10 border border-green-500/20 text-green-400' 
-            : 'bg-red-500/10 border border-red-500/20 text-red-400'
-        }`}>
-          {message.type === 'success' ? (
-            <CheckCircle className="w-4 h-4" />
+        <div
+          className={`p-4 rounded-lg flex items-center space-x-2 ${
+            message.type === "success"
+              ? "bg-green-500/10 border border-green-500/20 text-green-400"
+              : "bg-red-500/10 border border-red-500/20 text-red-400"
+          }`}
+        >
+          {message.type === "success" ? (
+            <CheckCircle className="w-4 h-4 shrink-0" />
           ) : (
-            <AlertCircle className="w-4 h-4" />
+            <AlertCircle className="w-4 h-4 shrink-0" />
           )}
           <span>{message.text}</span>
         </div>
@@ -124,7 +207,7 @@ export function AccountSettings() {
               <Input
                 id="firstName"
                 value={profile.firstName}
-                onChange={(e) => setProfile({ ...profile, firstName: e.target.value })}
+                onChange={e => setProfile({ ...profile, firstName: e.target.value })}
                 className="bg-slate-700 border-slate-600 text-white"
                 placeholder="Enter your first name"
               />
@@ -136,7 +219,7 @@ export function AccountSettings() {
               <Input
                 id="lastName"
                 value={profile.lastName}
-                onChange={(e) => setProfile({ ...profile, lastName: e.target.value })}
+                onChange={e => setProfile({ ...profile, lastName: e.target.value })}
                 className="bg-slate-700 border-slate-600 text-white"
                 placeholder="Enter your last name"
               />
@@ -153,11 +236,12 @@ export function AccountSettings() {
                 id="email"
                 type="email"
                 value={profile.email}
-                onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                className="bg-slate-700 border-slate-600 text-white pl-10"
-                placeholder="Enter your email address"
+                readOnly
+                className="bg-slate-700/50 border-slate-600 text-slate-400 pl-10 cursor-not-allowed"
+                placeholder="Email cannot be changed"
               />
             </div>
+            <p className="text-xs text-slate-500">Email address cannot be changed after registration.</p>
           </div>
 
           <div className="space-y-2">
@@ -169,20 +253,20 @@ export function AccountSettings() {
               <Input
                 id="phone"
                 value={profile.phone}
-                onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                onChange={e => setProfile({ ...profile, phone: e.target.value })}
                 className="bg-slate-700 border-slate-600 text-white pl-10"
                 placeholder="Enter your phone number"
               />
             </div>
           </div>
 
-          <Button 
+          <Button
             onClick={handleProfileSave}
-            disabled={isLoading}
+            disabled={isProfileLoading}
             className="bg-emerald-600 hover:bg-emerald-700 text-white"
           >
-            {isLoading ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+            {isProfileLoading ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             ) : (
               <Save className="w-4 h-4 mr-2" />
             )}
@@ -198,29 +282,31 @@ export function AccountSettings() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
-              <div className="flex items-center space-x-2">
-                <Calendar className="w-4 h-4 text-slate-400" />
-                <span className="text-slate-300">Member Since</span>
+            {memberSince && (
+              <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <Calendar className="w-4 h-4 text-slate-400" />
+                  <span className="text-slate-300">Member Since</span>
+                </div>
+                <span className="text-white font-medium">{memberSince}</span>
               </div>
-              <span className="text-white font-medium">
-                Recently
-              </span>
-            </div>
+            )}
             <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
               <div className="flex items-center space-x-2">
                 <Mail className="w-4 h-4 text-slate-400" />
                 <span className="text-slate-300">Email Verified</span>
               </div>
-              <Badge className="bg-green-500/20 text-green-400">
-                Verified
-              </Badge>
+              {emailVerified ? (
+                <Badge className="bg-green-500/20 text-green-400">Verified</Badge>
+              ) : (
+                <Badge className="bg-amber-500/20 text-amber-400">Pending</Badge>
+              )}
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Password Change */}
+      {/* Change Password */}
       <Card className="bg-slate-800/50 border-slate-700">
         <CardHeader>
           <CardTitle className="text-white flex items-center space-x-2">
@@ -237,9 +323,9 @@ export function AccountSettings() {
               <Lock className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
               <Input
                 id="currentPassword"
-                type={showPassword ? "text" : "password"}
+                type={showCurrentPw ? "text" : "password"}
                 value={password.current}
-                onChange={(e) => setPassword({ ...password, current: e.target.value })}
+                onChange={e => setPassword({ ...password, current: e.target.value })}
                 className="bg-slate-700 border-slate-600 text-white pl-10 pr-10"
                 placeholder="Enter current password"
               />
@@ -248,9 +334,9 @@ export function AccountSettings() {
                 variant="ghost"
                 size="sm"
                 className="absolute right-2 top-2 h-6 w-6 p-0"
-                onClick={() => setShowPassword(!showPassword)}
+                onClick={() => setShowCurrentPw(!showCurrentPw)}
               >
-                {showPassword ? (
+                {showCurrentPw ? (
                   <EyeOff className="w-4 h-4 text-slate-400" />
                 ) : (
                   <Eye className="w-4 h-4 text-slate-400" />
@@ -269,9 +355,9 @@ export function AccountSettings() {
                 id="newPassword"
                 type="password"
                 value={password.new}
-                onChange={(e) => setPassword({ ...password, new: e.target.value })}
+                onChange={e => setPassword({ ...password, new: e.target.value })}
                 className="bg-slate-700 border-slate-600 text-white pl-10"
-                placeholder="Enter new password"
+                placeholder="Enter new password (min 8 characters)"
               />
             </div>
           </div>
@@ -286,20 +372,32 @@ export function AccountSettings() {
                 id="confirmPassword"
                 type="password"
                 value={password.confirm}
-                onChange={(e) => setPassword({ ...password, confirm: e.target.value })}
-                className="bg-slate-700 border-slate-600 text-white pl-10"
+                onChange={e => setPassword({ ...password, confirm: e.target.value })}
+                className={`bg-slate-700 border-slate-600 text-white pl-10 ${
+                  password.confirm && password.new !== password.confirm
+                    ? "border-red-500/50"
+                    : ""
+                }`}
                 placeholder="Confirm new password"
               />
             </div>
+            {password.confirm && password.new !== password.confirm && (
+              <p className="text-xs text-red-400">Passwords do not match</p>
+            )}
           </div>
 
-          <Button 
+          <Button
             onClick={handlePasswordChange}
-            disabled={isLoading}
+            disabled={
+              isPasswordLoading ||
+              !password.current ||
+              !password.new ||
+              password.new !== password.confirm
+            }
             className="bg-emerald-600 hover:bg-emerald-700 text-white"
           >
-            {isLoading ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+            {isPasswordLoading ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             ) : (
               <Lock className="w-4 h-4 mr-2" />
             )}
@@ -309,4 +407,4 @@ export function AccountSettings() {
       </Card>
     </div>
   )
-} 
+}

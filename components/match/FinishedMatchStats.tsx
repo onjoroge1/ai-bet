@@ -39,56 +39,36 @@ interface FinishedMatchStatsProps {
  * Displays final score, outcome, and detailed match statistics for completed matches
  */
 export function FinishedMatchStats({ matchData, predictionData }: FinishedMatchStatsProps) {
-  // Extract score with comprehensive logging
-  console.log('[FinishedMatchStats] 🔍 Component received matchData:', {
-    hasFinalResult: !!matchData.final_result,
-    finalResult: matchData.final_result,
-    hasScore: !!matchData.score,
-    score: matchData.score,
-    status: (matchData as any).status,
-    live_data: matchData.live_data,
-    fullMatchData: matchData
-  })
-  
+  // Extract score — only use real data, never fallback to 0-0
   const scoreFromFinalResult = matchData.final_result?.score
   const scoreFromScore = matchData.score
-  const finalScore = scoreFromFinalResult || scoreFromScore || { home: 0, away: 0 }
   
-  // Log if we're using fallback (0-0)
-  if (!scoreFromFinalResult && !scoreFromScore) {
-    console.error('[FinishedMatchStats] ❌ No score found, using 0-0 fallback', {
-      hasFinalResult: !!matchData.final_result,
-      hasScore: !!matchData.score,
-      finalResult: matchData.final_result,
-      score: matchData.score,
-      matchDataKeys: Object.keys(matchData),
-      matchData: matchData
-    })
-  } else {
-    console.log('[FinishedMatchStats] ✅ Score found', {
-      score: finalScore,
-      source: scoreFromFinalResult ? 'final_result.score' : 'score',
-      hasFinalResult: !!matchData.final_result,
-      finalResult: matchData.final_result
-    })
-  }
+  /** Whether we have a real, trustworthy score to display */
+  const hasRealScore = !!(
+    (scoreFromFinalResult && (scoreFromFinalResult.home !== undefined || scoreFromFinalResult.away !== undefined)) ||
+    (scoreFromScore && (scoreFromScore.home !== undefined || scoreFromScore.away !== undefined))
+  )
+  const finalScore = scoreFromFinalResult || scoreFromScore || null
   
   const outcome = matchData.final_result?.outcome_text || 
-                  (finalScore.home > finalScore.away ? 'Home Win' :
-                   finalScore.away > finalScore.home ? 'Away Win' : 'Draw')
+                  (finalScore && finalScore.home > finalScore.away ? 'Home Win' :
+                   finalScore && finalScore.away > finalScore.home ? 'Away Win' : 
+                   finalScore ? 'Draw' : null)
   const stats = matchData.live_data?.statistics || {}
 
   // Determine winner
-  const winner = finalScore.home > finalScore.away ? 'home' :
-                 finalScore.away > finalScore.home ? 'away' : 'draw'
+  const winner = finalScore 
+    ? (finalScore.home > finalScore.away ? 'home' :
+       finalScore.away > finalScore.home ? 'away' : 'draw')
+    : null
 
-  // Check if prediction was correct
+  // Check if prediction was correct (only if we have real score data)
   const predictionCorrect = predictionData?.predictions?.v2?.pick || predictionData?.predictions?.v1?.pick
-  const predictionWasCorrect = predictionCorrect && (
+  const predictionWasCorrect = winner && predictionCorrect ? (
     (predictionCorrect === 'home' && winner === 'home') ||
     (predictionCorrect === 'away' && winner === 'away') ||
     (predictionCorrect === 'draw' && winner === 'draw')
-  )
+  ) : undefined
 
   const statItems = [
     { label: 'Shots', home: stats.shots?.home, away: stats.shots?.away, icon: Target },
@@ -139,22 +119,42 @@ export function FinishedMatchStats({ matchData, predictionData }: FinishedMatchS
           <div className="flex items-center justify-between mb-4">
             <div className="flex-1 text-center">
               <div className="text-slate-300 text-sm mb-2">{matchData.home.name}</div>
-              <div className={`text-5xl font-bold ${winner === 'home' ? 'text-emerald-400' : 'text-slate-400'}`}>
-                {finalScore.home}
-              </div>
+              {hasRealScore && finalScore ? (
+                <div className={`text-5xl font-bold ${winner === 'home' ? 'text-emerald-400' : 'text-slate-400'}`}>
+                  {finalScore.home}
+                </div>
+              ) : (
+                <div className="text-3xl font-bold text-slate-600">—</div>
+              )}
             </div>
             <div className="text-slate-500 text-2xl font-bold mx-8">-</div>
             <div className="flex-1 text-center">
               <div className="text-slate-300 text-sm mb-2">{matchData.away.name}</div>
-              <div className={`text-5xl font-bold ${winner === 'away' ? 'text-emerald-400' : 'text-slate-400'}`}>
-                {finalScore.away}
-              </div>
+              {hasRealScore && finalScore ? (
+                <div className={`text-5xl font-bold ${winner === 'away' ? 'text-emerald-400' : 'text-slate-400'}`}>
+                  {finalScore.away}
+                </div>
+              ) : (
+                <div className="text-3xl font-bold text-slate-600">—</div>
+              )}
             </div>
           </div>
 
+          {/* Score Unavailable Notice */}
+          {!hasRealScore && (
+            <div className="text-center mb-4 px-4 py-2 bg-amber-900/20 border border-amber-500/20 rounded-lg">
+              <p className="text-amber-300 text-sm flex items-center justify-center gap-2">
+                <AlertCircle className="w-4 h-4" />
+                Final score not yet available — data is being updated
+              </p>
+            </div>
+          )}
+
           {/* Outcome and Prediction Accuracy */}
           <div className="text-center space-y-3 pt-4 border-t border-emerald-500/20">
-            <div className="text-xl font-semibold text-white">{outcome}</div>
+            {outcome && (
+              <div className="text-xl font-semibold text-white">{outcome}</div>
+            )}
             
             {/* Prediction Display */}
             {predictionLabel && (
@@ -243,4 +243,5 @@ export function FinishedMatchStats({ matchData, predictionData }: FinishedMatchS
     </div>
   )
 }
+
 

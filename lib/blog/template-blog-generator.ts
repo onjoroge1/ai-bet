@@ -1,6 +1,9 @@
 import prisma from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { apiFootballService } from '@/lib/services/api-football.service'
+import { generateMatchSlug } from '@/lib/match-slug'
+import OpenAI from 'openai'
+import { logger } from '@/lib/logger'
 
 export interface QuickPurchaseLite {
   id: string
@@ -290,13 +293,41 @@ export class TemplateBlogGenerator {
 
   /**
    * Generate a template-only blog draft from QuickPurchase and MarketMatch
+   * Optionally humanizes content using LLM to remove formulaic structure
    */
-  static generateTemplateOnlyDraft(qp: QuickPurchaseLite, marketMatch?: MarketMatchWithQP): GeneratedBlogDraft {
+  static async generateTemplateOnlyDraft(
+    qp: QuickPurchaseLite, 
+    marketMatch?: MarketMatchWithQP,
+    options?: { useLLM?: boolean }
+  ): Promise<GeneratedBlogDraft> {
     // Extract team names from matchData or name
     const teamNames = this.extractTeamNames(qp)
     const title = this.generateTitle(qp, teamNames)
     const excerpt = this.generateExcerpt(qp, teamNames)
-    const contentHtml = this.generateContentHtml(qp, teamNames, marketMatch)
+    let contentHtml = this.generateContentHtml(qp, teamNames, marketMatch)
+    
+    // Humanize content if LLM is enabled (default: true)
+    if (options?.useLLM !== false) {
+      const predictionData = qp.predictionData as any
+      const confidence = qp.confidenceScore || 
+        (predictionData?.predictions?.confidence !== undefined 
+          ? (typeof predictionData.predictions.confidence === 'number' && predictionData.predictions.confidence <= 1
+              ? Math.round(predictionData.predictions.confidence * 100)
+              : Math.round(predictionData.predictions.confidence))
+          : undefined)
+      
+      contentHtml = await this.humanizeBlogContent(
+        contentHtml,
+        {
+          homeTeam: teamNames.homeTeam,
+          awayTeam: teamNames.awayTeam,
+          league: marketMatch?.league || 'Football',
+          confidence,
+        },
+        { useLLM: true }
+      )
+    }
+    
     const tags = this.generateTags(qp)
     const readTimeMinutes = Math.max(1, Math.ceil(contentHtml.length / 900))
 
@@ -535,10 +566,10 @@ export class TemplateBlogGenerator {
     // Get one strong AI summary (avoid redundancy)
     const aiSummary = this.sanitize(qp.analysisSummary || analysis.ai_summary_clean || analysis.explanation || '')
     
-    // Format confidence statement tied to specific outcome
+    // Format confidence statement tied to specific outcome (less AI-like)
     const confidenceStatement = outcomeTeam && recommendedOutcome
-      ? `SnapBet AI assigns a <strong>${confidence}% win probability to ${outcomeTeam}</strong>, based on recent form, home dominance, and matchup context.`
-      : `SnapBet AI assigns a <strong>${confidence}% confidence</strong> to this match analysis, based on recent form, matchup context, and historical data.`
+      ? `Our analysis suggests <strong>${outcomeTeam} has a ${confidence}% win probability</strong>, based on recent form, home advantage, and matchup context.`
+      : `Our analysis indicates <strong>${confidence}% confidence</strong> in this match prediction, based on recent form, matchup context, and historical data.`
 
     // Determine risk level and reasoning
     const riskLevel = confidence >= 75 ? 'Low' : confidence >= 60 ? 'Moderate' : 'High'
@@ -688,39 +719,29 @@ export class TemplateBlogGenerator {
       }
     </section>
 
-    <section class="cta" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.05) 100%); border: 2px solid rgba(16, 185, 129, 0.3); border-radius: 12px; padding: 32px; margin: 40px 0; text-align: center;">
-      <div style="margin-bottom: 24px;">
-        <h2 style="color: #10b981; font-size: 28px; margin-bottom: 12px; font-weight: 700;">🚀 Get the Complete AI Edge</h2>
-        <p style="font-size: 18px; color: #cbd5e1; margin-bottom: 20px; line-height: 1.6;">
-          Unlock advanced model insights, CLV analysis, and value bet recommendations
-        </p>
+    <section class="cta">
+      <div>
+        <h2>🚀 Get the Complete AI Edge</h2>
+        <p>Unlock advanced model insights, CLV analysis, and value bet recommendations</p>
       </div>
-      
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 24px 0; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto;">
-        <div style="padding: 12px; background: rgba(16, 185, 129, 0.1); border-radius: 8px;">
-          <div style="font-weight: 600; color: #10b981; margin-bottom: 4px;">🧠 V2 AI Model</div>
-          <div style="font-size: 13px; color: #94a3b8;">Enhanced predictions</div>
+      <div>
+        <div>
+          <div>🧠 V2 AI Model</div>
+          <div>Enhanced predictions</div>
         </div>
-        <div style="padding: 12px; background: rgba(16, 185, 129, 0.1); border-radius: 8px;">
-          <div style="font-weight: 600; color: #10b981; margin-bottom: 4px;">📊 CLV Tracker</div>
-          <div style="font-size: 13px; color: #94a3b8;">Optimal timing</div>
+        <div>
+          <div>📊 CLV Tracker</div>
+          <div>Optimal timing</div>
         </div>
-        <div style="padding: 12px; background: rgba(16, 185, 129, 0.1); border-radius: 8px;">
-          <div style="font-weight: 600; color: #10b981; margin-bottom: 4px;">🎯 Value Bets</div>
-          <div style="font-size: 13px; color: #94a3b8;">Edge identification</div>
+        <div>
+          <div>🎯 Value Bets</div>
+          <div>Edge identification</div>
         </div>
       </div>
-      
-      <a href="/match/${marketMatch?.matchId || qp.matchId || ''}" 
-         style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #0f172a; font-weight: 700; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-size: 16px; box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4); transition: transform 0.2s, box-shadow 0.2s; margin-top: 20px;"
-         onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 12px 32px rgba(16, 185, 129, 0.5)';"
-         onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 8px 24px rgba(16, 185, 129, 0.4)';">
+      <a href="/match/${marketMatch ? generateMatchSlug(marketMatch.homeTeam, marketMatch.awayTeam) : (qp.matchId || '')}">
         🔓 View Full Match Analysis →
       </a>
-      
-      <p style="margin-top: 16px; font-size: 13px; color: #64748b; font-style: italic;">
-        Instant access • Premium insights • No subscription required
-      </p>
+      <p>Instant access • Premium insights • No subscription required</p>
     </section>
 
     <section class="faq">
@@ -754,5 +775,108 @@ export class TemplateBlogGenerator {
     }
 
     return tags
+  }
+
+  /**
+   * Humanize blog content using LLM to make it sound more natural and less formulaic
+   * Removes AI tell-tale signs and makes prose more engaging
+   */
+  static async humanizeBlogContent(
+    htmlContent: string,
+    matchData: { homeTeam: string; awayTeam: string; league: string; confidence?: number },
+    options?: { useLLM?: boolean }
+  ): Promise<string> {
+    // If LLM is disabled, return original
+    if (options?.useLLM === false) {
+      return htmlContent
+    }
+
+    // Check if OpenAI API key is available
+    const apiKey = process.env.OPENAI_API_KEY
+    if (!apiKey) {
+      logger.warn('OPENAI_API_KEY not set, skipping blog humanization', {
+        tags: ['blog', 'llm', 'humanization'],
+      })
+      return htmlContent
+    }
+
+    try {
+      const openai = new OpenAI({ apiKey })
+
+      // Extract main content sections from HTML (remove HTML tags for processing)
+      const textContent = htmlContent
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '') // Remove scripts
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '') // Remove styles
+        .replace(/<[^>]+>/g, '\n') // Replace HTML tags with newlines
+        .replace(/\n{3,}/g, '\n\n') // Normalize multiple newlines
+        .trim()
+
+      const systemPrompt = `You are a professional sports betting analyst writing match preview articles. Rewrite this blog content to sound natural, engaging, and written by a human expert—not an AI or automated system.
+
+Rules:
+- Remove all mentions of "SnapBet AI", "AI assigns", "model assigns", "algorithm", "machine learning", or any AI-related language
+- Replace formulaic phrases like "SnapBet AI assigns X% win probability" with natural language like "Our analysis suggests X% win probability" or "The data points to a X% chance"
+- Make the writing more conversational and opinionated—like a real analyst would write
+- Keep all factual data (percentages, team names, dates, statistics) accurate
+- Maintain the article structure and sections
+- Remove generic fallback text and make it more specific
+- Write in a confident, expert tone—not robotic or marketing-like
+- Keep the same length (800-1200 words)
+- Preserve HTML structure but humanize the prose within each section
+- Remove emojis from content (keep structure clean)
+- Make team analysis sound like real insights, not template fill-ins
+
+Return the full HTML content with humanized prose.`
+
+      const userMessage = `Match: ${matchData.homeTeam} vs ${matchData.awayTeam}
+League: ${matchData.league}
+${matchData.confidence ? `Confidence: ${matchData.confidence}%` : ''}
+
+Original Blog Content:
+${textContent.substring(0, 6000)}${textContent.length > 6000 ? '...' : ''}
+
+Rewrite this blog to sound natural and human-written, removing all AI tell-tale signs while keeping all the data and structure intact.`
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage },
+        ],
+        max_tokens: 4000,
+        temperature: 0.7,
+      })
+
+      const humanized = response.choices[0]?.message?.content?.trim()
+      
+      if (!humanized) {
+        logger.warn('OpenAI returned empty response for blog humanization, using original', {
+          tags: ['blog', 'llm', 'humanization'],
+        })
+        return htmlContent
+      }
+
+      // The LLM should return HTML, but if it doesn't, we need to reconstruct it
+      // For now, assume it returns HTML (we can improve this later)
+      const humanizedHtml = humanized.includes('<html') || humanized.includes('<article') || humanized.includes('<section')
+        ? humanized
+        : htmlContent // Fallback to original if no HTML structure detected
+
+      logger.info('Successfully humanized blog content with LLM', {
+        tags: ['blog', 'llm', 'humanization'],
+        data: {
+          originalLength: htmlContent.length,
+          humanizedLength: humanizedHtml.length,
+        },
+      })
+
+      return humanizedHtml
+    } catch (error) {
+      logger.error('Failed to humanize blog content with LLM, using original', {
+        tags: ['blog', 'llm', 'humanization', 'error'],
+        error: error instanceof Error ? error : undefined,
+      })
+      return htmlContent
+    }
   }
 }

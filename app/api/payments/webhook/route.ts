@@ -42,7 +42,30 @@ export async function POST(req: NextRequest) {
         console.log('Handling payment_intent.payment_failed event');
         await handlePaymentFailure(event.data.object as Stripe.PaymentIntent);
         break;
-      // Add more event types as needed
+
+      // ── Subscription lifecycle ──────────────────────────────────────────
+      case 'customer.subscription.created':
+      case 'customer.subscription.updated':
+        console.log(`Handling ${event.type}`);
+        await handleSubscriptionUpsert(event.data.object as Stripe.Subscription);
+        break;
+
+      case 'customer.subscription.deleted':
+        console.log('Handling customer.subscription.deleted');
+        await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
+        break;
+
+      // ── Invoice events (recurring billing) ─────────────────────────────
+      case 'invoice.paid':
+        console.log('Handling invoice.paid');
+        await handleInvoicePaid(event.data.object as Stripe.Invoice);
+        break;
+
+      case 'invoice.payment_failed':
+        console.log('Handling invoice.payment_failed');
+        await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
+        break;
+
       default:
         console.log('Unhandled event:', event.type);
     }
@@ -357,6 +380,27 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
   const source = metadata.source;
   const purchaseType = metadata.purchaseType;
   const packageType = metadata.packageType;
+
+  // ── Web-app subscription checkout ─────────────────────────────────────────
+  // When a web user completes a subscription checkout, store the Stripe customer
+  // ID on the User record so future subscription events can be correlated.
+  if (source !== 'whatsapp' && session.mode === 'subscription') {
+    const userId = metadata.userId;
+    if (userId && session.customer) {
+      const customerId =
+        typeof session.customer === 'string' ? session.customer : session.customer.id;
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          stripeCustomerId: customerId,
+          subscriptionStatus: 'active',
+          subscriptionPlan: metadata.planType ?? 'monthly_sub',
+        },
+      });
+      console.log(`[handleCheckoutSessionCompleted] Stored Stripe customer ${customerId} for user ${userId}`);
+    }
+    return;
+  }
 
   // Process WhatsApp purchases (both individual picks and VIP subscriptions)
   if (source !== 'whatsapp' || !waId) {
@@ -815,4 +859,203 @@ async function addCreditsToUser(userId: string, userPackage: any) {
     console.error('Error adding credits to user:', error);
     return null;
   }
-} 
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Subscription handlers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Handles subscription created / updated events.
+ * Syncs the subscription state into the User record and creates / extends a
+ * UserPackage row for the monthly_sub plan.
+ */
+async function handleSubscriptionUpsert(subscription: Stripe.Subscription) {
+  const customerId =
+    typeof subscription.customer === 'string'
+      ? subscription.customer
+      : subscription.customer.id;
+
+  // Look up the user by Stripe customer ID
+  const user = await prisma.user.findFirst({
+    where: { stripeCustomerId: customerId },
+  });
+
+  if (!user) {
+    console.error(`[handleSubscriptionUpsert] No user found for Stripe customer: ${customerId}`);
+    return;
+  }
+
+  const status = subscription.status; // "active" | "trialing" | "past_due" etc.
+  const periodEnd = new Date(subscription.current_period_end * 1000);
+
+  // Update User subscription fields
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      stripeSubscriptionId: subscription.id,
+      subscriptionStatus: status,
+      subscriptionPlan: 'monthly_sub',
+      subscriptionExpiresAt: periodEnd,
+    },
+  });
+
+  // Upsert active UserPackage for monthly sub when subscription is active/trialing
+  if (status === 'active' || status === 'trialing') {
+    const existing = await prisma.userPackage.findFirst({
+      where: { userId: user.id, packageType: 'monthly_sub', status: 'active' },
+    });
+
+    if (!existing) {
+      await prisma.userPackage.create({
+        data: {
+          userId: user.id,
+          packageOfferCountryPriceId: subscription.id, // use sub ID as ref
+          expiresAt: periodEnd,
+          tipsRemaining: 0,
+          totalTips: -1, // unlimited
+          pricePaid: 0,
+          currencyCode: 'USD',
+          currencySymbol: '$',
+          status: 'active',
+          packageType: 'monthly_sub',
+        },
+      });
+    } else {
+      // Extend expiry on renewal
+      await prisma.userPackage.update({
+        where: { id: existing.id },
+        data: { expiresAt: periodEnd, status: 'active' },
+      });
+    }
+
+    console.log(`[handleSubscriptionUpsert] User ${user.id} subscription synced → ${status}, expires ${periodEnd.toISOString()}`);
+  }
+}
+
+/**
+ * Handles subscription cancelled / expired event.
+ * Marks the UserPackage as expired and clears subscription fields.
+ */
+async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
+  const customerId =
+    typeof subscription.customer === 'string'
+      ? subscription.customer
+      : subscription.customer.id;
+
+  const user = await prisma.user.findFirst({
+    where: { stripeCustomerId: customerId },
+  });
+
+  if (!user) {
+    console.error(`[handleSubscriptionDeleted] No user found for Stripe customer: ${customerId}`);
+    return;
+  }
+
+  // Expire all active monthly_sub packages for this user
+  await prisma.userPackage.updateMany({
+    where: { userId: user.id, packageType: 'monthly_sub', status: 'active' },
+    data: { status: 'expired' },
+  });
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      subscriptionStatus: 'canceled',
+      stripeSubscriptionId: null,
+    },
+  });
+
+  // Notify user
+  try {
+    const { NotificationService } = await import('@/lib/notification-service');
+    await NotificationService.createNotification({
+      userId: user.id,
+      title: 'Subscription Cancelled',
+      message:
+        'Your monthly subscription has been cancelled. You can re-subscribe at any time from the packages page.',
+      type: 'warning',
+      category: 'payment',
+      actionUrl: '/dashboard',
+    });
+  } catch (_err) {
+    console.error('[handleSubscriptionDeleted] Failed to notify user', _err);
+  }
+
+  console.log(`[handleSubscriptionDeleted] User ${user.id} subscription cancelled`);
+}
+
+/**
+ * Handles successful recurring invoice payment.
+ * Re-activates / extends the UserPackage for another billing cycle and
+ * adds the monthly credit allowance back.
+ */
+async function handleInvoicePaid(invoice: Stripe.Invoice) {
+  const subscriptionId =
+    typeof invoice.subscription === 'string'
+      ? invoice.subscription
+      : invoice.subscription?.id ?? null;
+
+  if (!subscriptionId) return; // one-time invoice, not recurring
+
+  const user = await prisma.user.findFirst({
+    where: { stripeSubscriptionId: subscriptionId },
+  });
+
+  if (!user) {
+    console.error(`[handleInvoicePaid] No user found for subscription: ${subscriptionId}`);
+    return;
+  }
+
+  // Top up credits for the new billing cycle (150 = unlimited monthly allowance)
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      predictionCredits: { increment: 150 },
+      totalCreditsEarned: { increment: 150 },
+    },
+  });
+
+  console.log(`[handleInvoicePaid] Topped up 150 credits for user ${user.id} (recurring billing)`);
+}
+
+/**
+ * Handles failed recurring invoice payment.
+ * Updates subscription status and notifies the user to update payment details.
+ */
+async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
+  const subscriptionId =
+    typeof invoice.subscription === 'string'
+      ? invoice.subscription
+      : invoice.subscription?.id ?? null;
+
+  if (!subscriptionId) return;
+
+  const user = await prisma.user.findFirst({
+    where: { stripeSubscriptionId: subscriptionId },
+  });
+
+  if (!user) return;
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { subscriptionStatus: 'past_due' },
+  });
+
+  try {
+    const { NotificationService } = await import('@/lib/notification-service');
+    await NotificationService.createNotification({
+      userId: user.id,
+      title: 'Payment Failed',
+      message:
+        'Your subscription renewal payment failed. Please update your payment method to keep your premium access.',
+      type: 'error',
+      category: 'payment',
+      actionUrl: '/dashboard/settings',
+    });
+  } catch (_err) {
+    console.error('[handleInvoicePaymentFailed] Failed to notify user', _err);
+  }
+
+  console.log(`[handleInvoicePaymentFailed] Payment failed for user ${user.id}, status → past_due`);
+}

@@ -6,6 +6,7 @@ import { Prisma } from '@prisma/client'
 import { TwitterGenerator } from '@/lib/social/twitter-generator'
 import { logger } from '@/lib/logger'
 import { buildSocialUrl } from '@/lib/social/url-utils'
+import { generateMatchSlug } from '@/lib/match-slug'
 
 /**
  * Check if a match already has an existing scheduled/posted post
@@ -152,14 +153,15 @@ export async function GET(request: NextRequest) {
           const quickPurchase = match.quickPurchases[0]
           const blogPost = match.blogPosts[0]
           
-          // Build matchData for template filtering using buildSocialUrl to prevent double slashes
+          // Build matchData for template filtering using SEO slug
+          const matchSlug = generateMatchSlug(match.homeTeam, match.awayTeam)
           const matchData = {
             homeTeam: match.homeTeam,
             awayTeam: match.awayTeam,
             league: match.league,
             matchId: match.matchId,
             aiConf: quickPurchase?.confidenceScore || undefined,
-            matchUrl: buildSocialUrl(`/match/${match.matchId}`),
+            matchUrl: buildSocialUrl(`/match/${matchSlug}`),
             blogUrl: blogPost ? buildSocialUrl(`/blog/${blogPost.slug}`) : undefined,
           }
           
@@ -181,7 +183,7 @@ export async function GET(request: NextRequest) {
             confidenceScore: quickPurchase?.confidenceScore || null,
             hasBlog: !!blogPost,
             hasExistingPost: hasPost,
-            matchUrl: buildSocialUrl(`/match/${match.matchId}`),
+            matchUrl: buildSocialUrl(`/match/${matchSlug}`),
             blogUrl: blogPost ? buildSocialUrl(`/blog/${blogPost.slug}`) : undefined,
             availableTemplates: availableTemplates.map(t => ({
               id: t.id,
@@ -261,9 +263,10 @@ export async function POST(request: NextRequest) {
       templateId?: string
       scheduledAt?: string
       postNow?: boolean
+      useLLM?: boolean
     }
 
-    const { action, matchId, parlayId, templateId, scheduledAt, postNow = false } = body
+    const { action, matchId, parlayId, templateId, scheduledAt, postNow = false, useLLM = true } = body
 
     if (action === 'generate_match' && matchId) {
       // Generate post for match
@@ -337,13 +340,14 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      const matchSlug = generateMatchSlug(match.homeTeam, match.awayTeam)
       const matchData = {
         homeTeam: match.homeTeam,
         awayTeam: match.awayTeam,
         league: match.league,
         matchId: match.matchId,
         aiConf,
-        matchUrl: buildSocialUrl(`/match/${match.matchId}`),
+        matchUrl: buildSocialUrl(`/match/${matchSlug}`),
         blogUrl: blogPost ? buildSocialUrl(`/blog/${blogPost.slug}`) : undefined,
         explanation,
       }
@@ -368,13 +372,26 @@ export async function POST(request: NextRequest) {
 
       const draft = TwitterGenerator.generateMatchPost(matchData, templateId)
 
+      // Humanize content if LLM is enabled
+      let finalContent = draft.content
+      if (useLLM) {
+        try {
+          finalContent = await TwitterGenerator.humanizePost(draft.content, matchData, { useLLM: true })
+        } catch (error) {
+          logger.warn('Failed to humanize post, using template version', {
+            tags: ['social', 'twitter', 'llm'],
+            error: error instanceof Error ? error : undefined,
+          })
+        }
+      }
+
       // Create scheduled post
       const post = await prisma.socialMediaPost.create({
         data: {
           platform: 'twitter',
           postType: 'match',
           templateId: draft.templateId,
-          content: draft.content,
+          content: finalContent,
           url: draft.url,
           matchId: match.matchId,
           marketMatchId: match.id,

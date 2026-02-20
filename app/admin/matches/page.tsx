@@ -74,6 +74,9 @@ export default function AdminMatchesPage() {
   const [selectedMatchForAction, setSelectedMatchForAction] = useState<MatchWithStatus | null>(null)
   const [selectedTemplate, setSelectedTemplate] = useState<string>('')
   const [scheduledAt, setScheduledAt] = useState<string>('')
+  const [previewContent, setPreviewContent] = useState<{ template: string; humanized?: string; url?: string } | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [useLLM, setUseLLM] = useState(true)
 
   const fetchMatches = async () => {
     try {
@@ -280,6 +283,44 @@ export default function AdminMatchesPage() {
     }
   }
 
+  const handlePreviewPost = async (matchId: string, templateId: string) => {
+    if (!templateId) {
+      toast.error('Please select a template first')
+      return
+    }
+
+    try {
+      setPreviewLoading(true)
+      const response = await fetch('/api/admin/social/twitter/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'generate_match',
+          matchId,
+          templateId,
+          useLLM
+        })
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        setPreviewContent({
+          template: data.data.content,
+          humanized: data.data.humanizedContent,
+          url: data.data.url
+        })
+      } else {
+        toast.error(data.error || 'Failed to generate preview')
+      }
+    } catch (error) {
+      toast.error('Error generating preview')
+      console.error(error)
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
   const handleSchedulePost = async (matchId: string, templateId?: string, scheduledAt?: string) => {
     try {
       const toastId = toast.loading('Scheduling post...')
@@ -291,7 +332,8 @@ export default function AdminMatchesPage() {
           matchId,
           templateId,
           scheduledAt,
-          postNow: !scheduledAt
+          postNow: !scheduledAt,
+          useLLM
         })
       })
       
@@ -304,6 +346,7 @@ export default function AdminMatchesPage() {
         setSocialDialogOpen(false)
         setSelectedTemplate('')
         setScheduledAt('')
+        setPreviewContent(null)
       } else {
         toast.error(data.error || 'Failed to schedule post')
       }
@@ -807,6 +850,8 @@ export default function AdminMatchesPage() {
                                       setSelectedMatchForAction(match)
                                       setSelectedTemplate('')
                                       setScheduledAt('')
+                                      setPreviewContent(null)
+                                      setUseLLM(true)
                                       setSocialDialogOpen(true)
                                     }}
                                     className="text-blue-400"
@@ -870,7 +915,7 @@ export default function AdminMatchesPage() {
 
         {/* Social Post Scheduling Dialog */}
         <Dialog open={socialDialogOpen} onOpenChange={setSocialDialogOpen}>
-          <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-md">
+          <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Schedule Social Media Post</DialogTitle>
               <DialogDescription className="text-slate-400">
@@ -882,7 +927,10 @@ export default function AdminMatchesPage() {
             <div className="space-y-4 mt-4">
               <div>
                 <Label className="text-slate-300">Template</Label>
-                <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
+                <Select value={selectedTemplate} onValueChange={(value) => {
+                  setSelectedTemplate(value)
+                  setPreviewContent(null) // Clear preview when template changes
+                }}>
                   <SelectTrigger className="bg-slate-700/50 border-slate-600 text-white mt-1">
                     <SelectValue placeholder="Select template" />
                   </SelectTrigger>
@@ -903,6 +951,93 @@ export default function AdminMatchesPage() {
                   </p>
                 )}
               </div>
+              
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="useLLM"
+                  checked={useLLM}
+                  onChange={(e) => {
+                    setUseLLM(e.target.checked)
+                    setPreviewContent(null) // Clear preview when LLM setting changes
+                  }}
+                  className="rounded border-slate-600"
+                />
+                <Label htmlFor="useLLM" className="text-slate-300 cursor-pointer">
+                  Use AI to humanize post (recommended)
+                </Label>
+              </div>
+
+              {selectedTemplate && (
+                <div>
+                  <Button
+                    onClick={() => {
+                      if (selectedMatchForAction) {
+                        handlePreviewPost(selectedMatchForAction.matchId, selectedTemplate)
+                      }
+                    }}
+                    disabled={previewLoading}
+                    variant="outline"
+                    className="w-full border-emerald-600 text-emerald-400 hover:bg-emerald-600/10"
+                  >
+                    {previewLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Generating Preview...
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-4 h-4 mr-2" />
+                        Preview Post
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+
+              {previewContent && (
+                <div className="space-y-3 p-4 bg-slate-900/50 rounded-lg border border-slate-700">
+                  <div>
+                    <Label className="text-slate-400 text-xs mb-2 block">Template Version:</Label>
+                    <div className="p-3 bg-slate-800 rounded border border-slate-700 text-sm whitespace-pre-wrap break-words">
+                      {previewContent.template}
+                    </div>
+                    {previewContent.url && (
+                      <p className="text-xs text-slate-500 mt-1">URL: {previewContent.url}</p>
+                    )}
+                  </div>
+                  
+                  {previewContent.humanized && (
+                    <div>
+                      <Label className="text-slate-400 text-xs mb-2 block flex items-center gap-2">
+                        <span className="text-emerald-400">Humanized Version:</span>
+                        <Badge variant="outline" className="border-emerald-600 text-emerald-400 text-xs">
+                          {useLLM ? 'Will be posted' : 'Preview only'}
+                        </Badge>
+                      </Label>
+                      <div className="p-3 bg-emerald-900/10 rounded border border-emerald-700/50 text-sm whitespace-pre-wrap break-words">
+                        {previewContent.humanized}
+                      </div>
+                      {useLLM && (
+                        <p className="text-xs text-emerald-400 mt-1">
+                          ✓ This version will be posted when you schedule
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  
+                  <div className="text-xs text-slate-500">
+                    Character count: {previewContent.humanized ? previewContent.humanized.length : previewContent.template.length} / 280
+                  </div>
+                </div>
+              )}
+
+              {previewContent && !useLLM && (
+                <div className="p-3 bg-amber-900/20 rounded border border-amber-700/50 text-xs text-amber-300">
+                  ⚠️ Template version will be posted. Enable "Use AI to humanize post" to use the humanized version.
+                </div>
+              )}
+
               <div>
                 <Label className="text-slate-300">Schedule At (Optional)</Label>
                 <Input
@@ -917,7 +1052,10 @@ export default function AdminMatchesPage() {
                 </p>
               </div>
               <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => setSocialDialogOpen(false)}>
+                <Button variant="outline" onClick={() => {
+                  setSocialDialogOpen(false)
+                  setPreviewContent(null)
+                }}>
                   Cancel
                 </Button>
                 <Button
@@ -935,6 +1073,9 @@ export default function AdminMatchesPage() {
                 >
                   <Send className="w-4 h-4 mr-2" />
                   {scheduledAt ? 'Schedule' : 'Post Now'}
+                  {useLLM && previewContent?.humanized && (
+                    <span className="ml-2 text-xs opacity-75">(humanized)</span>
+                  )}
                 </Button>
               </div>
             </div>

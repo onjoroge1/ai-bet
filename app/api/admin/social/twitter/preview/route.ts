@@ -6,6 +6,7 @@ import { Prisma } from '@prisma/client'
 import { TwitterGenerator } from '@/lib/social/twitter-generator'
 import { logger } from '@/lib/logger'
 import { buildSocialUrl } from '@/lib/social/url-utils'
+import { generateMatchSlug } from '@/lib/match-slug'
 
 /**
  * POST /api/admin/social/twitter/preview - Generate preview of Twitter post (without saving)
@@ -22,9 +23,10 @@ export async function POST(request: NextRequest) {
       matchId?: string
       parlayId?: string
       templateId?: string
+      useLLM?: boolean
     }
 
-    const { action, matchId, parlayId, templateId } = body
+    const { action, matchId, parlayId, templateId, useLLM = true } = body
 
     if (!templateId) {
       return NextResponse.json({ success: false, error: 'Template ID is required' }, { status: 400 })
@@ -68,13 +70,14 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      const matchSlug = generateMatchSlug(match.homeTeam, match.awayTeam)
       const matchData = {
         homeTeam: match.homeTeam,
         awayTeam: match.awayTeam,
         league: match.league,
         matchId: match.matchId,
         aiConf: quickPurchase?.confidenceScore || undefined,
-        matchUrl: buildSocialUrl(`/match/${match.matchId}`),
+        matchUrl: buildSocialUrl(`/match/${matchSlug}`),
         blogUrl: blogPost ? buildSocialUrl(`/blog/${blogPost.slug}`) : undefined,
         explanation,
       }
@@ -82,11 +85,25 @@ export async function POST(request: NextRequest) {
       const draft = TwitterGenerator.generateMatchPost(matchData, templateId)
       const template = TwitterGenerator.getTemplateById(draft.templateId)
 
+      // Generate humanized version if LLM is enabled
+      let humanizedContent = draft.content
+      if (useLLM) {
+        try {
+          humanizedContent = await TwitterGenerator.humanizePost(draft.content, matchData, { useLLM: true })
+        } catch (error) {
+          logger.warn('Failed to humanize preview, using template version', {
+            tags: ['social', 'twitter', 'preview'],
+            error: error instanceof Error ? error : undefined,
+          })
+        }
+      }
+
       return NextResponse.json({
         success: true,
         message: 'Preview generated',
         data: {
           content: draft.content,
+          humanizedContent: useLLM ? humanizedContent : undefined,
           url: draft.url,
           templateId: draft.templateId,
           templateName: template?.name || '',

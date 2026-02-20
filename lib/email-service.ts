@@ -345,7 +345,7 @@ export class EmailService {
           `).join('')}
           
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${getAppUrl()}/dashboard/predictions" 
+            <a href="${getAppUrl()}/dashboard/my-tips" 
                style="background: #3b82f6; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
               View All Predictions
             </a>

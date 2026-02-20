@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { isTradable, getRiskLevel, calculateQualityScore } from '@/lib/parlays/quality-utils'
+import { syncAllParlays, expireOldParlays } from '@/lib/parlays/sync'
 
 /**
  * Parlays API Route
@@ -548,8 +549,10 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status') || 'active'
     const apiVersion = searchParams.get('version') as 'v1' | 'v2' | null
     const confidenceTier = searchParams.get('confidence_tier')
-    const limit = parseInt(searchParams.get('limit') || '50')
-    const offset = parseInt(searchParams.get('offset') || '0')
+    const parlayType = searchParams.get('parlay_type') // 'auto_parlay', 'player_scorer', 'recommended', 'same_league', 'cross_league'
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '50')))
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
+    const offset = parseInt(searchParams.get('offset') || String((page - 1) * limit))
     const tradableOnly = searchParams.get('tradable_only') !== 'false' // Default to true (tradable only)
     const minEdge = parseFloat(searchParams.get('min_edge') || '5') // Default 5%
     const minProb = parseFloat(searchParams.get('min_prob') || '0.05') // Default 5%
@@ -566,6 +569,10 @@ export async function GET(request: NextRequest) {
       where.confidenceTier = confidenceTier
     }
 
+    if (parlayType) {
+      where.parlayType = parlayType
+    }
+
     // Check if parlayConsensus model exists (Prisma client might need regeneration)
     if (!prisma.parlayConsensus) {
       logger.error('ParlayConsensus model not found in Prisma client', {
@@ -578,34 +585,21 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get UPCOMING match IDs from MarketMatch to filter parlays
-    // CRITICAL: Normalize matchIds to strings for consistent comparison
+    // Use current time to filter parlays whose kickoff window is still in the future.
+    // We rely on ParlayConsensus.earliestKickoff / latestKickoff rather than cross-checking
+    // against MarketMatch, because backend parlay match IDs may not align with our local table.
     const now = new Date()
-    const upcomingMatches = await prisma.marketMatch.findMany({
-      where: {
-        status: 'UPCOMING',
-        kickoffDate: { gt: now },
-        isActive: true,
-      },
-      select: { matchId: true },
-    })
-    const upcomingMatchIds = new Set(
-      upcomingMatches.map(m => String(m.matchId).trim()).filter(id => id && id !== 'undefined' && id !== 'null')
-    )
-
-    logger.info(`Filtering parlays by UPCOMING matches`, {
-      tags: ['api', 'parlays'],
-      data: {
-        upcomingMatchCount: upcomingMatchIds.size,
-        sampleMatchIds: Array.from(upcomingMatchIds).slice(0, 5)
-      }
-    })
 
     // Fetch parlays with legs - optimized query
     // Note: We fetch limit * 2 instead of limit * 3 for better efficiency
     // Quality filtering will reduce the count further
+    // Filter out parlays with null kickoff dates to avoid Prisma errors
     const allParlays = await prisma.parlayConsensus.findMany({
-      where,
+      where: {
+        ...where,
+        earliestKickoff: { not: null },
+        latestKickoff: { not: null },
+      },
       select: {
         id: true,
         parlayId: true,
@@ -649,30 +643,25 @@ export async function GET(request: NextRequest) {
       skip: offset,
     })
 
-    // Filter parlays: Only include those where ALL legs reference UPCOMING matches
-    // CRITICAL: Normalize matchIds for comparison (both are strings, but ensure consistency)
-    // Also apply quality filtering
+    // Filter parlays: must have legs, kickoff must still be in the future, and pass quality thresholds.
+    // We do NOT cross-check against MarketMatch because backend parlay match IDs differ from our local IDs.
     let filteredParlays = allParlays.filter(parlay => {
       if (!parlay.legs || parlay.legs.length === 0) return false
-      // Ensure all legs have valid matchIds and all reference UPCOMING matches
-      const hasUpcomingMatches = parlay.legs.every(leg => {
-        if (!leg.matchId) return false
-        const normalizedMatchId = String(leg.matchId).trim()
-        return upcomingMatchIds.has(normalizedMatchId)
-      })
-      if (!hasUpcomingMatches) return false
-      
+
+      // Parlay must still be upcoming — latestKickoff hasn't passed yet
+      if (parlay.latestKickoff && parlay.latestKickoff <= now) return false
+
       // Quality filtering
       const edgePct = Number(parlay.edgePct)
       const combinedProb = Number(parlay.combinedProb)
-      
+
       // Minimum edge and probability thresholds
       if (edgePct < minEdge) return false
       if (combinedProb < minProb) return false
-      
+
       // Tradability filter (default: only tradable)
       if (tradableOnly && !isTradable(edgePct, combinedProb)) return false
-      
+
       return true
     })
     
@@ -701,8 +690,13 @@ export async function GET(request: NextRequest) {
 
     // Get total count of filtered parlays (for accurate pagination)
     // Optimized: Only select fields needed for filtering
+    // Filter out parlays with null kickoff dates
     const allParlaysForCount = await prisma.parlayConsensus.findMany({
-      where,
+      where: {
+        ...where,
+        earliestKickoff: { not: null },
+        latestKickoff: { not: null },
+      },
       select: {
         edgePct: true,
         combinedProb: true,
@@ -716,32 +710,24 @@ export async function GET(request: NextRequest) {
     })
     const totalFiltered = allParlaysForCount.filter(parlay => {
       if (!parlay.legs || parlay.legs.length === 0) return false
-      // Normalize matchIds for comparison
-      const hasUpcomingMatches = parlay.legs.every(leg => {
-        if (!leg.matchId) return false
-        const normalizedMatchId = String(leg.matchId).trim()
-        return upcomingMatchIds.has(normalizedMatchId)
-      })
-      if (!hasUpcomingMatches) return false
-      
+      if (parlay.latestKickoff && parlay.latestKickoff <= now) return false
+
       // Apply same quality filters for count
       const edgePct = Number(parlay.edgePct)
       const combinedProb = Number(parlay.combinedProb)
       if (edgePct < minEdge) return false
       if (combinedProb < minProb) return false
       if (tradableOnly && !isTradable(edgePct, combinedProb)) return false
-      
+
       return true
     }).length
 
-    // Log legs retrieval for debugging
-    logger.info(`Retrieved ${filteredParlays.length} parlays filtered by UPCOMING matches`, {
+    logger.info(`Retrieved ${filteredParlays.length} parlays`, {
       tags: ['api', 'parlays'],
       data: {
         totalBeforeFilter: allParlays.length,
         totalAfterFilter: filteredParlays.length,
         totalFiltered,
-        upcomingMatchCount: upcomingMatchIds.size,
         legsCounts: filteredParlays.map(p => ({
           parlayId: p.parlayId,
           legsCount: p.legs.length,
@@ -752,6 +738,14 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       count: totalFiltered,
+      meta: {
+        total: totalFiltered,
+        page,
+        limit,
+        offset,
+        totalPages: Math.ceil(totalFiltered / limit),
+        hasMore: offset + filteredParlays.length < totalFiltered,
+      },
       filters: {
         tradableOnly,
         minEdge,
@@ -785,8 +779,8 @@ export async function GET(request: NextRequest) {
           confidence_tier: parlay.confidenceTier,
           parlay_type: parlay.parlayType,
           league_group: parlay.leagueGroup,
-          earliest_kickoff: parlay.earliestKickoff.toISOString(),
-          latest_kickoff: parlay.latestKickoff.toISOString(),
+          earliest_kickoff: parlay.earliestKickoff?.toISOString() || new Date().toISOString(),
+          latest_kickoff: parlay.latestKickoff?.toISOString() || new Date().toISOString(),
           kickoff_window: parlay.kickoffWindow,
           status: parlay.status,
           created_at: parlay.createdAt.toISOString(),
@@ -851,13 +845,14 @@ export async function POST(request: NextRequest) {
       data: { versions: versionsToSync }
     })
 
+    // ── Standard v1/v2 parlay sync ─────────────────────────────────────
     const results = await Promise.allSettled(
       versionsToSync.map(version => syncParlaysFromVersion(version))
     )
 
-    const summary = {
-      v1: { synced: 0, errors: 0, status: 'pending' as const },
-      v2: { synced: 0, errors: 0, status: 'pending' as const },
+    const summary: Record<string, { synced: number; errors: number; status: string }> = {
+      v1: { synced: 0, errors: 0, status: 'pending' },
+      v2: { synced: 0, errors: 0, status: 'pending' },
     }
 
     versionsToSync.forEach((version, index) => {
@@ -866,13 +861,13 @@ export async function POST(request: NextRequest) {
         summary[version] = {
           synced: result.value.synced,
           errors: result.value.errors,
-          status: 'success' as const,
+          status: 'success',
         }
       } else {
         summary[version] = {
           synced: 0,
           errors: 0,
-          status: 'error' as const,
+          status: 'error',
         }
         logger.error(`Failed to sync ${version}`, {
           tags: ['api', 'parlays', 'sync'],
@@ -881,8 +876,42 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    const totalSynced = summary.v1.synced + summary.v2.synced
-    const totalErrors = summary.v1.errors + summary.v2.errors
+    // ── Additional sources: auto-parlays, player-parlays, recommended ──
+    const includeAdditional = body.include_all !== false // Default: include all
+    let additionalResults = null
+
+    if (includeAdditional) {
+      try {
+        additionalResults = await syncAllParlays()
+        
+        summary['auto_parlays'] = {
+          synced: additionalResults.autoParlays.synced,
+          errors: additionalResults.autoParlays.errors,
+          status: additionalResults.autoParlays.synced > 0 || additionalResults.autoParlays.errors === 0 ? 'success' : 'error',
+        }
+        summary['player_parlays'] = {
+          synced: additionalResults.playerParlays.synced,
+          errors: additionalResults.playerParlays.errors,
+          status: additionalResults.playerParlays.synced > 0 || additionalResults.playerParlays.errors === 0 ? 'success' : 'error',
+        }
+        summary['recommended'] = {
+          synced: additionalResults.recommended.synced,
+          errors: additionalResults.recommended.errors,
+          status: additionalResults.recommended.synced > 0 || additionalResults.recommended.errors === 0 ? 'success' : 'error',
+        }
+      } catch (err) {
+        logger.warn('Additional parlay sync failed (non-blocking)', {
+          tags: ['api', 'parlays', 'sync'],
+          data: { error: err instanceof Error ? err.message : 'Unknown' },
+        })
+      }
+    }
+
+    // ── Expire old parlays ──────────────────────────────────────────────
+    await expireOldParlays()
+
+    const totalSynced = Object.values(summary).reduce((sum, s) => sum + s.synced, 0)
+    const totalErrors = Object.values(summary).reduce((sum, s) => sum + s.errors, 0)
 
     return NextResponse.json({
       success: true,

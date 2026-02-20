@@ -37,12 +37,17 @@ const publicPaths = [
 // Cron endpoints that use CRON_SECRET instead of user authentication
 const cronEndpoints = [
   '/api/admin/parlays/sync-scheduled',
+  '/api/admin/parlays/sync-backend-scheduled',
+  '/api/admin/parlays/generate-best-scheduled',
   '/api/admin/market/sync-scheduled',
   '/api/admin/predictions/enrich-scheduled',
   '/api/admin/predictions/sync-from-availability-scheduled',
+  '/api/admin/additional-markets/sync-scheduled',
   '/api/admin/template-blogs/scheduled',
   '/api/admin/social/twitter/scheduled',
   '/api/admin/social/twitter/post-scheduled',
+  '/api/admin/settle-saved-bets',
+  '/api/admin/clv/sync-scheduled',
 ]
 
 // Paths that require admin role
@@ -62,6 +67,15 @@ const protectedPaths = [
   '/dashboard',
   '/profile',
   '/settings',
+]
+
+// Paths that require an active premium/monthly subscription
+// Users without access are redirected to /dashboard?upgrade=true
+const premiumPaths = [
+  '/dashboard/parlays',
+  '/dashboard/analytics',
+  '/dashboard/clv',
+  '/dashboard/vip',
 ]
 
 // Rate limiting configuration
@@ -129,7 +143,7 @@ export async function middleware(request: NextRequest) {
     const isCronEndpoint = cronEndpoints.some(endpoint => pathname.startsWith(endpoint))
     if (isCronEndpoint) {
       const authHeader = request.headers.get('authorization')
-      const cronSecret = process.env.CRON_SECRET || '749daccdf93e0228b8d5c9b7210d2181ea3b9e48af1e3833473a5020bcbc9ecb'
+      const cronSecret = process.env.CRON_SECRET
       
       if (authHeader === `Bearer ${cronSecret}`) {
         // Valid CRON_SECRET - allow through without user authentication
@@ -386,6 +400,52 @@ export async function middleware(request: NextRequest) {
           { status: 401, headers: { 'Content-Type': 'application/json' } }
         )
         return addSecurityHeaders(response)
+      }
+    }
+
+    // Premium route protection — redirect to upgrade page when subscription is inactive.
+    // Admins bypass this check. Premium status is read from the JWT token (set at sign-in
+    // and refreshed hourly) to avoid a DB call on every request.
+    //
+    // Logic aligned with lib/premium-access.ts:
+    //   1. Plan name must contain "premium", "monthly", or "vip".
+    //   2. subscriptionExpiresAt must be in the future.
+    //   3. If subscriptionStatus is present it must NOT be an explicitly
+    //      cancelled/unpaid state.  A null/missing status is allowed so that
+    //      users whose Stripe webhook hasn't fired yet are not locked out.
+    const isPremiumPath = premiumPaths.some(p => pathname.startsWith(p))
+    if (isPremiumPath && token) {
+      const userRole = token.role as string
+      const isAdminUser = userRole && userRole.toLowerCase() === 'admin'
+
+      if (!isAdminUser) {
+        const plan = token.subscriptionPlan as string | null
+        const status = token.subscriptionStatus as string | null
+        const expiresAt = token.subscriptionExpiresAt as string | null
+
+        const isPremiumPlan =
+          !!plan &&
+          (plan.toLowerCase().includes('premium') ||
+            plan.toLowerCase().includes('monthly') ||
+            plan.toLowerCase().includes('vip'))
+
+        const isNotExpired = !!expiresAt && new Date(expiresAt) > new Date()
+
+        // Explicitly blocked statuses — everything else (including null) is OK
+        const blockedStatuses = ['canceled', 'cancelled', 'unpaid', 'incomplete_expired']
+        const isExplicitlyBlocked = !!status && blockedStatuses.includes(status.toLowerCase())
+
+        const hasPremium = isPremiumPlan && isNotExpired && !isExplicitlyBlocked
+
+        if (!hasPremium) {
+          logger.info('Middleware - Non-premium user accessing premium route', {
+            tags: ['middleware', 'premium', 'redirect'],
+            data: { pathname, plan, status, expiresAt, ip }
+          })
+          const upgradeUrl = new URL('/dashboard?upgrade=true', request.url)
+          const response = NextResponse.redirect(upgradeUrl)
+          return addSecurityHeaders(response)
+        }
       }
     }
 

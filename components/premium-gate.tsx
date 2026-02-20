@@ -96,10 +96,10 @@ export function PremiumGate({
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
-              <Link href="/dashboard/vip" className="flex-1">
-                <Button className="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white">
+              <Link href="/pricing" className="flex-1">
+                <Button className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-[0_0_20px_rgba(245,158,11,0.25)]">
                   <Crown className="h-4 w-4 mr-2" />
-                  Upgrade to Premium
+                  View Premium Plans
                   <ArrowRight className="h-4 w-4 ml-2" />
                 </Button>
               </Link>
@@ -113,7 +113,11 @@ export function PremiumGate({
             </div>
 
             <p className="text-xs text-slate-500 mt-4">
-              Already have premium? Try refreshing the page or contact support.
+              Already subscribed? Try signing out and back in, or{" "}
+              <Link href="/dashboard/support" className="text-emerald-400 hover:underline">
+                contact support
+              </Link>
+              .
             </p>
           </div>
         </CardContent>

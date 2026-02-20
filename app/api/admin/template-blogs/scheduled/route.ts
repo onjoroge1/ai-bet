@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
           continue
         }
 
-        const draft = TemplateBlogGenerator.generateTemplateOnlyDraft(quickPurchase, match)
+        const draft = await TemplateBlogGenerator.generateTemplateOnlyDraft(quickPurchase, match, { useLLM: true })
 
         // Generate slug
         const slug = draft.title

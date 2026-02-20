@@ -4,6 +4,7 @@ import { TwitterGenerator } from '@/lib/social/twitter-generator'
 import prisma from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { buildSocialUrl } from '@/lib/social/url-utils'
+import { generateMatchSlug } from '@/lib/match-slug'
 
 /**
  * GET /api/admin/social/twitter/scheduled - Scheduled Twitter post generation (for cron jobs)
@@ -71,18 +72,30 @@ export async function GET(request: NextRequest) {
           }
         }
 
+        const matchSlug = generateMatchSlug(match.homeTeam, match.awayTeam)
         const matchData = {
           homeTeam: match.homeTeam,
           awayTeam: match.awayTeam,
           league: match.league,
           matchId: match.matchId,
           aiConf: quickPurchase?.confidenceScore || undefined,
-          matchUrl: buildSocialUrl(`/match/${match.matchId}`),
+          matchUrl: buildSocialUrl(`/match/${matchSlug}`),
           blogUrl: blogPost ? buildSocialUrl(`/blog/${blogPost.slug}`) : undefined,
           explanation,
         }
 
         const draft = TwitterGenerator.generateMatchPost(matchData)
+
+        // Humanize content using LLM (default for bulk/cron posts)
+        let finalContent = draft.content
+        try {
+          finalContent = await TwitterGenerator.humanizePost(draft.content, matchData, { useLLM: true })
+        } catch (error) {
+          logger.warn('Failed to humanize post in cron job, using template version', {
+            tags: ['social', 'twitter', 'llm', 'cron'],
+            error: error instanceof Error ? error : undefined,
+          })
+        }
 
         // Schedule post (default: 1 hour from now to spread out posts)
         const scheduledAt = new Date(Date.now() + 60 * 60 * 1000) // 1 hour from now
@@ -92,7 +105,7 @@ export async function GET(request: NextRequest) {
             platform: 'twitter',
             postType: 'match',
             templateId: draft.templateId,
-            content: draft.content,
+            content: finalContent,
             url: draft.url,
             matchId: match.matchId,
             marketMatchId: match.id,

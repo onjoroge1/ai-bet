@@ -17,6 +17,7 @@ import {
   sortByKickoff,
   sortByConfidence,
 } from "@/lib/market/formatters"
+import { generateMatchSlug } from "@/lib/match-slug"
 import type { SelectHTMLAttributes } from "react"
 
 interface OddsPredictionTableProps {
@@ -256,7 +257,9 @@ export function OddsPredictionTable({
           primaryBook,
           booksCount,
           predictions,
-          link: `/match/${match.match_id || match.id}`,
+          link: (match.home?.name && match.away?.name && !match.home.name.startsWith('Team ') && !match.away.name.startsWith('Team '))
+            ? `/match/${generateMatchSlug(match.home.name, match.away.name)}`
+            : `/match/${match.match_id || match.id}`,
         }
       })
       
@@ -651,7 +654,7 @@ function MatchTableRow({ match }: { match: MarketMatch }) {
   const tier = getConfidenceTier(confidence)
   
   const handleClick = () => {
-    router.push(`/match/${match.id}`)
+    router.push(match.link || `/match/${match.id}`)
   }
 
   const getSideName = (side: string) => {
@@ -842,7 +845,7 @@ function MatchCard({ match }: { match: MarketMatch }) {
   const homeOdds = match.odds[match.primaryBook || "bet365"]
 
   const handleClick = () => {
-    router.push(`/match/${match.id}`)
+    router.push(match.link || `/match/${match.id}`)
   }
 
   const getSideName = (side: string) => {

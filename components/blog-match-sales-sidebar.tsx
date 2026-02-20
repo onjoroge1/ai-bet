@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { CalendarDays, Clock, ShieldCheck, Sparkles, ArrowRight, TrendingUp, Flame } from 'lucide-react'
+import { CalendarDays, Clock, ShieldCheck, Sparkles, ArrowRight, TrendingUp, Flame, Zap, Target, BarChart3 } from 'lucide-react'
 import { getDbCountryPricing } from '@/lib/server-pricing-service'
 
 interface BlogMatchSalesSidebarProps {
@@ -320,24 +321,37 @@ export async function BlogMatchSalesSidebar({
 
   if (!resolvedMatchId) {
     return (
-      <Card className="bg-slate-800/50 border-slate-700/60 shadow-lg shadow-emerald-900/10">
-        <CardHeader>
-          <CardTitle className="text-lg text-white flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-emerald-400" />
-            Tap Into Today&apos;s Picks
+      <Card className="relative overflow-hidden bg-slate-900/70 border-slate-700/50 backdrop-blur-sm">
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/40 to-transparent" />
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-bold text-white flex items-center gap-2">
+            <div className="p-1.5 bg-emerald-500/15 rounded-lg">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+            </div>
+            Today&apos;s AI Picks
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-slate-300 leading-relaxed">
-            Unlock premium match analysis, AI confidence levels, and bookmaker consensus odds inside SnapBet AI.
+          <p className="text-sm text-slate-400 leading-relaxed">
+            Unlock premium match analysis, AI confidence levels, and bookmaker consensus odds.
           </p>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="flex items-center gap-1.5 text-slate-400 bg-slate-800/40 rounded-lg px-2.5 py-2 border border-slate-700/40">
+              <Target className="w-3 h-3 text-emerald-400 shrink-0" />
+              <span>AI Predictions</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-slate-400 bg-slate-800/40 rounded-lg px-2.5 py-2 border border-slate-700/40">
+              <BarChart3 className="w-3 h-3 text-blue-400 shrink-0" />
+              <span>Value Ratings</span>
+            </div>
+          </div>
           <Button
             asChild
-            className="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold"
+            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm shadow-lg shadow-emerald-900/30 hover:shadow-emerald-800/40 hover:scale-[1.02] transition-all"
           >
             <Link href="/matches">
-              Browse premium matches
-              <ArrowRight className="w-4 h-4 ml-2" />
+              Browse Matches
+              <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
             </Link>
           </Button>
         </CardContent>
@@ -363,25 +377,27 @@ export async function BlogMatchSalesSidebar({
 
   if (!match && !matchSummary) {
     return (
-      <Card className="relative overflow-hidden bg-gradient-to-br from-slate-900/85 via-slate-900/70 to-slate-900/85 border border-emerald-500/30 shadow-[0_0_35px_rgba(16,185,129,0.18)]">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.25),transparent_55%)]" />
-        <CardHeader className="relative">
-          <CardTitle className="text-lg text-white flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-emerald-300 drop-shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
-            Explore Premium Predictions
+      <Card className="relative overflow-hidden bg-slate-900/70 border-slate-700/50 backdrop-blur-sm">
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/40 to-transparent" />
+        <CardHeader className="relative pb-3">
+          <CardTitle className="text-base font-bold text-white flex items-center gap-2">
+            <div className="p-1.5 bg-emerald-500/15 rounded-lg">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+            </div>
+            Premium Predictions
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 relative">
-          <p className="text-sm text-slate-300 leading-relaxed">
-            Secure data-backed match intelligence, value ratings, and AI-powered confidence scores across today&apos;s fixtures.
+          <p className="text-sm text-slate-400 leading-relaxed">
+            Data-backed match intelligence, value ratings, and AI-powered confidence scores.
           </p>
           <Button
             asChild
-            className="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold shadow-[0_8px_30px_rgba(16,185,129,0.35)]"
+            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm shadow-lg shadow-emerald-900/30 hover:shadow-emerald-800/40 hover:scale-[1.02] transition-all"
           >
             <Link href="/matches">
-              Discover matches
-              <ArrowRight className="w-4 h-4 ml-2" />
+              Discover Matches
+              <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
             </Link>
           </Button>
         </CardContent>
@@ -453,131 +469,146 @@ export async function BlogMatchSalesSidebar({
       : null
 
   return (
-    <Card className="relative overflow-hidden bg-gradient-to-br from-slate-900/85 via-slate-900/70 to-slate-900/85 border border-emerald-500/30 shadow-[0_0_35px_rgba(16,185,129,0.18)]">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.25),transparent_55%)]" />
-      <CardHeader className="space-y-3 relative">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg text-white flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-emerald-300 drop-shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
-            Unlock Full Match Intel
-          </CardTitle>
-          <span className="inline-flex items-center gap-1 px-3 py-1 text-[10px] font-semibold uppercase tracking-widest rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-            <Flame className="w-3 h-3" />
-            Premium Pick
-          </span>
-        </div>
-        {confidence && (
-          <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide px-3 py-1 rounded-full bg-gradient-to-r from-emerald-400/20 via-emerald-500/20 to-cyan-400/20 text-emerald-200 border border-emerald-400/40">
-            <TrendingUp className="w-3 h-3" />
-            Confidence {confidence}%
+    <div className="space-y-4">
+      {/* ── Match Card ─────────────────────────────────────────────────── */}
+      <Card className="relative overflow-hidden bg-slate-900/70 border-slate-700/50 backdrop-blur-sm">
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/40 to-transparent" />
+
+        <CardHeader className="pb-2 space-y-3 relative">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-bold text-white flex items-center gap-2">
+              <div className="p-1.5 bg-emerald-500/15 rounded-lg">
+                <Zap className="w-3.5 h-3.5 text-emerald-400" />
+              </div>
+              Match Intel
+            </CardTitle>
+            <Badge className="bg-emerald-500/15 text-emerald-300 border-emerald-500/25 text-[10px] px-2 py-0.5">
+              <Flame className="w-2.5 h-2.5 mr-1" />
+              Premium
+            </Badge>
           </div>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-6 relative">
-        <div className="space-y-4">
-          <div className="flex flex-col gap-2 text-center">
-            <span className="text-sm font-semibold text-white">{homeName}</span>
-            <span className="text-[10px] uppercase tracking-[0.35em] text-slate-500">
-              vs
-            </span>
-            <span className="text-sm font-semibold text-white">{awayName}</span>
+
+          {confidence && (
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all"
+                  style={{ width: `${Math.min(confidence, 100)}%` }}
+                />
+              </div>
+              <span className="text-xs font-bold text-emerald-400 tabular-nums">{confidence}%</span>
+            </div>
+          )}
+        </CardHeader>
+
+        <CardContent className="space-y-4 relative pt-0">
+          {/* Teams */}
+          <div className="flex items-center justify-between gap-3 py-3 border-y border-slate-800/60">
+            <span className="text-sm font-semibold text-white text-center flex-1 truncate">{homeName}</span>
+            <span className="text-[10px] font-bold text-slate-500 bg-slate-800/60 rounded-full w-7 h-7 flex items-center justify-center shrink-0">vs</span>
+            <span className="text-sm font-semibold text-white text-center flex-1 truncate">{awayName}</span>
           </div>
-          <div className="rounded-lg bg-gradient-to-r from-slate-900/80 via-slate-900/70 to-slate-900/80 border border-emerald-500/20 p-4 space-y-3 shadow-[0_0_25px_rgba(16,185,129,0.12)]">
-            <div className="flex items-center gap-2 text-xs text-slate-300">
-              <CalendarDays className="w-4 h-4 text-emerald-300" />
+
+          {/* Match info */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <CalendarDays className="w-3.5 h-3.5 text-slate-500 shrink-0" />
               <span>{formatKickoff(kickoff)}</span>
             </div>
-            <div className="flex items-center gap-2 text-xs text-slate-300">
-              <ShieldCheck className="w-4 h-4 text-emerald-300" />
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <ShieldCheck className="w-3.5 h-3.5 text-slate-500 shrink-0" />
               <span>{leagueName}</span>
             </div>
             {valueRating && (
-              <div className="flex items-center gap-2 text-xs text-emerald-200 font-semibold">
-                <Clock className="w-4 h-4" />
-                <span>Value Rating: {valueRating}</span>
+              <div className="flex items-center gap-2 text-xs text-emerald-400 font-medium">
+                <TrendingUp className="w-3.5 h-3.5 shrink-0" />
+                <span>Value: {valueRating}</span>
               </div>
             )}
           </div>
-        </div>
 
-        {analysisSummary && (
-          <p className="text-sm text-slate-200 leading-relaxed border-l-2 border-emerald-500/50 pl-4 bg-slate-900/50 py-3 rounded-r-lg shadow-[0_0_25px_rgba(16,185,129,0.08)]">
-            {truncate(analysisSummary, 220)}
-          </p>
-        )}
+          {/* Analysis summary */}
+          {analysisSummary && (
+            <p className="text-xs text-slate-400 leading-relaxed border-l-2 border-emerald-500/30 pl-3 py-1">
+              {truncate(analysisSummary, 180)}
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
-        {marketOdds && (marketOdds.home || marketOdds.draw || marketOdds.away) && (
-          <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-r from-slate-900/80 via-slate-900/70 to-slate-900/80 p-5 space-y-3 shadow-[0_0_25px_rgba(16,185,129,0.12)]">
-            <div className="flex items-center justify-between">
-              <span className="text-xs uppercase text-emerald-200 font-semibold tracking-widest">
+      {/* ── Odds Card ──────────────────────────────────────────────────── */}
+      {marketOdds && (marketOdds.home || marketOdds.draw || marketOdds.away) && (
+        <Card className="relative overflow-hidden bg-slate-900/70 border-slate-700/50 backdrop-blur-sm">
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-blue-500/30 to-transparent" />
+          <CardContent className="pt-4 space-y-3">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="p-1 bg-blue-500/15 rounded-md">
+                <BarChart3 className="w-3 h-3 text-blue-400" />
+              </div>
+              <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
                 {marketOdds.label}
               </span>
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="text-center space-y-1">
-                <span className="block text-[10px] uppercase tracking-widest text-slate-400">
-                  Home
-                </span>
-                <span className="text-base font-semibold text-white drop-shadow">
-                  {marketOdds.home ? marketOdds.home.toFixed(2) : '—'}
-                </span>
-              </div>
-              <div className="text-center space-y-1">
-                <span className="block text-[10px] uppercase tracking-widest text-slate-400">
-                  Draw
-                </span>
-                <span className="text-base font-semibold text-white drop-shadow">
-                  {marketOdds.draw ? marketOdds.draw.toFixed(2) : '—'}
-                </span>
-              </div>
-              <div className="text-center space-y-1">
-                <span className="block text-[10px] uppercase tracking-widest text-slate-400">
-                  Away
-                </span>
-                <span className="text-base font-semibold text-white drop-shadow">
-                  {marketOdds.away ? marketOdds.away.toFixed(2) : '—'}
-                </span>
-              </div>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: 'Home', value: marketOdds.home },
+                { label: 'Draw', value: marketOdds.draw },
+                { label: 'Away', value: marketOdds.away },
+              ].map((o) => (
+                <div key={o.label} className="text-center bg-slate-800/50 rounded-lg py-2.5 border border-slate-700/40">
+                  <span className="block text-[10px] uppercase tracking-wider text-slate-500 mb-0.5">
+                    {o.label}
+                  </span>
+                  <span className="text-sm font-bold text-white">
+                    {o.value ? o.value.toFixed(2) : '—'}
+                  </span>
+                </div>
+              ))}
             </div>
-            <p className="text-xs text-slate-400">
-              Converted to decimal odds for quick comparison. Actual book prices may vary.
+            <p className="text-[10px] text-slate-500 leading-relaxed">
+              Decimal odds for comparison. Actual book prices may vary.
             </p>
-          </div>
-        )}
+          </CardContent>
+        </Card>
+      )}
 
-        <div className="rounded-xl border border-emerald-500/40 bg-gradient-to-br from-emerald-500/15 via-emerald-500/5 to-transparent p-5 space-y-4 shadow-[0_0_30px_rgba(16,185,129,0.18)]">
+      {/* ── CTA Card ───────────────────────────────────────────────────── */}
+      <Card className="relative overflow-hidden bg-slate-900/70 border-emerald-500/20 backdrop-blur-sm">
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/50 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-b from-emerald-500/[0.04] to-transparent pointer-events-none" />
+        <CardContent className="pt-5 space-y-4 relative">
           <div>
-            <span className="text-xs uppercase text-emerald-200 font-semibold tracking-widest">
+            <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-widest">
               Instant Access
             </span>
-            <div className="mt-1 flex items-end gap-2">
+            <div className="mt-1.5 flex items-baseline gap-2">
               {priceDisplay && (
-                <span className="text-3xl font-bold text-white drop-shadow-[0_0_15px_rgba(16,185,129,0.35)]">
+                <span className="text-2xl font-extrabold text-white">
                   {priceDisplay}
                 </span>
               )}
               {originalPriceDisplay && (
-                <span className="text-sm text-emerald-200/70 line-through">
+                <span className="text-xs text-slate-500 line-through">
                   {originalPriceDisplay}
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-200/80 mt-2">
-              Includes premium projection, model confidence, and bookmaker consensus odds.
+            <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+              Premium projection, model confidence, and bookmaker consensus odds.
             </p>
           </div>
           <Button
             asChild
-            className="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold shadow-[0_12px_35px_rgba(16,185,129,0.35)]"
+            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm shadow-lg shadow-emerald-900/30 hover:shadow-emerald-800/40 hover:scale-[1.02] transition-all"
           >
             <Link href={`/match/${resolvedMatchId}`}>
-              View full match analysis
-              <ArrowRight className="w-4 h-4 ml-2" />
+              View Full Analysis
+              <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
             </Link>
           </Button>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 

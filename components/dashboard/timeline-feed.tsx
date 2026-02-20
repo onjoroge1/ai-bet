@@ -203,7 +203,7 @@ export function TimelineFeed() {
             variant="ghost"
             size="sm"
             className="text-slate-300 hover:text-white hover:scale-105 transition-transform"
-            onClick={() => window.location.href = '/dashboard/predictions'}
+            onClick={() => window.location.href = '/dashboard/matches'}
           >
             View All Predictions
           </Button>

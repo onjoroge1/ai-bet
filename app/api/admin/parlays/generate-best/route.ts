@@ -137,6 +137,8 @@ async function saveParlayToDatabase(
         outcome = leg.marketSubtype === 'YES' ? 'YES' : 'NO'
       } else if (leg.marketType === 'DNB') {
         outcome = leg.marketSubtype === 'HOME' ? 'DNB_H' : 'DNB_A'
+      } else if (leg.marketType === 'DOUBLE_CHANCE') {
+        outcome = `DC_${leg.marketSubtype || '1X'}`
       }
       
       await prisma.parlayLeg.create({
@@ -147,8 +149,10 @@ async function saveParlayToDatabase(
           homeTeam: matchData.homeTeam,
           awayTeam: matchData.awayTeam,
           modelProb: leg.consensusProb,
-          decimalOdds: leg.decimalOdds || 0,
-          edge: leg.edgeConsensus / 100, // Convert percentage to decimal
+          decimalOdds: leg.decimalOdds && leg.decimalOdds > 0
+            ? leg.decimalOdds
+            : parseFloat((1 / leg.consensusProb).toFixed(2)), // implied fair odds from probability
+          edge: leg.edgeConsensus / 100,
           legOrder: i + 1,
           additionalMarketId: leg.id
         }
@@ -198,9 +202,21 @@ export async function POST(req: NextRequest) {
       // No config provided, use defaults
     }
     
-    logger.info('Generating best parlays from AdditionalMarketData', {
+    logger.info('Generating curated parlays from AdditionalMarketData', {
       tags: ['api', 'admin', 'parlays', 'generate'],
       data: { config }
+    })
+    
+    // Expire previous AI parlays so we always show a fresh set
+    const expired = await prisma.parlayConsensus.updateMany({
+      where: {
+        parlayType: { in: ['cross_league', 'single_game'] },
+        status: 'active',
+      },
+      data: { status: 'expired' },
+    })
+    logger.info(`Expired ${expired.count} old AI parlays`, {
+      tags: ['api', 'admin', 'parlays', 'generate'],
     })
     
     // Generate parlays

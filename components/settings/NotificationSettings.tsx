@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
@@ -20,6 +20,7 @@ import {
 
 export function NotificationSettings() {
   const [isLoading, setIsLoading] = useState(false)
+  const [isFetching, setIsFetching] = useState(true)
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
 
   const [notifications, setNotifications] = useState({
@@ -42,15 +43,32 @@ export function NotificationSettings() {
     inAppFrequency: 'immediate' // 'immediate' | 'hourly' | 'daily'
   })
 
+  // Fetch existing preferences from DB on mount
+  useEffect(() => {
+    fetch('/api/user/settings')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.notifications) {
+          setNotifications(prev => ({ ...prev, ...data.notifications }))
+        }
+      })
+      .catch(() => { /* use defaults */ })
+      .finally(() => setIsFetching(false))
+  }, [])
+
   const handleSave = async () => {
     setIsLoading(true)
     setMessage(null)
     
     try {
-      // TODO: Implement API call to save notification preferences
-      await new Promise(resolve => setTimeout(resolve, 1000)) // Simulate API call
+      const res = await fetch('/api/user/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notifications }),
+      })
+      if (!res.ok) throw new Error('Failed to save')
       setMessage({ type: 'success', text: 'Notification preferences saved successfully!' })
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'Failed to save preferences. Please try again.' })
     } finally {
       setIsLoading(false)

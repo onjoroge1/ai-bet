@@ -4,13 +4,19 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
+// Validate DATABASE_URL is set before initializing Prisma
+if (!process.env.DATABASE_URL) {
+  throw new Error(
+    '❌ DATABASE_URL environment variable is not set. ' +
+    'Please ensure you have a .env.local file with DATABASE_URL configured. ' +
+    'See env.example for reference.'
+  )
+}
+
+// Prisma automatically reads DATABASE_URL from environment variables
+// No need to explicitly pass it unless we need to override it
 const prisma = globalForPrisma.prisma ?? new PrismaClient({
-  log: ['query', 'error', 'warn'],
-  datasources: {
-    db: {
-      url: process.env.DATABASE_URL,
-    },
-  },
+  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
 })
 
 // Add connection health check (server-side only)

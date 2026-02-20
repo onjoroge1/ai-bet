@@ -276,3 +276,229 @@
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* ─── Blog Article: CTA Section Overrides ─────────────────────────────────────
+   Existing blog posts have inline styles on .cta sections. These CSS rules
+   override them to match the modern design system. !important is needed to
+   beat inline style specificity.
+   ──────────────────────────────────────────────────────────────────────────── */
+.prose section.cta {
+  background: linear-gradient(
+    135deg,
+    rgba(16, 185, 129, 0.08) 0%,
+    rgba(59, 130, 246, 0.06) 50%,
+    rgba(139, 92, 246, 0.04) 100%
+  ) !important;
+  border: 1px solid rgba(16, 185, 129, 0.25) !important;
+  border-radius: 16px !important;
+  padding: 32px 28px !important;
+  margin: 48px 0 !important;
+  text-align: center !important;
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(12px);
+  box-shadow:
+    0 0 40px rgba(16, 185, 129, 0.08),
+    0 4px 24px rgba(0, 0, 0, 0.2);
+}
+
+/* Glow ring at top */
+.prose section.cta::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.6), transparent);
+}
+
+/* Soft radial glow */
+.prose section.cta::after {
+  content: '';
+  position: absolute;
+  top: -60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.12), transparent 70%);
+  pointer-events: none;
+}
+
+.prose section.cta h2 {
+  color: #fff !important;
+  font-size: 1.5rem !important;
+  font-weight: 800 !important;
+  margin-bottom: 8px !important;
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+  letter-spacing: -0.02em;
+}
+
+.prose section.cta > div:first-child > p {
+  color: #94a3b8 !important;
+  font-size: 15px !important;
+  line-height: 1.6 !important;
+  max-width: 480px;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* Feature cards grid */
+.prose section.cta > div:nth-child(2) {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 12px !important;
+  max-width: 100% !important;
+  margin: 20px auto !important;
+}
+
+.prose section.cta > div:nth-child(2) > div {
+  background: rgba(15, 23, 42, 0.5) !important;
+  border: 1px solid rgba(16, 185, 129, 0.15) !important;
+  border-radius: 12px !important;
+  padding: 14px 12px !important;
+  text-align: center !important;
+  transition: border-color 0.2s, transform 0.2s !important;
+}
+
+.prose section.cta > div:nth-child(2) > div:hover {
+  border-color: rgba(16, 185, 129, 0.4) !important;
+  transform: translateY(-2px) !important;
+}
+
+.prose section.cta > div:nth-child(2) > div > div:first-child {
+  color: #34d399 !important;
+  font-weight: 700 !important;
+  font-size: 14px !important;
+  margin-bottom: 4px !important;
+}
+
+.prose section.cta > div:nth-child(2) > div > div:last-child {
+  color: #64748b !important;
+  font-size: 12px !important;
+}
+
+/* CTA button */
+.prose section.cta a[href*="/match/"] {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #10b981, #059669) !important;
+  color: #0f172a !important;
+  font-weight: 700 !important;
+  padding: 14px 28px !important;
+  border-radius: 12px !important;
+  text-decoration: none !important;
+  font-size: 15px !important;
+  box-shadow: 0 8px 30px rgba(16, 185, 129, 0.3) !important;
+  transition: transform 0.2s, box-shadow 0.2s !important;
+  margin-top: 16px !important;
+}
+
+.prose section.cta a[href*="/match/"]:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 12px 40px rgba(16, 185, 129, 0.45) !important;
+}
+
+/* Footer text */
+.prose section.cta > p:last-child {
+  color: #475569 !important;
+  font-size: 12px !important;
+  font-style: normal !important;
+  margin-top: 14px !important;
+  letter-spacing: 0.02em;
+}
+
+/* ─── Blog Article: FAQ Section Overrides ─────────────────────────────────── */
+.prose section.faq {
+  margin-top: 40px;
+}
+
+.prose section.faq h2 {
+  font-size: 1.25rem !important;
+  color: #fff !important;
+  margin-bottom: 16px !important;
+}
+
+.prose section.faq details {
+  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid rgba(51, 65, 85, 0.5);
+  border-radius: 12px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+
+.prose section.faq details:hover {
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.prose section.faq details[open] {
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.prose section.faq summary {
+  padding: 14px 18px;
+  font-weight: 600;
+  font-size: 14px;
+  color: #e2e8f0;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.prose section.faq summary::-webkit-details-marker {
+  display: none;
+}
+
+.prose section.faq summary::after {
+  content: '+';
+  color: #10b981;
+  font-size: 18px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-left: 12px;
+  transition: transform 0.2s;
+}
+
+.prose section.faq details[open] summary::after {
+  content: '−';
+}
+
+.prose section.faq details p {
+  padding: 0 18px 14px;
+  color: #94a3b8 !important;
+  font-size: 13px !important;
+  line-height: 1.7 !important;
+  margin: 0 !important;
+}
+
+/* ─── Blog Article: Match Preview styling ─────────────────────────────────── */
+.prose article.match-preview section {
+  margin-bottom: 24px;
+}
+
+.prose article.match-preview ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.prose article.match-preview ul li {
+  position: relative;
+  padding-left: 20px;
+  margin-bottom: 6px;
+}
+
+.prose article.match-preview ul li::before {
+  content: '▸';
+  position: absolute;
+  left: 0;
+  color: #10b981;
+  font-weight: 700;
+}
