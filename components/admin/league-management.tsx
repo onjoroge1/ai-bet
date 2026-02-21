@@ -97,7 +97,9 @@ type SyncStatus = {
 const fetchLeagues = async (): Promise<League[]> => {
   const response = await fetch('/api/admin/leagues')
   if (!response.ok) {
-    throw new Error('Failed to fetch leagues')
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+    const errorMessage = errorData.error || `HTTP ${response.status}`
+    throw new Error(`Failed to fetch leagues: ${errorMessage}`)
   }
   return response.json()
 }

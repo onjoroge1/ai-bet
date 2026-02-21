@@ -4,6 +4,9 @@ import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/db"
 import { logger } from "@/lib/logger"
 
+// Prevent static generation
+export const dynamic = 'force-dynamic'
+
 /**
  * GET /api/user/analytics
  * Returns aggregated betting performance data for the authenticated user,

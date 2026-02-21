@@ -39,6 +39,13 @@ export async function GET(
 
     const session = await getServerSession(authOptions)
 
+    // Check if user has package access (for match viewing)
+    let hasPackageAccess = false
+    if (session?.user) {
+      const { hasPackageAccess: checkPackageAccess } = await import('@/lib/premium-access')
+      hasPackageAccess = await checkPackageAccess()
+    }
+
     // First, try to get from database via QuickPurchase (faster than API call)
     let matchData = null
     let quickPurchaseInfo = null
@@ -585,7 +592,8 @@ export async function GET(
           currencySymbol: '$',
           code: userCountryCode
         }
-      } : null
+      } : null,
+      hasPackageAccess // Include package access status for frontend
     }, {
       headers: cacheHeaders
     })

@@ -255,7 +255,7 @@ export async function POST(req: NextRequest) {
       matchId: { not: null },
       OR: [
         { predictionData: { equals: Prisma.JsonNull } },
-        { predictionData: null }
+        { predictionData: { equals: {} } }
       ],
       isPredictionActive: true
     }

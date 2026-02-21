@@ -32,6 +32,29 @@ export async function GET(_req: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
+    // Check for active UserPackage records (Weekend, Weekly, Monthly, VIP)
+    const now = new Date()
+    const activePackage = await prisma.userPackage.findFirst({
+      where: {
+        userId: session.user.id,
+        status: 'active',
+        expiresAt: {
+          gt: now
+        }
+      },
+      include: {
+        packageOffer: {
+          select: {
+            name: true,
+            packageType: true
+          }
+        }
+      },
+      orderBy: {
+        expiresAt: 'desc'
+      }
+    })
+
     // Fetch live subscription from Stripe if we have an ID
     let stripeSubscription: {
       cancelAtPeriodEnd: boolean
@@ -71,20 +94,37 @@ export async function GET(_req: NextRequest) {
 
     const isAdmin = user.role?.toLowerCase() === 'admin'
 
-    const isPremiumPlan =
-      !!plan &&
-      (plan.toLowerCase().includes('premium') ||
-        plan.toLowerCase().includes('monthly') ||
-        plan.toLowerCase().includes('vip'))
+    // If user has active package, use that instead of subscription plan
+    let finalPlan = plan
+    let finalExpiresAt = expiresAt
+    let finalStatus = status
+    let finalHasAccess = false
 
-    const hasAccess = isAdmin || (isPremiumPlan && !isExpired && !isExplicitlyBlocked)
+    if (activePackage) {
+      // User has active package - this takes precedence
+      finalPlan = activePackage.packageOffer?.name || 'Package'
+      finalExpiresAt = activePackage.expiresAt.toISOString()
+      finalStatus = 'active'
+      finalHasAccess = true
+    } else {
+      // No active package, check subscription
+      const isPremiumPlan =
+        !!plan &&
+        (plan.toLowerCase().includes('premium') ||
+          plan.toLowerCase().includes('monthly') ||
+          plan.toLowerCase().includes('vip'))
+
+      finalHasAccess = isAdmin || (isPremiumPlan && !isExpired && !isExplicitlyBlocked)
+      finalStatus = finalHasAccess ? (status ?? 'active') : status
+    }
 
     return NextResponse.json({
-      hasAccess,
-      plan: isAdmin && (!plan || plan === 'free') ? 'VIP Monthly (Admin)' : plan,
-      status: hasAccess ? (status ?? 'active') : status,
-      expiresAt,
-      isExpired,
+      hasAccess: finalHasAccess,
+      plan: isAdmin && (!finalPlan || finalPlan === 'free') ? 'VIP Monthly (Admin)' : finalPlan,
+      status: finalStatus,
+      expiresAt: finalExpiresAt,
+      isExpired: finalExpiresAt ? new Date(finalExpiresAt) < new Date() : true,
+      hasActivePackage: !!activePackage, // Include flag for frontend
       // Raw Stripe info (for portal / cancel actions)
       stripeCustomerId: user.stripeCustomerId,
       stripeSubscriptionId: user.stripeSubscriptionId,

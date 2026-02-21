@@ -1,15 +1,21 @@
 import { NextResponse } from 'next/server'
-import { getPremiumStatus } from '@/lib/premium-access'
+import { getPremiumStatus, hasPackageAccess } from '@/lib/premium-access'
 
 /**
  * GET /api/premium/check - Check premium access status
+ * Includes both subscription and package access
  * Cached for 60 seconds so multiple simultaneous component mounts don't
  * each hit the database.
  */
 export async function GET() {
   try {
     const status = await getPremiumStatus()
-    const response = NextResponse.json(status)
+    const packageAccess = await hasPackageAccess()
+    
+    const response = NextResponse.json({
+      ...status,
+      hasPackageAccess: packageAccess // Include package access flag
+    })
     // Cache the response for 60 s in the browser and 30 s in CDN edge cache.
     // stale-while-revalidate lets the browser serve a cached response while
     // it fetches a fresh one in the background.
@@ -22,6 +28,7 @@ export async function GET() {
     return NextResponse.json(
       { 
         hasAccess: false, 
+        hasPackageAccess: false,
         plan: null, 
         expiresAt: null, 
         isExpired: true,

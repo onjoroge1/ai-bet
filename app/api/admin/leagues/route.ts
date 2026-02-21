@@ -35,20 +35,41 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const leagues = await prisma.league.findMany({
-      orderBy: [
-        { dataCollectionPriority: 'desc' },
-        { name: 'asc' }
-      ],
-      include: {
-        _count: {
-          select: {
-            matches: true,
-            teams: true
+    // Try to fetch leagues with ordering, fallback to simple query if ordering fails
+    let leagues
+    try {
+      leagues = await prisma.league.findMany({
+        orderBy: [
+          { dataCollectionPriority: 'desc' },
+          { name: 'asc' }
+        ],
+        include: {
+          _count: {
+            select: {
+              matches: true,
+              teams: true
+            }
           }
         }
-      }
-    })
+      })
+    } catch (orderError) {
+      // Fallback to simple query if ordering fails (e.g., field doesn't exist in DB)
+      logger.warn('GET /api/admin/leagues - Ordering failed, using fallback', {
+        tags: ['api', 'admin', 'leagues'],
+        error: orderError instanceof Error ? orderError.message : 'Unknown error'
+      })
+      leagues = await prisma.league.findMany({
+        orderBy: { name: 'asc' },
+        include: {
+          _count: {
+            select: {
+              matches: true,
+              teams: true
+            }
+          }
+        }
+      })
+    }
 
     logger.info('GET /api/admin/leagues - Success', {
       tags: ['api', 'admin', 'leagues'],
@@ -57,12 +78,21 @@ export async function GET() {
 
     return NextResponse.json(leagues)
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    const errorDetails = error instanceof Error ? error.stack : String(error)
+    
     logger.error('GET /api/admin/leagues - Error', {
       tags: ['api', 'admin', 'leagues'],
-      error: error instanceof Error ? error : undefined
+      error: errorMessage,
+      details: errorDetails
     })
+    
     return NextResponse.json(
-      { error: 'Internal Server Error' },
+      { 
+        error: 'Failed to fetch leagues',
+        message: errorMessage,
+        details: process.env.NODE_ENV === 'development' ? errorDetails : undefined
+      },
       { status: 500 }
     )
   }

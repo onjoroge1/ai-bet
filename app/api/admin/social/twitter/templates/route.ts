@@ -3,6 +3,9 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { TwitterGenerator } from '@/lib/social/twitter-generator'
 
+// Prevent static generation
+export const dynamic = 'force-dynamic'
+
 /**
  * GET /api/admin/social/twitter/templates - Get available templates
  */

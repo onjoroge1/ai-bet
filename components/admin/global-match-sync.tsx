@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Globe, RefreshCw, CheckCircle, AlertTriangle, Clock, TrendingUp } from "lucide-react"
+import { Loader2, Globe, RefreshCw, CheckCircle, AlertTriangle, Clock, TrendingUp, Zap } from "lucide-react"
 import { toast } from "sonner"
 
 interface SyncStats {
@@ -13,6 +13,7 @@ interface SyncStats {
   activeMatches: number
   withPredictionData: number
   withoutPredictionData: number
+  pendingWithin24Hours?: number
   lastSync: string | null
 }
 
@@ -105,6 +106,7 @@ export function GlobalMatchSync() {
   })
   
   const [isLoading, setIsLoading] = useState(false)
+  const [isEnriching, setIsEnriching] = useState(false)
   const [isFetchingStats, setIsFetchingStats] = useState(true)
   const [lastSyncResult, setLastSyncResult] = useState<SyncResult | null>(null)
   const [showDetails, setShowDetails] = useState(false)
@@ -221,6 +223,62 @@ export function GlobalMatchSync() {
     }
   }
 
+  const handleEnrichAllPending = async () => {
+    setIsEnriching(true)
+    const startTime = Date.now()
+    
+    try {
+      const pendingCount = stats.pendingWithin24Hours ?? 0
+      
+      toast.info(`Starting direct processing for ${pendingCount} pending matches...`, { 
+        description: 'Processing upcoming matches within 24-hour window (current date < kickoff, max 24 hours in future)' 
+      })
+      
+      const response = await fetch('/api/admin/predictions/process-pending-direct', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(errorData.error || `HTTP ${response.status}`)
+      }
+      
+      const result = await response.json()
+      
+      if (result.success) {
+        // Update stats after successful processing
+        await fetchStats()
+        
+        const enrichedCount = result.data?.enrichedCount || 0
+        const failedCount = result.data?.failedCount || 0
+        const skippedCount = result.data?.skippedCount || 0
+        const processedCount = result.data?.processedCount || 0
+        
+        toast.success('Processing completed!', {
+          description: `Processed ${processedCount} matches: ${enrichedCount} enriched, ${failedCount} failed, ${skippedCount} skipped`
+        })
+      } else {
+        toast.error('Processing failed', {
+          description: result.message || 'Unknown error occurred'
+        })
+      }
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      console.error('Processing error:', error)
+      
+      toast.error('Processing failed', {
+        description: errorMessage
+      })
+      
+    } finally {
+      setIsEnriching(false)
+    }
+  }
+
   const coverage = calculateCoverage(stats.withPredictionData, stats.totalMatches)
   const isGoodCoverage = coverage >= 80
   const isMediumCoverage = coverage >= 50
@@ -276,20 +334,32 @@ export function GlobalMatchSync() {
             subtitle="Ready for purchase"
           />
           <StatCard
+            title="Pending Predictions"
+            value={stats.withoutPredictionData}
+            icon={<Zap className="w-6 h-6" />}
+            color="yellow"
+            subtitle={stats.pendingWithin24Hours !== undefined ? `${stats.pendingWithin24Hours} within 24h window` : "Need prediction data"}
+          />
+          <StatCard
             title="Coverage"
             value={`${coverage}%`}
             icon={<TrendingUp className="w-6 h-6" />}
             color={isGoodCoverage ? "green" : isMediumCoverage ? "yellow" : "red"}
             subtitle="Prediction coverage"
           />
-          <StatCard
-            title="Last Sync"
-            value={formatRelativeTime(stats.lastSync)}
-            icon={<Clock className="w-6 h-6" />}
-            color="gray"
-            subtitle="Latest update"
-          />
         </div>
+        
+        {/* Pending Matches Alert */}
+        {stats.withoutPredictionData > 0 && (
+          <Alert className="border-yellow-500/30 bg-yellow-500/10">
+            <Zap className="h-4 w-4 text-yellow-400" />
+            <AlertDescription className="text-yellow-200">
+              <strong>{stats.withoutPredictionData} matches</strong> are pending prediction data. 
+              Click "Run Predictions for All Pending" to process upcoming matches within 24-hour window 
+              (current date &lt; kickoff, max 24 hours in future).
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Coverage Status Alert */}
         {coverage < 80 && (
@@ -315,7 +385,7 @@ export function GlobalMatchSync() {
         <div className="flex flex-wrap gap-3">
           <Button 
             onClick={handleSyncAll}
-            disabled={isLoading}
+            disabled={isLoading || isEnriching}
             className="bg-purple-600 hover:bg-purple-700 text-white font-medium"
             size="lg"
           >
@@ -333,6 +403,26 @@ export function GlobalMatchSync() {
           </Button>
           
           <Button 
+            onClick={handleEnrichAllPending}
+            disabled={isEnriching || isLoading || (stats.pendingWithin24Hours ?? 0) === 0}
+            className="bg-yellow-600 hover:bg-yellow-700 text-white font-medium"
+            size="lg"
+            title={`Process all ${stats.pendingWithin24Hours ?? 0} pending matches within 24-hour window (current date < kickoff, max 24 hours in future)`}
+          >
+            {isEnriching ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Processing Pending Matches...
+              </>
+            ) : (
+              <>
+                <Zap className="w-4 h-4 mr-2" />
+                Run Predictions for All {stats.pendingWithin24Hours ?? 0} Pending (24h window)
+              </>
+            )}
+          </Button>
+          
+          <Button 
             variant="outline" 
             onClick={() => setShowDetails(!showDetails)}
             disabled={!lastSyncResult}
@@ -345,7 +435,7 @@ export function GlobalMatchSync() {
           <Button 
             variant="outline"
             onClick={fetchStats}
-            disabled={isFetchingStats}
+            disabled={isFetchingStats || isEnriching}
             className="border-slate-600 text-slate-300 hover:bg-slate-700"
           >
             <RefreshCw className="w-4 h-4 mr-2" />

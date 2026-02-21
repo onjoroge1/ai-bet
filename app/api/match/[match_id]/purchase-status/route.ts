@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import prisma from '@/lib/db'
 import { authOptions } from '@/lib/auth'
+import { hasPackageAccess } from '@/lib/premium-access'
 
 /**
  * Check if user has purchased a match by match_id
+ * OR has active package access (Weekend, Weekly, Monthly, VIP)
+ * Users with active packages can view matches at no cost
  * GET /api/match/[match_id]/purchase-status
  */
 export async function GET(
@@ -19,6 +22,21 @@ export async function GET(
       return NextResponse.json({ 
         isPurchased: false, 
         isAuthenticated: false 
+      })
+    }
+
+    // Check if user has active package access first
+    // If they have a package, they can view matches at no cost
+    const hasPackage = await hasPackageAccess()
+    
+    if (hasPackage) {
+      // User has active package - they can view this match without purchasing
+      return NextResponse.json({
+        isPurchased: true, // Treated as purchased because of package access
+        isAuthenticated: true,
+        hasPackageAccess: true,
+        quickPurchaseId: null,
+        purchaseDate: null
       })
     }
 
@@ -38,6 +56,7 @@ export async function GET(
       return NextResponse.json({
         isPurchased: false,
         isAuthenticated: true,
+        hasPackageAccess: false,
         quickPurchaseId: null
       })
     }
@@ -61,6 +80,7 @@ export async function GET(
     return NextResponse.json({
       isPurchased: !!purchase,
       isAuthenticated: true,
+      hasPackageAccess: false,
       quickPurchaseId: purchase?.quickPurchaseId || quickPurchaseIds[0] || null,
       purchaseDate: purchase?.createdAt || null
     })

@@ -408,9 +408,10 @@ export async function middleware(request: NextRequest) {
     // and refreshed hourly) to avoid a DB call on every request.
     //
     // Logic aligned with lib/premium-access.ts:
-    //   1. Plan name must contain "premium", "monthly", or "vip".
-    //   2. subscriptionExpiresAt must be in the future.
-    //   3. If subscriptionStatus is present it must NOT be an explicitly
+    //   1. Check for active UserPackage (Weekend, Weekly, Monthly, VIP) with expiresAt in future
+    //   2. OR Plan name must contain "premium", "monthly", or "vip".
+    //   3. subscriptionExpiresAt must be in the future.
+    //   4. If subscriptionStatus is present it must NOT be an explicitly
     //      cancelled/unpaid state.  A null/missing status is allowed so that
     //      users whose Stripe webhook hasn't fired yet are not locked out.
     const isPremiumPath = premiumPaths.some(p => pathname.startsWith(p))
@@ -419,10 +420,39 @@ export async function middleware(request: NextRequest) {
       const isAdminUser = userRole && userRole.toLowerCase() === 'admin'
 
       if (!isAdminUser) {
+        const userId = token.sub as string
         const plan = token.subscriptionPlan as string | null
         const status = token.subscriptionStatus as string | null
         const expiresAt = token.subscriptionExpiresAt as string | null
 
+        // Check for active package first (Weekend, Weekly, Monthly, VIP)
+        let hasActivePackage = false
+        if (userId) {
+          try {
+            const prisma = (await import('@/lib/db')).default
+            const now = new Date()
+            
+            const activePackage = await prisma.userPackage.findFirst({
+              where: {
+                userId,
+                status: 'active',
+                expiresAt: {
+                  gt: now
+                }
+              }
+            })
+            
+            hasActivePackage = !!activePackage
+          } catch (packageError) {
+            // If package check fails, fall through to subscription check
+            logger.debug('Middleware - Package check failed, using subscription check', {
+              tags: ['middleware', 'premium', 'package-check'],
+              data: { error: packageError instanceof Error ? packageError.message : 'Unknown error' }
+            })
+          }
+        }
+
+        // Check subscription if no active package
         const isPremiumPlan =
           !!plan &&
           (plan.toLowerCase().includes('premium') ||
@@ -435,12 +465,13 @@ export async function middleware(request: NextRequest) {
         const blockedStatuses = ['canceled', 'cancelled', 'unpaid', 'incomplete_expired']
         const isExplicitlyBlocked = !!status && blockedStatuses.includes(status.toLowerCase())
 
-        const hasPremium = isPremiumPlan && isNotExpired && !isExplicitlyBlocked
+        const hasPremiumSubscription = isPremiumPlan && isNotExpired && !isExplicitlyBlocked
+        const hasPremium = hasActivePackage || hasPremiumSubscription
 
         if (!hasPremium) {
           logger.info('Middleware - Non-premium user accessing premium route', {
             tags: ['middleware', 'premium', 'redirect'],
-            data: { pathname, plan, status, expiresAt, ip }
+            data: { pathname, plan, status, expiresAt, hasActivePackage, ip }
           })
           const upgradeUrl = new URL('/dashboard?upgrade=true', request.url)
           const response = NextResponse.redirect(upgradeUrl)

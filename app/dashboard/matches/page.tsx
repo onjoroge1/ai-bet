@@ -71,6 +71,7 @@ export default function MatchesPage() {
   const [modalItem, setModalItem] = useState<QuickPurchaseItem | null>(null)
   const [showPurchaseModal, setShowPurchaseModal] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
+  const [hasPackageAccess, setHasPackageAccess] = useState<boolean>(false)
   const [filters, setFilters] = useState<MatchFilters>({
     search: "",
     status: "all",
@@ -79,7 +80,7 @@ export default function MatchesPage() {
     sortBy: "date"
   })
 
-  // Check auth and fetch matches on mount
+  // Check auth, package access, and fetch matches on mount
   useEffect(() => {
     const checkAuthAndFetch = async () => {
       try {
@@ -91,6 +92,22 @@ export default function MatchesPage() {
         const authenticated = !!session?.user
         setIsAuthenticated(authenticated)
         if (!authenticated) { router.push('/matches'); return }
+        
+        // Check package access (UserPackage records OR premium subscription)
+        try {
+          const premiumRes = await fetch('/api/premium/check', {
+            cache: 'no-store',
+            credentials: 'include',
+          })
+          if (premiumRes.ok) {
+            const premiumData = await premiumRes.json()
+            // User has access if they have package access OR premium subscription
+            setHasPackageAccess(premiumData.hasPackageAccess || premiumData.hasAccess || false)
+          }
+        } catch {
+          setHasPackageAccess(false)
+        }
+        
         fetchMatches()
       } catch {
         setIsAuthenticated(false)
@@ -516,16 +533,24 @@ export default function MatchesPage() {
 
                     {/* Price & CTAs */}
                     <div className="flex items-center justify-between pt-3 border-t border-slate-700/40">
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="text-white font-bold text-lg">
-                          {match.country?.currencySymbol}{match.price}
-                        </span>
-                        {match.originalPrice && match.originalPrice > match.price && (
-                          <span className="text-slate-500 line-through text-xs">
-                            {match.country?.currencySymbol}{match.originalPrice}
+                      {!hasPackageAccess ? (
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-white font-bold text-lg">
+                            {match.country?.currencySymbol}{match.price}
                           </span>
-                        )}
-                      </div>
+                          {match.originalPrice && match.originalPrice > match.price && (
+                            <span className="text-slate-500 line-through text-xs">
+                              {match.country?.currencySymbol}{match.originalPrice}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/40 text-xs">
+                            Included in Package
+                          </Badge>
+                        </div>
+                      )}
                       <div className="flex items-center gap-2">
                         {match.matchId && (
                           <Button
@@ -539,20 +564,25 @@ export default function MatchesPage() {
                                 : match.matchId
                               router.push(`/match/${slug}`)
                             }}
-                            className="border-slate-600/60 text-slate-300 hover:text-white hover:border-slate-500 text-xs font-medium px-3 transition-all hover:bg-slate-700/40"
+                            className={hasPackageAccess 
+                              ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 text-xs font-medium px-4 transition-all"
+                              : "border-slate-600/60 text-slate-300 hover:text-white hover:border-slate-500 text-xs font-medium px-3 transition-all hover:bg-slate-700/40"
+                            }
                           >
                             <Eye className="h-3.5 w-3.5 mr-1" />
-                            Match
+                            {hasPackageAccess ? "View Match" : "Match"}
                           </Button>
                         )}
-                        <Button
-                          size="sm"
-                          onClick={() => handlePurchaseClick(match)}
-                          className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium px-4 shadow-lg shadow-emerald-900/30 transition-all hover:shadow-emerald-800/40 hover:scale-[1.02]"
-                        >
-                          <span>View Prediction</span>
-                          <ChevronRight className="h-3.5 w-3.5 ml-1" />
-                        </Button>
+                        {!hasPackageAccess && (
+                          <Button
+                            size="sm"
+                            onClick={() => handlePurchaseClick(match)}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium px-4 shadow-lg shadow-emerald-900/30 transition-all hover:shadow-emerald-800/40 hover:scale-[1.02]"
+                          >
+                            <span>View Prediction</span>
+                            <ChevronRight className="h-3.5 w-3.5 ml-1" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </CardContent>

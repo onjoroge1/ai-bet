@@ -222,6 +222,7 @@ interface QuickPurchaseInfo {
 interface PurchaseStatus {
   isPurchased: boolean
   isAuthenticated: boolean
+  hasPackageAccess?: boolean
   quickPurchaseId: string | null
   purchaseDate: string | null
 }
@@ -962,12 +963,15 @@ export default function MatchDetailPage() {
   const v1Model = matchData.models?.v1_consensus
   const v2Model = matchData.models?.v2_lightgbm
   const isPurchased = purchaseStatus?.isPurchased || false
+  const hasPackageAccess = purchaseStatus?.hasPackageAccess || false
 
   /** Whether premium content should be locked (not purchased AND match not finished) */
   const premiumLocked = !isPurchased && !isFinished
 
-  /** Formatted price for unlock CTAs */
-  const premiumPrice = quickPurchaseInfo
+  /** Formatted price for unlock CTAs - hide if user has package access */
+  const premiumPrice = (hasPackageAccess || !quickPurchaseInfo)
+    ? undefined // No price shown if user has package access
+    : quickPurchaseInfo
     ? `${quickPurchaseInfo.country?.currencySymbol || "$"}${quickPurchaseInfo.price.toFixed(2)}`
     : undefined
 

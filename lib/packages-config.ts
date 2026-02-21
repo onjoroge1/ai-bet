@@ -41,7 +41,7 @@ export const PACKAGES: PackageDefinition[] = [
     id: "weekend_pass",
     name: "Weekend Package",
     description: "Weekend special with 5 tips (Friday–Sunday)",
-    basePrice: 49.99,
+    basePrice: 9.99,
     tipCount: 5,
     validityDays: 3,
     features: [
@@ -60,7 +60,7 @@ export const PACKAGES: PackageDefinition[] = [
     id: "weekly_pass",
     name: "Weekly Package",
     description: "Full week coverage with 8 premium tips",
-    basePrice: 49.99,
+    basePrice: 19.99,
     tipCount: 8,
     validityDays: 7,
     features: [

@@ -1189,24 +1189,80 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get current QuickPurchase statistics
+    // Get current date for filtering upcoming matches only
+    const now = new Date()
+
+    // Get current QuickPurchase statistics (upcoming matches only)
     const totalQuickPurchases = await prisma.quickPurchase.count({
-      where: { matchId: { not: null } }
+      where: { 
+        matchId: { not: null },
+        matchData: {
+          path: ['date'],
+          gte: now.toISOString()
+        }
+      }
     })
 
     const activeQuickPurchases = await prisma.quickPurchase.count({
       where: { 
         matchId: { not: null },
-        isActive: true
+        isActive: true,
+        matchData: {
+          path: ['date'],
+          gte: now.toISOString()
+        }
       }
     })
 
     const withPredictionData = await prisma.quickPurchase.count({
       where: {
         matchId: { not: null },
-        predictionData: { not: null }
+        predictionData: { not: null },
+        matchData: {
+          path: ['date'],
+          gte: now.toISOString()
+        }
       }
     })
+
+    // Pending predictions: upcoming matches without prediction data
+    const withoutPredictionData = await prisma.quickPurchase.count({
+      where: {
+        matchId: { not: null },
+        predictionData: { equals: Prisma.JsonNull },
+        matchData: {
+          path: ['date'],
+          gte: now.toISOString()
+        }
+      }
+    })
+
+    // Pending predictions within 24-hour window: current date < kickoff AND kickoff <= current date + 24 hours
+    const tomorrow = new Date(now)
+    tomorrow.setHours(tomorrow.getHours() + 24)
+    
+    // Use raw query to filter by matchData.date JSON field within 24-hour window
+    const nowISO = now.toISOString()
+    const tomorrowISO = tomorrow.toISOString()
+    
+    const pendingWithin24HoursQuery = `
+      SELECT COUNT(*) as count
+      FROM "QuickPurchase" qp
+      WHERE qp."matchId" IS NOT NULL
+      AND qp."isPredictionActive" = true
+      AND (
+        qp."predictionData" IS NULL 
+        OR qp."predictionData" = '{}'::jsonb
+        OR qp."predictionData" = 'null'::jsonb
+      )
+      AND qp."matchData" IS NOT NULL
+      AND (qp."matchData"->>'date') IS NOT NULL
+      AND (qp."matchData"->>'date')::timestamp >= '${nowISO}'::timestamp
+      AND (qp."matchData"->>'date')::timestamp <= '${tomorrowISO}'::timestamp
+    `
+    
+    const pending24HoursResult = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(pendingWithin24HoursQuery)
+    const pendingWithin24Hours = Number(pending24HoursResult[0]?.count || 0)
 
     // Get latest sync info (approximate based on creation time)
     const latestQuickPurchase = await prisma.quickPurchase.findFirst({
@@ -1221,7 +1277,8 @@ export async function GET(req: NextRequest) {
         totalMatches: totalQuickPurchases,
         activeMatches: activeQuickPurchases,
         withPredictionData,
-        withoutPredictionData: totalQuickPurchases - withPredictionData,
+        withoutPredictionData,
+        pendingWithin24Hours,
         lastSync: latestQuickPurchase?.createdAt || null
       },
       timestamp: new Date().toISOString()

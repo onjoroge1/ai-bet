@@ -292,6 +292,40 @@ async function syncMatchesByStatus(status: 'upcoming' | 'live' | 'completed') {
       logger.info(`No ${status} matches found in API`, {
         tags: ['market', 'sync', status],
       })
+      
+      // Even if API returns 0 matches, update lastSyncedAt for existing matches
+      // This prevents the sync status from showing "Error" due to stale timestamps
+      // Only do this for live and upcoming (completed matches don't need re-sync)
+      if (status === 'live' || status === 'upcoming') {
+        try {
+          const updatedCount = await prisma.marketMatch.updateMany({
+            where: { 
+              status: status === 'live' ? 'LIVE' : 'UPCOMING',
+              isActive: true
+            },
+            data: {
+              lastSyncedAt: new Date(),
+              syncErrors: 0, // Reset errors since we successfully checked
+              lastSyncError: null
+            }
+          })
+          
+          logger.debug(`Updated lastSyncedAt for ${updatedCount.count} existing ${status} matches (API returned 0 matches)`, {
+            tags: ['market', 'sync', status],
+            data: { 
+              status,
+              updatedCount: updatedCount.count,
+              note: 'Updated timestamps to reflect successful sync attempt, even though API returned no matches'
+            }
+          })
+        } catch (updateError) {
+          logger.error(`Failed to update lastSyncedAt for existing ${status} matches`, {
+            tags: ['market', 'sync', status, 'error'],
+            error: updateError instanceof Error ? updateError : undefined,
+          })
+        }
+      }
+      
       return { synced: 0, errors: 0, skipped: 0 }
     }
 
