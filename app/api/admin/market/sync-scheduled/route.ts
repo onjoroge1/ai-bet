@@ -103,8 +103,8 @@ function transformMatchData(apiMatch: any) {
   const v1Model = apiMatch.models?.v1_consensus || apiMatch.predictions?.v1
   const v2Model = apiMatch.models?.v2_lightgbm || apiMatch.predictions?.v2
 
-  // Extract live data (if status is LIVE)
-  let currentScore = null
+  // Extract live data / score (for LIVE and FINISHED matches)
+  let currentScore = apiMatch.score || apiMatch.live_data?.current_score || null
   let elapsed = null
   let period = null
   let liveStatistics = null
@@ -113,7 +113,6 @@ function transformMatchData(apiMatch: any) {
   let aiAnalysis = null
 
   if (normalizedStatus === 'LIVE') {
-    currentScore = apiMatch.score || apiMatch.live_data?.current_score
     elapsed = apiMatch.minute || apiMatch.elapsed || apiMatch.live_data?.minute
     period = apiMatch.period || apiMatch.live_data?.period || 'Live'
     liveStatistics = apiMatch.live_data?.statistics || apiMatch.statistics
@@ -373,15 +372,31 @@ async function syncMatchesByStatus(status: 'upcoming' | 'live' | 'completed') {
             }
           }
         } else if (status === 'completed') {
-          // For completed matches, only sync if status changed from LIVE/UPCOMING to FINISHED
+          // For completed matches, allow re-sync if finalResult is still missing
           const existing = await prisma.marketMatch.findUnique({
             where: { matchId: transformed.matchId },
-            select: { status: true }
+            select: { status: true, finalResult: true, currentScore: true }
           })
 
           if (existing && existing.status === 'FINISHED') {
-            skipped++
-            continue // Already finished, no need to sync again
+            const fr = existing.finalResult as Record<string, unknown> | null
+            const hasFinalResult = fr && typeof fr === 'object' && Object.keys(fr).length > 0
+            if (hasFinalResult) {
+              skipped++
+              continue
+            }
+            // Missing finalResult — try to derive from existing DB currentScore
+            if (!transformed.finalResult) {
+              const dbScore = existing.currentScore as { home?: number; away?: number } | null
+              if (dbScore && typeof dbScore.home === 'number' && typeof dbScore.away === 'number') {
+                transformed.finalResult = {
+                  score: { home: dbScore.home, away: dbScore.away },
+                  outcome: dbScore.home > dbScore.away ? 'home' : dbScore.away > dbScore.home ? 'away' : 'draw',
+                  outcome_text: dbScore.home > dbScore.away ? 'Home Win' : dbScore.away > dbScore.home ? 'Away Win' : 'Draw',
+                }
+                console.log(`[Sync] Derived finalResult from DB currentScore for ${transformed.matchId}`)
+              }
+            }
           }
         }
 
@@ -390,7 +405,7 @@ async function syncMatchesByStatus(status: 'upcoming' | 'live' | 'completed') {
           where: { matchId: transformed.matchId },
           update: {
             ...transformed,
-            syncErrors: 0, // Reset error count on successful sync
+            syncErrors: 0,
             lastSyncError: null,
           },
           create: {

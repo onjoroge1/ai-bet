@@ -10,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Shield, Bell, Settings, Download, RefreshCw, FileText, Mail, Twitter, Target, Menu, X } from "lucide-react"
+import { Shield, Bell, Settings, Download, RefreshCw, FileText, Mail, Twitter, Target, Menu, X, BarChart3 } from "lucide-react"
 import Link from "next/link"
 
 export function AdminHeader() {
@@ -22,6 +22,7 @@ export function AdminHeader() {
     { href: "/admin/blog-automation", label: "Blog Automation", icon: FileText },
     { href: "/admin/social-automation", label: "Social Automation", icon: Twitter },
     { href: "/admin/matches", label: "Matches", icon: Target },
+    { href: "/admin/reports", label: "Reports", icon: BarChart3 },
   ]
 
   return (

@@ -56,7 +56,7 @@
     },
     {
       "path": "/api/admin/social/twitter/post-scheduled",
-      "schedule": "*/30 * * * *"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/admin/settle-saved-bets",

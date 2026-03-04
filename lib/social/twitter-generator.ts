@@ -252,31 +252,32 @@ export class TwitterGenerator {
       .replace(/{LEAGUE}/g, matchData.league)
       .replace(/{AI_CONF}/g, matchData.aiConf?.toString() || '')
       .replace(/{MATCH_URL}/g, url)
-      .replace(/{LIVE_URL}/g, url) // For live templates, use same URL structure
-      .replace(/{EXPLANATION_SNIPPET}/g, explanationSnippet || '') // Replace with empty string if not neutral-preview template
+      .replace(/{LIVE_URL}/g, url)
+      .replace(/{EXPLANATION_SNIPPET}/g, explanationSnippet || '')
 
-    // For live templates, replace live-specific variables (if available)
-    // TODO: Add support for {MATCH_MINUTE}, {MOMENTUM_SUMMARY}, {OBS_1}, {OBS_2} when live data is available
-    content = content.replace(/{MATCH_MINUTE}/g, '45') // Placeholder
-    content = content.replace(/{MOMENTUM_SUMMARY}/g, 'Momentum shifts detected') // Placeholder
-    content = content.replace(/{OBS_1}/g, 'Observation 1') // Placeholder
-    content = content.replace(/{OBS_2}/g, 'Observation 2') // Placeholder
+    content = content.replace(/{MATCH_MINUTE}/g, '45')
+    content = content.replace(/{MOMENTUM_SUMMARY}/g, 'Momentum shifts detected')
+    content = content.replace(/{OBS_1}/g, 'Observation 1')
+    content = content.replace(/{OBS_2}/g, 'Observation 2')
 
-    // Ensure content is within Twitter character limit (280 chars)
-    // URLs are automatically shortened by Twitter, so we count them as ~23 chars
+    // Strip URL from content — it's stored separately in draft.url and appended
+    // at post time by the posting cron. This prevents:
+    //  - LLM humanization replacing the URL with literal "[URL]"
+    //  - Double URLs (one in content + one appended at post time)
+    if (template.hasLink && url) {
+      content = content
+        .replace(/\s*👉\s*https?:\/\/[^\s]+/g, '')
+        .replace(/\s*https?:\/\/[^\s]+$/g, '')
+        .trim()
+    }
+
+    // Enforce Twitter character limit (280 chars total).
+    // URL (if present) is appended at post time; Twitter shortens it to ~23 chars.
     const urlLength = (template.hasLink && url) ? 23 : 0
-    const maxContentLength = 280 - urlLength - (urlLength > 0 ? 1 : 0) // -1 for space before URL if URL exists
-    
+    const maxContentLength = 280 - urlLength - (urlLength > 0 ? 1 : 0)
+
     if (content.length > maxContentLength) {
-      // Truncate content but keep URL
-      if (template.hasLink && url) {
-        const urlPattern = new RegExp(`\\s*👉\\s*${url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'g')
-        const contentWithoutUrl = content.replace(urlPattern, '').trim()
-        const truncated = contentWithoutUrl.substring(0, maxContentLength - 3) + '...'
-        content = `${truncated} 👉 ${url}`
-      } else {
-        content = content.substring(0, maxContentLength - 3) + '...'
-      }
+      content = content.substring(0, maxContentLength - 3) + '...'
     }
 
     return {
@@ -347,7 +348,7 @@ ${contextParts.join('\n')}
 Template Output:
 ${originalContent}
 
-Rewrite this for Twitter (keep the URL if present):`
+Rewrite this for Twitter. Do NOT include any URLs, links, or placeholders like [URL] — the link is added separately.`
 
       const response = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
@@ -368,18 +369,22 @@ Rewrite this for Twitter (keep the URL if present):`
         return originalContent
       }
 
-      // Remove any emojis that might have been generated (safety check)
+      // Remove emojis and any URL/placeholder artifacts from LLM output.
+      // URLs are stored separately in the `url` field and appended at post time.
       const emojiRegex = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu
       let cleaned = humanized.replace(emojiRegex, '').trim()
-      
-      // Preserve URL if it was in the original (without emoji)
-      const urlMatch = originalContent.match(/(https?:\/\/[^\s]+)/)
-      if (urlMatch && !cleaned.includes(urlMatch[1])) {
-        // URL was in original but not in humanized, add it back (plain text, no emoji)
-        const url = urlMatch[1]
-        const cleanedWithoutUrl = cleaned.replace(/\s*👉\s*https?:\/\/[^\s]+/gi, '').replace(/\s*https?:\/\/[^\s]+/gi, '').trim()
-        cleaned = `${cleanedWithoutUrl} ${url}`
-      }
+
+      // Strip any [URL], {URL}, [LINK] placeholders the LLM might generate,
+      // as well as any literal URLs or trailing pointer emojis.
+      cleaned = cleaned
+        .replace(/\s*\[URL\]/gi, '')
+        .replace(/\s*\{URL\}/gi, '')
+        .replace(/\s*\(URL\)/gi, '')
+        .replace(/\s*\[LINK\]/gi, '')
+        .replace(/\s*\{LINK\}/gi, '')
+        .replace(/\s*https?:\/\/[^\s]+/g, '')
+        .replace(/\s*👉\s*$/g, '')
+        .trim()
 
       // Ensure we're within Twitter's limit (280 chars)
       if (cleaned.length > 280) {
@@ -425,21 +430,21 @@ Rewrite this for Twitter (keep the URL if present):`
 
     let content = template.content
       .replace(/{PARLAY_BUILDER_URL}/g, parlayBuilderUrl)
-      .replace(/{PARLAY_URL}/g, parlayBuilderUrl) // Fallback support
+      .replace(/{PARLAY_URL}/g, parlayBuilderUrl)
 
-    // Ensure content is within character limit
-    const urlLength = template.hasLink ? 23 : 0 // Twitter shortens URLs
+    // Strip URL from content — stored separately in draft.url and appended at post time
+    if (template.hasLink && parlayBuilderUrl) {
+      content = content
+        .replace(/\s*👉\s*https?:\/\/[^\s]+/g, '')
+        .replace(/\s*https?:\/\/[^\s]+$/g, '')
+        .trim()
+    }
+
+    const urlLength = template.hasLink ? 23 : 0
     const maxContentLength = 280 - urlLength - (urlLength > 0 ? 1 : 0)
-    
+
     if (content.length > maxContentLength) {
-      if (template.hasLink && parlayBuilderUrl) {
-        const urlPattern = new RegExp(`\\s*👉\\s*${parlayBuilderUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'g')
-        const contentWithoutUrl = content.replace(urlPattern, '').trim()
-        const truncated = contentWithoutUrl.substring(0, maxContentLength - 3) + '...'
-        content = `${truncated} 👉 ${parlayBuilderUrl}`
-      } else {
-        content = content.substring(0, maxContentLength - 3) + '...'
-      }
+      content = content.substring(0, maxContentLength - 3) + '...'
     }
 
     return {
