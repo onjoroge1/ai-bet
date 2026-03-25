@@ -25,6 +25,10 @@ export async function resolveSlugToMatchId(slug: string): Promise<string | null>
   const parsed = parseSlugTeams(slug)
   if (!parsed) return null
 
+  // If the slug contains a trailing numeric match ID, use it directly
+  // e.g. `rayo-vallecano-vs-elche-1391115` → matchId = "1391115"
+  if (parsed.matchId) return parsed.matchId
+
   const { homeSlug, awaySlug } = parsed
 
   // Convert slug fragments to SQL ILIKE patterns:

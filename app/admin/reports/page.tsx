@@ -36,6 +36,10 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ModelLeaderboard } from '@/components/admin/model-leaderboard'
+import { ABTestingResults } from '@/components/admin/ab-testing-results'
+import { TrainingStatus } from '@/components/admin/training-status'
+import { SportSelector } from '@/components/multisport/SportSelector'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,6 +51,7 @@ interface ModelInfo {
   recommendedBet?: string | null
   source?: 'enrichment' | 'sync'
   agreement?: { agreesWith: boolean; confidenceDelta: number } | null
+  convictionTier?: string | null
 }
 
 interface PredictionInfo {
@@ -69,6 +74,7 @@ interface MatchRow {
   outcomeText: string | null
   v1: ModelInfo | null
   v2: ModelInfo | null
+  v3: ModelInfo | null
   modelsAgree: boolean | null
   prediction: PredictionInfo | null
   consensusOdds: { home?: number; draw?: number; away?: number } | null
@@ -84,6 +90,18 @@ interface HeadToHead {
   disagreeNeitherRight: number
 }
 
+interface AllThreeAgree {
+  total: number
+  correct: number
+  accuracy: number | null
+}
+
+interface TierStat {
+  total: number
+  correct: number
+  accuracy: number | null
+}
+
 interface Stats {
   totalFinished: number
   totalWithScores: number
@@ -92,7 +110,10 @@ interface Stats {
   totalWithQpModels: number
   v1: { total: number; correct: number; accuracy: number | null }
   v2: { total: number; correct: number; accuracy: number | null }
+  v3: { total: number; correct: number; accuracy: number | null }
   headToHead: HeadToHead
+  allThreeAgree?: AllThreeAgree
+  premiumTiers?: Record<string, TierStat>
 }
 
 interface ApiResponse {
@@ -146,7 +167,29 @@ function pct(n: number, d: number): string {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+interface MultisportReportRow {
+  id: string
+  eventId: string
+  homeTeam: string
+  awayTeam: string
+  league: string
+  kickoffDate: string
+  score: { home: number; away: number } | null
+  overtime: boolean
+  modelPick: string | null
+  modelConfidence: number | null
+  correct: boolean | null
+}
+
+interface MultisportReportStats {
+  totalMatches: number
+  v3Correct: number
+  v3Accuracy: number
+  avgConfidence: number
+}
+
 export default function AdminReportsPage() {
+  const [sport, setSport] = useState('soccer')
   const [data, setData] = useState<MatchRow[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [leagues, setLeagues] = useState<string[]>([])
@@ -164,6 +207,14 @@ export default function AdminReportsPage() {
   const [selectedMatch, setSelectedMatch] = useState<MatchRow | null>(null)
   const [backfilling, setBackfilling] = useState(false)
   const [backfillResult, setBackfillResult] = useState<Record<string, unknown> | null>(null)
+
+  // Multisport report state
+  const [msData, setMsData] = useState<MultisportReportRow[]>([])
+  const [msStats, setMsStats] = useState<MultisportReportStats | null>(null)
+  const [msPage, setMsPage] = useState(1)
+  const [msTotalPages, setMsTotalPages] = useState(1)
+  const [msTotalCount, setMsTotalCount] = useState(0)
+  const [msSearch, setMsSearch] = useState('')
 
   const runBackfill = async () => {
     try {
@@ -218,7 +269,35 @@ export default function AdminReportsPage() {
     }
   }
 
-  useEffect(() => { fetchData(1) }, [leagueFilter, resultFilter, dateFrom, dateTo]) // eslint-disable-line react-hooks/exhaustive-deps
+  const fetchMultisportData = async (pageNum = 1) => {
+    try {
+      setLoading(true)
+      const params = new URLSearchParams({ sport, page: String(pageNum), limit: '50' })
+      if (msSearch) params.set('search', msSearch)
+      if (dateFrom) params.set('dateFrom', dateFrom)
+      if (dateTo) params.set('dateTo', dateTo)
+      const res = await fetch(`/api/admin/multisport/reports?${params.toString()}`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const json = await res.json()
+      setMsData(json.matches || [])
+      setMsStats(json.stats || null)
+      setMsPage(json.page || 1)
+      setMsTotalPages(json.totalPages || 1)
+      setMsTotalCount(json.total || 0)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load multisport data')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (sport === 'soccer') {
+      fetchData(1)
+    } else {
+      fetchMultisportData(1)
+    }
+  }, [sport, leagueFilter, resultFilter, dateFrom, dateTo]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = () => fetchData(1)
 
@@ -254,13 +333,163 @@ export default function AdminReportsPage() {
               Completed matches with AI prediction accuracy &amp; V1 vs V2 comparison
             </p>
           </div>
-          <Button onClick={() => fetchData(page)} variant="outline" size="sm" className="border-slate-600 text-slate-300">
+          <Button onClick={() => sport === 'soccer' ? fetchData(page) : fetchMultisportData(msPage)} variant="outline" size="sm" className="border-slate-600 text-slate-300">
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
         </div>
 
-        {/* ── Stats Row (scoped to active filters) ──────────────────────── */}
+        {/* ── Sport Selector ── */}
+        <SportSelector selectedSport={sport} onSelect={setSport} allowAll />
+
+        {/* ── Multisport Reports View ── */}
+        {sport !== 'soccer' && (
+          <div className="space-y-6">
+            {/* Stats */}
+            {msStats && (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <Card className="bg-slate-800/60 border-slate-700">
+                  <CardContent className="p-4 flex flex-col items-center">
+                    <Trophy className="h-5 w-5 text-yellow-400 mb-1" />
+                    <span className="text-2xl font-bold text-white">{msStats.totalMatches}</span>
+                    <span className="text-xs text-slate-400">Total Completed</span>
+                  </CardContent>
+                </Card>
+                <Card className="bg-slate-800/60 border-slate-700">
+                  <CardContent className="p-4 flex flex-col items-center">
+                    <CheckCircle2 className="h-5 w-5 text-emerald-400 mb-1" />
+                    <span className="text-2xl font-bold text-emerald-400">{msStats.v3Correct}</span>
+                    <span className="text-xs text-slate-400">V3 Correct</span>
+                  </CardContent>
+                </Card>
+                <Card className="bg-slate-800/60 border-slate-700">
+                  <CardContent className="p-4">
+                    <AccuracyRing value={msStats.v3Accuracy} label={`V3 (${msStats.v3Correct}/${msStats.totalMatches})`} />
+                  </CardContent>
+                </Card>
+                <Card className="bg-slate-800/60 border-slate-700">
+                  <CardContent className="p-4 flex flex-col items-center">
+                    <Brain className="h-5 w-5 text-blue-400 mb-1" />
+                    <span className="text-2xl font-bold text-blue-400">{msStats.avgConfidence}%</span>
+                    <span className="text-xs text-slate-400">Avg Confidence</span>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* Search */}
+            <Card className="bg-slate-800/50 border-slate-700">
+              <CardContent className="p-4">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="flex-1 min-w-[200px]">
+                    <label className="text-xs text-slate-400 mb-1 block">Search teams</label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={msSearch}
+                        onChange={(e) => setMsSearch(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && fetchMultisportData(1)}
+                        placeholder="e.g. Lakers"
+                        className="bg-slate-700/50 border-slate-600 text-white"
+                      />
+                      <Button onClick={() => fetchMultisportData(1)} size="sm" variant="outline" className="border-slate-600">
+                        <Search className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="w-[150px]">
+                    <label className="text-xs text-slate-400 mb-1 block">From</label>
+                    <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="bg-slate-700/50 border-slate-600 text-white" />
+                  </div>
+                  <div className="w-[150px]">
+                    <label className="text-xs text-slate-400 mb-1 block">To</label>
+                    <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="bg-slate-700/50 border-slate-600 text-white" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Data Table */}
+            <Card className="bg-slate-800/50 border-slate-700 overflow-hidden">
+              {loading ? (
+                <div className="flex items-center justify-center p-16">
+                  <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+                </div>
+              ) : msData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center p-16 text-slate-400">
+                  <AlertTriangle className="h-10 w-10 mb-3 text-slate-500" />
+                  <p>No completed matches found for this sport</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-slate-700 hover:bg-transparent">
+                        <TableHead className="text-slate-300 text-xs">Date</TableHead>
+                        <TableHead className="text-slate-300 text-xs">Match</TableHead>
+                        <TableHead className="text-slate-300 text-xs">League</TableHead>
+                        <TableHead className="text-slate-300 text-xs text-center">Score</TableHead>
+                        <TableHead className="text-slate-300 text-xs text-center">V3 Pick</TableHead>
+                        <TableHead className="text-slate-300 text-xs text-center">Conf</TableHead>
+                        <TableHead className="text-slate-300 text-xs text-center">Result</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {msData.map(row => {
+                        const dateStr = new Date(row.kickoffDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+                        return (
+                          <TableRow key={row.id} className="border-slate-700/50 hover:bg-slate-800/40 text-sm">
+                            <TableCell className="text-slate-400 text-xs whitespace-nowrap">{dateStr}</TableCell>
+                            <TableCell className="font-medium text-white whitespace-nowrap">
+                              {row.homeTeam} <span className="text-slate-500">vs</span> {row.awayTeam}
+                              {row.overtime && <Badge className="ml-2 bg-amber-500/20 text-amber-300 border-amber-500/40 text-[10px]">OT</Badge>}
+                            </TableCell>
+                            <TableCell className="text-slate-400 text-xs max-w-[120px] truncate">{row.league}</TableCell>
+                            <TableCell className="text-center font-mono font-bold text-white">
+                              {row.score ? `${row.score.home} - ${row.score.away}` : '—'}
+                            </TableCell>
+                            <TableCell className="text-center text-xs text-slate-300">
+                              {row.modelPick === 'H' || row.modelPick === 'home' ? 'Home' : row.modelPick === 'A' || row.modelPick === 'away' ? 'Away' : '—'}
+                            </TableCell>
+                            <TableCell className="text-center text-xs">
+                              {row.modelConfidence != null ? (
+                                <span className={row.modelConfidence >= 70 ? 'text-emerald-400' : row.modelConfidence >= 55 ? 'text-yellow-400' : 'text-slate-400'}>
+                                  {row.modelConfidence}%
+                                </span>
+                              ) : '—'}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <CorrectBadge correct={row.correct} />
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+
+              {msTotalPages > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-slate-700">
+                  <span className="text-xs text-slate-400">
+                    Page {msPage} of {msTotalPages} ({msTotalCount} matches)
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" disabled={msPage <= 1} onClick={() => fetchMultisportData(msPage - 1)} className="border-slate-600 text-slate-300 h-8">
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" size="sm" disabled={msPage >= msTotalPages} onClick={() => fetchMultisportData(msPage + 1)} className="border-slate-600 text-slate-300 h-8">
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </Card>
+          </div>
+        )}
+
+        {/* ── Soccer-specific content ── */}
+        {sport === 'soccer' && (
+        <>
         {stats && (
           <>
           {(search || leagueFilter !== 'all' || dateFrom || dateTo) && (
@@ -320,7 +549,45 @@ export default function AdminReportsPage() {
                 <AccuracyRing value={stats.v2.accuracy} label={`V2 (${stats.v2.correct}/${stats.v2.total})`} />
               </CardContent>
             </Card>
+            <Card className="bg-slate-800/60 border-slate-700">
+              <CardContent className="p-4">
+                <AccuracyRing value={stats.v3.accuracy} label={`V3 (${stats.v3.correct}/${stats.v3.total})`} />
+              </CardContent>
+            </Card>
+            {stats.allThreeAgree && stats.allThreeAgree.total > 0 && (
+              <Card className="bg-slate-800/60 border-slate-700 border-l-2 border-l-emerald-500">
+                <CardContent className="p-4">
+                  <AccuracyRing value={stats.allThreeAgree.accuracy} label={`All 3 Agree (${stats.allThreeAgree.correct}/${stats.allThreeAgree.total})`} />
+                </CardContent>
+              </Card>
+            )}
           </div>
+
+          {/* ── Premium Tier Accuracy ──────────────────────────────── */}
+          {stats.premiumTiers && Object.values(stats.premiumTiers).some(t => t.total > 0) && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { key: 'premium', label: '⭐⭐⭐ Premium', color: 'text-amber-400', border: 'border-l-amber-500' },
+                { key: 'strong', label: '⭐⭐ Strong', color: 'text-slate-300', border: 'border-l-slate-400' },
+                { key: 'standard', label: '⭐ Standard', color: 'text-slate-500', border: 'border-l-slate-600' },
+                { key: 'speculative', label: 'Speculative', color: 'text-slate-600', border: 'border-l-slate-700' },
+              ].map(({ key, label, color, border }) => {
+                const tier = stats.premiumTiers?.[key]
+                if (!tier || tier.total === 0) return null
+                return (
+                  <Card key={key} className={`bg-slate-800/60 border-slate-700 border-l-2 ${border}`}>
+                    <CardContent className="p-3">
+                      <div className={`text-xs font-medium ${color} mb-1`}>{label}</div>
+                      <div className="text-lg font-bold text-white">
+                        {tier.accuracy != null ? `${tier.accuracy}%` : '—'}
+                      </div>
+                      <div className="text-[10px] text-slate-500">{tier.correct}/{tier.total} correct</div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
           </>
         )}
 
@@ -357,6 +624,13 @@ export default function AdminReportsPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* ── Model Intelligence Panels ────────────────────────────────── */}
+        <ModelLeaderboard />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <ABTestingResults />
+          <TrainingStatus />
+        </div>
 
         {/* ── V1 vs V2 Head-to-Head ───────────────────────────────────────── */}
         {stats && stats.headToHead.agreeBoth + stats.headToHead.disagreeBoth > 0 && (
@@ -504,6 +778,9 @@ export default function AdminReportsPage() {
                     <TableHead className="text-slate-300 text-xs text-center">V2 Pick</TableHead>
                     <TableHead className="text-slate-300 text-xs text-center">V2 Conf</TableHead>
                     <TableHead className="text-slate-300 text-xs text-center">V2</TableHead>
+                    <TableHead className="text-slate-300 text-xs text-center">V3 Pick</TableHead>
+                    <TableHead className="text-slate-300 text-xs text-center">V3 Conf</TableHead>
+                    <TableHead className="text-slate-300 text-xs text-center">V3</TableHead>
                     <TableHead className="text-slate-300 text-xs text-center">Agree?</TableHead>
                     <TableHead className="text-slate-300 text-xs text-center">Detail</TableHead>
                   </TableRow>
@@ -551,6 +828,16 @@ export default function AdminReportsPage() {
                           ) : '—'}
                         </TableCell>
                         <TableCell className="text-center"><CorrectBadge correct={row.v2?.correct ?? null} /></TableCell>
+                        {/* V3 */}
+                        <TableCell className="text-center text-xs text-slate-300">{pickLabel(row.v3?.pick ?? null)}</TableCell>
+                        <TableCell className="text-center text-xs">
+                          {row.v3?.confidence != null ? (
+                            <span className={row.v3.confidence >= 70 ? 'text-emerald-400' : row.v3.confidence >= 55 ? 'text-yellow-400' : 'text-slate-400'}>
+                              {row.v3.confidence}%
+                            </span>
+                          ) : '—'}
+                        </TableCell>
+                        <TableCell className="text-center"><CorrectBadge correct={row.v3?.correct ?? null} /></TableCell>
                         {/* Agreement */}
                         <TableCell className="text-center">
                           {row.modelsAgree === true && <Badge className="bg-cyan-500/20 text-cyan-300 border-cyan-500/40 text-[10px]">Yes</Badge>}
@@ -587,6 +874,8 @@ export default function AdminReportsPage() {
           )}
         </Card>
 
+        </>
+        )}
         {/* ── Detail Modal ─────────────────────────────────────────────────── */}
         <Dialog open={!!selectedMatch} onOpenChange={(open) => { if (!open) setSelectedMatch(null) }}>
           <DialogContent className="bg-slate-800 border-slate-700 text-slate-100 max-w-2xl max-h-[85vh] overflow-y-auto">
@@ -618,7 +907,7 @@ export default function AdminReportsPage() {
                   </div>
 
                   {/* Model comparison */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <ModelCard
                       title="V1 Consensus"
                       model={selectedMatch.v1}
@@ -628,6 +917,11 @@ export default function AdminReportsPage() {
                       title="V2 Unified (LightGBM)"
                       model={selectedMatch.v2}
                       colour="purple"
+                    />
+                    <ModelCard
+                      title="V3 Sharp (LightGBM)"
+                      model={selectedMatch.v3}
+                      colour="emerald"
                     />
                   </div>
 

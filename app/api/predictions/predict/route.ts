@@ -23,19 +23,6 @@ export async function POST(request: Request) {
     // Check if MarketMatch exists for this matchId (for proper linking)
     const marketMatch = await prisma.marketMatch.findUnique({
       where: { matchId: matchIdStr },
-      select: {
-        id: true,
-        homeTeam: true,
-        awayTeam: true,
-        league: true,
-        leagueId: true,
-        kickoffDate: true,
-        homeTeamLogo: true,
-        awayTeamLogo: true,
-        consensusOdds: true,
-        v1Model: true,
-        v2Model: true
-      }
     });
 
     // Get default country for pricing (try multiple countries, same as global sync)
@@ -76,12 +63,6 @@ export async function POST(request: Request) {
       where: {
         matchId: matchIdStr,
       },
-      select: {
-        id: true,
-        predictionData: true,
-        matchData: true,
-        marketMatchId: true
-      }
     });
 
     // Check if predictionData is valid (not null, not empty object, not JsonNull)
@@ -101,6 +82,33 @@ export async function POST(request: Request) {
     // If QuickPurchase exists with valid predictionData, return it instead of calling backend
     if (hasValidPredictionData && quickPurchase) {
       console.log(`[Predict API] Using existing predictionData from QuickPurchase for match ${match_id}`);
+
+      // Compute premium score if not yet computed
+      if (quickPurchase.premiumScore == null && marketMatch) {
+        try {
+          const { calculatePremiumScore } = await import('@/lib/predictions/premium-scorer')
+          const toInput = (m: any) => {
+            if (!m?.pick) return null
+            const conf = typeof m.confidence === 'number' ? (m.confidence <= 1 ? m.confidence * 100 : m.confidence) : 50
+            return { pick: m.pick, confidence: conf }
+          }
+          const premiumResult = calculatePremiumScore({
+            v1: toInput(marketMatch.v1Model),
+            v2: toInput(marketMatch.v2Model),
+            v3: toInput((marketMatch as any).v3Model),
+            hasBookmakerOdds: !!(marketMatch.allBookmakers && Object.keys(marketMatch.allBookmakers as object).length > 0),
+            pick: quickPurchase.predictionType || 'home',
+          })
+          await prisma.quickPurchase.update({
+            where: { id: quickPurchase.id },
+            data: { premiumScore: premiumResult.score, premiumTier: premiumResult.tier, premiumSignals: premiumResult.signals as any },
+          })
+          console.log(`[Predict API] ⭐ Backfilled premium score for match ${match_id}: ${premiumResult.score} (${premiumResult.tier}, ${premiumResult.stars} stars)`)
+        } catch (e) {
+          console.warn(`[Predict API] ⚠️ Failed to backfill premium score:`, e instanceof Error ? e.message : e)
+        }
+      }
+
       return NextResponse.json({
         success: true,
         data: quickPurchase.predictionData,
@@ -223,54 +231,77 @@ export async function POST(request: Request) {
     }
     
     // Call backend API with timeout protection (same as global sync)
-    const backendUrl = `${process.env.BACKEND_URL}/predict`;
+    // Try /predict first (full cascade V3→V1→V0 + additional_markets + comprehensive_analysis)
+    // Fall back to /predict-v3 if /predict fails (currently has str.replace() bug)
+    const baseUrl = process.env.BACKEND_URL;
     const requestStartTime = Date.now();
-    
-    console.log(`[Predict API] Calling backend API: ${backendUrl}`);
-    
+    const requestBody = JSON.stringify({ match_id });
+    const requestHeaders = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${process.env.BACKEND_API_KEY}`,
+    };
+
     let response: Response;
+    let usedEndpoint = '/predict';
+
+    // Try /predict first (richer payload with additional markets)
     try {
-      response = await fetch(backendUrl, {
+      console.log(`[Predict API] Trying primary endpoint: ${baseUrl}/predict`);
+      response = await fetch(`${baseUrl}/predict`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.BACKEND_API_KEY}`,
-        },
-        body: JSON.stringify({ match_id }),
-        signal: AbortSignal.timeout(30000) // 30 second timeout (same as global sync)
+        headers: requestHeaders,
+        body: requestBody,
+        signal: AbortSignal.timeout(35000)
       });
-    } catch (fetchError) {
-      const requestTime = Date.now() - requestStartTime;
-      const isTimeout = fetchError instanceof Error && 
-                       (fetchError.name === 'AbortError' || fetchError.message.includes('timeout'));
-      
-      console.error(`[Predict API] ❌ Backend API request failed for match ${match_id}:`, {
-        error: fetchError instanceof Error ? fetchError.message : String(fetchError),
-        isTimeout,
-        requestTime: `${requestTime}ms`,
-        failurePoint: isTimeout ? 'backend_timeout' : 'backend_connection'
-      });
-      
-      return NextResponse.json(
-        { 
-          error: isTimeout 
-            ? 'Backend API request timeout' 
-            : 'Backend API connection failed',
-          details: fetchError instanceof Error ? fetchError.message : 'Unknown error',
-          failurePoint: isTimeout ? 'backend_timeout' : 'backend_connection',
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        console.warn(`[Predict API] /predict returned ${response.status}, falling back to /predict-v3. Error: ${errText.slice(0, 200)}`);
+        throw new Error(`/predict failed: ${response.status}`);
+      }
+    } catch (primaryError) {
+      // Fallback to /predict-v3 (lighter, but still returns core predictions)
+      usedEndpoint = '/predict-v3';
+      console.log(`[Predict API] Falling back to: ${baseUrl}/predict-v3`);
+      try {
+        response = await fetch(`${baseUrl}/predict-v3`, {
+          method: 'POST',
+          headers: requestHeaders,
+          body: requestBody,
+          signal: AbortSignal.timeout(30000)
+        });
+      } catch (fallbackError) {
+        const requestTime = Date.now() - requestStartTime;
+        const isTimeout = fallbackError instanceof Error &&
+                         (fallbackError.name === 'AbortError' || fallbackError.message.includes('timeout'));
+
+        console.error(`[Predict API] ❌ Both /predict and /predict-v3 failed for match ${match_id}:`, {
+          primaryError: primaryError instanceof Error ? primaryError.message : String(primaryError),
+          fallbackError: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+          isTimeout,
           requestTime: `${requestTime}ms`,
-          fix: isTimeout 
-            ? 'Backend API took longer than 30 seconds to respond. Check backend server status.'
-            : 'Check backend URL and network connectivity.'
-        },
-        { status: 500 }
-      );
+        });
+
+        return NextResponse.json(
+          {
+            error: isTimeout
+              ? 'Backend API request timeout'
+              : 'Backend API connection failed',
+            details: fallbackError instanceof Error ? fallbackError.message : 'Unknown error',
+            failurePoint: isTimeout ? 'backend_timeout' : 'backend_connection',
+            requestTime: `${requestTime}ms`,
+            fix: 'Both /predict and /predict-v3 endpoints failed. Check backend server status.'
+          },
+          { status: 500 }
+        );
+      }
     }
 
     const requestTime = Date.now() - requestStartTime;
-    console.log(`[Predict API] Backend API response received in ${requestTime}ms`, {
+    console.log(`[Predict API] Backend API response received via ${usedEndpoint} in ${requestTime}ms`, {
       status: response.status,
-      statusText: response.statusText
+      statusText: response.statusText,
+      endpoint: usedEndpoint
     });
 
     if (!response.ok) {
@@ -419,6 +450,118 @@ export async function POST(request: Request) {
         linkedToMarketMatch: !!marketMatch,
         confidenceScore: quickPurchaseResult.confidenceScore
       })
+
+      // Extract and store V3 model data on MarketMatch for reports tracking
+      if (marketMatch?.id) {
+        try {
+          const models = predictionData.predictions?.models || []
+          const finalDecision = predictionData.predictions?.final_decision || {}
+
+          // Find V3 model in the models array
+          const v3Model = models.find((m: any) =>
+            m.id === 'v3_sharp' || m.id === 'v3_sharp_lgbm' || m.id?.startsWith('v3')
+          )
+
+          // Build v3Model data from either explicit model entry or top-level predictions
+          const v3Data = v3Model ? {
+            pick: predictionType,
+            confidence: v3Model.confidence ?? confidenceScore / 100,
+            probs: v3Model.predictions || {
+              home: predictionData.predictions?.home_win,
+              draw: predictionData.predictions?.draw,
+              away: predictionData.predictions?.away_win,
+            },
+            source: v3Model.id || 'v3_sharp',
+            conviction_tier: finalDecision.conviction_tier || null,
+            models_in_agreement: finalDecision.models_in_agreement ?? null,
+            selected_model: finalDecision.selected_model || null,
+          } : (predictionData.predictions?.home_win != null) ? {
+            // Fallback: use top-level predictions (from /predict-v3 endpoint)
+            pick: predictionType,
+            confidence: confidenceScore / 100,
+            probs: {
+              home: predictionData.predictions.home_win,
+              draw: predictionData.predictions.draw ?? 0,
+              away: predictionData.predictions.away_win,
+            },
+            source: predictionData.model_info?.type || 'v3_sharp',
+            conviction_tier: finalDecision.conviction_tier || predictionData.predictions?.conviction_tier || null,
+          } : null
+
+          if (v3Data) {
+            await prisma.marketMatch.update({
+              where: { id: marketMatch.id },
+              data: { v3Model: v3Data as any },
+            })
+            console.log(`[Predict API] ✅ Stored V3 model data on MarketMatch for match ${match_id}`, {
+              pick: v3Data.pick,
+              confidence: v3Data.confidence,
+              source: v3Data.source,
+            })
+          }
+        } catch (v3Error) {
+          // Non-critical — don't fail the request
+          console.warn(`[Predict API] ⚠️ Failed to store V3 model on MarketMatch for match ${match_id}:`,
+            v3Error instanceof Error ? v3Error.message : v3Error
+          )
+        }
+      }
+
+      // ── Compute premium quality score ──
+      try {
+        const { calculatePremiumScore } = await import('@/lib/predictions/premium-scorer')
+
+        // Build model inputs from MarketMatch + freshly stored V3
+        const v1M = marketMatch?.v1Model as { pick?: string; confidence?: number } | null
+        const v2M = marketMatch?.v2Model as { pick?: string; confidence?: number } | null
+        // Use the V3 data we just extracted above, or from MarketMatch
+        const v3M = (marketMatch as any)?.v3Model as { pick?: string; confidence?: number } | null
+
+        const toModelInput = (m: { pick?: string; confidence?: number } | null) => {
+          if (!m?.pick) return null
+          const conf = typeof m.confidence === 'number'
+            ? (m.confidence <= 1 ? m.confidence * 100 : m.confidence)
+            : 50
+          return { pick: m.pick, confidence: conf }
+        }
+
+        // Also try extracting from the fresh prediction response
+        const predModels = predictionData.predictions?.models || []
+        const v3FromPred = predModels.find((m: any) => m.id?.includes('v3'))
+        const v1FromPred = predModels.find((m: any) => m.id?.includes('v1'))
+
+        const premiumInput = {
+          v1: toModelInput(v1M) || (v1FromPred ? { pick: predictionType, confidence: v1FromPred.confidence <= 1 ? v1FromPred.confidence * 100 : v1FromPred.confidence } : null),
+          v2: toModelInput(v2M),
+          v3: toModelInput(v3M) || (v3FromPred ? { pick: predictionType, confidence: v3FromPred.confidence <= 1 ? v3FromPred.confidence * 100 : v3FromPred.confidence } : null)
+            || (predictionData.predictions?.home_win != null ? { pick: predictionType, confidence: confidenceScore } : null),
+          hasBookmakerOdds: !!(marketMatch?.allBookmakers && Object.keys(marketMatch.allBookmakers as object).length > 0)
+            || !!(marketMatch?.booksCount && marketMatch.booksCount > 0),
+          pick: predictionType,
+        }
+
+        const premiumResult = calculatePremiumScore(premiumInput)
+
+        await prisma.quickPurchase.update({
+          where: { id: quickPurchase.id },
+          data: {
+            premiumScore: premiumResult.score,
+            premiumTier: premiumResult.tier,
+            premiumSignals: premiumResult.signals as any,
+          },
+        })
+
+        console.log(`[Predict API] ⭐ Premium score for match ${match_id}: ${premiumResult.score} (${premiumResult.tier}, ${premiumResult.stars} stars)`, {
+          signals: premiumResult.signals,
+          modelsAgreeing: premiumResult.modelsAgreeing,
+          totalModels: premiumResult.totalModels,
+        })
+      } catch (premiumError) {
+        // Non-critical
+        console.warn(`[Predict API] ⚠️ Failed to compute premium score for match ${match_id}:`,
+          premiumError instanceof Error ? premiumError.message : premiumError
+        )
+      }
     } catch (qpError) {
       const errorMessage = qpError instanceof Error ? qpError.message : 'Unknown error';
       console.error(`[Predict API] ❌ Error updating QuickPurchase for match ${match_id}:`, {

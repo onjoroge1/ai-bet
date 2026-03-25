@@ -17,14 +17,21 @@ export async function GET(request: NextRequest) {
   const startTime = Date.now()
 
   try {
-    // Verify cron secret
+    // Verify cron secret — must be set in environment, no hardcoded fallback
     const authHeader = request.headers.get('authorization')
-    const cronSecret = process.env.CRON_SECRET || '749daccdf93e0228b8d5c9b7210d2181ea3b9e48af1e3833473a5020bcbc9ecb'
+    const cronSecret = process.env.CRON_SECRET
+
+    if (!cronSecret) {
+      logger.error('🕐 CRON: CRON_SECRET env var not set — cannot authenticate cron jobs', {
+        tags: ['api', 'admin', 'social', 'twitter', 'cron', 'security'],
+      })
+      return NextResponse.json({ error: 'CRON_SECRET not configured' }, { status: 500 })
+    }
 
     if (authHeader !== `Bearer ${cronSecret}`) {
       logger.warn('🕐 CRON: Unauthorized Twitter posting attempt', {
         tags: ['api', 'admin', 'social', 'twitter', 'cron', 'security'],
-        data: { hasAuthHeader: !!authHeader },
+        data: { hasAuthHeader: !!authHeader, secretLength: cronSecret.length },
       })
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -211,6 +218,65 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // ── Retry failed posts (max 3 retries, 15 min cooldown) ──
+    let retried = 0
+    if (!rateLimitHit && (hourPosts + posted) < 5 && (dayPosts + posted) < 30) {
+      const fifteenMinAgo = new Date(now.getTime() - 15 * 60 * 1000)
+      const retrySlots = Math.min(2, 5 - (hourPosts + posted), 30 - (dayPosts + posted))
+
+      const failedPosts = await prisma.socialMediaPost.findMany({
+        where: {
+          platform: 'twitter',
+          status: 'failed',
+          retryCount: { lt: 3 },
+          OR: [
+            { lastRetryAt: null },
+            { lastRetryAt: { lt: fifteenMinAgo } },
+          ],
+        },
+        orderBy: { scheduledAt: 'asc' },
+        take: retrySlots,
+      })
+
+      for (const post of failedPosts) {
+        if (rateLimitHit) break
+        try {
+          const tweetText = post.content + (post.url ? ` ${post.url}` : '')
+          const tweetId = await postTweet(tweetText)
+
+          await prisma.socialMediaPost.update({
+            where: { id: post.id },
+            data: {
+              status: 'posted',
+              postedAt: new Date(),
+              postId: tweetId,
+              errorMessage: null,
+              retryCount: post.retryCount + 1,
+              lastRetryAt: new Date(),
+            },
+          })
+          retried++
+          logger.info('🕐 CRON: Retried post published successfully', {
+            tags: ['api', 'admin', 'social', 'twitter', 'cron', 'retry'],
+            data: { postId: post.id, tweetId, attempt: post.retryCount + 1 },
+          })
+        } catch (retryError) {
+          await prisma.socialMediaPost.update({
+            where: { id: post.id },
+            data: {
+              retryCount: post.retryCount + 1,
+              lastRetryAt: new Date(),
+              errorMessage: (retryError instanceof Error ? retryError.message : 'Unknown error').substring(0, 500),
+            },
+          })
+          logger.warn('🕐 CRON: Retry failed', {
+            tags: ['api', 'admin', 'social', 'twitter', 'cron', 'retry', 'error'],
+            data: { postId: post.id, attempt: post.retryCount + 1 },
+          })
+        }
+      }
+    }
+
     const duration = Date.now() - startTime
 
     logger.info('🕐 CRON: Twitter posting completed', {
@@ -218,6 +284,7 @@ export async function GET(request: NextRequest) {
       data: {
         posted,
         failed,
+        retried,
         duration: `${duration}ms`,
       },
     })
@@ -228,6 +295,7 @@ export async function GET(request: NextRequest) {
       summary: {
         posted,
         failed,
+        retried,
         total: scheduledPosts.length,
       },
       errors: errors.slice(0, 10),

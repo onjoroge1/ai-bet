@@ -37,9 +37,17 @@ export interface PremiumPrediction {
   confidence: number;
 }
 
+export interface PremiumQuality {
+  score: number;        // 0-100
+  tier: 'premium' | 'strong' | 'standard' | 'speculative';
+  stars: 3 | 2 | 1 | 0;
+  signals: string[];
+}
+
 export interface MatchPredictions {
   free?: FreePrediction;
   premium?: PremiumPrediction;
+  quality?: PremiumQuality;
 }
 
 export interface MarketMatch {

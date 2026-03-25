@@ -280,7 +280,6 @@ function transformMatchData(apiMatch: any) {
     venue,
     referee,
     attendance,
-    rawApiData: apiMatch,
     syncPriority,
     nextSyncAt,
     lastSyncedAt: new Date(),
@@ -415,7 +414,7 @@ async function syncMatchesByStatus(status: 'upcoming' | 'live' | 'completed', fo
 
     // Batch process matches for better performance
     // Process in chunks to avoid overwhelming the database
-    const BATCH_SIZE = status === 'live' ? 20 : 10 // Smaller batches for live (more frequent), larger for others
+    const BATCH_SIZE = 10 // Keep small to reduce lock contention
     const batches = []
     for (let i = 0; i < apiMatches.length; i += BATCH_SIZE) {
       batches.push(apiMatches.slice(i, i + BATCH_SIZE))
@@ -512,7 +511,7 @@ async function syncMatchesByStatus(status: 'upcoming' | 'live' | 'completed', fo
             }
           },
           {
-            timeout: 30000, // 30 second timeout for transaction
+            timeout: 15000, // 15 second timeout — fail fast
           }
         )
 

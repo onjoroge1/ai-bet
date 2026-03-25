@@ -76,15 +76,17 @@ interface ModelExtract {
 function extractModelsFromPredictionData(pd: Record<string, unknown> | null): {
   qpV1: ModelExtract | null
   qpV2: ModelExtract | null
+  qpV3: ModelExtract | null
 } {
-  if (!pd) return { qpV1: null, qpV2: null }
+  if (!pd) return { qpV1: null, qpV2: null, qpV3: null }
 
   const preds = pd.predictions as Record<string, unknown> | undefined
   const models = (preds?.models ?? pd.models) as Array<Record<string, unknown>> | undefined
-  if (!Array.isArray(models) || models.length === 0) return { qpV1: null, qpV2: null }
+  if (!Array.isArray(models) || models.length === 0) return { qpV1: null, qpV2: null, qpV3: null }
 
   let qpV1: ModelExtract | null = null
   let qpV2: ModelExtract | null = null
+  let qpV3: ModelExtract | null = null
 
   for (const m of models) {
     const id = (m.id as string)?.toLowerCase() ?? ''
@@ -121,10 +123,12 @@ function extractModelsFromPredictionData(pd: Record<string, unknown> | null): {
         confidenceDelta: agr.confidence_delta ?? 0,
       } : null
       qpV2 = extract
+    } else if (id.includes('v3') || id === 'v3_sharp') {
+      qpV3 = extract
     }
   }
 
-  return { qpV1, qpV2 }
+  return { qpV1, qpV2, qpV3 }
 }
 
 /**
@@ -255,14 +259,15 @@ export async function GET(request: NextRequest) {
       const score = fr?.score as { home?: number; away?: number } | undefined
       const actualOutcome = resolveOutcome(fr)
 
-      // --- V1 / V2 from MarketMatch columns (sync cron source) ---
+      // --- V1 / V2 / V3 from MarketMatch columns (sync cron source) ---
       const mmV1 = m.v1Model as { pick?: string; confidence?: number; probs?: Record<string, number> } | null
       const mmV2 = m.v2Model as { pick?: string; confidence?: number; probs?: Record<string, number> } | null
+      const mmV3 = (m as any).v3Model as { pick?: string; confidence?: number; probs?: Record<string, number>; conviction_tier?: string } | null
 
-      // --- V1 / V2 from QuickPurchase predictionData.models[] (enrichment source) ---
+      // --- V1 / V2 / V3 from QuickPurchase predictionData.models[] (enrichment source) ---
       const qp = m.quickPurchases[0]
       const pd = qp?.predictionData as Record<string, unknown> | null
-      const { qpV1, qpV2 } = extractModelsFromPredictionData(pd)
+      const { qpV1, qpV2, qpV3 } = extractModelsFromPredictionData(pd)
 
       // Merge: prefer QP models (richer data), fall back to MarketMatch columns
       const v1Pick = qpV1?.pick ?? normalisePick(mmV1?.pick)
@@ -273,8 +278,13 @@ export async function GET(request: NextRequest) {
       const v2Conf = qpV2?.confidence ?? (mmV2?.confidence != null ? normaliseConfidence(mmV2.confidence) : null)
       const v2Probs = qpV2?.probs ?? mmV2?.probs ?? null
 
+      const v3Pick = qpV3?.pick ?? normalisePick(mmV3?.pick)
+      const v3Conf = qpV3?.confidence ?? (mmV3?.confidence != null ? normaliseConfidence(mmV3.confidence) : null)
+      const v3Probs = qpV3?.probs ?? mmV3?.probs ?? null
+
       const v1Correct = v1Pick && actualOutcome ? v1Pick === actualOutcome : null
       const v2Correct = v2Pick && actualOutcome ? v2Pick === actualOutcome : null
+      const v3Correct = v3Pick && actualOutcome ? v3Pick === actualOutcome : null
 
       const qpMeta = qp ? extractPredictionMeta(qp) : null
 
@@ -311,6 +321,16 @@ export async function GET(request: NextRequest) {
           source: qpV2 ? 'enrichment' : 'sync',
         } : null,
 
+        v3: (v3Pick || v3Conf != null) ? {
+          pick: v3Pick,
+          confidence: v3Conf,
+          probs: v3Probs,
+          correct: v3Correct,
+          recommendedBet: qpV3?.recommendedBet ?? null,
+          convictionTier: mmV3?.conviction_tier ?? null,
+          source: qpV3 ? 'enrichment' : 'sync',
+        } : null,
+
         modelsAgree,
 
         prediction: qpMeta ? {
@@ -328,13 +348,13 @@ export async function GET(request: NextRequest) {
     // Optional post-filter
     let filtered = rows
     if (resultFilter === 'correct') {
-      filtered = rows.filter((r) => r.v1?.correct === true || r.v2?.correct === true)
+      filtered = rows.filter((r) => r.v1?.correct === true || r.v2?.correct === true || r.v3?.correct === true)
     } else if (resultFilter === 'incorrect') {
       filtered = rows.filter((r) =>
-        (r.v1 && r.v1.correct === false) || (r.v2 && r.v2.correct === false)
+        (r.v1 && r.v1.correct === false) || (r.v2 && r.v2.correct === false) || (r.v3 && r.v3.correct === false)
       )
     } else if (resultFilter === 'no_prediction') {
-      filtered = rows.filter((r) => !r.v1 && !r.v2)
+      filtered = rows.filter((r) => !r.v1 && !r.v2 && !r.v3)
     }
 
     // ── Aggregate stats scoped to current filters ─────────────────────────
@@ -344,11 +364,12 @@ export async function GET(request: NextRequest) {
       select: {
         v1Model: true,
         v2Model: true,
+        v3Model: true,
         finalResult: true,
         currentScore: true,
         quickPurchases: {
           where: { isActive: true, predictionData: { not: null } },
-          select: { predictionData: true },
+          select: { predictionData: true, premiumTier: true, premiumScore: true, predictionType: true },
           take: 1,
         },
       },
@@ -356,11 +377,21 @@ export async function GET(request: NextRequest) {
 
     let v1Total = 0, v1CorrectCount = 0
     let v2Total = 0, v2CorrectCount = 0
+    let v3Total = 0, v3CorrectCount = 0
     let totalWithScores = 0
     let totalMissingScores = 0
     let totalWithQpModels = 0
     let agreeBoth = 0, agreeCorrect = 0
     let disagreeBoth = 0, disagreeV1Right = 0, disagreeV2Right = 0
+    let agreeAllThree = 0, agreeAllThreeCorrect = 0
+
+    // Premium tier accuracy tracking
+    const tierStats: Record<string, { total: number; correct: number }> = {
+      premium: { total: 0, correct: 0 },
+      strong: { total: 0, correct: 0 },
+      standard: { total: 0, correct: 0 },
+      speculative: { total: 0, correct: 0 },
+    }
 
     for (const am of allFinished) {
       const aFr = am.finalResult as Record<string, unknown> | null
@@ -371,13 +402,14 @@ export async function GET(request: NextRequest) {
         totalMissingScores++
       }
 
-      // Extract V1/V2 from QP models first, fall back to MarketMatch columns
+      // Extract V1/V2/V3 from QP models first, fall back to MarketMatch columns
       const qpPd = am.quickPurchases[0]?.predictionData as Record<string, unknown> | null
-      const { qpV1, qpV2 } = extractModelsFromPredictionData(qpPd)
-      if (qpV1 || qpV2) totalWithQpModels++
+      const { qpV1, qpV2, qpV3 } = extractModelsFromPredictionData(qpPd)
+      if (qpV1 || qpV2 || qpV3) totalWithQpModels++
 
       const aV1Pick = qpV1?.pick ?? normalisePick((am.v1Model as { pick?: string } | null)?.pick)
       const aV2Pick = qpV2?.pick ?? normalisePick((am.v2Model as { pick?: string } | null)?.pick)
+      const aV3Pick = qpV3?.pick ?? normalisePick((am.v3Model as { pick?: string } | null)?.pick)
 
       if (aV1Pick && aOutcome) {
         v1Total++
@@ -386,6 +418,10 @@ export async function GET(request: NextRequest) {
       if (aV2Pick && aOutcome) {
         v2Total++
         if (aV2Pick === aOutcome) v2CorrectCount++
+      }
+      if (aV3Pick && aOutcome) {
+        v3Total++
+        if (aV3Pick === aOutcome) v3CorrectCount++
       }
 
       // V1 vs V2 head-to-head
@@ -397,6 +433,25 @@ export async function GET(request: NextRequest) {
           disagreeBoth++
           if (aV1Pick === aOutcome) disagreeV1Right++
           if (aV2Pick === aOutcome) disagreeV2Right++
+        }
+      }
+
+      // All three models agree
+      if (aV1Pick && aV2Pick && aV3Pick && aOutcome) {
+        if (aV1Pick === aV2Pick && aV2Pick === aV3Pick) {
+          agreeAllThree++
+          if (aV1Pick === aOutcome) agreeAllThreeCorrect++
+        }
+      }
+
+      // Premium tier accuracy
+      const qpData = am.quickPurchases[0]
+      const tier = (qpData as any)?.premiumTier as string | null
+      if (tier && tierStats[tier] && aOutcome) {
+        const qpPick = normalisePick((qpData as any)?.predictionType)
+        if (qpPick) {
+          tierStats[tier].total++
+          if (qpPick === aOutcome) tierStats[tier].correct++
         }
       }
     }
@@ -441,6 +496,11 @@ export async function GET(request: NextRequest) {
           correct: v2CorrectCount,
           accuracy: v2Total > 0 ? Math.round((v2CorrectCount / v2Total) * 1000) / 10 : null,
         },
+        v3: {
+          total: v3Total,
+          correct: v3CorrectCount,
+          accuracy: v3Total > 0 ? Math.round((v3CorrectCount / v3Total) * 1000) / 10 : null,
+        },
         headToHead: {
           agreeBoth,
           agreeCorrect,
@@ -450,6 +510,17 @@ export async function GET(request: NextRequest) {
           disagreeV2Right,
           disagreeNeitherRight: disagreeBoth - disagreeV1Right - disagreeV2Right,
         },
+        allThreeAgree: {
+          total: agreeAllThree,
+          correct: agreeAllThreeCorrect,
+          accuracy: agreeAllThree > 0 ? Math.round((agreeAllThreeCorrect / agreeAllThree) * 1000) / 10 : null,
+        },
+        premiumTiers: Object.fromEntries(
+          Object.entries(tierStats).map(([tier, s]) => [
+            tier,
+            { total: s.total, correct: s.correct, accuracy: s.total > 0 ? Math.round((s.correct / s.total) * 1000) / 10 : null },
+          ])
+        ),
       },
       leagues: leagueRows.map((l) => l.league),
     })

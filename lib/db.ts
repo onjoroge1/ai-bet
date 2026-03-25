@@ -29,10 +29,13 @@ if (typeof (globalThis as any).window === 'undefined') {
       console.error('❌ Database connection failed:', error)
     })
 
-  // Graceful shutdown
-  process.on('beforeExit', async () => {
-    await prisma.$disconnect()
-  })
+  // Graceful shutdown — only register once to avoid MaxListenersExceededWarning
+  if (!(globalThis as any).__prismaBeforeExitRegistered) {
+    (globalThis as any).__prismaBeforeExitRegistered = true
+    process.on('beforeExit', async () => {
+      await prisma.$disconnect()
+    })
+  }
 }
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma

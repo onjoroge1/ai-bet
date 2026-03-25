@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Menu, X, User, MapPin, BookOpen, Target, Crown, Radio, HelpCircle, BarChart3, Gift, RefreshCw, Activity } from "lucide-react"
+import { Menu, X, User, MapPin, BookOpen, Target, Crown, Radio, HelpCircle, BarChart3, Gift, RefreshCw, Activity, Trophy } from "lucide-react"
 import { useUserCountry } from "@/contexts/user-country-context"
 import { useSession } from "next-auth/react"
 import { LogoutButton } from "@/components/auth/logout-button"
@@ -107,6 +107,7 @@ export function Navigation() {
   // Core navigation links - simplified and focused
   const navLinks = [
     { href: isAuthenticated ? "/dashboard/matches" : "/matches", text: "Matches", icon: Target },
+    { href: "/sports", text: "Sports", icon: Trophy },
     { href: "/blog", text: "Blog", icon: BookOpen },
     { href: "/tips-history", text: "History", icon: BarChart3 },
     { href: "/dashboard/support", text: "Support", icon: HelpCircle },

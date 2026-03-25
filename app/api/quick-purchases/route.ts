@@ -288,6 +288,9 @@ export async function GET(request: NextRequest) {
           odds: purchase.odds ? Number(purchase.odds) : null,
           valueRating: purchase.valueRating,
           analysisSummary: purchase.analysisSummary,
+          premiumScore: (purchase as any).premiumScore ?? null,
+          premiumTier: (purchase as any).premiumTier ?? null,
+          premiumSignals: (purchase as any).premiumSignals ?? null,
           isActive: purchase.isActive,
           createdAt: purchase.createdAt,
           country: {

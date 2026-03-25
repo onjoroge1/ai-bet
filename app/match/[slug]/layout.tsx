@@ -200,6 +200,9 @@ async function fetchMatchData(slug: string): Promise<MatchCoreData | null> {
     confidenceScore: quickPurchase?.confidenceScore ?? null,
     predictionType: quickPurchase?.predictionType ?? null,
     valueRating: quickPurchase?.valueRating ?? null,
+    premiumScore: (quickPurchase as any)?.premiumScore ?? null,
+    premiumTier: (quickPurchase as any)?.premiumTier ?? null,
+    premiumSignals: (quickPurchase as any)?.premiumSignals ?? null,
     updatedAt: quickPurchase?.updatedAt ?? null,
   }
 }

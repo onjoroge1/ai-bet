@@ -90,7 +90,7 @@ export default function MyBetsPage() {
         if (Array.isArray(predictions)) {
           predictions.forEach((pred: Record<string, unknown>) => {
             allBets.push({
-              id: String(pred.id || `pred-${Math.random()}`),
+              id: String(pred.id || `pred-${Date.now()}-${predictions.indexOf(pred)}`),
               type: "prediction",
               name: String(pred.matchName || pred.name || "Match Prediction"),
               legs: [
@@ -120,7 +120,7 @@ export default function MyBetsPage() {
           purchases.forEach((purchase: Record<string, unknown>) => {
             const legs = (purchase.parlay as Record<string, unknown>)?.legs
             allBets.push({
-              id: String(purchase.id || `parlay-${Math.random()}`),
+              id: String(purchase.id || `parlay-${Date.now()}-${purchases.indexOf(purchase)}`),
               type: "parlay",
               name: String(purchase.parlayName || "AI Parlay"),
               legs: Array.isArray(legs)

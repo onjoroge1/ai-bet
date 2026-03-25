@@ -9,10 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { AdvancedBreadcrumb } from '@/components/advanced-breadcrumb'
-import { 
-  CheckCircle2, 
-  XCircle, 
-  RefreshCw, 
+import {
+  CheckCircle2,
+  XCircle,
+  RefreshCw,
   Calendar,
   Target,
   FileText,
@@ -25,8 +25,10 @@ import {
   Eye,
   ExternalLink,
   Clock,
-  Send
+  Send,
+  Trophy
 } from 'lucide-react'
+import { SportSelector } from '@/components/multisport/SportSelector'
 import { toast } from 'sonner'
 import {
   Table,
@@ -60,10 +62,30 @@ interface MatchWithStatus {
   socialMediaPostCount: number
 }
 
+interface MultisportAdminMatch {
+  id: string
+  eventId: string
+  sport: string
+  homeTeam: string
+  awayTeam: string
+  league: string
+  kickoffDate: string
+  status: string
+  hasPredictionData: boolean
+  predictionStale: boolean
+  modelPick: string | null
+  modelConfidence: number | null
+  modelSource: string | null
+  lastSyncedAt: string | null
+  syncCount: number
+}
+
 type FilterType = 'all' | 'needsPredict' | 'needsBlog' | 'needsSocial' | 'allReady'
 
 export default function AdminMatchesPage() {
+  const [sport, setSport] = useState('soccer')
   const [matches, setMatches] = useState<MatchWithStatus[]>([])
+  const [multisportMatches, setMultisportMatches] = useState<MultisportAdminMatch[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [selectedMatches, setSelectedMatches] = useState<Set<string>>(new Set())
@@ -104,9 +126,81 @@ export default function AdminMatchesPage() {
     }
   }
 
+  const [selectedMultisport, setSelectedMultisport] = useState<Set<string>>(new Set())
+  const [msRunningPredict, setMsRunningPredict] = useState(false)
+
+  const fetchMultisportMatches = async (sportKey: string) => {
+    try {
+      setRefreshing(true)
+      const response = await fetch(`/api/admin/multisport/matches?sport=${sportKey}&status=upcoming&limit=100`)
+      if (!response.ok) throw new Error('Failed to fetch multisport matches')
+      const data = await response.json()
+      if (data.success) {
+        setMultisportMatches(data.matches || [])
+      }
+    } catch (error) {
+      console.error('Error fetching multisport matches:', error)
+      toast.error('Failed to fetch multisport matches')
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
+  }
+
+  const handleMsRunPredict = async (eventIds: string[]) => {
+    if (eventIds.length === 0) { toast.error('Select at least one match'); return }
+    setMsRunningPredict(true)
+    const toastId = toast.loading(`Running predict on ${eventIds.length} match(es)...`)
+    let success = 0, fail = 0
+    for (const eventId of eventIds) {
+      try {
+        const res = await fetch('/api/multisport/predict', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sport_key: sport, event_id: eventId }),
+        })
+        if (res.ok) success++; else fail++
+      } catch { fail++ }
+    }
+    toast.dismiss(toastId)
+    if (success > 0) toast.success(`Predicted ${success} match(es)${fail > 0 ? `, ${fail} failed` : ''}`)
+    else toast.error(`All ${fail} predictions failed`)
+    setMsRunningPredict(false)
+    setSelectedMultisport(new Set())
+    fetchMultisportMatches(sport)
+  }
+
+  const handleMsSyncAll = async () => {
+    const toastId = toast.loading('Syncing multisport data...')
+    try {
+      const res = await fetch('/api/admin/multisport/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ sports: [sport], predictions: true, force: true }),
+      })
+      if (!res.ok) throw new Error('Sync failed')
+      const data = await res.json()
+      toast.dismiss(toastId)
+      toast.success(`Synced ${data.total?.synced || 0} matches, predicted ${data.total?.predicted || 0}`)
+      fetchMultisportMatches(sport)
+    } catch (err) {
+      toast.dismiss(toastId)
+      toast.error(err instanceof Error ? err.message : 'Sync failed')
+    }
+  }
+
   useEffect(() => {
-    fetchMatches()
-  }, [])
+    setSelectedMatches(new Set())
+    setSelectedMultisport(new Set())
+    setSearchQuery('')
+    setFilter('all')
+    if (sport === 'soccer') {
+      fetchMatches()
+    } else {
+      fetchMultisportMatches(sport)
+    }
+  }, [sport])
 
   // Filter and search matches
   const filteredMatches = useMemo(() => {
@@ -536,11 +630,11 @@ export default function AdminMatchesPage() {
                 Upcoming Matches
               </h1>
               <p className="text-slate-400 mt-2 text-sm sm:text-base">
-                View all upcoming matches and their content status (blog, social media, predictions)
+                View all upcoming matches and their content status across all sports
               </p>
             </div>
             <Button
-              onClick={fetchMatches}
+              onClick={() => sport === 'soccer' ? fetchMatches() : fetchMultisportMatches(sport)}
               disabled={refreshing}
               variant="outline"
               size="sm"
@@ -552,6 +646,358 @@ export default function AdminMatchesPage() {
           </div>
         </div>
 
+        {/* Sport Selector */}
+        <div className="mb-6">
+          <SportSelector selectedSport={sport} onSelect={setSport} allowAll />
+        </div>
+
+        {/* ── Multisport View ── */}
+        {sport !== 'soccer' && (
+          <div className="space-y-4">
+            {/* Multisport Search */}
+            <Card className="bg-slate-800/50 border-slate-700">
+              <CardContent className="pt-4 sm:pt-6">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+                  <Input
+                    placeholder="Search teams, leagues..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 bg-slate-700/50 border-slate-600 text-white"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Multisport Stats */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              <Card className="bg-slate-800/50 border-slate-700">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs sm:text-sm font-medium text-slate-400">Total</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-xl sm:text-2xl font-bold text-white">{multisportMatches.length}</div>
+                </CardContent>
+              </Card>
+              <Card className="bg-slate-800/50 border-slate-700">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs sm:text-sm font-medium text-slate-400">With Prediction</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-xl sm:text-2xl font-bold text-emerald-500">
+                    {multisportMatches.filter(m => m.hasPredictionData).length}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-slate-800/50 border-slate-700">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs sm:text-sm font-medium text-slate-400">Stale Predictions</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-xl sm:text-2xl font-bold text-amber-500">
+                    {multisportMatches.filter(m => m.predictionStale).length}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-slate-800/50 border-slate-700">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs sm:text-sm font-medium text-slate-400">Avg Confidence</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-xl sm:text-2xl font-bold text-blue-500">
+                    {(() => {
+                      const withConf = multisportMatches.filter(m => m.modelConfidence)
+                      return withConf.length > 0
+                        ? Math.round(withConf.reduce((s, m) => s + (m.modelConfidence || 0), 0) / withConf.length) + '%'
+                        : '—'
+                    })()}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Bulk Actions Bar */}
+            {(selectedMultisport.size > 0 || multisportMatches.filter(m => !m.hasPredictionData || m.predictionStale).length > 0) && (
+              <Card className="bg-slate-800/50 border-slate-700">
+                <CardContent className="pt-4 sm:pt-6">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                      <div className="text-sm text-slate-400">
+                        {selectedMultisport.size > 0
+                          ? `${selectedMultisport.size} match(es) selected`
+                          : `${multisportMatches.filter(m => !m.hasPredictionData || m.predictionStale).length} need predictions`}
+                      </div>
+                      <div className="flex gap-2 flex-wrap">
+                        <Button
+                          onClick={() => {
+                            const need = multisportMatches.filter(m => !m.hasPredictionData || m.predictionStale)
+                            setSelectedMultisport(new Set(need.map(m => m.eventId)))
+                          }}
+                          variant="outline"
+                          size="sm"
+                          className="border-slate-600 text-xs sm:text-sm"
+                        >
+                          Select Needing Predict
+                        </Button>
+                        <Button
+                          onClick={() => setSelectedMultisport(new Set(multisportMatches.map(m => m.eventId)))}
+                          variant="outline"
+                          size="sm"
+                          className="border-slate-600 text-xs sm:text-sm"
+                        >
+                          Select All
+                        </Button>
+                        {selectedMultisport.size > 0 && (
+                          <Button
+                            onClick={() => setSelectedMultisport(new Set())}
+                            variant="outline"
+                            size="sm"
+                            className="border-slate-600 text-xs sm:text-sm"
+                          >
+                            Clear
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      {selectedMultisport.size > 0 && (
+                        <Button
+                          onClick={() => handleMsRunPredict(Array.from(selectedMultisport))}
+                          disabled={msRunningPredict}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-xs sm:text-sm"
+                          size="sm"
+                        >
+                          {msRunningPredict ? <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2 animate-spin" /> : <Zap className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />}
+                          Run Predict ({selectedMultisport.size})
+                        </Button>
+                      )}
+                      <Button
+                        onClick={handleMsSyncAll}
+                        variant="outline"
+                        size="sm"
+                        className="border-emerald-600 text-emerald-400 text-xs sm:text-sm"
+                      >
+                        <RefreshCw className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                        Sync &amp; Predict All
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Multisport Table */}
+            <Card className="bg-slate-800/50 border-slate-700">
+              <CardHeader>
+                <CardTitle className="text-white text-lg sm:text-xl">
+                  {sport === 'basketball_nba' ? 'NBA' : sport === 'icehockey_nhl' ? 'NHL' : 'NCAAB'} Upcoming Matches
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto -mx-4 sm:mx-0">
+                  <div className="inline-block min-w-full align-middle">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-slate-700">
+                          <TableHead className="w-10 sm:w-12 px-2 sm:px-4">
+                            <input
+                              type="checkbox"
+                              checked={selectedMultisport.size === multisportMatches.length && multisportMatches.length > 0}
+                              onChange={(e) => {
+                                if (e.target.checked) setSelectedMultisport(new Set(multisportMatches.map(m => m.eventId)))
+                                else setSelectedMultisport(new Set())
+                              }}
+                              className="rounded border-slate-600"
+                            />
+                          </TableHead>
+                          <TableHead className="text-slate-300 px-2 sm:px-4 min-w-[200px]">Match</TableHead>
+                          <TableHead className="text-slate-300 px-2 sm:px-4 hidden sm:table-cell">League</TableHead>
+                          <TableHead className="text-slate-300 px-2 sm:px-4 hidden md:table-cell">Kickoff</TableHead>
+                          <TableHead className="text-slate-300 text-center px-2 sm:px-4 w-20">Pick</TableHead>
+                          <TableHead className="text-slate-300 text-center px-2 sm:px-4 w-20">Conf</TableHead>
+                          <TableHead className="text-slate-300 text-center px-2 sm:px-4 w-20">Pred</TableHead>
+                          <TableHead className="text-slate-300 text-center px-2 sm:px-4 w-24">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {(() => {
+                          const filtered = searchQuery
+                            ? multisportMatches.filter(m =>
+                                m.homeTeam.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                m.awayTeam.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                m.league.toLowerCase().includes(searchQuery.toLowerCase())
+                              )
+                            : multisportMatches
+                          if (filtered.length === 0) {
+                            return (
+                              <TableRow>
+                                <TableCell colSpan={8} className="text-center text-slate-400 py-8">
+                                  No matches found
+                                </TableCell>
+                              </TableRow>
+                            )
+                          }
+                          return filtered.map(match => (
+                            <TableRow key={match.id} className={`border-slate-700 ${!match.hasPredictionData || match.predictionStale ? 'bg-amber-500/5' : ''}`}>
+                              <TableCell className="px-2 sm:px-4">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedMultisport.has(match.eventId)}
+                                  onChange={() => {
+                                    const next = new Set(selectedMultisport)
+                                    if (next.has(match.eventId)) next.delete(match.eventId)
+                                    else next.add(match.eventId)
+                                    setSelectedMultisport(next)
+                                  }}
+                                  className="rounded border-slate-600"
+                                />
+                              </TableCell>
+                              <TableCell className="px-2 sm:px-4">
+                                <div className="font-medium text-white text-sm sm:text-base">
+                                  {match.homeTeam} vs {match.awayTeam}
+                                </div>
+                                <div className="text-xs text-slate-400 mt-1 sm:hidden">
+                                  {match.league}
+                                </div>
+                              </TableCell>
+                              <TableCell className="px-2 sm:px-4 hidden sm:table-cell">
+                                <Badge variant="outline" className="border-slate-600 text-slate-300">
+                                  {match.league}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="px-2 sm:px-4 hidden md:table-cell">
+                                <div className="flex items-center gap-2 text-slate-300 text-sm">
+                                  <Calendar className="w-4 h-4" />
+                                  {new Date(match.kickoffDate).toLocaleDateString('en-US', {
+                                    weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                                  })}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-center px-2 sm:px-4">
+                                {match.modelPick ? (
+                                  <Badge variant="outline" className="border-emerald-500/50 text-emerald-400 text-xs">
+                                    {match.modelPick === 'H' ? match.homeTeam.split(' ').pop() : match.awayTeam.split(' ').pop()}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-slate-500 text-xs">—</span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-center px-2 sm:px-4">
+                                {match.modelConfidence ? (
+                                  <span className={`text-sm font-medium ${
+                                    match.modelConfidence >= 70 ? 'text-emerald-400' :
+                                    match.modelConfidence >= 55 ? 'text-yellow-400' : 'text-slate-400'
+                                  }`}>
+                                    {match.modelConfidence}%
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-500 text-xs">—</span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-center px-2 sm:px-4">
+                                {match.hasPredictionData ? (
+                                  <CheckCircle2 className={`w-4 h-4 sm:w-5 sm:h-5 mx-auto ${match.predictionStale ? 'text-amber-500' : 'text-emerald-500'}`} />
+                                ) : (
+                                  <XCircle className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600 mx-auto" />
+                                )}
+                              </TableCell>
+                              <TableCell className="px-2 sm:px-4">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                      <MoreVertical className="w-4 h-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700">
+                                    <DropdownMenuItem
+                                      onClick={() => handleMsRunPredict([match.eventId])}
+                                      className="text-amber-400"
+                                    >
+                                      <Zap className="w-4 h-4 mr-2" />
+                                      Run Predict
+                                    </DropdownMenuItem>
+                                    {match.hasPredictionData && (
+                                      <DropdownMenuItem
+                                        onClick={() => {
+                                          setSelectedMatchForAction({
+                                            id: match.id,
+                                            matchId: match.eventId,
+                                            homeTeam: match.homeTeam,
+                                            awayTeam: match.awayTeam,
+                                            league: match.league,
+                                            kickoffDate: match.kickoffDate,
+                                            status: match.status,
+                                            hasBlog: false,
+                                            hasSocialMediaPost: false,
+                                            hasPredictionData: true,
+                                            needsPredict: false,
+                                            quickPurchaseCount: 0,
+                                            blogCount: 0,
+                                            socialMediaPostCount: 0,
+                                          })
+                                          setBlogDialogOpen(true)
+                                        }}
+                                        className="text-emerald-400"
+                                      >
+                                        <FileText className="w-4 h-4 mr-2" />
+                                        Generate Blog
+                                      </DropdownMenuItem>
+                                    )}
+                                    {match.hasPredictionData && (
+                                      <DropdownMenuItem
+                                        onClick={() => {
+                                          setSelectedMatchForAction({
+                                            id: match.id,
+                                            matchId: match.eventId,
+                                            homeTeam: match.homeTeam,
+                                            awayTeam: match.awayTeam,
+                                            league: match.league,
+                                            kickoffDate: match.kickoffDate,
+                                            status: match.status,
+                                            hasBlog: false,
+                                            hasSocialMediaPost: false,
+                                            hasPredictionData: true,
+                                            needsPredict: false,
+                                            quickPurchaseCount: 0,
+                                            blogCount: 0,
+                                            socialMediaPostCount: 0,
+                                          })
+                                          setSelectedTemplate('')
+                                          setScheduledAt('')
+                                          setPreviewContent(null)
+                                          setUseLLM(true)
+                                          setSocialDialogOpen(true)
+                                        }}
+                                        className="text-blue-400"
+                                      >
+                                        <Share2 className="w-4 h-4 mr-2" />
+                                        Schedule Post
+                                      </DropdownMenuItem>
+                                    )}
+                                    <DropdownMenuItem
+                                      onClick={() => window.open(`/sports/${match.sport}/${match.eventId}`, '_blank')}
+                                    >
+                                      <ExternalLink className="w-4 h-4 mr-2" />
+                                      View Match
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        })()}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* ── Soccer View (existing) ── */}
+        {sport === 'soccer' && (
+        <>
         {/* Summary Stats - Mobile Responsive */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
           <Card className="bg-slate-800/50 border-slate-700">
@@ -888,6 +1334,8 @@ export default function AdminMatchesPage() {
           </CardContent>
         </Card>
 
+        </>
+        )}
         {/* Blog Generation Dialog */}
         <Dialog open={blogDialogOpen} onOpenChange={setBlogDialogOpen}>
           <DialogContent className="bg-slate-800 border-slate-700 text-white">

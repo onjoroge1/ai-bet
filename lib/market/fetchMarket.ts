@@ -92,6 +92,16 @@ function adaptMarket(rawMatches: any[]): MarketMatch[] {
       }
     }
 
+    // Include premium quality data if available (from QuickPurchase enrichment)
+    if (match.premiumScore != null || match.premiumTier) {
+      predictions.quality = {
+        score: match.premiumScore ?? 0,
+        tier: match.premiumTier || 'speculative',
+        stars: match.premiumScore >= 80 ? 3 : match.premiumScore >= 60 ? 2 : match.premiumScore >= 40 ? 1 : 0,
+        signals: match.premiumSignals || [],
+      };
+    }
+
     return {
       id: match.id || match.matchId || match._id,
       status: match.status === "live" || match.minute || match.score ? "live" : "upcoming",

@@ -586,7 +586,10 @@ export async function GET(
         predictionType: quickPurchaseInfo.predictionType,
         valueRating: quickPurchaseInfo.valueRating,
         analysisSummary: quickPurchaseInfo.analysisSummary,
-        predictionData: quickPurchaseInfo.predictionData, // Include full prediction data
+        predictionData: quickPurchaseInfo.predictionData,
+        premiumScore: (quickPurchaseInfo as any).premiumScore ?? null,
+        premiumTier: (quickPurchaseInfo as any).premiumTier ?? null,
+        premiumSignals: (quickPurchaseInfo as any).premiumSignals ?? null,
         country: quickPurchaseInfo.country || {
           currencyCode: 'USD',
           currencySymbol: '$',

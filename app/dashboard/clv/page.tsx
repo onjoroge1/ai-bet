@@ -687,16 +687,36 @@ export default function CLVDashboard() {
       {/* ── Opportunity Grid ─────────────────────────────────────── */}
       {filteredOpportunities.length === 0 ? (
         <Card className="bg-slate-800/40 border-slate-700/40">
-          <CardContent className="py-16 text-center">
+          <CardContent className="py-12 text-center">
             <AlertCircle className="w-12 h-12 text-slate-600 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-white mb-2">No CLV Opportunities</h3>
-            <p className="text-slate-400 mb-4 max-w-md mx-auto">
-              No opportunities found for this time window. Try selecting a different window or refresh.
+            <h3 className="text-lg font-semibold text-white mb-2">No CLV Opportunities Right Now</h3>
+            <p className="text-slate-400 mb-6 max-w-md mx-auto">
+              No opportunities found for this time window. CLV opportunities appear when a bookmaker&apos;s odds
+              are higher than the market consensus, indicating potential value.
             </p>
-            <Button onClick={() => fetchOpportunities(selectedWindow)} className="bg-emerald-600 hover:bg-emerald-500 text-white">
+            <Button onClick={() => fetchOpportunities(selectedWindow)} className="bg-emerald-600 hover:bg-emerald-500 text-white mb-8">
               <RefreshCw className="w-4 h-4 mr-2" />
               Refresh
             </Button>
+
+            {/* Educational section */}
+            <div className="border-t border-slate-700/50 pt-6 mt-2 max-w-lg mx-auto text-left">
+              <h4 className="text-sm font-medium text-white mb-3 text-center">What is Closing Line Value?</h4>
+              <div className="space-y-3 text-xs text-slate-400">
+                <div className="flex items-start gap-2">
+                  <TrendingUp className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
+                  <span><span className="text-white font-medium">CLV</span> measures whether the odds you bet at were better than the closing line. Consistently beating the closing line is the strongest indicator of long-term profitability.</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Target className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
+                  <span><span className="text-white font-medium">How it works:</span> We compare odds from individual bookmakers against a consensus market line built from multiple sharp sources. When a book offers odds significantly above consensus, that&apos;s a CLV opportunity.</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Clock className="w-4 h-4 text-yellow-400 mt-0.5 flex-shrink-0" />
+                  <span><span className="text-white font-medium">Timing matters:</span> The best CLV opportunities appear 24-48 hours before kickoff as books adjust lines. Use the time window filters above to scan different periods.</span>
+                </div>
+              </div>
+            </div>
           </CardContent>
         </Card>
       ) : (

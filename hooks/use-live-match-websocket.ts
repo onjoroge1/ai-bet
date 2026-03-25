@@ -65,8 +65,8 @@ export function useLiveMatchWebSocket(matchId: string, isLive: boolean) {
   // Constants
   const INITIAL_RECONNECT_DELAY = 1000 // 1 second
   const MAX_RECONNECT_DELAY = 30000 // 30 seconds
-  const POLLING_INTERVAL = 10000 // 10 seconds
-  const PROACTIVE_REFRESH_INTERVAL = 25000 // 25 seconds (check freshness even when WS connected)
+  const POLLING_INTERVAL = 30000 // 30 seconds (reduced from 10s to lower server load)
+  const PROACTIVE_REFRESH_INTERVAL = 60000 // 60 seconds (check freshness even when WS connected)
   const HEALTH_CHECK_INTERVAL = 60000 // 60 seconds (check if WS is still alive)
   const STALE_THRESHOLD = 35000 // 35 seconds (consider data stale if no update)
   const OVERLAP_PERIOD = 2000 // 2 seconds - keep polling active after WebSocket connects

@@ -179,6 +179,11 @@ model QuickPurchase {
 
   enrichmentCount Int @default(0)
 
+  // Premium quality scoring
+  premiumScore   Int?     // 0-100 quality score
+  premiumTier    String?  // "premium", "strong", "standard", "speculative"
+  premiumSignals Json?    // Array of signal strings explaining the score
+
   lastEnrichmentAt DateTime?
 
   nextRefetchAt DateTime?
@@ -1444,6 +1449,10 @@ model SocialMediaPost {
   postId       String? // External platform post ID (Twitter tweet ID)
   errorMessage String?
 
+  // Retry tracking
+  retryCount   Int       @default(0)  // How many times this post has been retried
+  lastRetryAt  DateTime?              // When it was last retried
+
   // Metadata
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1461,6 +1470,40 @@ model SocialMediaPost {
   @@index([parlayConsensusId])
   @@index([postType, status])
   @@index([scheduledAt, status])
+}
+
+model MatchEvent {
+  id            String   @id @default(cuid())
+  matchId       String              // MarketMatch.matchId (external)
+  marketMatchId String              // MarketMatch.id (internal)
+
+  // Event details
+  eventType     String              // goal, red_card, yellow_card, halftime, fulltime, substitution, var, penalty
+  minute        Int
+  team          String?             // "home" or "away"
+  playerName    String?
+  description   String?
+
+  // Score at time of event
+  scoreHome     Int?
+  scoreAway     Int?
+
+  // Deduplication
+  eventHash     String   @unique    // matchId-eventType-minute-team-scoreHome-scoreAway
+
+  // Social media tracking
+  tweetGenerated Boolean  @default(false)
+  socialPostId   String?
+
+  createdAt     DateTime @default(now())
+
+  // Relations
+  marketMatch   MarketMatch @relation(fields: [marketMatchId], references: [id])
+
+  @@index([matchId, eventType])
+  @@index([marketMatchId])
+  @@index([tweetGenerated, eventType])
+  @@index([createdAt])
 }
 
 model BlogMedia {
@@ -1945,6 +1988,7 @@ model MarketMatch {
   // Model Predictions
   v1Model          Json? // { pick: "home"|"away"|"draw", confidence: number, probs: {...} }
   v2Model          Json? // { pick: "home"|"away"|"draw", confidence: number, probs: {...} }
+  v3Model          Json? // { pick: "home"|"away"|"draw", confidence: number, probs: {...}, conviction_tier, models_in_agreement }
   modelPredictions Json? // { free: {...}, premium: {...} }
 
   // Live Match Data (Status: LIVE)
@@ -1990,6 +2034,7 @@ model MarketMatch {
   blogPosts            BlogPost[]
   socialMediaPosts     SocialMediaPost[]
   additionalMarketData AdditionalMarketData[]
+  matchEvents          MatchEvent[]
 
   @@index([matchId])
   @@index([status, kickoffDate])
@@ -2000,4 +2045,53 @@ model MarketMatch {
   @@index([syncPriority, status])
   @@index([isArchived, status])
   @@index([leagueId, status])
+}
+
+model MultisportMatch {
+  id      String @id @default(cuid())
+  eventId String // External event ID from API
+  sport   String // "basketball_nba", "icehockey_nhl", "basketball_ncaab"
+  status  String // "upcoming", "finished"
+
+  // Match Info
+  homeTeam   String
+  awayTeam   String
+  homeTeamId Int?
+  awayTeamId Int?
+  league     String
+  commenceTime DateTime
+
+  // Odds (no draw for these sports)
+  odds Json? // { consensus: { home_odds, away_odds, home_prob, away_prob }, books: {...}, book_count }
+  spread Json? // { home_spread, away_spread, home_odds, away_odds }
+  totalLine Json? // { total, over_odds, under_odds }
+
+  // Model Prediction (from /market-multisport inline or /predict-multisport)
+  model Json? // { predictions: { home_win, away_win, pick, confidence, conviction_tier, edge_vs_market }, source }
+
+  // Full Prediction (from /predict-multisport)
+  predictionData Json? // Full response from predict-multisport
+  predictionFetchedAt DateTime?
+
+  // Finished Match Data
+  finalResult Json? // { score: { home, away }, result, result_text, overtime }
+
+  // Team Context (from prediction)
+  teamContext Json? // { home: { recent_form, season_stats }, away: { ... } }
+
+  // Model Info
+  modelInfo Json? // { name, accuracy, features_used, n_training_samples, top_features }
+
+  // Sync Metadata
+  lastSyncedAt DateTime @default(now())
+  syncCount    Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([eventId, sport])
+  @@index([sport, status])
+  @@index([sport, commenceTime])
+  @@index([status, commenceTime])
+  @@index([lastSyncedAt])
 }

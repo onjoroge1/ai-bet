@@ -47,13 +47,21 @@ export function isNumericSlug(slug: string): boolean {
 }
 
 /**
- * Strip the `-prediction` suffix (if present) and then parse team name
- * fragments from the slug.
+ * Strip known suffixes (e.g. `-prediction`, trailing numeric match ID)
+ * then parse team name fragments from the slug.
  * Returns `null` when the slug does not contain the `-vs-` separator.
  */
-export function parseSlugTeams(slug: string): { homeSlug: string; awaySlug: string } | null {
+export function parseSlugTeams(slug: string): { homeSlug: string; awaySlug: string; matchId?: string } | null {
   // Remove trailing `-prediction` suffix if present
-  const cleaned = slug.replace(/-prediction$/, '')
+  let cleaned = slug.replace(/-prediction$/, '')
+
+  // Remove trailing numeric match ID (e.g. `team-a-vs-team-b-1391115`)
+  let trailingMatchId: string | undefined
+  const numericSuffix = cleaned.match(/-(\d{4,})$/)
+  if (numericSuffix) {
+    trailingMatchId = numericSuffix[1]
+    cleaned = cleaned.slice(0, -numericSuffix[0].length)
+  }
 
   const idx = cleaned.indexOf('-vs-')
   if (idx === -1) return null
@@ -61,5 +69,6 @@ export function parseSlugTeams(slug: string): { homeSlug: string; awaySlug: stri
   return {
     homeSlug: cleaned.slice(0, idx),
     awaySlug: cleaned.slice(idx + 4), // length of '-vs-' = 4
+    matchId: trailingMatchId,
   }
 }

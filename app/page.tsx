@@ -35,6 +35,8 @@ import { useRouter } from "next/navigation"
 import { QuizSection } from "@/components/quiz-section"
 import { OddsPredictionTable } from "@/components/ui/odds-prediction-table"
 import { MarqueeTicker } from "@/components/marquee-ticker"
+import { MultisportMatchTable } from "@/components/multisport/MultisportMatchTable"
+import { SoccerMatchGrid } from "@/components/multisport/SoccerMatchGrid"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -98,6 +100,7 @@ export default function HomePage() {
     avgConfidence: 82,
     liveMatches: 23,
   })
+  const [selectedSport, setSelectedSport] = useState<string>("soccer")
 
   // ── Auth check ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -552,39 +555,97 @@ export default function HomePage() {
       {/* ── Marquee Ticker ── */}
       <MarqueeTicker />
 
-      {/* ── Live Matches ── */}
+      {/* ── Sport Tabs + Matches ── */}
       <section className="py-12 sm:py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-red-500/10 rounded-xl border border-red-500/20">
-              <Activity className="h-5 w-5 text-red-400" />
-            </div>
-            <div>
-              <h2 className="text-xl sm:text-2xl font-bold text-white">Live Matches</h2>
-              <p className="text-slate-400 text-sm">Real-time match updates</p>
-            </div>
-            <span className="ml-auto flex items-center gap-1.5 text-xs text-red-400 font-medium">
-              <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
-              LIVE
-            </span>
+          {/* Sport tab bar */}
+          <div className="flex items-center gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
+            {[
+              { key: "soccer", label: "Soccer", icon: "⚽" },
+              { key: "basketball_nba", label: "NBA", icon: "🏀" },
+              { key: "icehockey_nhl", label: "NHL", icon: "🏒" },
+              { key: "basketball_ncaab", label: "NCAAB", icon: "🏀" },
+            ].map((sport) => (
+              <button
+                key={sport.key}
+                onClick={() => setSelectedSport(sport.key)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+                  selectedSport === sport.key
+                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                    : "bg-slate-800/50 text-slate-400 border border-slate-700/50 hover:text-slate-200 hover:border-slate-600/60"
+                }`}
+              >
+                <span>{sport.icon}</span>
+                {sport.label}
+              </button>
+            ))}
           </div>
-          <OddsPredictionTable status="live" limit={10} showStatusTabs={false} />
-        </div>
-      </section>
 
-      {/* ── Upcoming Matches ── */}
-      <section className="py-12 sm:py-16 bg-slate-900/30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
-              <Clock className="h-5 w-5 text-emerald-400" />
+          {selectedSport === "soccer" ? (
+            <>
+              {/* Soccer: Live + Upcoming card grids */}
+              <div className="space-y-8">
+                <div>
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2 bg-red-500/10 rounded-xl border border-red-500/20">
+                      <Activity className="h-5 w-5 text-red-400" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl sm:text-2xl font-bold text-white">Live Matches</h2>
+                      <p className="text-slate-400 text-sm">Real-time match updates</p>
+                    </div>
+                    <span className="ml-auto flex items-center gap-1.5 text-xs text-red-400 font-medium">
+                      <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
+                      LIVE
+                    </span>
+                  </div>
+                  <SoccerMatchGrid status="live" limit={10} />
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
+                      <Clock className="h-5 w-5 text-emerald-400" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl sm:text-2xl font-bold text-white">Upcoming Matches</h2>
+                      <p className="text-slate-400 text-sm">Get ready for these exciting fixtures</p>
+                    </div>
+                  </div>
+                  <SoccerMatchGrid status="upcoming" limit={20} />
+                </div>
+              </div>
+            </>
+          ) : (
+            /* Non-soccer sport: show multisport grid */
+            <div className="space-y-8">
+              <div>
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
+                    <Clock className="h-5 w-5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl sm:text-2xl font-bold text-white">Upcoming</h2>
+                    <p className="text-slate-400 text-sm">AI predictions for upcoming games</p>
+                  </div>
+                </div>
+                <MultisportMatchTable sport={selectedSport} status="upcoming" limit={20} />
+              </div>
+
+              <div>
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-2 bg-slate-500/10 rounded-xl border border-slate-500/20">
+                    <Trophy className="h-5 w-5 text-slate-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl sm:text-2xl font-bold text-white">Recent Results</h2>
+                    <p className="text-slate-400 text-sm">See how the model performed</p>
+                  </div>
+                </div>
+                <MultisportMatchTable sport={selectedSport} status="finished" limit={10} />
+              </div>
             </div>
-            <div>
-              <h2 className="text-xl sm:text-2xl font-bold text-white">Upcoming Matches</h2>
-              <p className="text-slate-400 text-sm">Get ready for these exciting fixtures</p>
-            </div>
-          </div>
-          <OddsPredictionTable status="upcoming" limit={20} showStatusTabs={false} />
+          )}
         </div>
       </section>
 

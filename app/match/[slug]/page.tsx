@@ -213,6 +213,9 @@ interface QuickPurchaseInfo {
   valueRating: string | null
   analysisSummary: string | null
   predictionData?: FullPrediction | null
+  premiumScore?: number | null
+  premiumTier?: string | null
+  premiumSignals?: string[] | null
   country: {
     currencyCode: string
     currencySymbol: string
@@ -1354,14 +1357,31 @@ export default function MatchDetailPage() {
           {/* ═══════════ STATS STRIP ══════════════════════════════ */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {/* Confidence — PREMIUM */}
-            <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-4 text-center hover:border-emerald-500/30 transition-colors relative">
+            <div className={`bg-slate-800/60 border rounded-xl p-4 text-center hover:border-emerald-500/30 transition-colors relative ${
+              quickPurchaseInfo?.premiumTier === 'premium' ? 'border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.15)]' :
+              quickPurchaseInfo?.premiumTier === 'strong' ? 'border-slate-400/40' : 'border-slate-700'
+            }`}>
               <PremiumBlur locked={premiumLocked} onUnlock={handlePurchaseClick}>
                 <div className="flex justify-center mb-2">
                   <ConfidenceRing value={confidenceScore} />
                 </div>
               </PremiumBlur>
+              {/* Premium quality stars */}
+              {quickPurchaseInfo?.premiumScore != null && quickPurchaseInfo.premiumScore >= 40 && (
+                <div className="flex justify-center gap-0.5 mb-1">
+                  {Array.from({ length: quickPurchaseInfo.premiumScore >= 80 ? 3 : quickPurchaseInfo.premiumScore >= 60 ? 2 : 1 }).map((_, i) => (
+                    <svg key={i} className={`w-3.5 h-3.5 fill-current ${
+                      quickPurchaseInfo.premiumScore! >= 80 ? 'text-amber-400' :
+                      quickPurchaseInfo.premiumScore! >= 60 ? 'text-slate-300' : 'text-slate-500'
+                    }`} viewBox="0 0 20 20">
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                    </svg>
+                  ))}
+                </div>
+              )}
               <div className="text-slate-400 text-xs font-medium">
-                AI Confidence
+                {quickPurchaseInfo?.premiumTier === 'premium' ? 'Premium Pick' :
+                 quickPurchaseInfo?.premiumTier === 'strong' ? 'Strong Pick' : 'AI Confidence'}
               </div>
             </div>
 
@@ -1408,6 +1428,33 @@ export default function MatchDetailPage() {
               <div className="text-slate-400 text-xs">Risk Level</div>
             </div>
           </div>
+
+          {/* ═══════════ PREMIUM SIGNAL BADGES ══════════════════ */}
+          {quickPurchaseInfo?.premiumSignals && quickPurchaseInfo.premiumSignals.length > 0 && quickPurchaseInfo.premiumScore != null && quickPurchaseInfo.premiumScore >= 40 && (
+            <div className="flex flex-wrap gap-2">
+              {quickPurchaseInfo.premiumSignals.map((signal, i) => (
+                <span
+                  key={i}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${
+                    signal.includes('agree') || signal.includes('Agree')
+                      ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                      : signal.includes('High confidence') || signal.includes('Good confidence')
+                      ? 'bg-blue-500/10 text-blue-300 border-blue-500/30'
+                      : signal.includes('Odds-backed')
+                      ? 'bg-purple-500/10 text-purple-300 border-purple-500/30'
+                      : signal.includes('Home pick')
+                      ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                      : 'bg-slate-700/50 text-slate-400 border-slate-600/30'
+                  }`}
+                >
+                  <svg className="w-3 h-3 fill-current opacity-60" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  {signal}
+                </span>
+              ))}
+            </div>
+          )}
 
           {/* ═══════════ AI SUMMARY BANNER ════════════════════════ */}
           {prediction?.analysis?.ai_summary && (

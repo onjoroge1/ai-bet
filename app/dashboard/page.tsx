@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useDashboardData } from "@/hooks/use-dashboard-data"
+import { DashboardErrorBoundary } from "@/components/dashboard/ErrorBoundary"
 
 /**
  * DashboardPage - Streamlined Overview
@@ -225,46 +226,62 @@ export default function DashboardPage() {
       {/* ── Critical Content: Stats + Credits ──────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
-          <Suspense fallback={<WidgetSkeleton />}>
-            <StatsOverview />
-          </Suspense>
+          <DashboardErrorBoundary section="Stats Overview" compact>
+            <Suspense fallback={<WidgetSkeleton />}>
+              <StatsOverview />
+            </Suspense>
+          </DashboardErrorBoundary>
         </div>
         <div>
-          <Suspense fallback={<WidgetSkeleton />}>
-            <PackageCredits />
-          </Suspense>
+          <DashboardErrorBoundary section="Package Credits" compact>
+            <Suspense fallback={<WidgetSkeleton />}>
+              <PackageCredits />
+            </Suspense>
+          </DashboardErrorBoundary>
         </div>
       </div>
 
       {/* ── Secondary Content: Notifications + Live Matches ─────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Suspense fallback={<WidgetSkeleton />}>
-          <NotificationsWidget />
-        </Suspense>
-        <Suspense fallback={<WidgetSkeleton />}>
-          <LiveMatchesWidget />
-        </Suspense>
+        <DashboardErrorBoundary section="Notifications">
+          <Suspense fallback={<WidgetSkeleton />}>
+            <NotificationsWidget />
+          </Suspense>
+        </DashboardErrorBoundary>
+        <DashboardErrorBoundary section="Live Matches">
+          <Suspense fallback={<WidgetSkeleton />}>
+            <LiveMatchesWidget />
+          </Suspense>
+        </DashboardErrorBoundary>
       </div>
 
       {/* ── AI Intelligence Feed ──────────────────────────────────────────── */}
-      <Suspense fallback={<WidgetSkeleton />}>
-        <AIRecommendations />
-      </Suspense>
+      <DashboardErrorBoundary section="AI Recommendations">
+        <Suspense fallback={<WidgetSkeleton />}>
+          <AIRecommendations />
+        </Suspense>
+      </DashboardErrorBoundary>
 
       {/* ── Tertiary Content: Timeline Feed (Loads Last) ───────────────────────────── */}
-      <Suspense fallback={<WidgetSkeleton />}>
-        <TimelineFeed />
-      </Suspense>
+      <DashboardErrorBoundary section="Timeline Feed">
+        <Suspense fallback={<WidgetSkeleton />}>
+          <TimelineFeed />
+        </Suspense>
+      </DashboardErrorBoundary>
 
       {/* ── Premium Packages (Loads Last, Client-Side Only) ──────────────────── */}
-      <Suspense fallback={<WidgetSkeleton />}>
-        <PersonalizedOffers />
-      </Suspense>
+      <DashboardErrorBoundary section="Personalized Offers" compact>
+        <Suspense fallback={<WidgetSkeleton />}>
+          <PersonalizedOffers />
+        </Suspense>
+      </DashboardErrorBoundary>
 
       {/* ── Upgrade Offers (Loads Last, Client-Side Only) ──────────────────── */}
-      <Suspense fallback={<WidgetSkeleton />}>
-        <UpgradeOffers />
-      </Suspense>
+      <DashboardErrorBoundary section="Upgrade Offers" compact>
+        <Suspense fallback={<WidgetSkeleton />}>
+          <UpgradeOffers />
+        </Suspense>
+      </DashboardErrorBoundary>
     </div>
   )
 }

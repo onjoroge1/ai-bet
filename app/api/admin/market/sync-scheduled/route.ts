@@ -15,10 +15,20 @@ const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KE
 const LIVE_SYNC_INTERVAL = 30 * 1000 // 30 seconds in milliseconds
 const UPCOMING_SYNC_INTERVAL = 10 * 60 * 1000 // 10 minutes in milliseconds
 
+// Adaptive backoff: track consecutive failures per status to avoid hammering a failing backend
+const consecutiveFailures: Record<string, number> = {}
+
+function getAdaptiveLimit(status: string, baseLimit: number): number {
+  const failures = consecutiveFailures[status] || 0
+  if (failures >= 3) return Math.max(10, Math.floor(baseLimit / 4))
+  if (failures >= 2) return Math.max(10, Math.floor(baseLimit / 2))
+  return baseLimit
+}
+
 /**
  * Fetch matches from external API with timeout
  */
-async function fetchMatchesFromAPI(status: 'upcoming' | 'live' | 'completed', limit: number = 100) {
+async function fetchMatchesFromAPI(status: 'upcoming' | 'live' | 'completed', limit: number = 50) {
   if (!BASE_URL) {
     throw new Error('BACKEND_API_URL not configured')
   }
@@ -262,7 +272,6 @@ function transformMatchData(apiMatch: any) {
     venue,
     referee,
     attendance,
-    rawApiData: apiMatch,
     syncPriority,
     nextSyncAt,
     lastSyncedAt: new Date(),
@@ -279,13 +288,27 @@ async function syncMatchesByStatus(status: 'upcoming' | 'live' | 'completed') {
       tags: ['market', 'sync', status],
     })
 
+    // Adaptive limit based on consecutive failure count
+    const limit = getAdaptiveLimit(status, 50)
+
     // Fetch from API with retry logic (3 retries, 2s initial delay, 30s max delay cap)
-    const apiMatches = await retryWithBackoff(
-      () => fetchMatchesFromAPI(status, 100),
-      3,    // Max 3 retries
-      2000, // Initial delay 2 seconds
-      30000 // Maximum delay cap 30 seconds
-    )
+    let apiMatches: any[]
+    try {
+      apiMatches = await retryWithBackoff(
+        () => fetchMatchesFromAPI(status, limit),
+        3,    // Max 3 retries
+        2000, // Initial delay 2 seconds
+        30000 // Maximum delay cap 30 seconds
+      )
+      // Reset failure counter on successful fetch
+      consecutiveFailures[status] = 0
+    } catch (fetchError) {
+      consecutiveFailures[status] = (consecutiveFailures[status] || 0) + 1
+      logger.warn(`Sync fetch failed for ${status} (consecutive failures: ${consecutiveFailures[status]}, next limit: ${getAdaptiveLimit(status, 50)})`, {
+        tags: ['market', 'sync', status, 'backoff'],
+      })
+      throw fetchError
+    }
     
     if (apiMatches.length === 0) {
       logger.info(`No ${status} matches found in API`, {
@@ -332,110 +355,140 @@ async function syncMatchesByStatus(status: 'upcoming' | 'live' | 'completed') {
     let errors = 0
     let skipped = 0
 
-    // Process each match
+    // Transform all matches first
+    const transformedMatches: { apiMatch: any; transformed: NonNullable<ReturnType<typeof transformMatchData>> }[] = []
     for (const apiMatch of apiMatches) {
-      try {
-        const transformed = transformMatchData(apiMatch)
-        
-        if (!transformed) {
-          skipped++
-          continue
+      const transformed = transformMatchData(apiMatch)
+      if (transformed) {
+        transformedMatches.push({ apiMatch, transformed })
+      } else {
+        skipped++
+      }
+    }
+
+    // Batch pre-fetch existing matches (single query instead of N queries)
+    const matchIds = transformedMatches.map(m => m.transformed.matchId)
+    const existingMatches = await prisma.marketMatch.findMany({
+      where: { matchId: { in: matchIds } },
+      select: { matchId: true, lastSyncedAt: true, status: true, finalResult: true, currentScore: true }
+    })
+    const existingMap = new Map(existingMatches.map(m => [m.matchId, m]))
+
+    // Filter matches that need syncing using the pre-fetched map
+    const matchesToSync: typeof transformedMatches = []
+    for (const { apiMatch, transformed } of transformedMatches) {
+      const existing = existingMap.get(transformed.matchId)
+
+      if (status === 'live') {
+        if (existing && existing.status === 'LIVE') {
+          const timeSinceLastSync = Date.now() - existing.lastSyncedAt.getTime()
+          if (timeSinceLastSync < LIVE_SYNC_INTERVAL) {
+            skipped++
+            continue
+          }
         }
-
-        // Check if we should sync this match
-        if (status === 'live') {
-          // For live matches, check if last sync was more than 30 seconds ago
-          const existing = await prisma.marketMatch.findUnique({
-            where: { matchId: transformed.matchId },
-            select: { lastSyncedAt: true, status: true }
-          })
-
-          if (existing && existing.status === 'LIVE') {
-            const timeSinceLastSync = Date.now() - existing.lastSyncedAt.getTime()
-            if (timeSinceLastSync < LIVE_SYNC_INTERVAL) {
-              skipped++
-              continue // Skip if synced recently
-            }
+      } else if (status === 'upcoming') {
+        if (existing && existing.status === 'UPCOMING') {
+          const timeSinceLastSync = Date.now() - existing.lastSyncedAt.getTime()
+          if (timeSinceLastSync < UPCOMING_SYNC_INTERVAL) {
+            skipped++
+            continue
           }
-        } else if (status === 'upcoming') {
-          // For upcoming matches, check if last sync was more than 10 minutes ago
-          const existing = await prisma.marketMatch.findUnique({
-            where: { matchId: transformed.matchId },
-            select: { lastSyncedAt: true, status: true }
-          })
-
-          if (existing && existing.status === 'UPCOMING') {
-            const timeSinceLastSync = Date.now() - existing.lastSyncedAt.getTime()
-            if (timeSinceLastSync < UPCOMING_SYNC_INTERVAL) {
-              skipped++
-              continue // Skip if synced recently
-            }
+        }
+      } else if (status === 'completed') {
+        if (existing && existing.status === 'FINISHED') {
+          const fr = existing.finalResult as Record<string, unknown> | null
+          const hasFinalResult = fr && typeof fr === 'object' && Object.keys(fr).length > 0
+          if (hasFinalResult) {
+            skipped++
+            continue
           }
-        } else if (status === 'completed') {
-          // For completed matches, allow re-sync if finalResult is still missing
-          const existing = await prisma.marketMatch.findUnique({
-            where: { matchId: transformed.matchId },
-            select: { status: true, finalResult: true, currentScore: true }
-          })
-
-          if (existing && existing.status === 'FINISHED') {
-            const fr = existing.finalResult as Record<string, unknown> | null
-            const hasFinalResult = fr && typeof fr === 'object' && Object.keys(fr).length > 0
-            if (hasFinalResult) {
-              skipped++
-              continue
-            }
-            // Missing finalResult — try to derive from existing DB currentScore
-            if (!transformed.finalResult) {
-              const dbScore = existing.currentScore as { home?: number; away?: number } | null
-              if (dbScore && typeof dbScore.home === 'number' && typeof dbScore.away === 'number') {
-                transformed.finalResult = {
-                  score: { home: dbScore.home, away: dbScore.away },
-                  outcome: dbScore.home > dbScore.away ? 'home' : dbScore.away > dbScore.home ? 'away' : 'draw',
-                  outcome_text: dbScore.home > dbScore.away ? 'Home Win' : dbScore.away > dbScore.home ? 'Away Win' : 'Draw',
-                }
-                console.log(`[Sync] Derived finalResult from DB currentScore for ${transformed.matchId}`)
+          // Missing finalResult — try to derive from existing DB currentScore
+          if (!transformed.finalResult) {
+            const dbScore = existing.currentScore as { home?: number; away?: number } | null
+            if (dbScore && typeof dbScore.home === 'number' && typeof dbScore.away === 'number') {
+              transformed.finalResult = {
+                score: { home: dbScore.home, away: dbScore.away },
+                outcome: dbScore.home > dbScore.away ? 'home' : dbScore.away > dbScore.home ? 'away' : 'draw',
+                outcome_text: dbScore.home > dbScore.away ? 'Home Win' : dbScore.away > dbScore.home ? 'Away Win' : 'Draw',
               }
+              console.log(`[Sync] Derived finalResult from DB currentScore for ${transformed.matchId}`)
             }
           }
         }
+      }
 
-        // Upsert match
-        await prisma.marketMatch.upsert({
-          where: { matchId: transformed.matchId },
-          update: {
-            ...transformed,
-            syncErrors: 0,
-            lastSyncError: null,
-          },
-          create: {
-            ...transformed,
-            syncCount: 1,
-          },
-        })
+      matchesToSync.push({ apiMatch, transformed })
+    }
 
-        synced++
-      } catch (error) {
-        errors++
-        logger.error(`Error syncing match ${apiMatch.id || apiMatch.match_id}`, {
-          tags: ['market', 'sync', status, 'error'],
-          error: error instanceof Error ? error : undefined,
-        })
+    // Process in batches with transactions
+    const BATCH_SIZE = 10 // Keep small to reduce lock contention
+    for (let i = 0; i < matchesToSync.length; i += BATCH_SIZE) {
+      const batch = matchesToSync.slice(i, i + BATCH_SIZE)
 
-        // Update error count if match exists
-        try {
-          const matchId = String(apiMatch.id || apiMatch.match_id || '')
-          if (matchId && matchId !== 'undefined' && matchId !== 'null') {
-            await prisma.marketMatch.updateMany({
-              where: { matchId },
-              data: {
-                syncErrors: { increment: 1 },
-                lastSyncError: error instanceof Error ? error.message : 'Unknown error',
+      try {
+        await prisma.$transaction(
+          batch.map(({ transformed }) =>
+            prisma.marketMatch.upsert({
+              where: { matchId: transformed.matchId },
+              update: {
+                ...transformed,
+                syncErrors: 0,
+                lastSyncError: null,
+              },
+              create: {
+                ...transformed,
+                syncCount: 1,
               },
             })
+          ),
+          { timeout: 15000 }
+        )
+        synced += batch.length
+      } catch (batchError) {
+        // Fall back to individual upserts if batch transaction fails
+        logger.warn(`Batch transaction failed for ${status}, falling back to individual upserts`, {
+          tags: ['market', 'sync', status, 'batch-fallback'],
+          error: batchError instanceof Error ? batchError : undefined,
+        })
+
+        for (const { apiMatch, transformed } of batch) {
+          try {
+            await prisma.marketMatch.upsert({
+              where: { matchId: transformed.matchId },
+              update: {
+                ...transformed,
+                syncErrors: 0,
+                lastSyncError: null,
+              },
+              create: {
+                ...transformed,
+                syncCount: 1,
+              },
+            })
+            synced++
+          } catch (error) {
+            errors++
+            logger.error(`Error syncing match ${apiMatch.id || apiMatch.match_id}`, {
+              tags: ['market', 'sync', status, 'error'],
+              error: error instanceof Error ? error : undefined,
+            })
+
+            try {
+              const matchId = String(apiMatch.id || apiMatch.match_id || '')
+              if (matchId && matchId !== 'undefined' && matchId !== 'null') {
+                await prisma.marketMatch.updateMany({
+                  where: { matchId },
+                  data: {
+                    syncErrors: { increment: 1 },
+                    lastSyncError: error instanceof Error ? error.message : 'Unknown error',
+                  },
+                })
+              }
+            } catch (updateError) {
+              // Ignore update errors
+            }
           }
-        } catch (updateError) {
-          // Ignore update errors
         }
       }
     }

@@ -19,14 +19,21 @@ export async function GET(request: NextRequest) {
   const startTime = Date.now()
 
   try {
-    // Verify cron secret
+    // Verify cron secret — must be set in environment, no hardcoded fallback
     const authHeader = request.headers.get('authorization')
-    const cronSecret = process.env.CRON_SECRET || '749daccdf93e0228b8d5c9b7210d2181ea3b9e48af1e3833473a5020bcbc9ecb'
+    const cronSecret = process.env.CRON_SECRET
+
+    if (!cronSecret) {
+      logger.error('🕐 CRON: CRON_SECRET env var not set — cannot authenticate cron jobs', {
+        tags: ['api', 'admin', 'social', 'twitter', 'cron', 'security'],
+      })
+      return NextResponse.json({ error: 'CRON_SECRET not configured' }, { status: 500 })
+    }
 
     if (authHeader !== `Bearer ${cronSecret}`) {
       logger.warn('🕐 CRON: Unauthorized Twitter post generation attempt', {
         tags: ['api', 'admin', 'social', 'twitter', 'cron', 'security'],
-        data: { hasAuthHeader: !!authHeader },
+        data: { hasAuthHeader: !!authHeader, secretLength: cronSecret.length },
       })
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
