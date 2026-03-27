@@ -104,7 +104,6 @@ async function getAllBlogPosts(): Promise<BlogPost[]> {
       console.error('[BlogAllPage] Failed to parse JSON:', e)
       return []
     }
-    console.log('[BlogAllPage] Parsed data:', data)
     if (Array.isArray(data)) {
       return data
     }
@@ -189,7 +188,6 @@ function BlogCardMedia({ media, title }: { media?: BlogMedia[], title: string })
 
 export default async function BlogAllPage() {
   const allBlogPosts = await getAllBlogPosts()
-  console.log('[BlogAllPage] All blog posts:', allBlogPosts)
 
   // Get unique categories for filtering
   const categories = [...new Set(allBlogPosts.map(post => post.category))].sort()
