@@ -163,7 +163,8 @@ export default function SportPredictionPage() {
   const odds = data.odds || {}
   const homeCtx = data.team_context?.home || {}
   const awayCtx = data.team_context?.away || {}
-  const markets = data.markets || []
+  const rawMarkets = data.markets || data.best_bets || []
+  const markets = Array.isArray(rawMarkets) ? rawMarkets : []
   const analysis = data.analysis || {}
   const h2h = data.h2h || []
   const featureValues = data.feature_values || {}
@@ -460,7 +461,7 @@ export default function SportPredictionPage() {
                   {markets.map((market: any, i: number) => (
                     <div key={i} className="p-3 rounded-lg bg-slate-900/50 border border-slate-700/30">
                       <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2 font-medium">
-                        {typeof market.market === 'string' ? market.market : `Market ${i + 1}`}
+                        {typeof market.market === 'string' ? market.market : typeof market.name === 'string' ? market.name : `Market ${i + 1}`}
                       </div>
                       <div className="space-y-1.5">
                         {market.options ? (
@@ -496,15 +497,15 @@ export default function SportPredictionPage() {
                         ) : (
                           /* Flat format: { market, selection, odds, model_probability, edge_vs_market, conviction } */
                           <div className="flex items-center justify-between text-xs">
-                            <span className="text-slate-300">{market.selection || '—'}</span>
+                            <span className="text-slate-300">{typeof market.selection === 'string' ? market.selection : JSON.stringify(market.selection) || '—'}</span>
                             <div className="flex items-center gap-3">
                               {market.model_probability != null && (
                                 <span className="text-slate-500">
                                   Model: <span className="text-white">{pct(market.model_probability)}</span>
                                 </span>
                               )}
-                              {market.odds != null && (
-                                <span className="text-slate-400 font-mono text-[11px]">{typeof market.odds === 'number' ? market.odds.toFixed(2) : market.odds}</span>
+                              {market.odds != null && typeof market.odds !== 'object' && (
+                                <span className="text-slate-400 font-mono text-[11px]">{typeof market.odds === 'number' ? market.odds.toFixed(2) : String(market.odds)}</span>
                               )}
                               {market.edge_vs_market != null && market.edge_vs_market !== 0 && (
                                 <Badge variant="outline" className={`text-[9px] px-1 py-0 ${
