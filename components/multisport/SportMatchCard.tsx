@@ -66,11 +66,24 @@ function buildMatchSlug(home: string | undefined, away: string | undefined, even
 }
 
 export function SportMatchCard({ match, sportKey, href }: Props) {
-  const isFinished = match.status === "FINISHED" || match.status === "finished"
+  const isFinished = match.status === "FINISHED" || match.status === "finished" || (typeof match.final_result === 'string' && match.final_result !== '')
   const isLive = match.status === "LIVE" || match.status === "live"
   const accent = SPORT_ACCENT[sportKey] || "border-l-slate-500"
   const model = match.model?.predictions
-  const result = match.final_result
+  // Normalize final_result — can be:
+  // 1. null (upcoming)
+  // 2. string "H" or "A" (from MultisportMatch DB sync)
+  // 3. object { score: { home, away }, result, overtime } (from API)
+  const rawResult = match.final_result
+  const result = rawResult && typeof rawResult === 'object'
+    ? {
+        ...(rawResult as any),
+        score: (rawResult as any).score || { home: (rawResult as any).score_home, away: (rawResult as any).score_away },
+        overtime: (rawResult as any).overtime ?? false,
+      }
+    : null
+  // If final_result is just a string like "H", we still know the match is finished but have no score
+  const resultOutcome = typeof rawResult === 'string' ? rawResult : (rawResult as any)?.result
 
   // Handle both object ({ name: "Team" }) and string ("Team") formats from DB/API
   const homeName = typeof match.home === 'string' ? match.home : match.home?.name || match.homeTeam || "Home"
@@ -89,7 +102,7 @@ export function SportMatchCard({ match, sportKey, href }: Props) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-slate-400 font-medium uppercase tracking-wider">
-                {match.league.name}
+                {typeof match.league === 'string' ? match.league : match.league?.name || sportKey}
               </span>
               {sportKey === "basketball_ncaab" && (
                 <Badge variant="outline" className="text-[9px] px-1 py-0 border-yellow-500/30 text-yellow-400">
@@ -130,7 +143,7 @@ export function SportMatchCard({ match, sportKey, href }: Props) {
                 {(result || isLive) && (match as any).score && (
                   <span className="text-sm font-bold text-white ml-auto">{(match as any).score.home}</span>
                 )}
-                {result && !(match as any).score && (
+                {result?.score?.home != null && !(match as any).score && (
                   <span className="text-sm font-bold text-white ml-auto">{result.score.home}</span>
                 )}
               </div>
@@ -144,7 +157,7 @@ export function SportMatchCard({ match, sportKey, href }: Props) {
                 {(result || isLive) && (match as any).score && (
                   <span className="text-sm font-bold text-white ml-auto">{(match as any).score.away}</span>
                 )}
-                {result && !(match as any).score && (
+                {result?.score?.away != null && !(match as any).score && (
                   <span className="text-sm font-bold text-white ml-auto">{result.score.away}</span>
                 )}
               </div>
@@ -154,13 +167,18 @@ export function SportMatchCard({ match, sportKey, href }: Props) {
             {model && (
               <div className="flex flex-col items-center gap-1 flex-shrink-0">
                 <ConfidenceRing score={confidenceScore} size={44} />
-                {isFinished && match.model?.correct !== undefined && (
-                  match.model.correct ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  ) : (
-                    <XCircle className="w-4 h-4 text-red-400" />
+                {isFinished && (match.model?.correct !== undefined || resultOutcome) && (() => {
+                  // Determine correctness from either model.correct flag or by comparing pick to result
+                  const isCorrect = match.model?.correct ?? (
+                    resultOutcome && model?.pick
+                      ? (model.pick === "H" || model.pick === "home") === (resultOutcome === "H" || resultOutcome === "home_win")
+                      : undefined
                   )
-                )}
+                  if (isCorrect === undefined) return null
+                  return isCorrect
+                    ? <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    : <XCircle className="w-4 h-4 text-red-400" />
+                })()}
               </div>
             )}
           </div>

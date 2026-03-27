@@ -30,8 +30,10 @@ interface Props {
 
 export function SportSelector({ selectedSport, onSelect, allowAll = false }: Props) {
   const [sports, setSports] = useState<SportInfo[]>([])
+  const [dbCounts, setDbCounts] = useState<Record<string, number>>({})
 
   useEffect(() => {
+    // Fetch backend season info
     fetch("/api/multisport/sports")
       .then(res => res.json())
       .then(data => {
@@ -40,6 +42,22 @@ export function SportSelector({ selectedSport, onSelect, allowAll = false }: Pro
         }
       })
       .catch(() => {})
+
+    // Also check local DB for actual match counts (backend may say off-season but DB has matches)
+    const sportKeys = ["basketball_nba", "icehockey_nhl", "basketball_ncaab"]
+    Promise.allSettled(
+      sportKeys.map(key =>
+        fetch(`/api/multisport/market?sport=${key}&status=upcoming&limit=1`)
+          .then(r => r.json())
+          .then(d => ({ key, count: d.total_count || d.matches?.length || 0 }))
+      )
+    ).then(results => {
+      const counts: Record<string, number> = {}
+      for (const r of results) {
+        if (r.status === "fulfilled") counts[r.value.key] = r.value.count
+      }
+      setDbCounts(counts)
+    })
   }, [])
 
   return (
@@ -48,9 +66,11 @@ export function SportSelector({ selectedSport, onSelect, allowAll = false }: Pro
         const config = SPORT_CONFIG[key]
         const info = sports.find(s => s.sport_key === key)
         const isSelected = selectedSport === key
-        const upcoming = info?.fixtures?.upcoming_with_odds ?? info?.fixtures?.upcoming ?? 0
-        // Never disable a sport if it has upcoming matches — backend season status can be wrong
-        const isOffSeason = !allowAll && key !== "soccer" && info?.season?.status === "off_season" && upcoming === 0
+        const apiUpcoming = info?.fixtures?.upcoming_with_odds ?? info?.fixtures?.upcoming ?? 0
+        const localUpcoming = dbCounts[key] ?? 0
+        const upcoming = Math.max(apiUpcoming, localUpcoming)
+        // Never disable a sport if it has matches in either API or local DB
+        const isOffSeason = !allowAll && key !== "soccer" && info?.season?.status === "off_season" && upcoming === 0 && localUpcoming === 0
 
         return (
           <button

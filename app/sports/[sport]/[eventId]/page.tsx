@@ -574,16 +574,45 @@ export default function SportPredictionPage() {
               {analysis.betting_recommendations.primary_bet && (
                 <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
                   <div className="text-[10px] text-emerald-400 uppercase tracking-wider mb-1 font-medium">Primary Bet</div>
-                  <p className="text-sm text-slate-300">{analysis.betting_recommendations.primary_bet}</p>
+                  {typeof analysis.betting_recommendations.primary_bet === 'string' ? (
+                    <p className="text-sm text-slate-300">{analysis.betting_recommendations.primary_bet}</p>
+                  ) : (
+                    <div className="space-y-1">
+                      <p className="text-sm text-white font-medium">
+                        {analysis.betting_recommendations.primary_bet.selection || 'N/A'}
+                        {analysis.betting_recommendations.primary_bet.market && (
+                          <span className="text-slate-400 font-normal ml-2 text-xs">({analysis.betting_recommendations.primary_bet.market})</span>
+                        )}
+                      </p>
+                      <div className="flex gap-3 text-xs text-slate-400">
+                        {analysis.betting_recommendations.primary_bet.model_probability != null && (
+                          <span>Model: <span className="text-emerald-400">{analysis.betting_recommendations.primary_bet.model_probability}%</span></span>
+                        )}
+                        {analysis.betting_recommendations.primary_bet.odds != null && (
+                          <span>Odds: <span className="text-white">{analysis.betting_recommendations.primary_bet.odds}</span></span>
+                        )}
+                        {analysis.betting_recommendations.primary_bet.edge_vs_market != null && (
+                          <span>Edge: <span className={analysis.betting_recommendations.primary_bet.edge_vs_market > 0 ? "text-emerald-400" : "text-red-400"}>
+                            {analysis.betting_recommendations.primary_bet.edge_vs_market > 0 ? "+" : ""}{analysis.betting_recommendations.primary_bet.edge_vs_market}%
+                          </span></span>
+                        )}
+                        {analysis.betting_recommendations.primary_bet.conviction && (
+                          <Badge variant="outline" className="text-[9px] px-1 py-0 border-emerald-500/30 text-emerald-400 capitalize">
+                            {analysis.betting_recommendations.primary_bet.conviction}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
-              {analysis.betting_recommendations.alternative_bets?.length > 0 && (
+              {(analysis.betting_recommendations.alternative_bets?.length > 0 || analysis.betting_recommendations.alternatives?.length > 0) && (
                 <div>
                   <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">Alternatives</div>
-                  {analysis.betting_recommendations.alternative_bets.map((bet: string, i: number) => (
+                  {(analysis.betting_recommendations.alternative_bets || analysis.betting_recommendations.alternatives || []).map((bet: any, i: number) => (
                     <div key={i} className="flex items-start gap-2 text-xs text-slate-400 mb-1">
                       <ChevronDown className="w-3 h-3 mt-0.5 flex-shrink-0 text-slate-500" />
-                      <span>{bet}</span>
+                      <span>{typeof bet === 'string' ? bet : `${bet.selection || ''} (${bet.market || ''})${bet.reasoning ? ' — ' + bet.reasoning : ''}`}</span>
                     </div>
                   ))}
                 </div>

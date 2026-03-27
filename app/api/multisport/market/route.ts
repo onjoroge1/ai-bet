@@ -23,20 +23,18 @@ export async function GET(request: NextRequest) {
     const maxAge = status === 'finished' ? FINISHED_MAX_AGE : UPCOMING_MAX_AGE
     const freshnessThreshold = new Date(Date.now() - maxAge)
 
-    // Check if we have fresh data in DB
+    // Check DB for ANY data (fresh or stale) — serve immediately, refresh in background if stale
     const dbMatches = await prisma.multisportMatch.findMany({
       where: {
         sport,
         status,
         ...(eventId ? { eventId } : {}),
-        lastSyncedAt: { gte: freshnessThreshold },
       },
       orderBy: { commenceTime: status === 'finished' ? 'desc' : 'asc' },
       take: limit,
     })
 
     if (dbMatches.length > 0) {
-      // Serve from database
       const matches = dbMatches.map(m => ({
         event_id: m.eventId,
         status: m.status,
@@ -50,9 +48,24 @@ export async function GET(request: NextRequest) {
         final_result: m.finalResult,
       }))
 
+      // Check if data is stale
+      const newestSync = dbMatches.reduce((max, m) =>
+        m.lastSyncedAt > max ? m.lastSyncedAt : max, new Date(0))
+      const isFresh = newestSync >= freshnessThreshold
+      const source = isFresh ? 'database' : 'database_stale'
+
+      // If stale, trigger background refresh (don't block response)
+      if (!isFresh && BASE_URL && status === 'upcoming') {
+        refreshFromAPIInBackground(sport, limit).catch(err =>
+          console.error('[Multisport] Background refresh failed:', err)
+        )
+      }
+
       const cacheControl = status === 'finished'
         ? 'public, s-maxage=3600, stale-while-revalidate=7200'
-        : 'public, s-maxage=60, stale-while-revalidate=120'
+        : isFresh
+          ? 'public, s-maxage=60, stale-while-revalidate=120'
+          : 'public, s-maxage=10, stale-while-revalidate=60'
 
       return NextResponse.json(
         {
@@ -60,7 +73,7 @@ export async function GET(request: NextRequest) {
           sport_name: getSportName(sport),
           matches,
           total_count: matches.length,
-          source: 'database',
+          source,
         },
         { headers: { 'Cache-Control': cacheControl } }
       )
@@ -214,6 +227,64 @@ function getSportName(sport: string): string {
     basketball_ncaab: 'NCAA Basketball',
   }
   return names[sport] || sport
+}
+
+/**
+ * Background refresh: fetch from API and update DB without blocking the response.
+ */
+async function refreshFromAPIInBackground(sport: string, limit: number) {
+  if (!BASE_URL) return
+  try {
+    const url = `${BASE_URL}/predict-multisport/available?sport=${sport}`
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 15000)
+
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${API_KEY}` },
+      signal: controller.signal,
+      cache: 'no-store',
+    })
+    clearTimeout(timeoutId)
+
+    if (!response.ok) return
+
+    const raw = await response.json()
+    const fixtures = raw.fixtures || []
+    if (fixtures.length === 0) return
+
+    const matches = fixtures.slice(0, limit).map((f: any) => ({
+      event_id: f.event_id,
+      status: 'upcoming',
+      commence_time: f.commence_time,
+      league: { name: f.league_name || getSportName(sport), sport_key: sport },
+      home: { name: f.home_team, team_id: null },
+      away: { name: f.away_team, team_id: null },
+      odds: {
+        consensus: {
+          home_odds: null, away_odds: null,
+          home_prob: f.home_prob, away_prob: f.away_prob,
+          home_spread: f.spread, total_line: f.total_line,
+          n_bookmakers: null,
+        },
+      },
+      spread: { line: f.spread, total: f.total_line },
+      model: {
+        predictions: {
+          home_win: f.home_prob, away_win: f.away_prob,
+          pick: f.model_pick, confidence: f.model_confidence,
+          conviction_tier: f.model_confidence > 0.75 ? 'premium' : f.model_confidence > 0.6 ? 'strong' : 'standard',
+        },
+        source: 'v3_multisport',
+        no_draw: true,
+      },
+      final_result: null,
+    }))
+
+    await storeMatchesInBackground(matches, sport)
+    console.log(`[Multisport] Background refresh complete: ${matches.length} ${sport} matches stored`)
+  } catch (err) {
+    console.error('[Multisport] Background refresh error:', err)
+  }
 }
 
 async function storeMatchesInBackground(matches: any[], sport: string) {
