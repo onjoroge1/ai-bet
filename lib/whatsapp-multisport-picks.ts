@@ -73,7 +73,7 @@ export async function getMultisportPicks(
     // Fallback: fetch from internal API
     const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
     const res = await fetch(`${baseUrl}/api/multisport/market?sport=${sportKey}&status=upcoming&limit=${limit}`, {
-      cache: 'no-store',
+      next: { revalidate: 0 },
       headers: { 'Content-Type': 'application/json' },
     })
 
@@ -82,7 +82,7 @@ export async function getMultisportPicks(
       return []
     }
 
-    const data = await res.json()
+    const data = await res.json() as { matches?: any[] }
     const matches = data.matches || []
 
     return matches.map((m: any) => transformAPIMatch(m, sportKey))
