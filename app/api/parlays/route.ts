@@ -760,7 +760,7 @@ export async function GET(request: NextRequest) {
           parlay_id: parlay.parlayId,
           api_version: parlay.apiVersion,
           leg_count: parlay.legCount,
-          legs: parlay.legs && parlay.legs.length > 0 
+          legs: parlay.legs && parlay.legs.length > 0
             ? parlay.legs.map((leg) => ({
                 edge: Number(leg.edge),
                 outcome: leg.outcome,
@@ -769,6 +769,8 @@ export async function GET(request: NextRequest) {
                 home_team: leg.homeTeam,
                 model_prob: Number(leg.modelProb),
                 decimal_odds: Number(leg.decimalOdds),
+                premium_score: leg.premiumScore ? Number(leg.premiumScore) : null,
+                premium_tier: leg.premiumTier || null,
               }))
             : [], // Return empty array if no legs (not hardcoded - from DB)
           combined_prob: combinedProb,
@@ -793,6 +795,14 @@ export async function GET(request: NextRequest) {
             has_low_edge: edgePct < 5,
             has_low_probability: combinedProb < 0.05,
           },
+          // Premium star system
+          premium: parlay.premiumScore != null ? {
+            score: Number(parlay.premiumScore),
+            tier: parlay.premiumTier,
+            stars: parlay.premiumTier === '5-star' ? 5 : parlay.premiumTier === '4-star' ? 4 : parlay.premiumTier === '3-star' ? 3 : parlay.premiumTier === '2-star' ? 2 : 1,
+            reasons: (parlay.premiumReasons as string[]) || [],
+            avg_leg_score: parlay.avgLegPremiumScore ? Number(parlay.avgLegPremiumScore) : null,
+          } : null,
         }
       }),
     })

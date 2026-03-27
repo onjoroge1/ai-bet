@@ -13,11 +13,61 @@ export const maxDuration = 120
 export const runtime = 'nodejs'
 
 /**
+ * Fetch finished results for a sport from backend
+ * Uses GET /predict-multisport/results?sport={sport}&days={days}
+ */
+async function fetchSportResults(sport: string, days: number = 7, limit: number = 25) {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 30000) // 30s — results endpoint is slow
+
+  try {
+    const response = await fetch(
+      `${BASE_URL}/predict-multisport/results?sport=${sport}&days=${days}&limit=${limit}`,
+      {
+        headers: { Authorization: `Bearer ${API_KEY}` },
+        signal: controller.signal,
+        cache: 'no-store',
+      }
+    )
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        // Endpoint not deployed yet — silently skip
+        return []
+      }
+      throw new Error(`Results API error: ${response.status}`)
+    }
+
+    const raw = await response.json()
+    const results = raw.matches || raw.results || []
+
+    return results.map((m: any) => ({
+      eventId: m.event_id,
+      sport,
+      status: 'finished',
+      homeTeam: m.home_team,
+      awayTeam: m.away_team,
+      commenceTime: m.commence_time,
+      finalResult: m.final_result || m.result || null,
+      model: m.model || m.prediction || null,
+      odds: m.odds || null,
+    }))
+  } catch (error) {
+    clearTimeout(timeoutId)
+    logger.warn(`[Multisport Sync] Failed to fetch results for ${sport}`, {
+      tags: ['multisport', 'sync', 'results'],
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return []
+  }
+}
+
+/**
  * Fetch market data for a sport from backend
  */
 async function fetchSportMarket(sport: string, status: string, limit: number = 30) {
-  // Backend only has /predict-multisport/available for upcoming fixtures
-  // Finished data must come from DB — no backend endpoint for it
+  // Finished data now comes from /predict-multisport/results endpoint
   if (status === 'finished') {
     return { matches: [], sport, total_count: 0 }
   }
@@ -175,10 +225,11 @@ export async function POST(request: NextRequest) {
       const sportResult = { synced: 0, predicted: 0, skipped: 0, errors: 0 }
 
       try {
-        // Fetch upcoming and finished matches
-        const [upcomingData, finishedData] = await Promise.allSettled([
+        // Fetch upcoming matches and finished results
+        const daysLookback = sport.includes('nhl') ? 30 : sport.includes('ncaab') ? 14 : 7
+        const [upcomingData, resultsData] = await Promise.allSettled([
           fetchSportMarket(sport, 'upcoming', 30),
-          fetchSportMarket(sport, 'finished', 20),
+          fetchSportResults(sport, daysLookback, 25),
         ])
 
         const allMatches: { match: any; status: string }[] = []
@@ -188,10 +239,49 @@ export async function POST(request: NextRequest) {
             allMatches.push({ match: m, status: 'upcoming' })
           }
         }
-        if (finishedData.status === 'fulfilled' && finishedData.value?.matches) {
-          for (const m of finishedData.value.matches) {
-            allMatches.push({ match: m, status: 'finished' })
+
+        // Process finished results — upsert directly since they have different shape
+        let resultsStored = 0
+        if (resultsData.status === 'fulfilled' && Array.isArray(resultsData.value)) {
+          for (const result of resultsData.value) {
+            if (!result.eventId) continue
+            try {
+              await prisma.multisportMatch.upsert({
+                where: { eventId_sport: { eventId: result.eventId, sport } },
+                update: {
+                  status: 'finished',
+                  finalResult: result.finalResult,
+                  lastSyncedAt: new Date(),
+                  syncCount: { increment: 1 },
+                },
+                create: {
+                  eventId: result.eventId,
+                  sport,
+                  status: 'finished',
+                  homeTeam: result.homeTeam || 'Unknown',
+                  awayTeam: result.awayTeam || 'Unknown',
+                  league: sport,
+                  commenceTime: result.commenceTime ? new Date(result.commenceTime) : new Date(),
+                  finalResult: result.finalResult,
+                  model: result.model,
+                  odds: result.odds,
+                  lastSyncedAt: new Date(),
+                },
+              })
+              resultsStored++
+            } catch (err) {
+              logger.warn(`[Multisport Sync] Failed to store result for ${result.eventId}`, {
+                tags: ['multisport', 'sync', 'results'],
+                error: err instanceof Error ? err.message : String(err),
+              })
+            }
           }
+          if (resultsStored > 0) {
+            logger.info(`[Multisport Sync] Stored ${resultsStored} finished results for ${sport}`, {
+              tags: ['multisport', 'sync', 'results'],
+            })
+          }
+          sportResult.synced += resultsStored
         }
 
         if (allMatches.length === 0) {

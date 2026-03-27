@@ -81,6 +81,35 @@ export function validatePhoneNumber(phone: string): {
 }
 
 /**
+ * Check if input looks like a multisport hex event ID (not a numeric soccer match ID).
+ * Multisport event IDs are hex hashes like "c61d2594de00eb4d12ba96127dc437e5".
+ */
+export function isMultisportEventId(input: string): boolean {
+  if (!input || typeof input !== 'string') return false
+  const trimmed = input.trim()
+  // Hex string, 16-64 chars, must contain at least one letter (to distinguish from pure numbers)
+  return /^[a-f0-9]{16,64}$/i.test(trimmed) && /[a-f]/i.test(trimmed)
+}
+
+/**
+ * Validate a multisport event ID format.
+ */
+export function validateMultisportEventId(eventId: string): {
+  valid: boolean
+  error?: string
+  normalized?: string
+} {
+  if (!eventId || typeof eventId !== 'string') {
+    return { valid: false, error: 'Event ID is required' }
+  }
+  const trimmed = eventId.trim().toLowerCase()
+  if (!isMultisportEventId(trimmed)) {
+    return { valid: false, error: 'Event ID must be a 16-64 character hex string' }
+  }
+  return { valid: true, normalized: trimmed }
+}
+
+/**
  * Sanitize user input text
  * @param text - Text to sanitize
  * @returns Sanitized text

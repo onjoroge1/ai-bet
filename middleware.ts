@@ -48,6 +48,8 @@ const cronEndpoints = [
   '/api/admin/social/twitter/post-scheduled',
   '/api/admin/settle-saved-bets',
   '/api/admin/clv/sync-scheduled',
+  '/api/admin/multisport/sync',
+  '/api/admin/predictions/refresh-progressive',
 ]
 
 // Paths that require admin role

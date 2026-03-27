@@ -59,8 +59,8 @@ interface Props {
 }
 
 /** Build a URL-friendly slug from team names + event ID suffix for uniqueness */
-function buildMatchSlug(home: string, away: string, eventId: string): string {
-  const slugify = (s: string) => (s || 'team').toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+function buildMatchSlug(home: string | undefined, away: string | undefined, eventId: string | undefined): string {
+  const slugify = (s: string | undefined) => (s || 'team').toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
   const suffix = (eventId || 'unknown').slice(0, 8)
   return `${slugify(home)}-vs-${slugify(away)}-${suffix}`
 }
@@ -72,8 +72,9 @@ export function SportMatchCard({ match, sportKey, href }: Props) {
   const model = match.model?.predictions
   const result = match.final_result
 
-  const homeName = match.home?.name || "Home"
-  const awayName = match.away?.name || "Away"
+  // Handle both object ({ name: "Team" }) and string ("Team") formats from DB/API
+  const homeName = typeof match.home === 'string' ? match.home : match.home?.name || match.homeTeam || "Home"
+  const awayName = typeof match.away === 'string' ? match.away : match.away?.name || match.awayTeam || "Away"
   const confidenceScore = model ? Math.round((model.confidence || 0) * 100) : 0
   const pickTeam = model?.pick === "H" || model?.pick === "home" ? homeName : awayName
 

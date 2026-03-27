@@ -1820,6 +1820,13 @@ model ParlayConsensus {
   latestKickoff      DateTime? // Nullable to handle legacy data
   kickoffWindow      String? // "today", "tomorrow", "this_week"
   status             String   @default("active") // "active", "expired", "settled"
+
+  // Premium scoring (star system)
+  premiumScore       Decimal?  // 0-100 composite premium quality metric
+  premiumTier        String?   // "5-star", "4-star", "3-star", "2-star", "1-star"
+  premiumReasons     Json?     // ["model_agreement", "home_bias", "strong_league", ...]
+  avgLegPremiumScore Decimal?  // Average premium score across all legs
+
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
   syncedAt           DateTime @default(now())
@@ -1850,6 +1857,10 @@ model ParlayLeg {
   decimalOdds Decimal
   edge        Decimal
   legOrder    Int // Order in parlay (1, 2, 3...)
+
+  // Premium scoring per leg
+  premiumScore Decimal? // 0-100 individual leg premium score
+  premiumTier  String?  // "5-star", "4-star", etc.
 
   parlay            ParlayConsensus @relation(fields: [parlayId], references: [id], onDelete: Cascade)
   additionalMarket  AdditionalMarketData? @relation(fields: [additionalMarketId], references: [id], onDelete: SetNull)

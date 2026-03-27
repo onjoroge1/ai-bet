@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
+import { scoreAllActiveParlays } from '@/lib/parlays/premium-parlay-scorer'
 
 /**
  * GET/POST /api/admin/parlays/sync-backend-scheduled - Cron job endpoint for syncing parlays from backend APIs
@@ -89,9 +90,31 @@ async function handleRequest(request: NextRequest) {
       data: result
     })
 
+    // Score newly synced parlays that don't have premium scores yet
+    let premiumScored = 0
+    let premiumErrors = 0
+    try {
+      const premiumResult = await scoreAllActiveParlays()
+      premiumScored = premiumResult.scored
+      premiumErrors = premiumResult.errors
+      if (premiumScored > 0) {
+        logger.info(`🕐 CRON: Scored ${premiumScored} parlays with premium system`, {
+          tags: ['api', 'admin', 'parlays', 'cron', 'premium'],
+          data: premiumResult
+        })
+      }
+    } catch (premiumError) {
+      logger.warn('🕐 CRON: Premium scoring failed (non-fatal)', {
+        tags: ['api', 'admin', 'parlays', 'cron', 'premium'],
+        error: premiumError instanceof Error ? premiumError.message : String(premiumError),
+      })
+    }
+
     return NextResponse.json({
       success: true,
       message: `Synced ${result.totals?.synced || 0} parlays from backend APIs (${result.totals?.errors || 0} errors)`,
+      premiumScored,
+      premiumErrors,
       ...result
     })
   } catch (error) {

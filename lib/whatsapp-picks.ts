@@ -682,6 +682,8 @@ export function formatPicksList(picks: WhatsAppPick[], limit: number = 10): stri
   lines.push("Reply HELP — How SnapBet works");
   lines.push("");
   lines.push("To get more matches visit 🌐 https://www.snapbet.bet");
+  lines.push("");
+  lines.push("🏀 More sports? Send NBA, NHL, or NCAAB");
 
   return lines.join("\n");
 }

@@ -8,7 +8,14 @@ import {
 } from "@/lib/whatsapp-picks";
 import { formatPickDeliveryMessage, getOrCreateWhatsAppUser, createWhatsAppVIPSubscriptionSession } from "@/lib/whatsapp-payment";
 import { checkWhatsAppRateLimit } from "@/lib/whatsapp-rate-limit";
-import { validateMatchId, sanitizeText } from "@/lib/whatsapp-validation";
+import { validateMatchId, sanitizeText, isMultisportEventId } from "@/lib/whatsapp-validation";
+import {
+  getMultisportPicks,
+  getMultisportPickByEventId,
+  formatMultisportPicksList,
+  formatMultisportVIPAnalysis,
+  SPORT_CONFIG,
+} from "@/lib/whatsapp-multisport-picks";
 import { verifyWhatsAppWebhookSignature } from "@/lib/whatsapp-webhook-verification";
 import { hasWhatsAppPremiumAccess, getWhatsAppVIPStatus } from "@/lib/whatsapp-premium";
 import { getMainMenuMessage, getHelpMessage, getWelcomeMessage } from "@/lib/whatsapp-messages";
@@ -262,6 +269,50 @@ async function handleIncomingText(waId: string, text: string) {
       await sendFreeTierOptions(normalizedWaId);
       return;
     }
+
+    // ── MULTISPORT COMMANDS ──────────────────────────────────────────────
+
+    // VIP sport commands (check more specific first)
+    if (lower === "nba vip" || lower === "nba premium") {
+      await sendMultisportVIPPicks(normalizedWaId, "nba");
+      return;
+    }
+    if (lower === "nhl vip" || lower === "nhl premium") {
+      await sendMultisportVIPPicks(normalizedWaId, "nhl");
+      return;
+    }
+    if (lower === "ncaab vip" || lower === "ncaab premium") {
+      await sendMultisportVIPPicks(normalizedWaId, "ncaab");
+      return;
+    }
+
+    // Free sport commands
+    if (lower === "nba") {
+      await sendMultisportFreePicks(normalizedWaId, "nba");
+      return;
+    }
+    if (lower === "nhl") {
+      await sendMultisportFreePicks(normalizedWaId, "nhl");
+      return;
+    }
+    if (lower === "ncaab") {
+      await sendMultisportFreePicks(normalizedWaId, "ncaab");
+      return;
+    }
+
+    // Scorer predictions
+    if (lower === "5" || lower === "scorers" || lower === "players" || lower === "goalscorers") {
+      await sendScorerPicks(normalizedWaId);
+      return;
+    }
+
+    // Sports menu
+    if (lower === "sports" || lower === "multisport") {
+      await sendSportsMenu(normalizedWaId);
+      return;
+    }
+
+    // ── END MULTISPORT COMMANDS ─────────────────────────────────────────
 
     // HOW: How SnapBet AI predictions work
     if (lower === "how") {
@@ -594,6 +645,12 @@ async function handleIncomingText(waId: string, text: string) {
     if (matchIdValidation.valid && matchIdValidation.normalized) {
       // It's a valid numeric matchId, treat as purchase request
       await handleBuyByMatchId(normalizedWaId, matchIdValidation.normalized);
+      return;
+    }
+
+    // Check if input is a hex event ID (multisport match)
+    if (isMultisportEventId(raw.trim())) {
+      await handleMultisportEventLookup(normalizedWaId, raw.trim().toLowerCase());
       return;
     }
 
@@ -3462,5 +3519,232 @@ async function sendVIPStatus(to: string) {
   statusMessage += "Type: BUY";
 
   await sendWhatsAppText(to, statusMessage);
+}
+
+// ─── MULTISPORT HANDLER FUNCTIONS ─────────────────────────────────────────
+
+/**
+ * Send free multisport picks (3-4 games) with VIP upsell.
+ */
+async function sendMultisportFreePicks(to: string, sportShort: string) {
+  const config = SPORT_CONFIG[sportShort];
+  if (!config) {
+    await sendWhatsAppText(to, "Unknown sport. Send SPORTS to see available options.");
+    return;
+  }
+
+  logger.info(`[WhatsApp] Sending ${config.name} free picks`, { waId: to, sport: sportShort });
+
+  try {
+    const picks = await getMultisportPicks(config.key, 20);
+    const message = formatMultisportPicksList(picks, sportShort, 4, false);
+    await sendWhatsAppText(to, message);
+  } catch (error) {
+    logger.error(`[WhatsApp] Error sending ${config.name} picks`, { waId: to, error });
+    await sendWhatsAppText(to, `Sorry, couldn't fetch ${config.name} picks right now. Try again later or send PICKS for soccer.`);
+  }
+}
+
+/**
+ * Send premium multisport picks (all games with full analysis). VIP-gated.
+ */
+async function sendMultisportVIPPicks(to: string, sportShort: string) {
+  const config = SPORT_CONFIG[sportShort];
+  if (!config) {
+    await sendWhatsAppText(to, "Unknown sport. Send SPORTS to see available options.");
+    return;
+  }
+
+  // Premium gate
+  const premiumAccess = await hasWhatsAppPremiumAccess(to);
+  if (!premiumAccess?.hasAccess) {
+    await sendWhatsAppText(
+      to,
+      `🔒 **VIP ACCESS REQUIRED**\n\n` +
+      `${config.emoji} ${config.name} VIP picks include:\n` +
+      `• All ${config.name} games with full analysis\n` +
+      `• Team form, season records\n` +
+      `• Model confidence & edge vs market\n` +
+      `• Spread & O/U breakdowns\n\n` +
+      `Send BUY to upgrade to VIP!`
+    );
+    return;
+  }
+
+  logger.info(`[WhatsApp] Sending ${config.name} VIP picks`, { waId: to, sport: sportShort });
+
+  try {
+    const picks = await getMultisportPicks(config.key, 30);
+    const message = formatMultisportPicksList(picks, sportShort, 10, true);
+    await sendWhatsAppText(to, message);
+  } catch (error) {
+    logger.error(`[WhatsApp] Error sending ${config.name} VIP picks`, { waId: to, error });
+    await sendWhatsAppText(to, `Sorry, couldn't fetch ${config.name} VIP picks right now. Try again later.`);
+  }
+}
+
+/**
+ * Send available sports menu with upcoming game counts.
+ */
+async function sendSportsMenu(to: string) {
+  logger.info("[WhatsApp] Sending sports menu", { waId: to });
+
+  try {
+    // Fetch counts for each sport
+    const counts: Record<string, number> = {};
+    for (const [short, config] of Object.entries(SPORT_CONFIG)) {
+      try {
+        const count = await prisma.multisportMatch.count({
+          where: {
+            sport: config.key,
+            status: "upcoming",
+            commenceTime: { gte: new Date() },
+          },
+        });
+        counts[short] = count;
+      } catch {
+        counts[short] = 0;
+      }
+    }
+
+    const lines: string[] = [];
+    lines.push("🏆 SNAPBET SPORTS");
+    lines.push("snapbet.ai/sports");
+    lines.push("─".repeat(28));
+    lines.push("");
+    lines.push("⚽ Soccer – Send PICKS or TODAY");
+    lines.push("");
+
+    for (const [short, config] of Object.entries(SPORT_CONFIG)) {
+      const count = counts[short] || 0;
+      const countText = count > 0 ? ` (${count} upcoming)` : " (check back soon)";
+      lines.push(`${config.emoji} ${config.name} – Send ${config.name}${countText}`);
+      lines.push("");
+    }
+
+    lines.push("─".repeat(28));
+    lines.push("");
+    lines.push("💎 Premium analysis: Send {SPORT} VIP");
+    lines.push("   e.g. NBA VIP, NHL VIP");
+    lines.push("");
+    lines.push("Send HELP for all commands");
+
+    await sendWhatsAppText(to, lines.join("\n"));
+  } catch (error) {
+    logger.error("[WhatsApp] Error sending sports menu", { waId: to, error });
+    await sendWhatsAppText(to, "Sorry, something went wrong. Send HELP for commands.");
+  }
+}
+
+/**
+ * Handle a hex event ID lookup for multisport matches.
+ */
+async function handleMultisportEventLookup(to: string, eventId: string) {
+  logger.info("[WhatsApp] Multisport event lookup", { waId: to, eventId });
+
+  try {
+    const pick = await getMultisportPickByEventId(eventId);
+
+    if (!pick) {
+      await sendWhatsAppText(to, "Match not found. Send SPORTS to see available sports and picks.");
+      return;
+    }
+
+    // Check premium for full analysis
+    const premiumAccess = await hasWhatsAppPremiumAccess(to);
+
+    if (premiumAccess?.hasAccess) {
+      // VIP: fetch full prediction
+      try {
+        const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+        const predRes = await fetch(`${baseUrl}/api/multisport/predict`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sport_key: pick.sportKey, event_id: eventId }),
+        });
+        const predData = predRes.ok ? await predRes.json() : null;
+        const message = formatMultisportVIPAnalysis(pick, predData);
+        await sendWhatsAppText(to, message);
+      } catch {
+        // Fallback to basic pick
+        const config = Object.values(SPORT_CONFIG).find(c => c.key === pick.sportKey);
+        const { formatMultisportPick } = await import("@/lib/whatsapp-multisport-picks");
+        await sendWhatsAppText(to, formatMultisportPick(pick));
+      }
+    } else {
+      // Free: basic pick + upsell
+      const { formatMultisportPick } = await import("@/lib/whatsapp-multisport-picks");
+      const sportShort = Object.entries(SPORT_CONFIG).find(([, v]) => v.key === pick.sportKey)?.[0] || "nba";
+      const config = SPORT_CONFIG[sportShort];
+      const message = formatMultisportPick(pick) +
+        `\n\n⭐ Want full analysis? Send ${config.name} VIP` +
+        `\n💎 Upgrade: Send BUY`;
+      await sendWhatsAppText(to, message);
+    }
+  } catch (error) {
+    logger.error("[WhatsApp] Error in multisport event lookup", { waId: to, eventId, error });
+    await sendWhatsAppText(to, "Sorry, couldn't fetch match details. Try again later.");
+  }
+}
+
+// ─── PLAYER SCORER PREDICTIONS ────────────────────────────────────────────
+
+/**
+ * Send top scorer predictions.
+ */
+async function sendScorerPicks(to: string) {
+  logger.info("[WhatsApp] Sending scorer picks", { waId: to });
+
+  try {
+    const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const res = await fetch(`${baseUrl}/api/player-predictions/top-picks?limit=5`, {
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      await sendWhatsAppText(to, "Scorer predictions aren't available right now. Try again later or send PICKS for match predictions.");
+      return;
+    }
+
+    const data = await res.json();
+    const picks = data.predictions || data.picks || [];
+
+    if (picks.length === 0) {
+      await sendWhatsAppText(to, "No scorer predictions available right now. Check back closer to match time!\n\nSend PICKS for match predictions.");
+      return;
+    }
+
+    const lines: string[] = [];
+    lines.push("⚽🎯 TOP SCORER PREDICTIONS");
+    lines.push("AI-powered goalscorer picks");
+    lines.push("─".repeat(28));
+
+    for (let i = 0; i < Math.min(picks.length, 5); i++) {
+      const p = picks[i];
+      const prob = Math.round((p.scored_probability || 0) * 100);
+      lines.push("");
+      lines.push(`${i + 1}) ${p.player_name}`);
+      lines.push(`   ${p.team} · ${p.position}`);
+      lines.push(`   ⚽ Score: ${prob}%${p.involved_probability ? ` | Involved: ${Math.round(p.involved_probability * 100)}%` : ""}`);
+      if (p.form?.total_goals) {
+        lines.push(`   📊 ${p.form.total_goals} goals | ${p.form.avg_shots?.toFixed(1) || "?"} shots/g | ⭐ ${p.form.avg_rating?.toFixed(1) || "?"}`);
+      }
+      if (p.market_odds) {
+        lines.push(`   💰 Odds: ${p.market_odds.toFixed(2)}`);
+      }
+    }
+
+    lines.push("");
+    lines.push("─".repeat(28));
+    lines.push("🤖 Powered by LightGBM ML (AUC 0.72)");
+    lines.push("");
+    lines.push("Send PICKS for match predictions");
+    lines.push("Send NBA, NHL, or NCAAB for other sports");
+
+    await sendWhatsAppText(to, lines.join("\n"));
+  } catch (error) {
+    logger.error("[WhatsApp] Error sending scorer picks", { waId: to, error });
+    await sendWhatsAppText(to, "Sorry, couldn't fetch scorer predictions. Try again later.");
+  }
 }
 

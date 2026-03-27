@@ -28,6 +28,7 @@ import { FinishedMatchStats } from "@/components/match/FinishedMatchStats"
 import { BettingIntelligence } from "@/components/match/BettingIntelligence"
 import { edgeEV } from "@/lib/odds"
 import { BetSlip } from "./BetSlip"
+import { PredictedScorersSection } from "@/components/players/PredictedScorersSection"
 import type { BetSlipItem } from "./BetSlip"
 import type { EnhancedMatchData } from "@/types/live-match"
 import { ConfidenceRing, getConfidenceColor, formatPrediction, SkeletonCard } from "@/components/match/shared"
@@ -2211,6 +2212,15 @@ export default function MatchDetailPage() {
                     )}
                   </div>
                 </Card>
+              )}
+
+              {/* ── Predicted Scorers ────────────────────────── */}
+              {matchId && (
+                <PredictedScorersSection
+                  matchId={matchId}
+                  homeTeam={(matchData as any)?.home?.name || (matchData as any)?.homeTeam}
+                  awayTeam={(matchData as any)?.away?.name || (matchData as any)?.awayTeam}
+                />
               )}
 
               {/* ── Advanced Markets ────────────────────────── */}

@@ -7,6 +7,7 @@ import { SoccerMatchGrid } from "@/components/multisport/SoccerMatchGrid"
 import { SkeletonCard } from "@/components/match/shared"
 import { Badge } from "@/components/ui/badge"
 import { RefreshCw, Calendar, Trophy, AlertTriangle } from "lucide-react"
+import { HotScorerPicks } from "@/components/players/HotScorerPicks"
 
 interface MatchData {
   event_id: string
@@ -159,6 +160,11 @@ export default function SportsPage() {
               Try again
             </button>
           </div>
+        )}
+
+        {/* Hot Scorer Picks widget — show for soccer upcoming only */}
+        {sport === "soccer" && status === "upcoming" && (
+          <HotScorerPicks limit={5} className="mb-6" />
         )}
 
         {/* Soccer uses the same card grid as other sports */}

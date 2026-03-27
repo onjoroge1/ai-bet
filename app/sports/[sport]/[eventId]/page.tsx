@@ -84,9 +84,16 @@ export default function SportPredictionPage() {
         let eventId = rawSlug
         if (rawSlug.includes("-vs-")) {
           const prefix = extractEventId(rawSlug)
-          const marketRes = await fetch(`/api/multisport/market?sport=${sport}&status=upcoming&limit=50`)
-          const marketData = await marketRes.json()
-          const found = marketData?.matches?.find((m: any) => m.event_id?.startsWith(prefix))
+          // Search upcoming and finished matches for the full event ID
+          const [upRes, finRes] = await Promise.allSettled([
+            fetch(`/api/multisport/market?sport=${sport}&status=upcoming&limit=50`).then(r => r.json()),
+            fetch(`/api/multisport/market?sport=${sport}&status=finished&limit=50`).then(r => r.json()),
+          ])
+          const allMatches = [
+            ...(upRes.status === 'fulfilled' ? upRes.value?.matches || [] : []),
+            ...(finRes.status === 'fulfilled' ? finRes.value?.matches || [] : []),
+          ]
+          const found = allMatches.find((m: any) => m.event_id?.startsWith(prefix))
           if (found) eventId = found.event_id
           else eventId = prefix
         }

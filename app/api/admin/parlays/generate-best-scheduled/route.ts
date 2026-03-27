@@ -18,6 +18,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { generateBestParlays, GenerationConfig } from '@/lib/parlays/best-parlay-generator'
+import { scoreAndUpdateParlay } from '@/lib/parlays/premium-parlay-scorer'
 import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { randomUUID } from 'crypto'
@@ -151,6 +152,23 @@ async function saveParlayToDatabase(
       })
     }
 
+    // ── Score premium quality ────────────────────────────────────────────
+    try {
+      const premiumResult = await scoreAndUpdateParlay(parlayConsensus.id)
+      if (premiumResult) {
+        logger.info(`Parlay premium scored: ${premiumResult.tier} (${premiumResult.score})`, {
+          tags: ['parlays', 'generator', 'premium'],
+          data: { parlayId: parlayConsensus.parlayId, score: premiumResult.score, tier: premiumResult.tier },
+        })
+      }
+    } catch (premiumError) {
+      // Non-fatal — parlay is still saved
+      logger.warn('Failed to score parlay premium', {
+        tags: ['parlays', 'generator', 'premium'],
+        error: premiumError instanceof Error ? premiumError.message : String(premiumError),
+      })
+    }
+
     return { created: true, parlayId: parlayConsensus.parlayId }
   } catch (error) {
     logger.error('Error saving parlay to database', {
@@ -202,6 +220,15 @@ async function handleRequest(req: NextRequest) {
     if (authHeader !== `Bearer ${cronSecret}`) {
       logger.warn('Unauthorized cron request', { tags: ['parlays', 'cron'] })
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // ── Check for premium backfill action ──────────────────────────────
+    const { searchParams } = new URL(req.url)
+    if (searchParams.get('action') === 'backfill_premium') {
+      const { scoreAllActiveParlays } = await import('@/lib/parlays/premium-parlay-scorer')
+      const result = await scoreAllActiveParlays()
+      logger.info('Premium backfill complete', { tags: ['parlays', 'premium'], data: result })
+      return NextResponse.json({ success: true, action: 'backfill_premium', ...result })
     }
 
     // ── Parse optional config ──────────────────────────────────────────

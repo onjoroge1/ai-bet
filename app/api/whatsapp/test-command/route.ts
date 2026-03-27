@@ -9,7 +9,14 @@ import {
 import { formatPickDeliveryMessage } from "@/lib/whatsapp-payment";
 import { getMainMenuMessage, getHelpMessage, getWelcomeMessage } from "@/lib/whatsapp-messages";
 import { hasWhatsAppPremiumAccess } from "@/lib/whatsapp-premium";
-import { validateMatchId } from "@/lib/whatsapp-validation";
+import { validateMatchId, isMultisportEventId } from "@/lib/whatsapp-validation";
+import {
+  getMultisportPicks,
+  getMultisportPickByEventId,
+  formatMultisportPicksList,
+  formatMultisportPick,
+  SPORT_CONFIG,
+} from "@/lib/whatsapp-multisport-picks";
 import {
   getBTTSPicksMessage,
   getBTTSForMatchMessage,
@@ -197,8 +204,47 @@ export async function POST(req: NextRequest) {
           "Send a Match ID to see stats for that match!",
         ].join("\n");
       }
+      // MULTISPORT COMMANDS
+
+      // VIP sport commands (check more specific first)
+      else if (lowerCommand === "nba vip" || lowerCommand === "nhl vip" || lowerCommand === "ncaab vip") {
+        const sport = lowerCommand.split(" ")[0];
+        commandType = `${sport}_vip`;
+        const config = SPORT_CONFIG[sport];
+        if (!config) {
+          messageToSend = "Unknown sport. Send SPORTS to see options.";
+        } else {
+          const premiumAccess = await hasWhatsAppPremiumAccess(formattedPhone);
+          if (!premiumAccess?.hasAccess) {
+            messageToSend = `🔒 VIP ACCESS REQUIRED\n\n${config.emoji} ${config.name} VIP picks include:\n• All games with full analysis\n• Team form, season records\n• Model confidence & edge\n\nSend BUY to upgrade!`;
+          } else {
+            const picks = await getMultisportPicks(config.key, 30);
+            messageToSend = formatMultisportPicksList(picks, sport, 10, true);
+          }
+        }
+      }
+      // Free sport commands
+      else if (["nba", "nhl", "ncaab"].includes(lowerCommand)) {
+        commandType = lowerCommand;
+        const config = SPORT_CONFIG[lowerCommand];
+        const picks = await getMultisportPicks(config.key, 20);
+        messageToSend = formatMultisportPicksList(picks, lowerCommand, 4, false);
+      }
+      // Sports menu
+      else if (lowerCommand === "sports" || lowerCommand === "multisport") {
+        commandType = "sports_menu";
+        const lines: string[] = ["🏆 SNAPBET SPORTS", "snapbet.ai/sports", "─".repeat(28), "",
+          "⚽ Soccer – Send PICKS or TODAY", ""];
+        for (const [, config] of Object.entries(SPORT_CONFIG)) {
+          lines.push(`${config.emoji} ${config.name} – Send ${config.name}`);
+          lines.push("");
+        }
+        lines.push("─".repeat(28), "", "💎 Premium: Send {SPORT} VIP", "   e.g. NBA VIP, NHL VIP");
+        messageToSend = lines.join("\n");
+      }
+
       // PREMIUM COMMANDS
-      
+
       // Command "VIP" - VIP pricing
       else if (lowerCommand === "vip") {
         commandType = "vip";
@@ -738,6 +784,16 @@ export async function POST(req: NextRequest) {
             booksCount: booksCount,
             predictionData: predictionData,
           });
+        }
+      }
+      // Hex event ID (multisport match)
+      else if (isMultisportEventId(command.trim())) {
+        commandType = "multisport_event";
+        const pick = await getMultisportPickByEventId(command.trim().toLowerCase());
+        if (pick) {
+          messageToSend = formatMultisportPick(pick);
+        } else {
+          messageToSend = "Match not found. Send SPORTS to see available sports.";
         }
       }
       // Unknown command - show menu
