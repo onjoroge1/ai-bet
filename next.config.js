@@ -291,6 +291,22 @@ const nextConfig = {
 
     return config
   },
+  // Redirects for consolidated/removed routes
+  async redirects() {
+    return [
+      // Dashboard merges
+      { source: '/dashboard/daily-tips', destination: '/dashboard/snapbet-picks', permanent: true },
+      { source: '/dashboard/vip', destination: '/dashboard/snapbet-picks', permanent: true },
+      { source: '/dashboard/my-tips', destination: '/dashboard/my-bets', permanent: true },
+      { source: '/dashboard/saved-bets', destination: '/dashboard/my-bets', permanent: true },
+      { source: '/dashboard/analytics', destination: '/dashboard/my-bets', permanent: true },
+      // Public route cleanup
+      { source: '/daily-tips', destination: '/dashboard/snapbet-picks', permanent: true },
+      { source: '/tips-history', destination: '/matches', permanent: true },
+      { source: '/live-predictions', destination: '/matches', permanent: true },
+      { source: '/sales', destination: '/pricing', permanent: true },
+    ]
+  },
 }
 
 module.exports = nextConfig
