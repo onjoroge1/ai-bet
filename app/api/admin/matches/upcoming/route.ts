@@ -46,9 +46,10 @@ export async function GET(request: NextRequest) {
             isActive: true
           },
           select: {
-            id: true
+            id: true,
+            slug: true,
           },
-          take: 1 // Just need to know if exists
+          take: 1 // Just need to know if exists + get slug for link
         },
         socialMediaPosts: {
           where: {
@@ -192,6 +193,7 @@ export async function GET(request: NextRequest) {
         // Additional info
         quickPurchaseCount: allQuickPurchases.length,
         blogCount: match.blogPosts.length,
+        blogSlug: hasBlog ? match.blogPosts[0]?.slug : null,
         socialMediaPostCount: match.socialMediaPosts.length
       }
     })

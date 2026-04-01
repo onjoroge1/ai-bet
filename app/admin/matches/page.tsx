@@ -1284,7 +1284,7 @@ export default function AdminMatchesPage() {
                                 )}
                                 {match.hasBlog && (
                                   <DropdownMenuItem
-                                    onClick={() => window.open(`/blog/${match.matchId}`, '_blank')}
+                                    onClick={() => window.open(`/blog/${match.blogSlug || match.matchId}`, '_blank')}
                                   >
                                     <Eye className="w-4 h-4 mr-2" />
                                     View Blog
