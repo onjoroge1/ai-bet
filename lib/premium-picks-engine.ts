@@ -20,6 +20,7 @@
  */
 
 import prisma from '@/lib/db'
+import { Prisma } from '@prisma/client'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -107,17 +108,22 @@ async function getSoccerPicks(): Promise<SnapBetPick[]> {
       where: {
         status: 'UPCOMING',
         kickoffDate: { gte: new Date() },
-        v1Model: { not: null },
-      },
-      include: {
-        quickPurchases: {
-          where: { predictionData: { not: null }, isPredictionActive: true },
-          take: 1,
-        },
+        v1Model: { not: Prisma.JsonNull },
       },
       orderBy: { kickoffDate: 'asc' },
       take: 100,
     })
+
+    // Batch fetch QuickPurchases for all matches
+    const matchIds = matches.map(m => m.matchId)
+    const quickPurchases = await prisma.quickPurchase.findMany({
+      where: {
+        matchId: { in: matchIds },
+        predictionData: { not: Prisma.JsonNull },
+        isPredictionActive: true,
+      },
+    })
+    const qpByMatchId = new Map(quickPurchases.map(qp => [qp.matchId, qp]))
 
     for (const m of matches) {
       const v1 = m.v1Model as any
@@ -129,7 +135,7 @@ async function getSoccerPicks(): Promise<SnapBetPick[]> {
       const reasons: string[] = []
 
       // Get V3 data from QuickPurchase
-      const qp = m.quickPurchases?.[0]
+      const qp = qpByMatchId.get(m.matchId)
       const pd = qp?.predictionData as any
       const v3preds = pd?.predictions || {}
       const v3hw = v3preds.home_win || 0
