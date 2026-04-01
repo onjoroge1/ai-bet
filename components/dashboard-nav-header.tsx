@@ -22,7 +22,7 @@ export function DashboardNavHeader() {
     { href: "/dashboard/matches", label: "Matches", icon: Target, category: "core" },
     { href: "/dashboard/parlays", label: "Parlays", icon: Layers, category: "core", badge: "AI" },
     { href: "/dashboard/my-bets", label: "My Bets", icon: History, category: "core" },
-    { href: "/dashboard/clv", label: "CLV Tracker", icon: Activity, category: "core", badge: "Live" },
+    { href: "/dashboard/edge-finder", label: "Edge Finder", icon: Activity, category: "core", badge: "Pro" },
     { href: "/dashboard", label: "Home", icon: Home, category: "core" },
 
     // Account (shown in profile section)

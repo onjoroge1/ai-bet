@@ -300,6 +300,9 @@ const nextConfig = {
       { source: '/dashboard/my-tips', destination: '/dashboard/my-bets', permanent: true },
       { source: '/dashboard/saved-bets', destination: '/dashboard/my-bets', permanent: true },
       { source: '/dashboard/analytics', destination: '/dashboard/my-bets', permanent: true },
+      // CLV → Edge Finder
+      { source: '/dashboard/clv', destination: '/dashboard/edge-finder?tab=ev', permanent: true },
+      { source: '/dashboard/tools', destination: '/dashboard/edge-finder?tab=lines', permanent: true },
       // Public route cleanup
       { source: '/daily-tips', destination: '/dashboard/snapbet-picks', permanent: true },
       { source: '/tips-history', destination: '/matches', permanent: true },
