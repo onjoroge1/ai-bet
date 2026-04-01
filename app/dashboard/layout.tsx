@@ -45,28 +45,27 @@ interface SidebarLink {
   premiumOnly?: boolean
 }
 
-/** Main sidebar links visible to all authenticated users */
+/** Main sidebar links — streamlined to 7 core items */
 const sidebarLinks: SidebarLink[] = [
-  { name: "Overview", href: "/dashboard", icon: LayoutDashboard },
+  { name: "SnapBet Picks", href: "/dashboard/snapbet-picks", icon: Crown, badge: "Premium", badgeVariant: "hot", premiumOnly: true },
   { name: "Matches", href: "/dashboard/matches", icon: Trophy },
   { name: "Parlays", href: "/dashboard/parlays", icon: Layers, badge: "AI", badgeVariant: "hot" },
-  { name: "My Tips", href: "/dashboard/my-tips", icon: Users },
   { name: "My Bets", href: "/dashboard/my-bets", icon: History },
-  { name: "Saved Bets", href: "/dashboard/saved-bets", icon: Bookmark },
-  { name: "Bet Tools", href: "/dashboard/tools", icon: Calculator },
   { name: "CLV Tracker", href: "/dashboard/clv", icon: Activity, badge: "Live", badgeVariant: "live", premiumOnly: true },
-  { name: "Daily Tips", href: "/dashboard/daily-tips", icon: Zap },
-  { name: "Rewards", href: "/dashboard/rewards", icon: Gift },
-  { name: "Referrals", href: "/dashboard/referrals", icon: Sparkles },
-  { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3, premiumOnly: true },
-  { name: "VIP Intel", href: "/dashboard/vip", icon: Crown, badge: "VIP", badgeVariant: "hot", premiumOnly: true },
+  { name: "Home", href: "/dashboard", icon: LayoutDashboard },
 ]
 
-/** Bottom sidebar links */
-const bottomLinks: SidebarLink[] = [
-  { name: "Support", href: "/dashboard/support", icon: HeadphonesIcon },
+/** Profile dropdown links (moved from sidebar) */
+const profileLinks: SidebarLink[] = [
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
+  { name: "Rewards", href: "/dashboard/rewards", icon: Gift },
+  { name: "Referrals", href: "/dashboard/referrals", icon: Sparkles },
+  { name: "Support", href: "/dashboard/support", icon: HeadphonesIcon },
+  { name: "Notifications", href: "/dashboard/notifications", icon: Bell },
 ]
+
+/** Bottom sidebar links — just profile access */
+const bottomLinks: SidebarLink[] = []
 
 /**
  * DashboardLayout - Sidebar Navigation with Hybrid Authentication
@@ -349,6 +348,30 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               </div>
             </div>
           )}
+
+          {/* Profile & Account links */}
+          <div className="px-3 py-2 border-t border-slate-800">
+            <p className="text-[10px] uppercase tracking-wider text-slate-600 px-3 mb-1">Account</p>
+            {profileLinks.map((link) => {
+              const Icon = link.icon
+              const isActive = pathname === link.href
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-1.5 rounded-lg text-xs transition-all",
+                    isActive
+                      ? "bg-slate-800 text-white"
+                      : "text-slate-500 hover:text-slate-300 hover:bg-slate-800/50"
+                  )}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {link.name}
+                </Link>
+              )
+            })}
+          </div>
 
           {/* User Info at bottom */}
           <div className="p-4 border-t border-slate-800">

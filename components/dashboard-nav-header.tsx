@@ -13,28 +13,19 @@ export function DashboardNavHeader() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const pathname = usePathname()
 
-  // Simplified navigation - grouped by category for better organization
+  // Streamlined navigation — 7 core items (down from 15)
   const navigationItems = [
-    // Core Dashboard
-    { href: "/dashboard", label: "Overview", icon: Home, category: "core" },
-    
-    // Premium Features
-    { href: "/dashboard/vip", label: "VIP Intelligence", icon: Crown, category: "premium", badge: "VIP" },
-    
-    // Predictions & Tips
-    { href: "/dashboard/matches", label: "Live Matches", icon: Target, category: "predictions" },
-    { href: "/dashboard/parlays", label: "Parlays", icon: Layers, category: "predictions" },
-    { href: "/dashboard/snapbet-picks", label: "SnapBet Picks", icon: Zap, category: "predictions", badge: "Premium" },
-    { href: "/dashboard/clv", label: "CLV Tracker", icon: Activity, category: "predictions", badge: "Live" },
-    
-    // User Content
-    { href: "/dashboard/my-tips", label: "My Tips", icon: Target, category: "user" },
-    { href: "/dashboard/my-bets", label: "My Bets", icon: History, category: "user" },
-    { href: "/dashboard/saved-bets", label: "Saved Bets", icon: BarChart3, category: "user" },
-    
-    // Account & Support
-    { href: "/dashboard/notifications", label: "Notifications", icon: Bell, category: "account" },
-    { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3, category: "account" },
+    // Premium flagship
+    { href: "/dashboard/snapbet-picks", label: "SnapBet Picks", icon: Crown, category: "core", badge: "Premium" },
+
+    // Core features
+    { href: "/dashboard/matches", label: "Matches", icon: Target, category: "core" },
+    { href: "/dashboard/parlays", label: "Parlays", icon: Layers, category: "core", badge: "AI" },
+    { href: "/dashboard/my-bets", label: "My Bets", icon: History, category: "core" },
+    { href: "/dashboard/clv", label: "CLV Tracker", icon: Activity, category: "core", badge: "Live" },
+    { href: "/dashboard", label: "Home", icon: Home, category: "core" },
+
+    // Account (shown in profile section)
     { href: "/dashboard/settings", label: "Settings", icon: Settings, category: "account" },
     { href: "/dashboard/support", label: "Support", icon: HeadphonesIcon, category: "account" },
   ]
