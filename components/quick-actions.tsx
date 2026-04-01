@@ -21,7 +21,7 @@ export function QuickActions() {
       textColor: "text-white",
       emoji: "⚡",
       hoverEffect: "hover:from-emerald-400 hover:to-cyan-400",
-      href: "/dashboard/daily-tips",
+      href: "/dashboard/snapbet-picks",
       isNew: true,
     },
     {

@@ -36,6 +36,7 @@ import { QuizSection } from "@/components/quiz-section"
 import { OddsPredictionTable } from "@/components/ui/odds-prediction-table"
 import { MarqueeTicker } from "@/components/marquee-ticker"
 import { MultisportMatchTable } from "@/components/multisport/MultisportMatchTable"
+import { SnapBetPicksSection } from "@/components/snapbet-picks/SnapBetPicksSection"
 import { SoccerMatchGrid } from "@/components/multisport/SoccerMatchGrid"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -554,6 +555,13 @@ export default function HomePage() {
 
       {/* ── Marquee Ticker ── */}
       <MarqueeTicker />
+
+      {/* ── SnapBet Picks (Premium Curated) ── */}
+      <section className="py-8 sm:py-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <SnapBetPicksSection limit={6} />
+        </div>
+      </section>
 
       {/* ── Sport Tabs + Matches ── */}
       <section className="py-12 sm:py-16">

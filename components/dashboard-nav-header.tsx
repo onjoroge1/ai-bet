@@ -24,7 +24,7 @@ export function DashboardNavHeader() {
     // Predictions & Tips
     { href: "/dashboard/matches", label: "Live Matches", icon: Target, category: "predictions" },
     { href: "/dashboard/parlays", label: "Parlays", icon: Layers, category: "predictions" },
-    { href: "/dashboard/daily-tips", label: "Daily Tips", icon: Zap, category: "predictions" },
+    { href: "/dashboard/snapbet-picks", label: "SnapBet Picks", icon: Zap, category: "predictions", badge: "Premium" },
     { href: "/dashboard/clv", label: "CLV Tracker", icon: Activity, category: "predictions", badge: "Live" },
     
     // User Content
