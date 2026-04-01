@@ -1,24 +1,37 @@
 import { NextResponse } from 'next/server'
-import { getPremiumStatus, hasPackageAccess } from '@/lib/premium-access'
+import { getPremiumStatus, hasPackageAccess, getUserTier } from '@/lib/premium-access'
 
 /**
- * GET /api/premium/check - Check premium access status
- * Includes both subscription and package access
- * Cached for 60 seconds so multiple simultaneous component mounts don't
- * each hit the database.
+ * GET /api/premium/check - Check premium access status + tier
+ * Includes subscription, package access, AND granular tier info.
+ * Cached for 60 seconds.
  */
 export async function GET() {
   try {
-    const status = await getPremiumStatus()
-    const packageAccess = await hasPackageAccess()
-    
+    const [status, packageAccess, tierInfo] = await Promise.all([
+      getPremiumStatus(),
+      hasPackageAccess(),
+      getUserTier(),
+    ])
+
     const response = NextResponse.json({
       ...status,
-      hasPackageAccess: packageAccess // Include package access flag
+      hasPackageAccess: packageAccess,
+      // Tier-based access (new)
+      tier: tierInfo.tier,          // "free" | "starter" | "pro" | "vip" | "admin"
+      tierPlan: tierInfo.plan,
+      tierExpiresAt: tierInfo.expiresAt,
+      // Feature flags for client-side gating
+      features: {
+        snapbet_picks: tierInfo.tier !== 'free',
+        all_sports: ['pro', 'vip', 'admin'].includes(tierInfo.tier),
+        parlays: ['pro', 'vip', 'admin'].includes(tierInfo.tier),
+        player_predictions: ['pro', 'vip', 'admin'].includes(tierInfo.tier),
+        clv_tracker: ['vip', 'admin'].includes(tierInfo.tier),
+        ai_parlay_builder: ['vip', 'admin'].includes(tierInfo.tier),
+        analytics: ['vip', 'admin'].includes(tierInfo.tier),
+      },
     })
-    // Cache the response for 60 s in the browser and 30 s in CDN edge cache.
-    // stale-while-revalidate lets the browser serve a cached response while
-    // it fetches a fresh one in the background.
     response.headers.set(
       'Cache-Control',
       'private, max-age=60, stale-while-revalidate=30'
@@ -26,12 +39,14 @@ export async function GET() {
     return response
   } catch (error) {
     return NextResponse.json(
-      { 
-        hasAccess: false, 
+      {
+        hasAccess: false,
         hasPackageAccess: false,
-        plan: null, 
-        expiresAt: null, 
+        plan: null,
+        expiresAt: null,
         isExpired: true,
+        tier: 'free',
+        features: {},
         error: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
