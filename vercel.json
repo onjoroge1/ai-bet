@@ -79,6 +79,10 @@
     {
       "path": "/api/admin/predictions/refresh-progressive",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/admin/multisport/blogs",
+      "schedule": "30 2 * * *"
     }
   ],
   "env": {
