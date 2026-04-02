@@ -330,8 +330,91 @@ export async function POST(request: Request) {
     const predictionData = await response.json();
     console.log(`[Predict API] Successfully fetched prediction data for match ${match_id}`, {
       hasData: !!predictionData,
-      keys: predictionData ? Object.keys(predictionData) : []
+      keys: predictionData ? Object.keys(predictionData) : [],
+      endpoint: usedEndpoint,
     });
+
+    // If we used /predict-v3 (lighter response), enrich with additional data
+    if (usedEndpoint === '/predict-v3' && !predictionData.analysis) {
+      try {
+        // Fetch betting intelligence for CLV/edge data
+        const biRes = await fetch(`${baseUrl}/betting-intelligence/${match_id}`, {
+          headers: { 'Authorization': `Bearer ${process.env.BACKEND_API_KEY}` },
+          signal: AbortSignal.timeout(10000),
+        });
+        const biData = biRes.ok ? await biRes.json() : null;
+
+        const preds = predictionData.predictions || {};
+        const homeWin = preds.home_win || 0;
+        const draw = preds.draw || 0;
+        const awayWin = preds.away_win || 0;
+        const confidence = preds.confidence || 0;
+        const recBet = preds.recommended_bet || '';
+        const homeTeam = predictionData.match_info?.home_team || marketMatch?.homeTeam || 'Home';
+        const awayTeam = predictionData.match_info?.away_team || marketMatch?.awayTeam || 'Away';
+        const league = predictionData.match_info?.league || marketMatch?.league || '';
+        const bi = biData?.betting_intelligence || {};
+        const bestBet = bi?.best_bet || {};
+
+        // Generate synthetic analysis from V3 predictions + market data
+        const pickSide = homeWin > awayWin ? 'home' : 'away';
+        const pickTeam = pickSide === 'home' ? homeTeam : awayTeam;
+        const oppTeam = pickSide === 'home' ? awayTeam : homeTeam;
+        const confPct = Math.round(confidence * 100);
+        const edge = bestBet?.edge ? `${Math.round(bestBet.edge * 100)}%` : null;
+
+        predictionData.analysis = {
+          ai_summary: `Our V3 Sharp model gives ${pickTeam} a ${confPct}% win probability against ${oppTeam} in ${league}.${edge ? ` The model sees a ${edge} edge vs the market.` : ''} ${recBet || ''}`.trim(),
+          explanation: `This prediction is based on ${predictionData.model_info?.features_used || 'multiple'} features including odds consensus, league statistics, and match context.`,
+          team_analysis: {
+            home_team: {
+              name: homeTeam,
+              win_probability: `${Math.round(homeWin * 100)}%`,
+              assessment: homeWin > 0.5 ? 'Favored based on model analysis' : 'The model suggests they face a challenge in this fixture',
+            },
+            away_team: {
+              name: awayTeam,
+              win_probability: `${Math.round(awayWin * 100)}%`,
+              assessment: awayWin > 0.5 ? 'Favored based on model analysis' : 'The model suggests they face a challenge in this fixture',
+            },
+          },
+          prediction_analysis: {
+            model_assessment: `V3 Sharp LightGBM ensemble with ${confPct}% confidence`,
+            value_assessment: bestBet?.recommendation || (confidence > 0.55 ? 'Model sees value in this pick' : 'Moderate confidence — proceed with caution'),
+            confidence_factors: [
+              `Model confidence: ${confPct}%`,
+              `Win probability: ${pickTeam} ${Math.round(Math.max(homeWin, awayWin) * 100)}%`,
+              `Draw probability: ${Math.round(draw * 100)}%`,
+              ...(edge ? [`Edge vs market: ${edge}`] : []),
+            ],
+            risk_factors: [
+              confidence < 0.5 ? 'Low model confidence suggests high uncertainty' : null,
+              draw > 0.25 ? `Draw probability is ${Math.round(draw * 100)}% — consider draw no bet` : null,
+              Math.abs(homeWin - awayWin) < 0.1 ? 'Very close probabilities — this could go either way' : null,
+            ].filter(Boolean),
+          },
+          betting_recommendations: {
+            primary_bet: bestBet?.pick || recBet || `${pickTeam} to win`,
+            risk_level: confidence >= 0.6 ? 'Low-Medium' : confidence >= 0.5 ? 'Medium' : 'Medium-High',
+            suggested_stake: confidence >= 0.6 ? 'Moderate (2-3% bankroll)' : 'Conservative (1-2% bankroll)',
+            alternative_bets: [
+              draw > 0.25 ? `Draw No Bet: ${pickTeam}` : null,
+              `Double Chance: ${pickSide === 'home' ? '1X' : 'X2'}`,
+            ].filter(Boolean),
+          },
+          risk_assessment: confidence >= 0.6 ? 'LOW' : confidence >= 0.5 ? 'MEDIUM' : 'HIGH',
+        };
+
+        // Add betting intelligence if available
+        if (biData) {
+          predictionData.betting_intelligence = bi;
+        }
+
+        console.log(`[Predict API] Enriched V3 response with synthetic analysis + betting intelligence`);
+      } catch (enrichError) {
+        console.warn(`[Predict API] Enrichment failed (non-critical):`, enrichError instanceof Error ? enrichError.message : enrichError);
+      }
+    }
 
     // Automatically create or update QuickPurchase entry with prediction data
     try {
