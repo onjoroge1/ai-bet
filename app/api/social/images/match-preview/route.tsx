@@ -1,6 +1,7 @@
 import { ImageResponse } from 'next/og'
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/db'
+import { composeMatchPreview, hasBackgroundTemplates } from '@/lib/social/image-composer'
 
 export const runtime = 'nodejs'
 
@@ -8,14 +9,34 @@ export const runtime = 'nodejs'
  * GET /api/social/images/match-preview?matchId=xxx&format=twitter|instagram
  *
  * Generates a shareable match preview image with team logos, prediction, and confidence ring.
+ * If premium background templates exist in /public/social-bg/, uses sharp compositing.
+ * Otherwise falls back to ImageResponse (CSS gradient).
  * Twitter: 1200x675 (16:9)
  * Instagram: 1080x1080 (square)
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const matchId = searchParams.get('matchId')
-  const format = searchParams.get('format') || 'twitter'
+  const format = (searchParams.get('format') || 'twitter') as 'twitter' | 'instagram'
 
+  // Try premium compositing first (if background templates exist)
+  if (matchId && hasBackgroundTemplates()) {
+    try {
+      const premiumBuffer = await composeMatchPreview(matchId, format)
+      if (premiumBuffer) {
+        return new NextResponse(premiumBuffer, {
+          headers: {
+            'Content-Type': 'image/png',
+            'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+          },
+        })
+      }
+    } catch (err) {
+      console.warn('[Social Image] Premium compositing failed, falling back to ImageResponse:', err)
+    }
+  }
+
+  // Fallback to ImageResponse (CSS gradient)
   const isSquare = format === 'instagram'
   const width = isSquare ? 1080 : 1200
   const height = isSquare ? 1080 : 675
