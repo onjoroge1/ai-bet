@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
 import prisma from '@/lib/db'
-import { postTweet, isTwitterConfigured } from '@/lib/social/twitter-client'
+import { postTweet, postTweetWithMedia, isTwitterConfigured } from '@/lib/social/twitter-client'
+import { getProductionBaseUrl } from '@/lib/social/url-utils'
 
 /**
  * GET /api/admin/social/twitter/post-scheduled - Post scheduled Twitter posts (for cron jobs)
@@ -133,10 +134,44 @@ export async function GET(request: NextRequest) {
       try {
         // Build tweet text (content + URL if available)
         const tweetText = post.content + (post.url ? ` ${post.url}` : '')
-        
-        // Post to Twitter API
-        const tweetId = await postTweet(tweetText)
-        
+
+        let tweetId: string
+
+        // Try posting with image if imageUrl exists
+        if (post.imageUrl) {
+          try {
+            const baseUrl = getProductionBaseUrl()
+            const imgRes = await fetch(`${baseUrl}${post.imageUrl}`, {
+              signal: AbortSignal.timeout(15000),
+            })
+            if (imgRes.ok) {
+              const imgBuffer = Buffer.from(await imgRes.arrayBuffer())
+              tweetId = await postTweetWithMedia(tweetText, imgBuffer)
+              logger.info('🕐 CRON: Posted tweet WITH image', {
+                tags: ['api', 'admin', 'social', 'twitter', 'cron', 'media'],
+                data: { postId: post.id, imageSize: imgBuffer.length },
+              })
+            } else {
+              // Image fetch failed — fall back to text-only
+              logger.warn('🕐 CRON: Image fetch failed, posting text-only', {
+                tags: ['api', 'admin', 'social', 'twitter', 'cron', 'media'],
+                data: { postId: post.id, imageUrl: post.imageUrl, status: imgRes.status },
+              })
+              tweetId = await postTweet(tweetText)
+            }
+          } catch (imgError) {
+            // Media upload failed (possibly Free tier) — fall back to text-only
+            logger.warn('🕐 CRON: Media upload failed, posting text-only', {
+              tags: ['api', 'admin', 'social', 'twitter', 'cron', 'media', 'fallback'],
+              data: { postId: post.id, error: imgError instanceof Error ? imgError.message : String(imgError) },
+            })
+            tweetId = await postTweet(tweetText)
+          }
+        } else {
+          // No image — standard text-only post
+          tweetId = await postTweet(tweetText)
+        }
+
         // Update post status
         await prisma.socialMediaPost.update({
           where: { id: post.id },
@@ -156,6 +191,7 @@ export async function GET(request: NextRequest) {
             templateId: post.templateId,
             postType: post.postType,
             textLength: tweetText.length,
+            hasImage: !!post.imageUrl,
           },
         })
       } catch (error) {

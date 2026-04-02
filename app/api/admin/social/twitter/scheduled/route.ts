@@ -117,6 +117,8 @@ export async function GET(request: NextRequest) {
             matchId: match.matchId,
             marketMatchId: match.id,
             blogPostId: blogPost?.id,
+            imageUrl: `/api/social/images/match-preview?matchId=${match.matchId}&format=twitter`,
+            imageFormat: 'twitter',
             scheduledAt,
             status: 'scheduled',
           },

@@ -136,6 +136,70 @@ export async function postTweet(text: string): Promise<string> {
 }
 
 /**
+ * Post a tweet with an image attachment to Twitter
+ *
+ * @param text - The tweet text (max 280 characters)
+ * @param imageBuffer - The image data as a Buffer
+ * @param mimeType - Image MIME type (default: image/png)
+ * @returns The tweet ID
+ * @throws Error if posting fails (falls back to text-only is NOT handled here — caller should catch)
+ */
+export async function postTweetWithMedia(
+  text: string,
+  imageBuffer: Buffer,
+  mimeType: 'image/png' | 'image/jpeg' = 'image/png'
+): Promise<string> {
+  if (!isTwitterConfigured()) {
+    throw new Error('Twitter API credentials not configured')
+  }
+
+  if (text.length > 280) {
+    throw new Error(`Tweet text exceeds 280 character limit (${text.length} characters)`)
+  }
+
+  try {
+    const client = getTwitterClient()
+
+    logger.info('Uploading media to Twitter', {
+      tags: ['twitter', 'api', 'media', 'upload'],
+      data: { bufferSize: imageBuffer.length, mimeType },
+    })
+
+    // Upload image via v1 API (media upload not available in v2)
+    const mediaId = await client.v1.uploadMedia(imageBuffer, {
+      mimeType,
+    })
+
+    logger.info('Media uploaded, posting tweet with image', {
+      tags: ['twitter', 'api', 'media', 'post'],
+      data: { mediaId, textLength: text.length },
+    })
+
+    // Post tweet with media attachment via v2 API
+    const tweet = await client.readWrite.v2.tweet({
+      text: text.trim(),
+      media: { media_ids: [mediaId] },
+    })
+
+    logger.info('Tweet with image posted successfully', {
+      tags: ['twitter', 'api', 'media', 'post', 'success'],
+      data: { tweetId: tweet.data.id, mediaId, textLength: text.length },
+    })
+
+    return tweet.data.id
+  } catch (error) {
+    logger.error('Failed to post tweet with media', {
+      tags: ['twitter', 'api', 'media', 'post', 'error'],
+      error: error instanceof Error ? error : undefined,
+      data: { textLength: text.length, bufferSize: imageBuffer.length },
+    })
+
+    if (error instanceof Error) throw error
+    throw new Error('Unknown error posting tweet with media')
+  }
+}
+
+/**
  * Check Twitter API rate limit status
  * Note: This is a placeholder - Twitter API v2 doesn't provide easy rate limit checking
  * The actual rate limits are handled by the API itself (429 errors)

@@ -1449,6 +1449,10 @@ model SocialMediaPost {
   postId       String? // External platform post ID (Twitter tweet ID)
   errorMessage String?
 
+  // Image attachment
+  imageUrl     String?   // Internal image route URL (e.g., /api/social/images/match-preview?matchId=xxx)
+  imageFormat  String?   // "twitter" or "instagram"
+
   // Retry tracking
   retryCount   Int       @default(0)  // How many times this post has been retried
   lastRetryAt  DateTime?              // When it was last retried

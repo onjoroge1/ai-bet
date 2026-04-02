@@ -12,6 +12,12 @@
     "app/api/admin/multisport/**/*.ts": {
       "maxDuration": 120
     },
+    "app/api/admin/social/**/*.ts": {
+      "maxDuration": 60
+    },
+    "app/api/social/images/**/*.tsx": {
+      "maxDuration": 30
+    },
     "app/api/admin/predictions/**/*.ts": {
       "maxDuration": 120
     },
@@ -70,6 +76,10 @@
     },
     {
       "path": "/api/admin/clv/sync-scheduled",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/admin/social/results/scheduled",
       "schedule": "*/30 * * * *"
     },
     {
