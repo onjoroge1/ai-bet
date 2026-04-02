@@ -83,6 +83,18 @@
       "schedule": "*/30 * * * *"
     },
     {
+      "path": "/api/admin/social/summary/morning",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/admin/social/summary/evening",
+      "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/api/admin/social/multisport/scheduled",
+      "schedule": "0 4 * * *"
+    },
+    {
       "path": "/api/admin/multisport/sync",
       "schedule": "0 */2 * * *"
     },
