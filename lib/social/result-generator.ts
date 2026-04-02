@@ -92,15 +92,7 @@ export async function generateResultPosts(limit: number = 10): Promise<ResultPos
 
       // Humanize with LLM
       try {
-        const humanized = await TwitterGenerator.humanizePost({
-          content,
-          matchData: {
-            homeTeam: match.homeTeam,
-            awayTeam: match.awayTeam,
-            league: match.league || '',
-            confidence,
-          },
-        })
+        const humanized = await TwitterGenerator.humanizePost(content)
         if (humanized && humanized.length <= 256) {
           content = humanized
         }
@@ -109,7 +101,7 @@ export async function generateResultPosts(limit: number = 10): Promise<ResultPos
       }
 
       // Build URLs
-      const slug = generateMatchSlug(match.homeTeam, match.awayTeam, match.matchId)
+      const slug = `${generateMatchSlug(match.homeTeam, match.awayTeam)}-${match.matchId}`
       const matchUrl = buildSocialUrl(`/match/${slug}`)
       const imageUrl = `/api/social/images/match-result?matchId=${match.matchId}&format=twitter`
 
