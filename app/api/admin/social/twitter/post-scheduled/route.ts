@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
 import prisma from '@/lib/db'
 import { postTweet, postTweetWithMedia, isTwitterConfigured } from '@/lib/social/twitter-client'
+import { postViaOpenTweet, isOpenTweetConfigured } from '@/lib/social/opentweet-client'
 import { getProductionBaseUrl } from '@/lib/social/url-utils'
 
 /**
@@ -102,19 +103,25 @@ export async function GET(request: NextRequest) {
       data: { count: scheduledPosts.length },
     })
 
-    // Check if Twitter API is configured
-    if (!isTwitterConfigured()) {
-      logger.warn('🕐 CRON: Twitter API credentials not configured', {
+    // Check if any posting method is configured (OpenTweet preferred, Twitter API fallback)
+    const useOpenTweet = isOpenTweetConfigured()
+    const useTwitter = isTwitterConfigured()
+
+    if (!useOpenTweet && !useTwitter) {
+      logger.warn('🕐 CRON: No posting method configured', {
         tags: ['api', 'admin', 'social', 'twitter', 'cron', 'warning'],
       })
       return NextResponse.json({
         success: false,
-        message: 'Twitter API credentials not configured',
+        message: 'No posting method configured. Set OPENTWEET_API_KEY or Twitter API credentials.',
         posted: 0,
         failed: scheduledPosts.length,
-        errors: ['Twitter API credentials not configured. Please set TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, and TWITTER_ACCESS_TOKEN_SECRET environment variables.'],
       })
     }
+
+    logger.info(`🕐 CRON: Using ${useOpenTweet ? 'OpenTweet' : 'Twitter API'} for posting`, {
+      tags: ['api', 'admin', 'social', 'twitter', 'cron'],
+    })
 
     let posted = 0
     let failed = 0
@@ -137,8 +144,11 @@ export async function GET(request: NextRequest) {
 
         let tweetId: string
 
-        // Try posting with image if imageUrl exists
-        if (post.imageUrl) {
+        if (useOpenTweet) {
+          // ── OpenTweet (primary — no image support yet, text only) ──
+          tweetId = await postViaOpenTweet(tweetText)
+        } else if (post.imageUrl && useTwitter) {
+          // ── Twitter API with image ──
           try {
             const baseUrl = getProductionBaseUrl()
             const imgRes = await fetch(`${baseUrl}${post.imageUrl}`, {
@@ -147,20 +157,14 @@ export async function GET(request: NextRequest) {
             if (imgRes.ok) {
               const imgBuffer = Buffer.from(await imgRes.arrayBuffer())
               tweetId = await postTweetWithMedia(tweetText, imgBuffer)
-              logger.info('🕐 CRON: Posted tweet WITH image', {
+              logger.info('🕐 CRON: Posted tweet WITH image via Twitter API', {
                 tags: ['api', 'admin', 'social', 'twitter', 'cron', 'media'],
                 data: { postId: post.id, imageSize: imgBuffer.length },
               })
             } else {
-              // Image fetch failed — fall back to text-only
-              logger.warn('🕐 CRON: Image fetch failed, posting text-only', {
-                tags: ['api', 'admin', 'social', 'twitter', 'cron', 'media'],
-                data: { postId: post.id, imageUrl: post.imageUrl, status: imgRes.status },
-              })
               tweetId = await postTweet(tweetText)
             }
           } catch (imgError) {
-            // Media upload failed (possibly Free tier) — fall back to text-only
             logger.warn('🕐 CRON: Media upload failed, posting text-only', {
               tags: ['api', 'admin', 'social', 'twitter', 'cron', 'media', 'fallback'],
               data: { postId: post.id, error: imgError instanceof Error ? imgError.message : String(imgError) },
@@ -168,7 +172,7 @@ export async function GET(request: NextRequest) {
             tweetId = await postTweet(tweetText)
           }
         } else {
-          // No image — standard text-only post
+          // ── Twitter API text-only ──
           tweetId = await postTweet(tweetText)
         }
 
