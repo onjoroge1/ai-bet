@@ -498,6 +498,7 @@ Rewrite this for Twitter. Do NOT include any URLs, links, or placeholders like [
       where: {
         status: 'UPCOMING',
         isActive: true,
+        kickoffDate: { gte: new Date() }, // Only future matches
         quickPurchases: {
           some: {
             isActive: true,
