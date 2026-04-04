@@ -3,6 +3,7 @@ import { logger } from '@/lib/logger'
 import prisma from '@/lib/db'
 import { postTweet, postTweetWithMedia, isTwitterConfigured } from '@/lib/social/twitter-client'
 import { postViaOpenTweet, isOpenTweetConfigured } from '@/lib/social/opentweet-client'
+import { postTweetViaLate, postToAllPlatforms, isLateConfigured } from '@/lib/social/late-client'
 import { getProductionBaseUrl } from '@/lib/social/url-utils'
 
 /**
@@ -103,23 +104,25 @@ export async function GET(request: NextRequest) {
       data: { count: scheduledPosts.length },
     })
 
-    // Check if any posting method is configured (OpenTweet preferred, Twitter API fallback)
-    const useOpenTweet = isOpenTweetConfigured()
-    const useTwitter = isTwitterConfigured()
+    // Check posting method: Late.dev (multi-platform) > OpenTweet (X only) > Twitter API
+    const useLate = isLateConfigured()
+    const useOpenTweet = !useLate && isOpenTweetConfigured()
+    const useTwitter = !useLate && !useOpenTweet && isTwitterConfigured()
 
-    if (!useOpenTweet && !useTwitter) {
+    if (!useLate && !useOpenTweet && !useTwitter) {
       logger.warn('🕐 CRON: No posting method configured', {
         tags: ['api', 'admin', 'social', 'twitter', 'cron', 'warning'],
       })
       return NextResponse.json({
         success: false,
-        message: 'No posting method configured. Set OPENTWEET_API_KEY or Twitter API credentials.',
+        message: 'No posting method configured. Set LATE_API_KEY, OPENTWEET_API_KEY, or Twitter API credentials.',
         posted: 0,
         failed: scheduledPosts.length,
       })
     }
 
-    logger.info(`🕐 CRON: Using ${useOpenTweet ? 'OpenTweet' : 'Twitter API'} for posting`, {
+    const postingMethod = useLate ? 'Late.dev (multi-platform)' : useOpenTweet ? 'OpenTweet' : 'Twitter API'
+    logger.info(`🕐 CRON: Using ${postingMethod} for posting`, {
       tags: ['api', 'admin', 'social', 'twitter', 'cron'],
     })
 
@@ -152,8 +155,46 @@ export async function GET(request: NextRequest) {
 
         let tweetId: string
 
-        if (useOpenTweet) {
-          // ── OpenTweet (primary — no image support yet, text only) ──
+        if (useLate) {
+          // ── Late.dev (multi-platform — posts to ALL connected platforms) ──
+          try {
+            // Build image URL if available
+            let mediaUrl: string | undefined
+            if (post.imageUrl) {
+              const baseUrl = getProductionBaseUrl()
+              mediaUrl = `${baseUrl}${post.imageUrl}`
+            }
+
+            const { posted: postedPlatforms, failed: failedPlatforms } = await postToAllPlatforms(
+              tweetText,
+              {
+                twitterText: tweetText.length > 280 ? tweetText.substring(0, 277) + '...' : tweetText,
+                mediaUrl,
+                publishNow: true,
+              }
+            )
+
+            tweetId = `late-${Date.now()}`
+            logger.info('🕐 CRON: Posted via Late.dev to multiple platforms', {
+              tags: ['api', 'admin', 'social', 'late', 'cron'],
+              data: { postId: post.id, postedPlatforms, failedPlatforms },
+            })
+          } catch (lateError) {
+            // Fallback to OpenTweet or Twitter if Late.dev fails
+            logger.warn('🕐 CRON: Late.dev failed, trying fallback', {
+              tags: ['api', 'admin', 'social', 'late', 'cron', 'fallback'],
+              data: { error: lateError instanceof Error ? lateError.message : String(lateError) },
+            })
+            if (isOpenTweetConfigured()) {
+              tweetId = await postViaOpenTweet(tweetText)
+            } else if (isTwitterConfigured()) {
+              tweetId = await postTweet(tweetText)
+            } else {
+              throw lateError
+            }
+          }
+        } else if (useOpenTweet) {
+          // ── OpenTweet (X only) ──
           tweetId = await postViaOpenTweet(tweetText)
         } else if (post.imageUrl && useTwitter) {
           // ── Twitter API with image ──
