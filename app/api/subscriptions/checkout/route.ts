@@ -204,13 +204,26 @@ export async function POST(request: NextRequest) {
       sessionId: checkoutSession.id,
       url: checkoutSession.url,
     })
-  } catch (error) {
+  } catch (error: any) {
+    const errorMessage = error?.message || 'Unknown error'
+    const stripeCode = error?.code || error?.type || ''
+    const stripeDeclineCode = error?.decline_code || ''
+
     logger.error('Error creating subscription checkout session', {
       tags: ['api', 'subscriptions', 'checkout'],
-      data: { error: error instanceof Error ? error.message : 'Unknown error' }
+      data: {
+        error: errorMessage,
+        stripeCode,
+        stripeDeclineCode,
+        stack: error?.stack?.substring(0, 500),
+      }
     })
     return NextResponse.json(
-      { error: 'Failed to create checkout session', details: error instanceof Error ? error.message : 'Unknown error' },
+      {
+        error: `Failed to create checkout session: ${errorMessage}`,
+        details: errorMessage,
+        stripeCode,
+      },
       { status: 500 }
     )
   }
