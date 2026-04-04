@@ -59,7 +59,7 @@ export async function postViaOpenTweet(text: string): Promise<string> {
       throw new Error(`OpenTweet API error: ${response.status} ${response.statusText} - ${errorText}`)
     }
 
-    const data = await response.json()
+    const data = await response.json() as any
     const postId = data?.posts?.[0]?.id || data?.id || `ot-${Date.now()}`
 
     logger.info('[OpenTweet] Tweet posted successfully', {
@@ -109,7 +109,7 @@ export async function scheduleViaOpenTweet(text: string, scheduledDate: string):
       throw new Error(`OpenTweet schedule error: ${response.status} - ${errorText}`)
     }
 
-    const data = await response.json()
+    const data = await response.json() as any
     return String(data?.posts?.[0]?.id || data?.id || `ot-${Date.now()}`)
   } catch (error) {
     logger.error('[OpenTweet] Failed to schedule tweet', {
@@ -150,7 +150,7 @@ export async function postThreadViaOpenTweet(tweets: string[]): Promise<string[]
       throw new Error(`OpenTweet thread error: ${response.status} - ${errorText}`)
     }
 
-    const data = await response.json()
+    const data = await response.json() as any
     const posts = data?.posts || []
     return posts.map((p: any) => String(p?.id || `ot-${Date.now()}`))
   } catch (error) {
