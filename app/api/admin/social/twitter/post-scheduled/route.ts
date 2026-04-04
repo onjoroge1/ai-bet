@@ -140,7 +140,15 @@ export async function GET(request: NextRequest) {
 
       try {
         // Build tweet text (content + URL if available)
-        const tweetText = post.content + (post.url ? ` ${post.url}` : '')
+        // Twitter counts URLs as 23 chars, but OpenTweet uses actual length
+        // Truncate content to fit within 280 chars total
+        let tweetContent = post.content
+        const urlSuffix = post.url ? ` ${post.url}` : ''
+        const maxContentLen = 280 - urlSuffix.length
+        if (tweetContent.length > maxContentLen) {
+          tweetContent = tweetContent.substring(0, maxContentLen - 3).trimEnd() + '...'
+        }
+        const tweetText = tweetContent + urlSuffix
 
         let tweetId: string
 
