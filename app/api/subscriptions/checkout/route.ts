@@ -6,7 +6,9 @@ import { getDbCountryPricing } from '@/lib/server-pricing-service'
 import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL || 'http://localhost:3000'
+// VERCEL_URL doesn't include https:// — ensure we always have a full URL with scheme
+const rawUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) || 'http://localhost:3000'
+const BASE_URL = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`
 
 /**
  * POST /api/subscriptions/checkout - Create Stripe Checkout Session for subscription
