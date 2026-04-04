@@ -69,33 +69,41 @@ export async function POST(request: NextRequest) {
       amount?: number // Fallback amount if price ID not set
       metadata: Record<string, string>
     }> = {
+      // Starter tier (legacy: parlay_pro)
       parlay_pro: {
-        name: 'Parlay Pro',
-        description: 'Unlimited access to AI-powered parlay recommendations',
-        priceId: process.env.STRIPE_PARLAY_PRO_PRICE_ID, // Set in .env
-        amount: 11.99, // Fallback if price ID not set
-        metadata: {
-          planType: 'parlay_pro',
-          subscriptionType: 'monthly',
-        }
+        name: 'Starter',
+        description: 'Basic predictions and match analysis',
+        amount: 9.99,
+        metadata: { planType: 'starter', subscriptionType: 'monthly' }
       },
+      starter_monthly: {
+        name: 'Starter',
+        description: 'Basic predictions and match analysis',
+        amount: 9.99,
+        metadata: { planType: 'starter', subscriptionType: 'monthly' }
+      },
+      // Pro tier
+      pro_monthly: {
+        name: 'Pro',
+        description: 'Unlimited SnapBet Picks, all sports, AI parlays, player predictions',
+        metadata: { planType: 'pro', subscriptionType: 'monthly' }
+      },
+      // VIP tier (legacy: premium_intelligence)
       premium_intelligence: {
-        name: 'Premium Intelligence',
-        description: 'Advanced analytics and insights for serious bettors',
-        // No priceId - use country-specific pricing
-        metadata: {
-          planType: 'premium_intelligence',
-          subscriptionType: 'monthly',
-        }
+        name: 'VIP',
+        description: 'Everything in Pro plus Edge Finder, AI Builder, advanced analytics',
+        metadata: { planType: 'vip', subscriptionType: 'monthly' }
       },
+      vip_monthly: {
+        name: 'VIP',
+        description: 'Everything in Pro plus Edge Finder, AI Builder, advanced analytics',
+        metadata: { planType: 'vip', subscriptionType: 'monthly' }
+      },
+      // Complete (coming soon)
       complete: {
         name: 'Complete Package',
-        description: 'Everything in Parlay Pro + Premium Intelligence',
-        // Coming soon - not implemented yet
-        metadata: {
-          planType: 'complete',
-          subscriptionType: 'monthly',
-        }
+        description: 'Everything included',
+        metadata: { planType: 'complete', subscriptionType: 'monthly' }
       }
     }
 
@@ -115,19 +123,15 @@ export async function POST(request: NextRequest) {
     let finalCurrencyCode = currencyCode
 
     // Get pricing based on plan
-    if (planId === 'parlay_pro') {
-      // Use Stripe Price ID if set, otherwise use fallback amount
-      if (planConfig.priceId) {
-        stripePriceId = planConfig.priceId
-        // Don't set amount when using price ID - Stripe will use the price
-        amount = 0 // Not used when priceId is set
-      } else {
-        // Fallback: create checkout session with price_data
-        amount = planConfig.amount || 11.99
-        finalCurrencyCode = 'USD' // Paray Pro is USD only
-      }
-    } else if (planId === 'premium_intelligence') {
-      // Get country-specific pricing
+    const isStarterPlan = ['parlay_pro', 'starter_monthly'].includes(planId)
+    const isProOrVipPlan = ['pro_monthly', 'premium_intelligence', 'vip_monthly'].includes(planId)
+
+    if (isStarterPlan) {
+      // Starter: fixed price
+      amount = planConfig.amount || 9.99
+      finalCurrencyCode = 'USD'
+    } else if (isProOrVipPlan) {
+      // Pro & VIP: use country-specific pricing
       try {
         const countryPricing = await getDbCountryPricing(userCountryCode, 'monthly_sub')
         amount = countryPricing.price
