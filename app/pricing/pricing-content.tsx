@@ -167,11 +167,6 @@ export function PricingContent() {
 
   // ── Handlers ──
   const handlePurchase = (pkg: DisplayPackage) => {
-    if (pkg.purchaseType === "subscription") {
-      router.push(`/subscribe/${pkg.subscriptionPlanId ?? "premium_intelligence"}`)
-      return
-    }
-
     const item = {
       id: pkg.dbOffer?.id ?? pkg.id,
       name: pkg.name,
@@ -179,7 +174,7 @@ export function PricingContent() {
       originalPrice: pkg.displayOriginalPrice,
       description: pkg.description,
       features: pkg.features,
-      type: "package" as const,
+      type: (pkg.purchaseType === "subscription" ? "vip" : "package") as "vip" | "package",
       iconName: pkg.iconName,
       colorGradientFrom: pkg.colorGradientFrom,
       colorGradientTo: pkg.colorGradientTo,
