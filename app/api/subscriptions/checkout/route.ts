@@ -31,6 +31,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Plan ID is required' }, { status: 400 })
     }
 
+    logger.info('Checkout request received', {
+      tags: ['api', 'subscriptions', 'checkout'],
+      data: { planId, planIdType: typeof planId, userId: session.user.id }
+    })
+
     // Get user
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
@@ -96,7 +101,9 @@ export async function POST(request: NextRequest) {
 
     const planConfig = planConfigs[planId]
     if (!planConfig) {
-      return NextResponse.json({ error: 'Invalid plan ID' }, { status: 400 })
+      return NextResponse.json({
+        error: `Invalid plan ID: "${planId}". Valid plans: ${Object.keys(planConfigs).join(', ')}`,
+      }, { status: 400 })
     }
 
     if (planId === 'complete') {
