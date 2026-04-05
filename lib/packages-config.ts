@@ -34,6 +34,8 @@ export interface PackageDefinition {
   purchaseType: "package" | "subscription"
   /** Only used when purchaseType === "subscription" */
   subscriptionPlanId?: string
+  /** Maps to PackageCountryPrice.packageType in the database */
+  dbPackageType?: string
 }
 
 export const PACKAGES: PackageDefinition[] = [
@@ -55,6 +57,7 @@ export const PACKAGES: PackageDefinition[] = [
     colorGradientTo: "#7C3AED",
     recommended: false,
     purchaseType: "package",
+    dbPackageType: "prediction",
   },
   {
     id: "pro",
@@ -75,8 +78,8 @@ export const PACKAGES: PackageDefinition[] = [
     colorGradientFrom: "#10B981",
     colorGradientTo: "#059669",
     recommended: true,
-    purchaseType: "subscription",
-    subscriptionPlanId: "pro_monthly",
+    purchaseType: "package",
+    dbPackageType: "weekly_pass",
   },
   {
     id: "vip",
@@ -97,8 +100,8 @@ export const PACKAGES: PackageDefinition[] = [
     colorGradientFrom: "#F59E0B",
     colorGradientTo: "#D97706",
     recommended: false,
-    purchaseType: "subscription",
-    subscriptionPlanId: "premium_intelligence",
+    purchaseType: "package",
+    dbPackageType: "monthly_sub",
   },
 ]
 

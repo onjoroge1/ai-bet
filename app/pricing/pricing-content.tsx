@@ -148,8 +148,10 @@ export function PricingContent() {
   // packages-config.ts is the source of truth for USD prices.
   // DB country-specific prices are only used for non-USD currencies.
   const displayPackages: DisplayPackage[] = PACKAGES.map((pkg) => {
+    // Match by dbPackageType (maps to DB packageType), then fallback to pkg.id
+    const lookupType = pkg.dbPackageType || pkg.id
     const dbOffer = dbPackages.find(
-      (o) => o.packageType === pkg.id || o.id.endsWith(`_${pkg.id}`)
+      (o) => o.packageType === lookupType || o.packageType === pkg.id || o.id.endsWith(`_${pkg.id}`)
     )
     const countryPrice = dbOffer?.countryPrices?.[0]
     const useDbPrice = countryPrice && countryPrice.currencyCode !== "USD"
