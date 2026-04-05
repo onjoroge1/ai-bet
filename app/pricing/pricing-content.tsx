@@ -167,8 +167,13 @@ export function PricingContent() {
 
   // ── Handlers ──
   const handlePurchase = (pkg: DisplayPackage) => {
+    // The payment intent route expects itemId to be a PackageCountryPrice ID
+    // or a countryId_packageType composite key
+    const countryPrice = pkg.dbOffer?.countryPrices?.[0]
+    const itemId = countryPrice?.id ?? pkg.dbOffer?.id ?? pkg.id
+
     const item = {
-      id: pkg.dbOffer?.id ?? pkg.id,
+      id: itemId,
       name: pkg.name,
       price: pkg.displayPrice,
       originalPrice: pkg.displayOriginalPrice,
