@@ -174,7 +174,7 @@ export function PricingContent() {
       originalPrice: pkg.displayOriginalPrice,
       description: pkg.description,
       features: pkg.features,
-      type: (pkg.purchaseType === "subscription" ? "vip" : "package") as "vip" | "package",
+      type: "package" as const,
       iconName: pkg.iconName,
       colorGradientFrom: pkg.colorGradientFrom,
       colorGradientTo: pkg.colorGradientTo,
