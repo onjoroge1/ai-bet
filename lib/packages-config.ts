@@ -78,7 +78,8 @@ export const PACKAGES: PackageDefinition[] = [
     colorGradientFrom: "#10B981",
     colorGradientTo: "#059669",
     recommended: true,
-    purchaseType: "package",
+    purchaseType: "subscription",
+    subscriptionPlanId: "pro_monthly",
     dbPackageType: "weekly_pass",
   },
   {
@@ -100,7 +101,8 @@ export const PACKAGES: PackageDefinition[] = [
     colorGradientFrom: "#F59E0B",
     colorGradientTo: "#D97706",
     recommended: false,
-    purchaseType: "package",
+    purchaseType: "subscription",
+    subscriptionPlanId: "vip_monthly",
     dbPackageType: "monthly_sub",
   },
 ]

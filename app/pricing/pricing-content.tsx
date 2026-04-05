@@ -109,9 +109,7 @@ export function PricingContent() {
           (p) =>
             p.countryPrices &&
             Array.isArray(p.countryPrices) &&
-            p.countryPrices.length > 0 &&
-            p.packageType !== "prediction" &&
-            p.name !== "Single Tip"
+            p.countryPrices.length > 0
         )
         setDbPackages(packageOffers)
       } catch (err) {
@@ -154,7 +152,8 @@ export function PricingContent() {
       (o) => o.packageType === lookupType || o.packageType === pkg.id || o.id.endsWith(`_${pkg.id}`)
     )
     const countryPrice = dbOffer?.countryPrices?.[0]
-    const useDbPrice = countryPrice && countryPrice.currencyCode !== "USD"
+    // Always use DB price when available (ensures correct currency for all countries)
+    const useDbPrice = !!countryPrice
 
     return {
       ...pkg,
@@ -162,15 +161,20 @@ export function PricingContent() {
       displayOriginalPrice: useDbPrice
         ? countryPrice.originalPrice
         : pkg.baseOriginalPrice,
-      currencySymbol: countryPrice?.currencySymbol ?? "$",
+      currencySymbol: useDbPrice ? countryPrice.currencySymbol : "$",
       dbOffer,
     }
   })
 
   // ── Handlers ──
   const handlePurchase = (pkg: DisplayPackage) => {
-    // The payment intent route expects itemId to be a PackageCountryPrice ID
-    // or a countryId_packageType composite key
+    if (pkg.purchaseType === "subscription" && pkg.subscriptionPlanId) {
+      // Pro & VIP → Stripe Checkout (recurring monthly)
+      router.push(`/subscribe/${pkg.subscriptionPlanId}`)
+      return
+    }
+
+    // Starter → QuickPurchaseModal (one-time payment)
     const countryPrice = pkg.dbOffer?.countryPrices?.[0]
     const itemId = countryPrice?.id ?? pkg.dbOffer?.id ?? pkg.id
 
@@ -187,7 +191,7 @@ export function PricingContent() {
       colorGradientTo: pkg.colorGradientTo,
       tipCount: pkg.tipCount,
       validityDays: pkg.validityDays,
-      packageType: pkg.id,
+      packageType: pkg.dbPackageType || pkg.id,
     }
     setSelectedOffer(item)
     setIsModalOpen(true)
