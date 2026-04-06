@@ -25,7 +25,7 @@ import {
 } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { QuickPurchaseModal } from "@/components/quick-purchase-modal"
+// QuickPurchaseModal removed — all tiers use Stripe Checkout
 import { useUserCountry } from "@/contexts/user-country-context"
 import {
   PACKAGES,
@@ -89,8 +89,7 @@ export function PricingContent() {
   const [isPremium, setIsPremium] = useState<boolean | null>(null)
   const [currentPlan, setCurrentPlan] = useState<string | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [selectedOffer, setSelectedOffer] = useState<any>(null)
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  // Modal state removed — all tiers use Stripe Checkout redirect
 
   // Highlight a plan when linked with ?plan=…
   const highlightedPlan = searchParams.get("plan")
@@ -168,33 +167,9 @@ export function PricingContent() {
 
   // ── Handlers ──
   const handlePurchase = (pkg: DisplayPackage) => {
-    if (pkg.purchaseType === "subscription" && pkg.subscriptionPlanId) {
-      // Pro & VIP → Stripe Checkout (recurring monthly)
-      router.push(`/subscribe/${pkg.subscriptionPlanId}`)
-      return
-    }
-
-    // Starter → QuickPurchaseModal (one-time payment)
-    const countryPrice = pkg.dbOffer?.countryPrices?.[0]
-    const itemId = countryPrice?.id ?? pkg.dbOffer?.id ?? pkg.id
-
-    const item = {
-      id: itemId,
-      name: pkg.name,
-      price: pkg.displayPrice,
-      originalPrice: pkg.displayOriginalPrice,
-      description: pkg.description,
-      features: pkg.features,
-      type: "package" as const,
-      iconName: pkg.iconName,
-      colorGradientFrom: pkg.colorGradientFrom,
-      colorGradientTo: pkg.colorGradientTo,
-      tipCount: pkg.tipCount,
-      validityDays: pkg.validityDays,
-      packageType: pkg.dbPackageType || pkg.id,
-    }
-    setSelectedOffer(item)
-    setIsModalOpen(true)
+    // All tiers use Stripe Checkout (recurring monthly)
+    const planId = pkg.subscriptionPlanId || `${pkg.id}_monthly`
+    router.push(`/subscribe/${planId}`)
   }
 
   const getIconComponent = (iconName: string) => {
@@ -638,14 +613,6 @@ export function PricingContent() {
         )}
       </div>
 
-      {/* Quick Purchase Modal for tip packages */}
-      {selectedOffer && (
-        <QuickPurchaseModal
-          isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
-          item={selectedOffer}
-        />
-      )}
     </div>
   )
 }

@@ -40,26 +40,6 @@ export interface PackageDefinition {
 
 export const PACKAGES: PackageDefinition[] = [
   {
-    id: "starter",
-    name: "Starter",
-    description: "Get started with AI picks — low commitment, instant access",
-    basePrice: 4.99,
-    tipCount: 3,
-    validityDays: 7,
-    features: [
-      "3 SnapBet Picks per day",
-      "Soccer predictions",
-      "Basic odds & confidence",
-      "Match analysis previews",
-    ],
-    iconName: "Zap",
-    colorGradientFrom: "#8B5CF6",
-    colorGradientTo: "#7C3AED",
-    recommended: false,
-    purchaseType: "package",
-    dbPackageType: "prediction",
-  },
-  {
     id: "pro",
     name: "Pro",
     description: "Unlimited picks across all sports — most popular choice",
