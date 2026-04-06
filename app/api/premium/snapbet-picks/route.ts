@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
       kickoff: p.kickoff,
       tier: p.tier,
       starRating: p.starRating,
-      slug: p.slug,
+      slug: '/pricing', // Free users go to pricing, not match detail
       // These are hidden for free users
       pick: '🔒',
       pickTeam: '🔒',

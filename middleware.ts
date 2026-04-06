@@ -83,6 +83,8 @@ const premiumPaths = [
   '/dashboard/analytics',
   '/dashboard/clv',
   '/dashboard/vip',
+  '/dashboard/snapbet-picks',
+  '/dashboard/edge-finder',
 ]
 
 // Rate limiting configuration

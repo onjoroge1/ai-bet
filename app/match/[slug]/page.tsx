@@ -355,6 +355,9 @@ export default function MatchDetailPage() {
   const [showPurchaseModal, setShowPurchaseModal] = useState(false)
   const [showFullAnalysis, setShowFullAnalysis] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
+  const [userTier, setUserTier] = useState<string>('free') // free, starter, pro, vip, admin
+  const [tierLoaded, setTierLoaded] = useState(false)
+  const hasPremiumContent = userTier === 'pro' || userTier === 'vip' || userTier === 'admin'
 
   // ── Bet Slip state ─────────────────────────────────────────────
   const [betSlip, setBetSlip] = useState<BetSlipItem[]>([])
@@ -427,8 +430,18 @@ export default function MatchDetailPage() {
         })
         const session = await res.json()
         setIsAuthenticated(!!session?.user)
+        // Fetch user tier for premium gating
+        if (session?.user) {
+          try {
+            const tierRes = await fetch('/api/premium/check', { cache: 'no-store', credentials: 'include' })
+            const tierData = await tierRes.json()
+            setUserTier(tierData.tier || 'free')
+          } catch { /* default to free */ }
+        }
+        setTierLoaded(true)
       } catch {
         setIsAuthenticated(false)
+        setTierLoaded(true)
       }
     }
     checkAuth()
@@ -1868,8 +1881,38 @@ export default function MatchDetailPage() {
                 </PremiumSection>
               )}
 
-              {/* ── Team Analysis ───────────────────────────── */}
-              {prediction?.analysis?.team_analysis && (
+              {/* ── PREMIUM PAYWALL ─────────────────────────── */}
+              {!hasPremiumContent && tierLoaded && (
+                <div className="relative">
+                  <div className="bg-gradient-to-b from-slate-800/80 via-slate-900/95 to-slate-900 border border-amber-500/20 rounded-2xl p-8 text-center space-y-4">
+                    <div className="flex justify-center">
+                      <div className="p-3 bg-amber-500/10 rounded-full">
+                        <svg className="w-8 h-8 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                      </div>
+                    </div>
+                    <h3 className="text-xl font-bold text-white">Unlock Full Match Analysis</h3>
+                    <p className="text-slate-400 max-w-md mx-auto text-sm">
+                      Get team strengths & weaknesses, betting recommendations, AI market predictions, correct scores, and more.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+                      <a href="/pricing" className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg transition-colors text-sm">
+                        Subscribe Pro — $19.99/mo
+                      </a>
+                      <a href="/pricing" className="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-black font-semibold rounded-lg transition-colors text-sm">
+                        Subscribe VIP — $39.99/mo
+                      </a>
+                    </div>
+                    {!isAuthenticated && (
+                      <p className="text-xs text-slate-500 pt-1">
+                        Already subscribed? <a href="/signin" className="text-emerald-400 hover:underline">Sign in</a>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Team Analysis (Pro+) ───────────────────────────── */}
+              {hasPremiumContent && prediction?.analysis?.team_analysis && (
                 <Card className="bg-slate-800/60 border-slate-700">
                   <div className="p-6">
                     <div className="flex items-center gap-3 mb-6">
@@ -1903,8 +1946,8 @@ export default function MatchDetailPage() {
                 </Card>
               )}
 
-              {/* ── Prediction Analysis ─────────────────────── */}
-              {prediction?.analysis?.prediction_analysis && (
+              {/* ── Prediction Analysis (Pro+) ─────────────────────── */}
+              {hasPremiumContent && prediction?.analysis?.prediction_analysis && (
                 <Card className="bg-slate-800/60 border-slate-700">
                   <div className="p-6">
                     <div className="flex items-center gap-3 mb-6">
@@ -2017,8 +2060,8 @@ export default function MatchDetailPage() {
                 </Card>
               )}
 
-              {/* ── Betting Recommendations — PREMIUM ─────────── */}
-              {prediction?.analysis?.betting_recommendations && (
+              {/* ── Betting Recommendations (Pro+) ─────────── */}
+              {hasPremiumContent && prediction?.analysis?.betting_recommendations && (
                 <PremiumSection
                   locked={premiumLocked}
                   onUnlock={handlePurchaseClick}
@@ -2122,8 +2165,8 @@ export default function MatchDetailPage() {
                 </PremiumSection>
               )}
 
-              {/* ── Smart Value Picks ────────────────────────── */}
-              {valuePicks.length > 0 && !isFinished && (
+              {/* ── Smart Value Picks (Pro+) ────────────────────────── */}
+              {hasPremiumContent && valuePicks.length > 0 && !isFinished && (
                 <Card className="bg-slate-800/60 border-slate-700">
                   <div className="p-6">
                     <div className="flex items-center gap-3 mb-6">
@@ -2214,8 +2257,8 @@ export default function MatchDetailPage() {
                 </Card>
               )}
 
-              {/* ── Predicted Scorers ────────────────────────── */}
-              {matchId && (
+              {/* ── Predicted Scorers (Pro+) ────────────────────────── */}
+              {hasPremiumContent && matchId && (
                 <PredictedScorersSection
                   matchId={matchId}
                   homeTeam={(matchData as any)?.home?.name || (matchData as any)?.homeTeam}
@@ -2223,8 +2266,8 @@ export default function MatchDetailPage() {
                 />
               )}
 
-              {/* ── Advanced Markets ────────────────────────── */}
-              {prediction?.additional_markets_v2 && (
+              {/* ── Advanced Markets (Pro+) ────────────────────────── */}
+              {hasPremiumContent && prediction?.additional_markets_v2 && (
                 <Card className="bg-slate-800/60 border-slate-700">
                   <div className="p-6">
                     <div className="flex items-center gap-3 mb-6">
@@ -2248,8 +2291,8 @@ export default function MatchDetailPage() {
                 </Card>
               )}
 
-              {/* ── Correct Score Predictions ───────────────── */}
-              {(prediction?.additional_markets_v2 as Record<string, unknown>)?.correct_scores && (
+              {/* ── Correct Score Predictions (Pro+) ───────────────── */}
+              {hasPremiumContent && (prediction?.additional_markets_v2 as Record<string, unknown>)?.correct_scores && (
                 <Card className="bg-slate-800/60 border-slate-700">
                   <div className="p-6">
                     <div className="flex items-center gap-3 mb-6">
@@ -2448,8 +2491,8 @@ export default function MatchDetailPage() {
                 </div>
               </Card>
 
-              {/* Bookmaker Odds */}
-              {matchData.odds?.books &&
+              {/* Bookmaker Odds (VIP) */}
+              {(userTier === 'vip' || userTier === 'admin') && matchData.odds?.books &&
                 Object.keys(matchData.odds.books).length > 0 && (
                   <div>
                     <BookmakerOdds
