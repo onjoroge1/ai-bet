@@ -1,17 +1,27 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Menu, X, Home, Zap, Crown, Settings, BarChart3, Target, HeadphonesIcon, History, Bell, Activity, Layers, Sparkles } from "lucide-react"
+import { Menu, X, Home, Zap, Crown, Settings, BarChart3, Target, HeadphonesIcon, History, Bell, Activity, Layers, Sparkles, ArrowRight } from "lucide-react"
 import { NotificationBell } from "@/components/notifications/NotificationBell"
 import { Badge } from "@/components/ui/badge"
 
 export function DashboardNavHeader() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [userTier, setUserTier] = useState<string>('free')
   const pathname = usePathname()
+
+  useEffect(() => {
+    fetch('/api/premium/check', { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => setUserTier(d.tier || 'free'))
+      .catch(() => {})
+  }, [])
+
+  const showUpgrade = userTier === 'free' || userTier === 'starter'
 
   // Streamlined navigation — 7 core items (down from 15)
   const navigationItems = [
@@ -63,8 +73,24 @@ export function DashboardNavHeader() {
           )}
         </div>
 
-        {/* Right side - Cleaner and more focused */}
+        {/* Right side */}
         <div className="flex items-center space-x-3">
+          {/* Upgrade CTA for free users */}
+          {showUpgrade && (
+            <Link href="/pricing">
+              <Button size="sm" className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-semibold text-xs px-3 py-1.5 h-auto">
+                <Crown className="w-3.5 h-3.5 mr-1.5" />
+                Upgrade
+                <ArrowRight className="w-3 h-3 ml-1" />
+              </Button>
+            </Link>
+          )}
+          {/* Tier badge for subscribed users */}
+          {!showUpgrade && userTier !== 'free' && (
+            <Badge className={`text-[10px] ${userTier === 'vip' || userTier === 'admin' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'}`}>
+              {userTier.toUpperCase()}
+            </Badge>
+          )}
           {/* Notification Bell */}
           <NotificationBell className="text-slate-300 hover:text-white" />
           

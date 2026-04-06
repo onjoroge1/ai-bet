@@ -22,6 +22,7 @@ import {
   Shield,
   CheckCircle,
   Sparkles,
+  CreditCard,
 } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
@@ -404,6 +405,22 @@ export function PricingContent() {
               </Card>
             )
           })}
+        </div>
+
+        {/* ── Trust badges ── */}
+        <div className="flex flex-wrap items-center justify-center gap-6 mb-8 text-slate-400 text-sm">
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4 text-emerald-400" />
+            <span>7-day money-back guarantee</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <CreditCard className="w-4 h-4 text-blue-400" />
+            <span>Secure checkout via Stripe</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 text-emerald-400" />
+            <span>Cancel anytime</span>
+          </div>
         </div>
 
         {/* ── Free tier note ── */}
