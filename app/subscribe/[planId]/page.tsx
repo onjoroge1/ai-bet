@@ -42,6 +42,12 @@ export default function SubscribePage() {
         }),
       })
 
+      if (response.status === 401) {
+        // Not logged in — redirect to signin with callback back to this page
+        router.push(`/signin?callbackUrl=${encodeURIComponent(`/subscribe/${planId}`)}`)
+        return
+      }
+
       if (!response.ok) {
         const data = await response.json()
         throw new Error(data.error || 'Failed to create checkout session')
