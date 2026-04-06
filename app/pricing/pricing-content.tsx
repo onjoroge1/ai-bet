@@ -200,17 +200,21 @@ export function PricingContent() {
     return plan.includes(pkgId)
   }
 
-  // Feature comparison data
+  // Feature comparison: Free vs Pro vs VIP
   const comparisonFeatures = [
-    { name: "AI Match Predictions", free: "3/day", weekend: true, weekly: true, monthly: "Unlimited", vip: "Unlimited" },
-    { name: "Premium Tips", free: false, weekend: "5 Tips", weekly: "8 Tips", monthly: "Unlimited", vip: "Unlimited" },
-    { name: "VIP Intelligence Feed", free: false, weekend: false, weekly: false, monthly: false, vip: true },
-    { name: "Advanced Analytics", free: false, weekend: false, weekly: false, monthly: true, vip: true },
-    { name: "CLV Tracker", free: false, weekend: false, weekly: false, monthly: false, vip: true },
-    { name: "AI Parlay Builder", free: false, weekend: false, weekly: false, monthly: false, vip: true },
-    { name: "Live Updates", free: false, weekend: true, weekly: true, monthly: true, vip: true },
-    { name: "Priority Support", free: false, weekend: true, weekly: true, monthly: true, vip: true },
-    { name: "Validity", free: "—", weekend: "3 Days", weekly: "7 Days", monthly: "30 Days", vip: "30 Days" },
+    { name: "AI Match Predictions", free: "Teaser only", pro: "Unlimited", vip: "Unlimited" },
+    { name: "All Sports (Soccer, NBA, NHL, NCAAB)", free: false, pro: true, vip: true },
+    { name: "Full Match Analysis", free: false, pro: true, vip: true },
+    { name: "SnapBet Picks (AI-curated)", free: "View only", pro: true, vip: true },
+    { name: "AI Parlays", free: false, pro: true, vip: true },
+    { name: "Player Scorer Predictions", free: false, pro: true, vip: true },
+    { name: "Premium Star Ratings", free: false, pro: true, vip: true },
+    { name: "Edge Finder (Arb + EV + Line Shop)", free: false, pro: false, vip: true },
+    { name: "AI Parlay Builder", free: false, pro: false, vip: true },
+    { name: "Bookmaker Odds (50+ books)", free: false, pro: false, vip: true },
+    { name: "Advanced Analytics & ROI", free: false, pro: false, vip: true },
+    { name: "Priority Support", free: false, pro: false, vip: true },
+    { name: "Billing", free: "Free", pro: "Monthly", vip: "Monthly" },
   ]
 
   // ── Loading / Error states ──
@@ -254,19 +258,18 @@ export function PricingContent() {
             <Sparkles className="w-4 h-4" />
             AI-Powered Betting Intelligence
           </div>
-          <h1 className="text-4xl font-bold text-white mb-4">Choose Your Plan</h1>
+          <h1 className="text-4xl font-bold text-white mb-4">Simple Pricing, Powerful AI</h1>
           <p className="text-xl text-slate-300 mb-2">
-            Unlock Premium Features &amp; AI Insights
+            Two plans. Full access. Cancel anytime.
           </p>
           <p className="text-slate-400 max-w-2xl mx-auto">
-            Start free with 3 daily AI predictions. Choose a tip package for on-demand picks, or
-            go VIP for full platform access including analytics, CLV tracking, and the VIP
-            intelligence feed.
+            Get AI-powered predictions across Soccer, NBA, NHL &amp; NCAAB.
+            Pro gives you unlimited picks. VIP adds Edge Finder, AI Builder &amp; advanced analytics.
           </p>
         </div>
 
-        {/* ── 4 Package Cards ── */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+        {/* ── 2 Package Cards (centered) ── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl mx-auto mb-12">
           {displayPackages.map((pkg) => {
             const Icon = getIconComponent(pkg.iconName)
             const isCurrent = isCurrentPlan(pkg.id)
@@ -403,33 +406,13 @@ export function PricingContent() {
           })}
         </div>
 
-        {/* ── Suggested next plan ── */}
-        {!isPremium && !isCurrentPlan("monthly_sub") && (
-          <div className="mb-12 p-6 bg-blue-900/20 rounded-2xl border border-blue-500/30">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center border border-blue-500/30 shrink-0">
-                  <Crown className="w-6 h-6 text-blue-400" />
-                </div>
-                <div>
-                  <h4 className="text-blue-300 font-semibold">
-                    We Recommend: Monthly Package
-                  </h4>
-                  <p className="text-slate-400 text-sm">
-                    Unlimited tips for $49.99/month — our most popular choice for serious bettors
-                  </p>
-                </div>
-              </div>
-              <Button
-                onClick={() =>
-                  handlePurchase(displayPackages.find((p) => p.id === "monthly_sub")!)
-                }
-                className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold px-6 shrink-0"
-              >
-                Get Monthly
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            </div>
+        {/* ── Free tier note ── */}
+        {!isPremium && (
+          <div className="mb-12 p-5 bg-slate-800/40 rounded-xl border border-slate-700/50 text-center max-w-2xl mx-auto">
+            <p className="text-slate-400 text-sm">
+              <span className="text-white font-medium">Free users</span> can browse matches, view basic predictions, and see win probabilities.
+              Subscribe to unlock full analysis, team insights, betting recommendations &amp; more.
+            </p>
           </div>
         )}
 
@@ -437,7 +420,7 @@ export function PricingContent() {
         <Card className="bg-slate-800/50 border-slate-700 mb-12">
           <CardHeader>
             <CardTitle className="text-white text-2xl">Feature Comparison</CardTitle>
-            <p className="text-slate-400">Compare what you get across all plans</p>
+            <p className="text-slate-400">See what&apos;s included in each plan</p>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -445,13 +428,11 @@ export function PricingContent() {
                 <thead>
                   <tr className="border-b border-slate-700">
                     <th className="text-left py-4 px-4 text-slate-300 font-semibold">Feature</th>
-                    <th className="text-center py-4 px-3 text-slate-300 font-semibold">Free</th>
-                    <th className="text-center py-4 px-3 text-slate-300 font-semibold">Weekend</th>
-                    <th className="text-center py-4 px-3 text-slate-300 font-semibold">Weekly</th>
-                    <th className="text-center py-4 px-3 font-semibold">
-                      <span className="text-blue-400">Monthly</span>
+                    <th className="text-center py-4 px-4 text-slate-400 font-semibold">Free</th>
+                    <th className="text-center py-4 px-4 font-semibold">
+                      <span className="text-emerald-400">Pro</span>
                     </th>
-                    <th className="text-center py-4 px-3 font-semibold">
+                    <th className="text-center py-4 px-4 font-semibold">
                       <span className="text-amber-400">VIP</span>
                     </th>
                   </tr>
@@ -460,17 +441,17 @@ export function PricingContent() {
                   {comparisonFeatures.map((feature, idx) => (
                     <tr key={idx} className="border-b border-slate-700/50">
                       <td className="py-4 px-4 text-white font-medium">{feature.name}</td>
-                      {(["free", "weekend", "weekly", "monthly", "vip"] as const).map((col) => {
+                      {(["free", "pro", "vip"] as const).map((col) => {
                         const val = feature[col]
                         return (
-                          <td key={col} className="py-4 px-3 text-center">
+                          <td key={col} className="py-4 px-4 text-center">
                             {typeof val === "string" ? (
                               <span
                                 className={`text-sm font-medium ${
                                   col === "vip"
                                     ? "text-amber-400"
-                                    : col === "monthly"
-                                      ? "text-blue-400"
+                                    : col === "pro"
+                                      ? "text-emerald-400"
                                       : "text-slate-400"
                                 }`}
                               >
