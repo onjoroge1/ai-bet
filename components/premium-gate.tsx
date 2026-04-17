@@ -96,7 +96,7 @@ export function PremiumGate({
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
-              <Link href="/pricing" className="flex-1">
+              <Link href="/subscribe/pro_monthly" className="flex-1">
                 <Button className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-[0_0_20px_rgba(245,158,11,0.25)]">
                   <Crown className="h-4 w-4 mr-2" />
                   View Premium Plans

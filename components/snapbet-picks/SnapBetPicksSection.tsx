@@ -146,7 +146,7 @@ export function SnapBetPicksSection({ limit = 6, sport, showHeader = true, compa
                   </div>
                 </div>
                 <Link
-                  href="/pricing"
+                  href="/subscribe/pro_monthly"
                   className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black text-sm font-semibold rounded-lg transition-colors"
                 >
                   Upgrade

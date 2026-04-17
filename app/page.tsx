@@ -93,6 +93,7 @@ interface HeroParlay {
 export default function HomePage() {
   const router = useRouter()
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
+  const [isPremium, setIsPremium] = useState<boolean>(false)
   const [heroMatches, setHeroMatches] = useState<HeroMatch[]>([])
   const [heroParlays, setHeroParlays] = useState<HeroParlay[]>([])
   const [activeMatchIdx, setActiveMatchIdx] = useState(0)
@@ -110,6 +111,15 @@ export default function HomePage() {
         const res = await fetch("/api/auth/session", { cache: "no-store", credentials: "include" })
         const session = await res.json()
         setIsAuthenticated(!!session?.user)
+        if (session?.user) {
+          try {
+            const premiumRes = await fetch("/api/premium/check", { cache: "no-store", credentials: "include" })
+            if (premiumRes.ok) {
+              const premiumData = await premiumRes.json()
+              setIsPremium(!!premiumData.hasAccess)
+            }
+          } catch {}
+        }
       } catch {
         setIsAuthenticated(false)
       }
@@ -220,12 +230,18 @@ export default function HomePage() {
     return () => clearInterval(interval)
   }, [])
 
+  const SOURCE_TO_PLAN: Record<string, string> = {
+    pricing_pro: "pro_monthly",
+    pricing_vip: "vip_monthly",
+  }
+
   const handleCTAClick = async (source: string) => {
     try {
       const res = await fetch("/api/auth/session", { cache: "no-store", credentials: "include" })
       const session = await res.json()
       if (session?.user) {
-        router.push("/dashboard")
+        const planId = SOURCE_TO_PLAN[source]
+        router.push(planId ? `/subscribe/${planId}` : "/dashboard")
       } else {
         router.push(`/signup?source=${source}`)
       }
@@ -657,54 +673,82 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Pricing Preview ── */}
-      <section className="py-12 sm:py-16 bg-slate-900/30">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6">
-          <div className="text-center mb-8">
-            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">Simple Pricing</h2>
-            <p className="text-slate-400">Two plans. Full access. Cancel anytime.</p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
-            {/* Pro */}
-            <div className="bg-slate-800/60 border border-emerald-500/30 rounded-xl p-6 text-center hover:border-emerald-500/60 transition-all">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 rounded-full text-emerald-400 text-xs font-semibold mb-3">
-                <Crown className="w-3 h-3" /> MOST POPULAR
+      {/* ── Pricing Preview (hidden for premium subscribers) ── */}
+      {isPremium ? (
+        <section className="py-12 sm:py-16 bg-slate-900/30">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6">
+            <div className="bg-gradient-to-r from-emerald-500/10 via-emerald-600/5 to-transparent border border-emerald-500/20 rounded-2xl p-8 text-center">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-emerald-500/15 rounded-full text-emerald-400 text-sm font-semibold mb-4">
+                <CheckCircle className="w-4 h-4" /> Active Subscription
               </div>
-              <h3 className="text-xl font-bold text-white mb-1">Pro</h3>
-              <div className="text-3xl font-bold text-white mb-1">$19.99<span className="text-sm text-slate-400 font-normal">/mo</span></div>
-              <p className="text-slate-400 text-sm mb-4">Unlimited picks across all sports</p>
-              <ul className="text-sm text-slate-300 space-y-1.5 mb-5 text-left">
-                <li className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />All sports predictions</li>
-                <li className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />Full match analysis</li>
-                <li className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />AI parlays & player picks</li>
-              </ul>
-              <button onClick={() => handleCTAClick('pricing_pro')} className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold text-sm transition-colors">
-                Get Pro
-              </button>
-            </div>
-            {/* VIP */}
-            <div className="bg-slate-800/60 border border-amber-500/30 rounded-xl p-6 text-center hover:border-amber-500/60 transition-all">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 rounded-full text-amber-400 text-xs font-semibold mb-3">
-                <Crown className="w-3 h-3" /> ALL ACCESS
+              <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">You're All Set</h2>
+              <p className="text-slate-400 mb-6">You have full access to premium predictions, parlays, and analytics.</p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <button
+                  onClick={() => router.push("/dashboard/matches")}
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold text-sm transition-colors"
+                >
+                  View All Predictions
+                </button>
+                <button
+                  onClick={() => router.push("/dashboard/parlays")}
+                  className="px-6 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-semibold text-sm transition-colors"
+                >
+                  AI Parlays
+                </button>
               </div>
-              <h3 className="text-xl font-bold text-white mb-1">VIP</h3>
-              <div className="text-3xl font-bold text-white mb-1">$39.99<span className="text-sm text-slate-400 font-normal">/mo</span></div>
-              <p className="text-slate-400 text-sm mb-4">Everything + power tools</p>
-              <ul className="text-sm text-slate-300 space-y-1.5 mb-5 text-left">
-                <li className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />Everything in Pro</li>
-                <li className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />Edge Finder & AI Builder</li>
-                <li className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />50+ bookmaker odds</li>
-              </ul>
-              <button onClick={() => handleCTAClick('pricing_vip')} className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-black rounded-lg font-semibold text-sm transition-colors">
-                Get VIP
-              </button>
             </div>
           </div>
-          <p className="text-center text-slate-500 text-xs mt-4">
-            <a href="/pricing" className="text-emerald-400 hover:underline">View full comparison →</a>
-          </p>
-        </div>
-      </section>
+        </section>
+      ) : (
+        <section className="py-12 sm:py-16 bg-slate-900/30">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6">
+            <div className="text-center mb-8">
+              <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">Simple Pricing</h2>
+              <p className="text-slate-400">Two plans. Full access. Cancel anytime.</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
+              {/* Pro */}
+              <div className="bg-slate-800/60 border border-emerald-500/30 rounded-xl p-6 text-center hover:border-emerald-500/60 transition-all">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 rounded-full text-emerald-400 text-xs font-semibold mb-3">
+                  <Crown className="w-3 h-3" /> MOST POPULAR
+                </div>
+                <h3 className="text-xl font-bold text-white mb-1">Pro</h3>
+                <div className="text-3xl font-bold text-white mb-1">$19.99<span className="text-sm text-slate-400 font-normal">/mo</span></div>
+                <p className="text-slate-400 text-sm mb-4">Unlimited picks across all sports</p>
+                <ul className="text-sm text-slate-300 space-y-1.5 mb-5 text-left">
+                  <li className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />All sports predictions</li>
+                  <li className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />Full match analysis</li>
+                  <li className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />AI parlays & player picks</li>
+                </ul>
+                <button onClick={() => handleCTAClick('pricing_pro')} className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold text-sm transition-colors">
+                  Get Pro
+                </button>
+              </div>
+              {/* VIP */}
+              <div className="bg-slate-800/60 border border-amber-500/30 rounded-xl p-6 text-center hover:border-amber-500/60 transition-all">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 rounded-full text-amber-400 text-xs font-semibold mb-3">
+                  <Crown className="w-3 h-3" /> ALL ACCESS
+                </div>
+                <h3 className="text-xl font-bold text-white mb-1">VIP</h3>
+                <div className="text-3xl font-bold text-white mb-1">$39.99<span className="text-sm text-slate-400 font-normal">/mo</span></div>
+                <p className="text-slate-400 text-sm mb-4">Everything + power tools</p>
+                <ul className="text-sm text-slate-300 space-y-1.5 mb-5 text-left">
+                  <li className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />Everything in Pro</li>
+                  <li className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />Edge Finder & AI Builder</li>
+                  <li className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />50+ bookmaker odds</li>
+                </ul>
+                <button onClick={() => handleCTAClick('pricing_vip')} className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-black rounded-lg font-semibold text-sm transition-colors">
+                  Get VIP
+                </button>
+              </div>
+            </div>
+            <p className="text-center text-slate-500 text-xs mt-4">
+              <a href="/pricing" className="text-emerald-400 hover:underline">View full comparison →</a>
+            </p>
+          </div>
+        </section>
+      )}
 
       {/* ── Platform Stats ── */}
       <section className="py-12 sm:py-16">
