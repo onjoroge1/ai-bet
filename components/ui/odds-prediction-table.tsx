@@ -160,9 +160,9 @@ export function OddsPredictionTable({
       setError(null)
       
       // Use Next.js API route instead of direct backend call
-      // Fetch more matches for upcoming to enable date filtering
-      // Use lite mode for fast loading (50x+ speedup for live matches)
-      const fetchLimit = status === "upcoming" ? 50 : limit
+      // Upcoming: use 500 to show ALL available matches (backend serves up to 500)
+      // Lite mode makes this fast regardless of count
+      const fetchLimit = status === "upcoming" ? 500 : limit
       let url = `/api/market?status=${status}&limit=${fetchLimit}&mode=lite` // Lite mode for fast loading
       if (leagueId) {
         url += `&league=${leagueId}`
