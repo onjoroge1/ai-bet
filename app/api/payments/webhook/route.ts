@@ -66,6 +66,22 @@ export async function POST(req: NextRequest) {
         await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
         break;
 
+      // ── Refunds ─────────────────────────────────────────────────────────
+      case 'charge.refunded':
+        console.log('Handling charge.refunded');
+        await handleChargeRefunded(event.data.object as Stripe.Charge);
+        break;
+
+      // ── Disputes / chargebacks ──────────────────────────────────────────
+      case 'charge.dispute.created':
+      case 'charge.dispute.updated':
+      case 'charge.dispute.closed':
+      case 'charge.dispute.funds_withdrawn':
+      case 'charge.dispute.funds_reinstated':
+        console.log(`Handling ${event.type}`);
+        await handleChargeDispute(event.data.object as Stripe.Dispute, event.type);
+        break;
+
       default:
         console.log('Unhandled event:', event.type);
     }
@@ -887,8 +903,11 @@ async function handleSubscriptionUpsert(subscription: Stripe.Subscription) {
   });
 
   if (!user) {
-    console.error(`[handleSubscriptionUpsert] No user found for Stripe customer: ${customerId}`);
-    return;
+    // Throw instead of silent-returning so the caller's catch returns 500.
+    // Stripe will retry the webhook (up to ~3 days). If the user truly doesn't
+    // exist (deleted account), the retries eventually expire and the event
+    // lands in Stripe's failed-events log for support review.
+    throw new Error(`[handleSubscriptionUpsert] No user found for Stripe customer: ${customerId} (subscription=${subscription.id})`);
   }
 
   const status = subscription.status; // "active" | "trialing" | "past_due" etc.
@@ -953,8 +972,9 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
   });
 
   if (!user) {
-    console.error(`[handleSubscriptionDeleted] No user found for Stripe customer: ${customerId}`);
-    return;
+    // Throw so Stripe retries; otherwise a user could be left with active
+    // UserPackage despite their Stripe sub being deleted.
+    throw new Error(`[handleSubscriptionDeleted] No user found for Stripe customer: ${customerId} (subscription=${subscription.id})`);
   }
 
   // Expire all active monthly_sub packages for this user
@@ -1008,8 +1028,10 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
   });
 
   if (!user) {
-    console.error(`[handleInvoicePaid] No user found for subscription: ${subscriptionId}`);
-    return;
+    // Race: invoice.paid may arrive before customer.subscription.created on the
+    // first billing cycle. Throw so Stripe retries; the subscription event will
+    // have created the User by the time the retry fires.
+    throw new Error(`[handleInvoicePaid] No user found for subscription: ${subscriptionId} (invoice=${invoice.id})`);
   }
 
   // Top up credits for the new billing cycle (150 = unlimited monthly allowance)
@@ -1040,7 +1062,10 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
     where: { stripeSubscriptionId: subscriptionId },
   });
 
-  if (!user) return;
+  if (!user) {
+    // Same race as handleInvoicePaid — let Stripe retry.
+    throw new Error(`[handleInvoicePaymentFailed] No user found for subscription: ${subscriptionId} (invoice=${invoice.id})`);
+  }
 
   await prisma.user.update({
     where: { id: user.id },
@@ -1063,4 +1088,241 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
   }
 
   console.log(`[handleInvoicePaymentFailed] Payment failed for user ${user.id}, status → past_due`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// REFUND HANDLER
+// Stripe issues `charge.refunded` whenever a refund is created or updated.
+// We need to: (1) locate the original PackagePurchase or Subscription, (2)
+// reverse credits if applicable, (3) mark the purchase as refunded, and
+// (4) notify the user. Idempotent: re-runs are no-ops because we check
+// status before mutating.
+// ─────────────────────────────────────────────────────────────────────────
+async function handleChargeRefunded(charge: Stripe.Charge) {
+  const paymentIntentId =
+    typeof charge.payment_intent === 'string'
+      ? charge.payment_intent
+      : charge.payment_intent?.id ?? null;
+
+  console.log(`[handleChargeRefunded] charge=${charge.id} pi=${paymentIntentId} refunded=${charge.amount_refunded}/${charge.amount} ${charge.currency.toUpperCase()}`);
+
+  // Resolve the user via the original PaymentIntent metadata (we always set userId there).
+  // This is more reliable than amount-matching across PackagePurchase rows.
+  let userId: string | null = null;
+  let originalAmount: number | null = null;
+  if (paymentIntentId) {
+    try {
+      const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+      userId = (pi.metadata?.userId as string) ?? null;
+      originalAmount = pi.amount;
+    } catch (e) {
+      console.error('[handleChargeRefunded] Failed to retrieve payment intent', e);
+    }
+  }
+
+  // Subscription-charge refund path — no userId on PaymentIntent metadata for
+  // automatic invoice charges. Fall back to stripeCustomerId.
+  if (!userId && charge.customer) {
+    const customerId = typeof charge.customer === 'string' ? charge.customer : charge.customer.id;
+    const u = await prisma.user.findFirst({
+      where: { stripeCustomerId: customerId },
+      select: { id: true },
+    });
+    userId = u?.id ?? null;
+  }
+
+  if (!userId) {
+    console.error(`[handleChargeRefunded] Could not resolve user for charge=${charge.id} — manual support review required`);
+    return;
+  }
+
+  // Find the most recent completed PackagePurchase for this user matching the
+  // refunded amount, created within 90 days. This is the best signal we have
+  // because PackagePurchase doesn't store stripePaymentIntentId (schema gap).
+  const candidatePurchases = await prisma.packagePurchase.findMany({
+    where: {
+      userId,
+      status: 'completed',
+      createdAt: { gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+  });
+
+  // Match by amount (in dollars, rounded to 2dp). originalAmount is in cents.
+  const targetDollars = originalAmount != null ? originalAmount / 100 : null;
+  const matched = targetDollars != null
+    ? candidatePurchases.find(pp => Math.abs(Number(pp.amount) - targetDollars) < 0.01)
+    : candidatePurchases[0]; // best-effort: most recent if amount unknown
+
+  if (!matched) {
+    // Subscription refund (no PackagePurchase row) — log and notify, don't deduct.
+    console.warn(`[handleChargeRefunded] No matching PackagePurchase found for user=${userId} amount=${targetDollars} — likely a subscription refund. Notifying user only.`, { chargeId: charge.id });
+    try {
+      const { NotificationService } = await import('@/lib/notification-service');
+      await NotificationService.createNotification({
+        userId,
+        title: 'Refund Processed',
+        message: `A refund of $${(charge.amount_refunded / 100).toFixed(2)} has been processed. It will appear on your statement within 5-10 business days.`,
+        type: 'info',
+        category: 'payment',
+        actionUrl: '/dashboard/settings',
+      });
+    } catch (e) {
+      console.error('[handleChargeRefunded] Failed to notify user', e);
+    }
+    return;
+  }
+
+  // Idempotency — already refunded
+  if (matched.status === 'refunded') {
+    console.log(`[handleChargeRefunded] PackagePurchase ${matched.id} already refunded — skipping`);
+    return;
+  }
+
+  // Find the linked UserPackage (created within ~2 min of the PackagePurchase)
+  const userPackage = await prisma.userPackage.findFirst({
+    where: {
+      userId,
+      purchasedAt: {
+        gte: new Date(matched.createdAt.getTime() - 120_000),
+        lte: new Date(matched.createdAt.getTime() + 120_000),
+      },
+      status: 'active',
+    },
+    include: { packageOffer: { select: { tipCount: true, name: true } } },
+  });
+
+  let creditsDeducted = 0;
+  if (userPackage) {
+    const granted = userPackage.packageOffer?.tipCount ?? userPackage.totalTips ?? 0;
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { predictionCredits: true } });
+    const currentBalance = user?.predictionCredits ?? 0;
+    creditsDeducted = Math.min(granted, currentBalance);
+
+    await prisma.$transaction([
+      prisma.userPackage.update({
+        where: { id: userPackage.id },
+        data: { status: 'refunded' },
+      }),
+      prisma.user.update({
+        where: { id: userId },
+        data: { predictionCredits: { decrement: creditsDeducted } },
+      }),
+    ]);
+  }
+
+  await prisma.packagePurchase.update({
+    where: { id: matched.id },
+    data: { status: 'refunded' },
+  });
+
+  console.log(`[handleChargeRefunded] Reversed: PackagePurchase ${matched.id} → refunded, credits deducted=${creditsDeducted}, userPackageId=${userPackage?.id ?? 'none'}`);
+
+  try {
+    const { NotificationService } = await import('@/lib/notification-service');
+    await NotificationService.createNotification({
+      userId,
+      title: 'Refund Processed',
+      message: `Your payment has been refunded.${creditsDeducted > 0 ? ` ${creditsDeducted} credits were deducted from your account.` : ''} Refund will appear on your statement within 5-10 business days.`,
+      type: 'info',
+      category: 'payment',
+      actionUrl: '/dashboard/my-tips',
+    });
+  } catch (e) {
+    console.error('[handleChargeRefunded] Failed to notify user', e);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// DISPUTE HANDLER
+// Logs every dispute event verbosely. On `created` and `funds_withdrawn` we
+// downgrade the user to free tier so disputed access stops accruing. Once
+// the dispute is `closed` and we lost, we keep them downgraded; if we won
+// (`charge.dispute.funds_reinstated`), we restore. Notifications are best-
+// effort.
+// ─────────────────────────────────────────────────────────────────────────
+async function handleChargeDispute(dispute: Stripe.Dispute, eventType: string) {
+  const chargeId = typeof dispute.charge === 'string' ? dispute.charge : dispute.charge?.id ?? null;
+  if (!chargeId) {
+    console.warn('[handleChargeDispute] No charge id on dispute — skipping', { disputeId: dispute.id, eventType });
+    return;
+  }
+
+  // Resolve the affected user by looking up the original payment intent → package purchase
+  let userId: string | null = null;
+  try {
+    const charge = await stripe.charges.retrieve(chargeId);
+    const paymentIntentId =
+      typeof charge.payment_intent === 'string'
+        ? charge.payment_intent
+        : charge.payment_intent?.id ?? null;
+    if (paymentIntentId) {
+      const pp = await prisma.packagePurchase.findFirst({
+        where: { stripePaymentIntentId: paymentIntentId },
+        select: { userId: true },
+      });
+      userId = pp?.userId ?? null;
+    }
+    // Subscription dispute: try matching customer
+    if (!userId && charge.customer) {
+      const customerId = typeof charge.customer === 'string' ? charge.customer : charge.customer.id;
+      const u = await prisma.user.findFirst({ where: { stripeCustomerId: customerId }, select: { id: true } });
+      userId = u?.id ?? null;
+    }
+  } catch (e) {
+    console.error('[handleChargeDispute] Failed to resolve user from charge', e);
+  }
+
+  console.error(`[handleChargeDispute] ${eventType}`, {
+    disputeId: dispute.id,
+    chargeId,
+    userId,
+    amount: dispute.amount,
+    currency: dispute.currency,
+    reason: dispute.reason,
+    status: dispute.status,
+  });
+
+  // On dispute creation or funds withdrawal: downgrade user immediately to prevent
+  // continued premium access during dispute proceedings.
+  const shouldDowngrade =
+    eventType === 'charge.dispute.created' || eventType === 'charge.dispute.funds_withdrawn';
+  // On reinstated (we won): restore. Stripe sends this when the dispute is decided in our favor.
+  const shouldRestore = eventType === 'charge.dispute.funds_reinstated';
+
+  if (userId && shouldDowngrade) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { subscriptionStatus: 'disputed' },
+    }).catch(e => console.error('[handleChargeDispute] Failed to flag user as disputed', e));
+  }
+
+  if (userId && shouldRestore) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { subscriptionStatus: 'active' },
+    }).catch(e => console.error('[handleChargeDispute] Failed to restore user', e));
+  }
+
+  // Notify admin support team via notification (uses an admin-channel category).
+  // We do NOT notify the user — disputes are a sensitive financial situation and
+  // the user already initiated it; their bank communicates the resolution.
+  try {
+    const { NotificationService } = await import('@/lib/notification-service');
+    // Find an admin to notify, or skip silently if no admin exists
+    const admin = await prisma.user.findFirst({ where: { role: 'admin' }, select: { id: true } });
+    if (admin) {
+      await NotificationService.createNotification({
+        userId: admin.id,
+        title: `Stripe Dispute: ${eventType}`,
+        message: `Dispute ${dispute.id} for $${(dispute.amount / 100).toFixed(2)} ${dispute.currency.toUpperCase()} (${dispute.reason}). Affected user: ${userId ?? 'unknown'}.`,
+        type: 'error',
+        category: 'admin',
+        actionUrl: `/admin/payments?dispute=${dispute.id}`,
+      });
+    }
+  } catch (e) {
+    console.error('[handleChargeDispute] Failed to notify admin', e);
+  }
 }

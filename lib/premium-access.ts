@@ -3,6 +3,29 @@ import { authOptions } from '@/lib/auth'
 import prisma from '@/lib/db'
 
 /**
+ * Subscription statuses that block premium access.
+ *
+ * - `canceled`/`cancelled`: user terminated subscription (period-end already past)
+ * - `unpaid`: Stripe gave up after retries
+ * - `incomplete_expired`: 3DS / SCA challenge expired without success
+ * - `past_due`: invoice payment failed; Stripe is retrying. We block access
+ *   immediately to prevent free premium during the retry window. Users see a
+ *   warning in /dashboard/settings prompting them to update their payment
+ *   method, and access auto-restores when payment succeeds (`invoice.paid`
+ *   webhook flips status back to `active`).
+ * - `disputed`: chargeback in flight; we don't honor access while a dispute
+ *   is open.
+ */
+export const BLOCKED_SUBSCRIPTION_STATUSES = [
+  'canceled', 'cancelled', 'unpaid', 'incomplete_expired', 'past_due', 'disputed',
+] as const
+
+function isBlockedStatus(status: string | null | undefined): boolean {
+  if (!status) return false
+  return (BLOCKED_SUBSCRIPTION_STATUSES as readonly string[]).includes(status.toLowerCase())
+}
+
+/**
  * Check if user has active package (Weekend, Weekly, Monthly, VIP)
  * Packages have expiresAt dates (3 days for weekend, 7 days for weekly)
  * Monthly and VIP are recurring subscriptions
@@ -85,10 +108,8 @@ export async function hasPremiumAccess(): Promise<boolean> {
     const isNotExpired = !!(user.subscriptionExpiresAt && 
       new Date(user.subscriptionExpiresAt) > new Date())
 
-    // Check subscriptionStatus — block only explicitly cancelled/unpaid states
-    const blockedStatuses = ['canceled', 'cancelled', 'unpaid', 'incomplete_expired']
-    const isExplicitlyBlocked = !!user.subscriptionStatus &&
-      blockedStatuses.includes(user.subscriptionStatus.toLowerCase())
+    // Check subscriptionStatus — block cancelled, unpaid, past_due, disputed states
+    const isExplicitlyBlocked = isBlockedStatus(user.subscriptionStatus)
 
     return !!(isPremiumPlan && isNotExpired && !isExplicitlyBlocked)
   } catch (error) {
@@ -188,10 +209,8 @@ export async function getPremiumStatus(): Promise<{
     const expiresAt = user.subscriptionExpiresAt
     const isExpired = !expiresAt || new Date(expiresAt) <= new Date()
 
-    // Block only explicitly cancelled/unpaid statuses
-    const blockedStatuses = ['canceled', 'cancelled', 'unpaid', 'incomplete_expired']
-    const isExplicitlyBlocked = !!user.subscriptionStatus &&
-      blockedStatuses.includes(user.subscriptionStatus.toLowerCase())
+    // Block cancelled, unpaid, past_due, disputed statuses
+    const isExplicitlyBlocked = isBlockedStatus(user.subscriptionStatus)
 
     return {
       hasAccess: !!(isPremiumPlan && !isExpired && !isExplicitlyBlocked),
@@ -306,8 +325,7 @@ export async function getUserTier(): Promise<{ tier: AccessTier; plan: string | 
     }
 
     // Fall back to subscription
-    const blockedStatuses = ['canceled', 'cancelled', 'unpaid', 'incomplete_expired']
-    const isBlocked = !!user.subscriptionStatus && blockedStatuses.includes(user.subscriptionStatus.toLowerCase())
+    const isBlocked = isBlockedStatus(user.subscriptionStatus)
     const isExpired = !user.subscriptionExpiresAt || new Date(user.subscriptionExpiresAt) <= now
 
     if (isBlocked || isExpired) return { tier: 'free', plan: null, expiresAt: null }

@@ -244,6 +244,42 @@ export function PaymentSettings() {
         </div>
       )}
 
+      {/* Past-due / disputed banner — shown when access is blocked due to payment issue.
+          Premium routes redirect to /dashboard?upgrade=true when blocked, but the user
+          may already be on settings; this banner gives them a clear next step. */}
+      {subscription?.status === "past_due" && (
+        <div className="p-4 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-200 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-amber-400" />
+          <div className="flex-1">
+            <p className="font-medium text-amber-300">Payment Failed — Action Required</p>
+            <p className="text-sm text-amber-200/90 mt-1">
+              Your last subscription payment didn&apos;t go through. We&apos;ve paused premium access while Stripe retries.
+              Update your payment method below to restore access immediately.
+            </p>
+          </div>
+          <Button
+            onClick={handlePortal}
+            disabled={isActionLoading}
+            size="sm"
+            className="bg-amber-500 hover:bg-amber-400 text-black shrink-0"
+          >
+            Update Payment
+          </Button>
+        </div>
+      )}
+      {subscription?.status === "disputed" && (
+        <div className="p-4 rounded-lg border border-red-500/40 bg-red-500/10 text-red-200 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-red-400" />
+          <div className="flex-1">
+            <p className="font-medium text-red-300">Payment Dispute Open</p>
+            <p className="text-sm text-red-200/90 mt-1">
+              A dispute has been opened against a recent payment. Premium access is paused while we resolve this with your bank.
+              If you didn&apos;t mean to file this dispute, please contact support.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── Current Plan + Actions ── */}
       <Card className="bg-slate-800/50 border-slate-700">
         <CardHeader>

@@ -472,7 +472,9 @@ export async function middleware(request: NextRequest) {
         const isNotExpired = !!expiresAt && new Date(expiresAt) > new Date()
 
         // Explicitly blocked statuses — everything else (including null) is OK
-        const blockedStatuses = ['canceled', 'cancelled', 'unpaid', 'incomplete_expired']
+        // Keep in sync with lib/premium-access.ts BLOCKED_SUBSCRIPTION_STATUSES.
+        // Middleware can't import from /lib (Edge runtime constraint), so duplicate it here.
+        const blockedStatuses = ['canceled', 'cancelled', 'unpaid', 'incomplete_expired', 'past_due', 'disputed']
         const isExplicitlyBlocked = !!status && blockedStatuses.includes(status.toLowerCase())
 
         const hasPremiumSubscription = isPremiumPlan && isNotExpired && !isExplicitlyBlocked
