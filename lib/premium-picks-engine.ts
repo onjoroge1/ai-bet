@@ -8,6 +8,10 @@
  *   - V3 confidence ≥ 50% + strong league → ~60-67% accuracy
  *   - V1+V3 agree + home pick + low draw rate → ~55-60%
  *   - Premium star score ≥ 60 → premium tier
+ *   - **Backend V2 surface gate** (deriveSurface from recommended_bet):
+ *     hard requirement on top of the above. Backend's specialist + league
+ *     multiplier cascade emits "Lean: …" / "No bet …" for matches that
+ *     should NOT be surfaced. Backtest: V0→V2 lifts accuracy ~8.4pp.
  *
  * NBA:
  *   - Model confidence ≥ 80% → 79% accuracy
@@ -21,6 +25,7 @@
 
 import prisma from '@/lib/db'
 import { Prisma } from '@prisma/client'
+import { deriveSurfaceFromPrediction } from '@/lib/predictions/should-surface'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -195,6 +200,16 @@ async function getSoccerPicks(): Promise<SnapBetPick[]> {
 
       // Skip weak leagues unless very high confidence
       if (isWeakLeague(league) && v3conf < 0.6 && v1conf < 0.75) {
+        qualifies = false
+      }
+
+      // Hard gate from backend's V2 surface logic.
+      // Even if our tier criteria above accept this pick, if the model has
+      // tagged it "Lean: ..." or "No bet" we don't show it. Single source of
+      // truth — when backend exposes explicit `should_surface`, swap the
+      // helper's body to read it directly; this call site stays the same.
+      const surface = deriveSurfaceFromPrediction(pd)
+      if (!surface.shouldSurface) {
         qualifies = false
       }
 

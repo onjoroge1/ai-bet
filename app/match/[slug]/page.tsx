@@ -23,6 +23,7 @@ import { LiveMatchStats } from "@/components/live/LiveMatchStats"
 import { LiveAIAnalysis } from "@/components/live/LiveAIAnalysis"
 import { ConnectionStatusIndicator } from "@/components/live/ConnectionStatusIndicator"
 import { generateMatchSlug, isNumericSlug } from "@/lib/match-slug"
+import { deriveSurface } from "@/lib/predictions/should-surface"
 import { RealtimeAdvancedMarkets } from "@/components/live/RealtimeAdvancedMarkets"
 import { FinishedMatchStats } from "@/components/match/FinishedMatchStats"
 import { BettingIntelligence } from "@/components/match/BettingIntelligence"
@@ -1005,6 +1006,18 @@ export default function MatchDetailPage() {
     quickPurchaseInfo?.confidenceScore ??
     (v1Model ? Math.round(v1Model.confidence * 100) : 0)
 
+  // V2 surface gate — suppress promotional "Premium Pick" / "Strong Pick" badges
+  // when backend has flagged this match as low-conviction or "no bet". Paying
+  // users still see the actual prediction (they paid for transparency); we
+  // just don't oversell conviction we don't have.
+  const surfaceDecision = deriveSurface(
+    prediction?.predictions?.recommended_bet ?? quickPurchaseInfo?.predictionType
+  )
+  // Effective tier visible to user — degraded to 'standard' when V2 says don't surface
+  const effectiveTier: string | null = surfaceDecision.shouldSurface
+    ? quickPurchaseInfo?.premiumTier ?? null
+    : 'standard'
+
   // JSON-LD structured data (SportsEvent + BreadcrumbList) is rendered
   // server-side in layout.tsx for optimal crawler discovery.
 
@@ -1372,8 +1385,8 @@ export default function MatchDetailPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {/* Confidence — PREMIUM */}
             <div className={`bg-slate-800/60 border rounded-xl p-4 text-center hover:border-emerald-500/30 transition-colors relative ${
-              quickPurchaseInfo?.premiumTier === 'premium' ? 'border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.15)]' :
-              quickPurchaseInfo?.premiumTier === 'strong' ? 'border-slate-400/40' : 'border-slate-700'
+              effectiveTier === 'premium' ? 'border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.15)]' :
+              effectiveTier === 'strong' ? 'border-slate-400/40' : 'border-slate-700'
             }`}>
               <PremiumBlur locked={premiumLocked} onUnlock={handlePurchaseClick}>
                 <div className="flex justify-center mb-2">
@@ -1394,8 +1407,11 @@ export default function MatchDetailPage() {
                 </div>
               )}
               <div className="text-slate-400 text-xs font-medium">
-                {quickPurchaseInfo?.premiumTier === 'premium' ? 'Premium Pick' :
-                 quickPurchaseInfo?.premiumTier === 'strong' ? 'Strong Pick' : 'AI Confidence'}
+                {effectiveTier === 'premium' ? 'Premium Pick' :
+                 effectiveTier === 'strong' ? 'Strong Pick' :
+                 surfaceDecision.surfaceReason === 'low_conviction' ? 'Low Conviction' :
+                 surfaceDecision.surfaceReason === 'suppressed' ? 'No Strong Signal' :
+                 'AI Confidence'}
               </div>
             </div>
 
