@@ -982,8 +982,8 @@ export default function MatchDetailPage() {
   const isPurchased = purchaseStatus?.isPurchased || false
   const hasPackageAccess = purchaseStatus?.hasPackageAccess || false
 
-  /** Whether premium content should be locked (not purchased AND match not finished) */
-  const premiumLocked = !isPurchased && !isFinished
+  /** Whether premium content should be locked (no access AND match not finished) */
+  const premiumLocked = !isPurchased && !hasPackageAccess && !isFinished
 
   /** Formatted price for unlock CTAs - hide if user has package access */
   const premiumPrice = (hasPackageAccess || !quickPurchaseInfo)

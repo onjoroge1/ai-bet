@@ -54,6 +54,7 @@ interface SyncStatusResponse {
       lastSyncedAt: string | null
       timeSinceLastSync: string
       matchCount: number
+      staleCount?: number
       syncErrors: number
       syncCount: number
     }
@@ -321,7 +322,17 @@ export function MarketSyncButton() {
                 <span className="text-sm font-medium">Upcoming Matches</span>
               </div>
               <div className="flex items-center gap-3 text-xs">
-                <span className="text-slate-400">{syncStatus.status.upcoming.matchCount} matches</span>
+                <span className="text-slate-400">
+                  {syncStatus.status.upcoming.matchCount} matches
+                  {(syncStatus.status.upcoming.staleCount ?? 0) > 0 && (
+                    <span
+                      className="ml-1 text-amber-400"
+                      title="Rows still flagged UPCOMING whose kickoff is already in the past — sync worker hasn't transitioned them to LIVE/FINISHED"
+                    >
+                      {' '}+ {syncStatus.status.upcoming.staleCount} stale
+                    </span>
+                  )}
+                </span>
                 <span className="text-slate-400">{syncStatus.status.upcoming.timeSinceLastSync}</span>
                 <span className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(syncStatus.status.upcoming.status)}`}>
                   {getStatusLabel(syncStatus.status.upcoming.status)}

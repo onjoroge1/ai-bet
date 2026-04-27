@@ -64,9 +64,13 @@ export async function GET(request: NextRequest) {
 
       let correct: boolean | null = null
       if (predictions?.pick && score) {
-        const homeWon = score.home > score.away
-        const pickIsHome = predictions.pick === 'H' || predictions.pick === 'home'
-        correct = pickIsHome === homeWon
+        let predicted: string | null = null
+        if (predictions.pick === 'H' || predictions.pick === 'home') predicted = 'home'
+        else if (predictions.pick === 'A' || predictions.pick === 'away') predicted = 'away'
+        else if (predictions.pick === 'D' || predictions.pick === 'draw') predicted = 'draw'
+
+        const actual = score.home > score.away ? 'home' : score.away > score.home ? 'away' : 'draw'
+        correct = predicted === actual
         v3Total++
         if (correct) v3Correct++
       }
@@ -110,10 +114,14 @@ export async function GET(request: NextRequest) {
       const score = finalResult?.score as { home: number; away: number } | null
 
       if (predictions?.pick && score) {
-        const homeWon = score.home > score.away
-        const pickIsHome = predictions.pick === 'H' || predictions.pick === 'home'
+        let predicted: string | null = null
+        if (predictions.pick === 'H' || predictions.pick === 'home') predicted = 'home'
+        else if (predictions.pick === 'A' || predictions.pick === 'away') predicted = 'away'
+        else if (predictions.pick === 'D' || predictions.pick === 'draw') predicted = 'draw'
+
+        const actual = score.home > score.away ? 'home' : score.away > score.home ? 'away' : 'draw'
         allTotal++
-        if (pickIsHome === homeWon) allCorrect++
+        if (predicted === actual) allCorrect++
       }
       if (predictions?.confidence) {
         allConfidenceSum += predictions.confidence

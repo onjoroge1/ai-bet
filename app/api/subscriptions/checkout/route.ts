@@ -118,6 +118,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Complete Package coming soon' }, { status: 400 })
     }
 
+    // Check if user already has an active subscription at the same or higher tier
+    const subUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { subscriptionStatus: true, subscriptionPlan: true },
+    })
+
+    if (subUser?.subscriptionStatus && ['active', 'trialing'].includes(subUser.subscriptionStatus)) {
+      const tierOrder: Record<string, number> = { starter: 1, pro: 2, vip: 3, complete: 4 }
+      const requestedTier = planConfig.metadata?.planType
+      const existingPlan = subUser.subscriptionPlan?.toLowerCase() || ''
+      const existingLevel = tierOrder[existingPlan] ?? 0
+      const requestedLevel = tierOrder[requestedTier || ''] ?? 0
+
+      if (requestedLevel <= existingLevel) {
+        return NextResponse.json({
+          error: `You already have an active ${existingPlan} subscription. Manage it in your dashboard settings.`,
+          existingPlan,
+        }, { status: 409 })
+      }
+    }
+
     let stripePriceId: string | undefined
     let amount: number
     let finalCurrencyCode = currencyCode

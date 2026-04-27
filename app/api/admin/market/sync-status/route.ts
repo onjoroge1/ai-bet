@@ -33,9 +33,17 @@ export async function GET(request: NextRequest) {
     ])
 
     // Get match counts
-    const [liveCount, upcomingCount, completedCount] = await Promise.all([
+    // Note: upcomingCount uses kickoffDate >= now to match /admin/matches page behavior.
+    // staleUpcomingCount surfaces rows still flagged UPCOMING whose kickoff is already in the past —
+    // these indicate sync worker hasn't transitioned them to LIVE/FINISHED.
+    const [liveCount, upcomingCount, staleUpcomingCount, completedCount] = await Promise.all([
       prisma.marketMatch.count({ where: { status: 'LIVE', isActive: true } }),
-      prisma.marketMatch.count({ where: { status: 'UPCOMING', isActive: true } }),
+      prisma.marketMatch.count({
+        where: { status: 'UPCOMING', isActive: true, kickoffDate: { gte: now } },
+      }),
+      prisma.marketMatch.count({
+        where: { status: 'UPCOMING', isActive: true, kickoffDate: { lt: now } },
+      }),
       prisma.marketMatch.count({ where: { status: 'FINISHED', isActive: true } }),
     ])
 
@@ -139,7 +147,11 @@ export async function GET(request: NextRequest) {
     }
 
     const liveStatus = getStatus(liveMatches, LIVE_SYNC_INTERVAL, liveCount, 'live')
-    const upcomingStatus = getStatus(upcomingMatches, UPCOMING_SYNC_INTERVAL, upcomingCount, 'upcoming')
+    const baseUpcomingStatus = getStatus(upcomingMatches, UPCOMING_SYNC_INTERVAL, upcomingCount, 'upcoming')
+    // If there are stale UPCOMING rows (kickoff in past), degrade the status so admins notice
+    const upcomingStatus = staleUpcomingCount > 0 && baseUpcomingStatus === 'healthy'
+      ? 'degraded'
+      : baseUpcomingStatus
     const completedStatus = getStatus(completedMatches, UPCOMING_SYNC_INTERVAL, completedCount, 'completed') // Completed matches are never re-synced
 
     // Calculate time since last sync
@@ -167,6 +179,7 @@ export async function GET(request: NextRequest) {
           lastSyncedAt: upcomingMatches?.lastSyncedAt || null,
           timeSinceLastSync: getTimeSinceLastSync(upcomingMatches),
           matchCount: upcomingCount,
+          staleCount: staleUpcomingCount,
           syncErrors: upcomingMatches?.syncErrors || 0,
           syncCount: upcomingMatches?.syncCount || 0,
         },

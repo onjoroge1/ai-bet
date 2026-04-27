@@ -33,7 +33,15 @@ interface PostResult {
 }
 
 // Cache connected accounts (refreshed every 10 min)
-let accountsCache: Array<{ id: string; platform: string }> | null = null
+interface ConnectedAccount {
+  id: string           // Zernio account _id
+  platform: string     // e.g. 'twitter', 'instagram'
+  profileId?: string   // Zernio profile _id (workspace)
+  displayName?: string
+  username?: string
+  isActive?: boolean
+}
+let accountsCache: ConnectedAccount[] | null = null
 let accountsCacheTime = 0
 const CACHE_TTL = 10 * 60 * 1000
 
@@ -51,9 +59,13 @@ function getApiKey(): string {
 }
 
 /**
- * Get all connected social accounts
+ * Get all connected social accounts.
+ *
+ * Zernio/Late.dev returns accounts with MongoDB-style `_id` fields and a nested
+ * `profileId` object. Normalize to a flat shape so callers can use `account.id`
+ * consistently. Filter out inactive accounts so we never target a disconnected platform.
  */
-export async function getConnectedAccounts(): Promise<Array<{ id: string; platform: string }>> {
+export async function getConnectedAccounts(): Promise<ConnectedAccount[]> {
   if (accountsCache && Date.now() - accountsCacheTime < CACHE_TTL) {
     return accountsCache
   }
@@ -70,14 +82,29 @@ export async function getConnectedAccounts(): Promise<Array<{ id: string; platfo
     }
 
     const data = await res.json() as any
-    const accounts = (data?.accounts || data?.data || data || []) as Array<{ id: string; platform: string }>
+    const raw = (data?.accounts || data?.data || data || []) as any[]
+
+    const accounts: ConnectedAccount[] = raw
+      .map(a => ({
+        id: a._id || a.id,
+        platform: a.platform,
+        profileId: a.profileId?._id || a.profileId?.id || a.profileId,
+        displayName: a.displayName,
+        username: a.username,
+        isActive: a.isActive !== false, // default true if field absent
+      }))
+      .filter(a => a.id && a.platform)
 
     accountsCache = accounts
     accountsCacheTime = Date.now()
 
     logger.info('[Late.dev] Fetched connected accounts', {
       tags: ['late', 'accounts'],
-      data: { count: accounts.length, platforms: accounts.map((a: any) => a.platform) },
+      data: {
+        count: accounts.length,
+        platforms: accounts.map(a => a.platform),
+        usernames: accounts.map(a => a.username),
+      },
     })
 
     return accounts
@@ -157,26 +184,45 @@ export async function postToSocial(
       signal: AbortSignal.timeout(30000),
     })
 
+    const responseText = await res.text()
+
     if (!res.ok) {
-      const errText = await res.text().catch(() => '')
-      throw new Error(`Late.dev API error: ${res.status} ${errText}`)
+      throw new Error(`Late.dev API error: ${res.status} ${responseText}`)
     }
 
-    const data = await res.json() as any
-    const postId = data?.id || data?.postId || `late-${Date.now()}`
+    const data = JSON.parse(responseText) as any
 
-    // Extract per-platform results if available
+    // Zernio response shape: { post: { _id, platforms: [{ _id, platform, accountId, status }] }, message }
+    const postEnvelope = data?.post || data
+    const zernioPostId = postEnvelope?._id || postEnvelope?.id || postEnvelope?.postId
+
+    if (!zernioPostId) {
+      // No real id returned — treat as failure so the caller can fall back
+      throw new Error(`Late.dev returned 2xx but no post id: ${responseText.slice(0, 300)}`)
+    }
+
+    // Match per-platform results back to our input by platform name
+    const platformResults = (postEnvelope?.platforms || []) as Array<{ platform: string; _id?: string; status?: string }>
+
     for (const p of platforms) {
+      const pr = platformResults.find(r => r.platform === p.platform)
+      // Zernio per-platform status can be: 'pending', 'published', 'failed', etc.
+      const failed = pr?.status === 'failed'
       results.push({
-        success: true,
-        postId: String(postId),
+        success: !failed,
+        postId: zernioPostId,
         platformPostUrl: data?.platformPostUrl || data?.url,
+        error: failed ? `Zernio platform-level failure for ${p.platform}` : undefined,
       })
     }
 
-    logger.info('[Late.dev] Post published successfully', {
+    logger.info('[Late.dev] Post created successfully', {
       tags: ['late', 'post', 'success'],
-      data: { postId, platforms: platforms.map(p => p.platform) },
+      data: {
+        zernioPostId,
+        platforms: platforms.map(p => p.platform),
+        platformStatuses: platformResults.map(r => ({ platform: r.platform, status: r.status })),
+      },
     })
   } catch (error) {
     logger.error('[Late.dev] Failed to post', {
@@ -209,29 +255,34 @@ export async function postTweetViaLate(text: string): Promise<string> {
     { platform: 'twitter', accountId },
   ], { publishNow: true })
 
-  if (results[0]?.success) {
-    return results[0].postId || `late-${Date.now()}`
+  if (results[0]?.success && results[0].postId) {
+    return results[0].postId
   }
   throw new Error(results[0]?.error || 'Failed to post to Twitter via Late.dev')
 }
 
 /**
- * Post to ALL connected platforms at once
- * Automatically formats content per platform
+ * Post to ALL connected platforms at once.
+ * Automatically formats content per platform.
+ *
+ * Returns the real Zernio post id plus per-platform outcome arrays.
+ * Throws if no accounts are connected, if every platform failed, or if Zernio
+ * didn't return a real post id — so callers can fall back or mark as failed
+ * instead of silently pretending success.
  */
 export async function postToAllPlatforms(
   content: string,
   options?: {
-    twitterText?: string     // Short version for X (280 chars)
+    twitterText?: string      // Short version for X (280 chars)
     instagramCaption?: string // Longer version with hashtags
-    linkedinText?: string    // Professional version
-    mediaUrl?: string        // Image URL for visual platforms
+    linkedinText?: string     // Professional version
+    mediaUrl?: string         // Image URL for visual platforms
     publishNow?: boolean
   }
-): Promise<{ posted: string[]; failed: string[] }> {
-  const accounts = await getConnectedAccounts()
+): Promise<{ postId: string; posted: string[]; failed: string[] }> {
+  const accounts = (await getConnectedAccounts()).filter(a => a.isActive !== false)
   if (accounts.length === 0) {
-    throw new Error('No social accounts connected in Late.dev')
+    throw new Error('No active social accounts connected in Late.dev')
   }
 
   const platforms: PlatformTarget[] = []
@@ -269,12 +320,21 @@ export async function postToAllPlatforms(
 
   const posted: string[] = []
   const failed: string[] = []
+  let postId: string | undefined
 
   results.forEach((r, i) => {
     const platform = platforms[i]?.platform || 'unknown'
-    if (r.success) posted.push(platform)
-    else failed.push(`${platform}: ${r.error}`)
+    if (r.success) {
+      posted.push(platform)
+      if (!postId && r.postId) postId = r.postId
+    } else {
+      failed.push(`${platform}: ${r.error}`)
+    }
   })
 
-  return { posted, failed }
+  if (posted.length === 0 || !postId) {
+    throw new Error(`Late.dev: no platforms posted successfully. Failures: ${failed.join(' | ')}`)
+  }
+
+  return { postId, posted, failed }
 }

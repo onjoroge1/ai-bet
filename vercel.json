@@ -55,6 +55,10 @@
       "schedule": "*/10 * * * *"
     },
     {
+      "path": "/api/admin/market/zombie-sweep",
+      "schedule": "0 */2 * * *"
+    },
+    {
       "path": "/api/admin/predictions/sync-from-availability-scheduled",
       "schedule": "0 */2 * * *"
     },

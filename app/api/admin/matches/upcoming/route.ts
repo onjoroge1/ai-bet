@@ -70,7 +70,8 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             matchId: true,
-            predictionData: true
+            predictionData: true,
+            lastEnrichmentAt: true
           }
         }
       },
@@ -95,7 +96,8 @@ export async function GET(request: NextRequest) {
       select: {
         id: true,
         matchId: true,
-        predictionData: true
+        predictionData: true,
+        lastEnrichmentAt: true
       }
     })
 
@@ -177,6 +179,21 @@ export async function GET(request: NextRequest) {
       // FIXED: Needs /predict if NO predictionData exists (regardless of QuickPurchase existence)
       const needsPredict = !hasPredictionData
 
+      // Stale-prediction detection — mirrors multisport's rolling 6h TTL
+      // (app/api/admin/multisport/matches/route.ts:58). Self-healing: any /predict
+      // refetch resets lastEnrichmentAt, restoring fresh status. No version pins.
+      const PREDICTION_TTL_MS = 6 * 60 * 60 * 1000
+      const now = Date.now()
+      const enrichmentTimestamps = allQuickPurchases
+        .map(qp => qp.lastEnrichmentAt?.getTime())
+        .filter((ts): ts is number => typeof ts === 'number')
+      const newestEnrichmentAt = enrichmentTimestamps.length > 0
+        ? Math.max(...enrichmentTimestamps)
+        : null
+      const predictionStale = hasPredictionData && (
+        newestEnrichmentAt === null || (now - newestEnrichmentAt) > PREDICTION_TTL_MS
+      )
+
       return {
         id: match.id,
         matchId: match.matchId,
@@ -190,6 +207,8 @@ export async function GET(request: NextRequest) {
         hasSocialMediaPost,
         hasPredictionData,
         needsPredict,
+        predictionStale,
+        lastEnrichmentAt: newestEnrichmentAt ? new Date(newestEnrichmentAt).toISOString() : null,
         // Additional info
         quickPurchaseCount: allQuickPurchases.length,
         blogCount: match.blogPosts.length,

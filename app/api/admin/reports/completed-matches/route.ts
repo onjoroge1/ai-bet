@@ -444,14 +444,15 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Premium tier accuracy
+      // Premium tier accuracy — use the best available model pick, not predictionType
       const qpData = am.quickPurchases[0]
       const tier = (qpData as any)?.premiumTier as string | null
       if (tier && tierStats[tier] && aOutcome) {
-        const qpPick = normalisePick((qpData as any)?.predictionType)
-        if (qpPick) {
+        // Use V3 (Sharp) first, then V2 (LightGBM), then V1 (Consensus) as fallback
+        const tierPick = aV3Pick ?? aV2Pick ?? aV1Pick
+        if (tierPick) {
           tierStats[tier].total++
-          if (qpPick === aOutcome) tierStats[tier].correct++
+          if (tierPick === aOutcome) tierStats[tier].correct++
         }
       }
     }

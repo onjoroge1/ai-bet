@@ -57,14 +57,22 @@ function variantLabel(key: string) {
   return labels[key] ?? key
 }
 
+const WINDOW_OPTIONS = [
+  { value: '7d', label: '7 days' },
+  { value: '14d', label: '14 days' },
+  { value: '30d', label: '30 days' },
+  { value: '90d', label: '90 days' },
+]
+
 export function ABTestingResults() {
   const [data, setData] = useState<ABResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [window, setWindow] = useState('30d')
 
-  const fetchData = async () => {
+  const fetchData = async (w?: string) => {
     try {
       setLoading(true)
-      const res = await fetch('/api/admin/reports/ab-results')
+      const res = await fetch(`/api/admin/reports/ab-results?window=${w ?? window}`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = await res.json()
       setData(json)
@@ -75,7 +83,7 @@ export function ABTestingResults() {
     }
   }
 
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => { fetchData() }, [window])
 
   if (loading) {
     return (
@@ -109,9 +117,20 @@ export function ABTestingResults() {
             <FlaskConical className="h-5 w-5 text-violet-400" />
             <h2 className="text-lg font-semibold text-white">A/B Testing</h2>
           </div>
-          <Button onClick={fetchData} variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400">
-            <RefreshCw className="h-3.5 w-3.5" />
-          </Button>
+          <div className="flex items-center gap-2">
+            <select
+              value={window}
+              onChange={e => { setWindow(e.target.value); fetchData(e.target.value) }}
+              className="h-8 px-2 text-xs bg-slate-700/60 border border-slate-600 rounded-md text-slate-300 focus:outline-none focus:ring-1 focus:ring-violet-500"
+            >
+              {WINDOW_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <Button onClick={() => fetchData()} variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400">
+              <RefreshCw className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
 
         <div className="space-y-5">

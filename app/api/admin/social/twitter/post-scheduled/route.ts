@@ -165,7 +165,7 @@ export async function GET(request: NextRequest) {
               mediaUrl = `${baseUrl}${post.imageUrl}`
             }
 
-            const { posted: postedPlatforms, failed: failedPlatforms } = await postToAllPlatforms(
+            const { postId: zernioPostId, posted: postedPlatforms, failed: failedPlatforms } = await postToAllPlatforms(
               tweetText,
               {
                 twitterText: tweetText.length > 280 ? tweetText.substring(0, 277) + '...' : tweetText,
@@ -174,10 +174,10 @@ export async function GET(request: NextRequest) {
               }
             )
 
-            tweetId = `late-${Date.now()}`
+            tweetId = zernioPostId
             logger.info('🕐 CRON: Posted via Late.dev to multiple platforms', {
               tags: ['api', 'admin', 'social', 'late', 'cron'],
-              data: { postId: post.id, postedPlatforms, failedPlatforms },
+              data: { postId: post.id, zernioPostId, postedPlatforms, failedPlatforms },
             })
           } catch (lateError) {
             // Fallback to OpenTweet or Twitter if Late.dev fails

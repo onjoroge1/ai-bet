@@ -176,7 +176,12 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
         userPackage = await createUserPackage(userId, itemId, paymentIntent);
         console.log(`[handlePaymentSuccess] createUserPackage returned:`, userPackage ? `SUCCESS - ID: ${userPackage.id}` : 'NULL');
       } catch (error) {
-        console.error(`[handlePaymentSuccess] Error calling createUserPackage:`, error);
+        console.error(`[handlePaymentSuccess] CRITICAL: createUserPackage failed for userId=${userId}, itemId=${itemId}, paymentIntent=${paymentIntent.id}:`, error);
+        // Record the failure on the package purchase so it can be retried/investigated
+        await prisma.packagePurchase.update({
+          where: { id: packagePurchase.id },
+          data: { status: 'PACKAGE_CREATION_FAILED' },
+        }).catch(e => console.error('[handlePaymentSuccess] Failed to update package purchase status:', e));
         userPackage = null;
       }
       

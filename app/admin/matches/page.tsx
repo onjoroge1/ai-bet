@@ -57,6 +57,8 @@ interface MatchWithStatus {
   hasSocialMediaPost: boolean
   hasPredictionData: boolean
   needsPredict: boolean
+  predictionStale: boolean
+  lastEnrichmentAt: string | null
   quickPurchaseCount: number
   blogCount: number
   socialMediaPostCount: number
@@ -80,7 +82,7 @@ interface MultisportAdminMatch {
   syncCount: number
 }
 
-type FilterType = 'all' | 'needsPredict' | 'needsBlog' | 'needsSocial' | 'allReady'
+type FilterType = 'all' | 'needsPredict' | 'predictionStale' | 'needsBlog' | 'needsSocial' | 'allReady'
 
 export default function AdminMatchesPage() {
   const [sport, setSport] = useState('soccer')
@@ -210,6 +212,9 @@ export default function AdminMatchesPage() {
     switch (filter) {
       case 'needsPredict':
         filtered = filtered.filter(m => m.needsPredict)
+        break
+      case 'predictionStale':
+        filtered = filtered.filter(m => m.predictionStale)
         break
       case 'needsBlog':
         filtered = filtered.filter(m => m.hasPredictionData && !m.hasBlog)
@@ -569,8 +574,15 @@ export default function AdminMatchesPage() {
   }
 
   const matchesNeedingPredict = filteredMatches.filter(m => m.needsPredict).length
+  const matchesStalePredict = filteredMatches.filter(m => m.predictionStale).length
+  const matchesNeedingRefresh = filteredMatches.filter(m => m.needsPredict || m.predictionStale).length
   const matchesNeedingBlog = filteredMatches.filter(m => m.hasPredictionData && !m.hasBlog).length
   const matchesNeedingSocial = filteredMatches.filter(m => m.hasPredictionData && !m.hasSocialMediaPost).length
+
+  const selectAllNeedingRefresh = () => {
+    const ids = filteredMatches.filter(m => m.needsPredict || m.predictionStale).map(m => m.id)
+    setSelectedMatches(new Set(ids))
+  }
 
   // Get available templates for social posts
   // Filters templates based on whether match has blog and confidence data
@@ -1018,6 +1030,14 @@ export default function AdminMatchesPage() {
           </Card>
           <Card className="bg-slate-800/50 border-slate-700">
             <CardHeader className="pb-2">
+              <CardTitle className="text-xs sm:text-sm font-medium text-slate-400" title="Predictions older than 6 hours — eligible for re-run">Stale Predictions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl sm:text-2xl font-bold text-amber-400">{matchesStalePredict}</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-slate-800/50 border-slate-700">
+            <CardHeader className="pb-2">
               <CardTitle className="text-xs sm:text-sm font-medium text-slate-400">Need Blog</CardTitle>
             </CardHeader>
             <CardContent>
@@ -1055,6 +1075,7 @@ export default function AdminMatchesPage() {
                 <SelectContent>
                   <SelectItem value="all">All Matches</SelectItem>
                   <SelectItem value="needsPredict">Need /predict</SelectItem>
+                  <SelectItem value="predictionStale">Stale Predictions</SelectItem>
                   <SelectItem value="needsBlog">Need Blog</SelectItem>
                   <SelectItem value="needsSocial">Need Social Post</SelectItem>
                   <SelectItem value="allReady">All Ready</SelectItem>
@@ -1065,15 +1086,15 @@ export default function AdminMatchesPage() {
         </Card>
 
         {/* Bulk Actions Bar - Mobile Responsive */}
-        {(selectedMatches.size > 0 || matchesNeedingPredict > 0 || matchesNeedingBlog > 0) && (
+        {(selectedMatches.size > 0 || matchesNeedingPredict > 0 || matchesStalePredict > 0 || matchesNeedingBlog > 0) && (
           <Card className="bg-slate-800/50 border-slate-700 mb-4 sm:mb-6">
             <CardContent className="pt-4 sm:pt-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                   <div className="text-sm text-slate-400">
-                    {selectedMatches.size > 0 
+                    {selectedMatches.size > 0
                       ? `${selectedMatches.size} match(es) selected`
-                      : `${matchesNeedingPredict} need /predict, ${matchesNeedingBlog} need blogs`}
+                      : `${matchesNeedingPredict} need /predict, ${matchesStalePredict} stale, ${matchesNeedingBlog} need blogs`}
                   </div>
                   <div className="flex gap-2 flex-wrap">
                     {matchesNeedingPredict > 0 && (
@@ -1084,6 +1105,16 @@ export default function AdminMatchesPage() {
                         className="border-slate-600 text-xs sm:text-sm"
                       >
                         Select All Needing /predict
+                      </Button>
+                    )}
+                    {matchesNeedingRefresh > matchesNeedingPredict && (
+                      <Button
+                        onClick={selectAllNeedingRefresh}
+                        variant="outline"
+                        size="sm"
+                        className="border-amber-600/50 text-amber-300 text-xs sm:text-sm"
+                      >
+                        Select All Missing + Stale ({matchesNeedingRefresh})
                       </Button>
                     )}
                     <Button
@@ -1189,12 +1220,12 @@ export default function AdminMatchesPage() {
                       </TableRow>
                     ) : (
                       filteredMatches.map((match) => (
-                        <TableRow 
-                          key={match.id} 
-                          className={`border-slate-700 ${match.needsPredict ? 'bg-amber-500/10' : ''}`}
+                        <TableRow
+                          key={match.id}
+                          className={`border-slate-700 ${match.needsPredict ? 'bg-amber-500/10' : match.predictionStale ? 'bg-amber-500/5' : ''}`}
                         >
                           <TableCell className="px-2 sm:px-4">
-                            {match.needsPredict && (
+                            {(match.needsPredict || match.predictionStale) && (
                               <input
                                 type="checkbox"
                                 checked={selectedMatches.has(match.id)}
@@ -1306,13 +1337,13 @@ export default function AdminMatchesPage() {
                                     Schedule Post
                                   </DropdownMenuItem>
                                 )}
-                                {match.needsPredict && (
+                                {(match.needsPredict || match.predictionStale) && (
                                   <DropdownMenuItem
                                     onClick={() => handleRunPredict([match.id])}
                                     className="text-amber-400"
                                   >
                                     <Zap className="w-4 h-4 mr-2" />
-                                    Run /predict
+                                    {match.needsPredict ? 'Run /predict' : 'Re-run /predict (stale)'}
                                   </DropdownMenuItem>
                                 )}
                                 <DropdownMenuItem

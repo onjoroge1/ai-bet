@@ -293,9 +293,9 @@ function transformMatchData(apiMatch: any) {
 async function fetchMatchesWithFallback(status: 'upcoming' | 'live' | 'completed'): Promise<any[]> {
   // Progressive limits: try larger first, fallback to smaller if timeout
   // For live matches, start smaller since API is consistently slow
-  const limits = status === 'live' 
+  const limits = status === 'live'
     ? [25, 10, 5] // Live: start with 25, fallback to 10, then 5 (smaller batches for faster failure)
-    : [50, 25, 10] // Upcoming/Completed: start with 50, fallback to 25, then 10
+    : [250, 100, 25] // Upcoming/Completed: start with 250 (backend has ~130+), fallback to 100, then 25
   
   const maxRetries = status === 'live' ? 1 : 2 // Fewer retries for fallback attempts
   const initialDelay = 1000

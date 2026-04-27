@@ -42,8 +42,12 @@ async function fetchMatchesFromAPI(status: 'upcoming' | 'live' | 'completed', li
     ? `${BASE_URL}/market?status=${apiStatus}&mode=lite&limit=${limit}`
     : `${BASE_URL}/market?status=${apiStatus}&limit=${limit}&include_v2=false`
   
-  // Add timeout to prevent hanging (15 seconds - same as market API route)
-  const EXTERNAL_API_TIMEOUT = 15000
+  // Add timeout to prevent hanging. Live is small and fast; upcoming/completed pulls
+  // a large batch (up to 250) and the backend builds predictions on the fly, which can
+  // take ~30s in full mode. Scale the timeout with the limit to avoid false aborts.
+  const EXTERNAL_API_TIMEOUT = status === 'live'
+    ? 15000                                       // live: fast/small
+    : Math.min(30000 + limit * 300, 90000)        // upcoming/completed: 30s base + 300ms/match, capped at 90s
   const controller = new AbortController()
   const timeoutId = setTimeout(() => {
     controller.abort()
@@ -288,8 +292,12 @@ async function syncMatchesByStatus(status: 'upcoming' | 'live' | 'completed') {
       tags: ['market', 'sync', status],
     })
 
-    // Adaptive limit based on consecutive failure count
-    const limit = getAdaptiveLimit(status, 50)
+    // Adaptive limit based on consecutive failure count.
+    // Live matches stay small (always fast, never many at once).
+    // Upcoming/completed pull a much larger batch so we don't miss fixtures
+    // when a league publishes its next round (backend reports ~130+ upcoming).
+    const baseLimit = status === 'live' ? 50 : 250
+    const limit = getAdaptiveLimit(status, baseLimit)
 
     // Fetch from API with retry logic (3 retries, 2s initial delay, 30s max delay cap)
     let apiMatches: any[]
@@ -304,7 +312,7 @@ async function syncMatchesByStatus(status: 'upcoming' | 'live' | 'completed') {
       consecutiveFailures[status] = 0
     } catch (fetchError) {
       consecutiveFailures[status] = (consecutiveFailures[status] || 0) + 1
-      logger.warn(`Sync fetch failed for ${status} (consecutive failures: ${consecutiveFailures[status]}, next limit: ${getAdaptiveLimit(status, 50)})`, {
+      logger.warn(`Sync fetch failed for ${status} (consecutive failures: ${consecutiveFailures[status]}, next limit: ${getAdaptiveLimit(status, baseLimit)})`, {
         tags: ['market', 'sync', status, 'backoff'],
       })
       throw fetchError
