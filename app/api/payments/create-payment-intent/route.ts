@@ -71,6 +71,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "User country not set" }, { status: 400 })
     }
 
+    // Require email verification before paying.
+    // Same rule as the subscription checkout — keeps disposable-email signups
+    // from completing purchases that we then can't honor disputes against.
+    if (!user.emailVerified) {
+      console.log("❌ Email not verified for user:", user.id)
+      return NextResponse.json({
+        error: "Please verify your email address before purchasing. Check your inbox for the verification link.",
+        code: "EMAIL_NOT_VERIFIED",
+        resendUrl: "/resend-verification",
+      }, { status: 403 })
+    }
+
     let amount: number
     let currency: string
     let description: string

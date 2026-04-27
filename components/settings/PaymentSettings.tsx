@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -58,17 +59,18 @@ export function PaymentSettings() {
   const [isLoading, setIsLoading] = useState(true)
   const [isActionLoading, setIsActionLoading] = useState(false)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  // Activation polling state — used after Stripe success redirect when the
+  // webhook race means our DB hasn't caught up yet.
+  const [activationPolling, setActivationPolling] = useState(false)
+  const searchParams = useSearchParams()
+  const router = useRouter()
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true)
     try {
       const [subRes, invRes] = await Promise.all([
-        fetch("/api/subscriptions/manage", { credentials: "include" }),
-        fetch("/api/billing/invoices", { credentials: "include" }),
+        fetch("/api/subscriptions/manage", { credentials: "include", cache: "no-store" }),
+        fetch("/api/billing/invoices", { credentials: "include", cache: "no-store" }),
       ])
       if (subRes.ok) setSubscription(await subRes.json())
       if (invRes.ok) {
@@ -80,7 +82,63 @@ export function PaymentSettings() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  // Stripe success redirect → poll for webhook to land before showing real state.
+  // Stripe Checkout redirects with `?success=true`. The webhook that flips
+  // subscriptionStatus to 'active' typically arrives within 1-3s but can take
+  // 10-30s under load. Without polling, the user lands on the page seeing
+  // "subscribe" CTAs and old subscription state, then has to refresh manually.
+  useEffect(() => {
+    if (searchParams.get("success") !== "true") return
+
+    let cancelled = false
+    setActivationPolling(true)
+
+    const start = Date.now()
+    const TIMEOUT_MS = 30_000
+    const INTERVAL_MS = 2_000
+
+    const poll = async () => {
+      while (!cancelled && Date.now() - start < TIMEOUT_MS) {
+        try {
+          const res = await fetch("/api/subscriptions/manage", { credentials: "include", cache: "no-store" })
+          if (res.ok) {
+            const sub: SubscriptionStatus = await res.json()
+            if (sub?.hasAccess && (sub.status === "active" || sub.status === "trialing")) {
+              setSubscription(sub)
+              setActivationPolling(false)
+              setMessage({ type: "success", text: "Subscription activated! Welcome aboard." })
+              // Clear the ?success=true so refreshes don't re-trigger polling
+              const params = new URLSearchParams(Array.from(searchParams.entries()))
+              params.delete("success")
+              router.replace(`/dashboard/settings?${params.toString()}`)
+              return
+            }
+          }
+        } catch {
+          // network blip — keep polling
+        }
+        await new Promise(r => setTimeout(r, INTERVAL_MS))
+      }
+      // Timed out — webhook didn't arrive in 30s. Show a softer message and let
+      // the normal loadData state stand. Likely a Stripe delay; the user can refresh.
+      if (!cancelled) {
+        setActivationPolling(false)
+        setMessage({
+          type: "error",
+          text: "Your payment went through but activation is taking longer than usual. Please refresh in a minute, or contact support if it persists.",
+        })
+      }
+    }
+
+    poll()
+    return () => { cancelled = true }
+  }, [searchParams, router])
 
   const handlePortal = async () => {
     setIsActionLoading(true)
@@ -225,6 +283,20 @@ export function PaymentSettings() {
         </h2>
         <p className="text-slate-400 mt-2">Manage your subscription and view billing history</p>
       </div>
+
+      {/* Activation polling banner — shown after Stripe success redirect while we
+          wait for the webhook to land. Auto-clears once subscription goes active. */}
+      {activationPolling && (
+        <div className="p-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 flex items-center gap-3">
+          <Loader2 className="w-5 h-5 shrink-0 animate-spin text-emerald-400" />
+          <div className="flex-1">
+            <p className="font-medium text-emerald-300">Activating your subscription…</p>
+            <p className="text-sm text-emerald-200/90 mt-0.5">
+              Payment received. We&apos;re finalizing your account — this usually takes a few seconds.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Message */}
       {message && (

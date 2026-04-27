@@ -249,6 +249,8 @@ export const authOptions = {
         token.name = user.name
         token.role = user.role
         token.referralCode = user.referralCode
+        // Stamp issued-at so we can compare against passwordResetAt later
+        token.iat = Math.floor(Date.now() / 1000)
 
         // Embed subscription status so middleware can gate premium routes
         // without a DB call on every request
@@ -289,6 +291,39 @@ export const authOptions = {
           token.subscriptionExpiresAt = dbUser?.subscriptionExpiresAt?.toISOString() ?? null
         } catch {
           // Retain existing token values on error
+        }
+      }
+
+      // Password-reset session invalidation.
+      // After a password reset we stamp User.passwordResetAt = now. Any JWT
+      // issued before that timestamp must be rejected so a stolen session
+      // can't outlive the reset. We check on every callback (not just sign-in)
+      // because tokens are refreshed silently on each request and we'd miss
+      // the invalidation otherwise.
+      if (token.id && token.iat) {
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: token.id as string },
+            select: { passwordResetAt: true },
+          })
+          if (dbUser?.passwordResetAt) {
+            const resetAtSec = Math.floor(dbUser.passwordResetAt.getTime() / 1000)
+            if ((token.iat as number) < resetAtSec) {
+              if (process.env.NODE_ENV === 'development') {
+                console.log('NextAuth JWT - rejecting stale token (issued before password reset)', {
+                  userId: token.id,
+                  tokenIat: token.iat,
+                  resetAt: resetAtSec,
+                })
+              }
+              // Returning an empty/unauthenticated token effectively invalidates
+              // the session — the session callback will see no id and the user
+              // is treated as logged out.
+              return {}
+            }
+          }
+        } catch {
+          // Don't block the request on a DB hiccup — tokens age out within 24h anyway
         }
       }
 

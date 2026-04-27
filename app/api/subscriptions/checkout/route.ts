@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
       select: {
         id: true,
         email: true,
+        emailVerified: true,
         countryId: true,
         country: {
           select: {
@@ -55,6 +56,21 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
+    // Require email verification before paying.
+    // Disposable-email signups would otherwise pay without ever proving the
+    // address is valid, blocking dispute resolution and notifications.
+    if (!user.emailVerified) {
+      logger.warn('Checkout blocked: email not verified', {
+        tags: ['api', 'subscriptions', 'checkout', 'auth'],
+        data: { userId: user.id, email: user.email },
+      })
+      return NextResponse.json({
+        error: 'Please verify your email address before subscribing. Check your inbox for the verification link.',
+        code: 'EMAIL_NOT_VERIFIED',
+        resendUrl: '/resend-verification',
+      }, { status: 403 })
     }
 
     const userCountryCode = user.country?.code || 'us'

@@ -48,6 +48,17 @@ export default function SubscribePage() {
         return
       }
 
+      if (response.status === 403) {
+        // Most common 403: email not yet verified. Send them to the resend page
+        // with a clear message; the resend page can deep-link back here on success.
+        const data = await response.json().catch(() => ({}))
+        if (data.code === 'EMAIL_NOT_VERIFIED') {
+          router.push(`/resend-verification?reason=checkout&callbackUrl=${encodeURIComponent(`/subscribe/${planId}`)}`)
+          return
+        }
+        throw new Error(data.error || 'Access denied')
+      }
+
       if (!response.ok) {
         const data = await response.json()
         throw new Error(data.error || 'Failed to create checkout session')
