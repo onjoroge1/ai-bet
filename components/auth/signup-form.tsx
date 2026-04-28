@@ -151,7 +151,15 @@ export function SignUpForm() {
     }
 
     try {
-      const response = await fetch('/api/auth/signup', {
+      // Forward the ?source= query param from the page URL so the API can
+      // attribute this signup for the admin /admin/users dashboard.
+      const sourceParam = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('source')
+        : null
+      const apiUrl = sourceParam
+        ? `/api/auth/signup?source=${encodeURIComponent(sourceParam)}`
+        : '/api/auth/signup'
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

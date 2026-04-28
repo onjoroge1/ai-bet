@@ -377,6 +377,13 @@ model User {
   stripeSubscriptionId String?  @unique // Stripe subscription ID (sub_xxx)
   subscriptionStatus   String?  // "active", "past_due", "canceled", "trialing", "unpaid", "incomplete"
 
+  // ── Admin user-tracking fields (for /admin/users dashboard) ──
+  signupSource     String?    // ?source= query param at signup ("homepage_pro_cta", "blog_xyz", etc.)
+  firstPaidAt      DateTime?  // First successful payment — days-to-first-purchase metric
+  lastPurchaseAt   DateTime?  // Most recent purchase — identify churning users
+  lifetimeValue    Decimal    @default(0) // Cached sum of completed payments (for ARPU/LTV dashboards)
+  accountStatus    String?    // "active" | "suspended" | "banned" — distinct from isActive (soft-delete)
+
   totalWinnings Decimal @default(0)
 
   winStreak Int @default(0)

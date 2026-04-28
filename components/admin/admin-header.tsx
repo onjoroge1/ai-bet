@@ -10,13 +10,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Shield, Bell, Settings, Download, RefreshCw, FileText, Mail, Twitter, Target, Menu, X, BarChart3 } from "lucide-react"
+import { Shield, Bell, Settings, Download, RefreshCw, FileText, Mail, Twitter, Target, Menu, X, BarChart3, Users, CreditCard } from "lucide-react"
 import Link from "next/link"
 
 export function AdminHeader() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   const navigationLinks = [
+    { href: "/admin/users", label: "Users", icon: Users },
+    { href: "/admin/payments", label: "Payments", icon: CreditCard },
     { href: "/admin/emails", label: "Email Templates", icon: Mail },
     { href: "/admin/blogs", label: "Blog", icon: FileText },
     { href: "/admin/blog-automation", label: "Blog Automation", icon: FileText },

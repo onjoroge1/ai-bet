@@ -201,6 +201,28 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
         userPackage = null;
       }
       
+      // Update user's lifetime tracking fields (firstPaidAt / lastPurchaseAt /
+      // lifetimeValue) for the /admin/users dashboard. Using setOnInsert-style
+      // semantics for firstPaidAt: only set if currently null.
+      try {
+        const paidAmountDollars = paymentIntent.amount / 100;
+        const u = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { firstPaidAt: true, lifetimeValue: true },
+        });
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            firstPaidAt: u?.firstPaidAt ?? new Date(),
+            lastPurchaseAt: new Date(),
+            lifetimeValue: { increment: paidAmountDollars },
+          },
+        });
+      } catch (trackErr) {
+        // Tracking failures should never block the actual purchase flow
+        console.error('[handlePaymentSuccess] Failed to update tracking fields', trackErr);
+      }
+
       // Add credits to user account
       if (userPackage) {
         console.log('Adding credits to user account...');
@@ -1032,6 +1054,24 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
     // first billing cycle. Throw so Stripe retries; the subscription event will
     // have created the User by the time the retry fires.
     throw new Error(`[handleInvoicePaid] No user found for subscription: ${subscriptionId} (invoice=${invoice.id})`);
+  }
+
+  // Update lifetime tracking fields for /admin/users dashboard (subscription
+  // renewal path — every successful invoice counts toward LTV).
+  try {
+    const paidDollars = (invoice.amount_paid ?? 0) / 100;
+    if (paidDollars > 0) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          firstPaidAt: user.firstPaidAt ?? new Date(),
+          lastPurchaseAt: new Date(),
+          lifetimeValue: { increment: paidDollars },
+        },
+      });
+    }
+  } catch (trackErr) {
+    console.error('[handleInvoicePaid] Failed to update tracking fields', trackErr);
   }
 
   // Top up credits for the new billing cycle (150 = unlimited monthly allowance)

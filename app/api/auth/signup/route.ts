@@ -29,6 +29,12 @@ export async function POST(request: NextRequest) {
 
     const { name, email, password, countryCode } = validation.data
 
+    // Capture signup source for /admin/users attribution dashboard.
+    // Set by CTAs in app/page.tsx (e.g. ?source=pricing_pro, ?source=pricing_vip,
+    // ?source=hero_primary). Free-text — admin can group/filter on it later.
+    const { searchParams } = new URL(request.url)
+    const signupSource = searchParams.get('source') || null
+
     logger.info("Sign up attempt", {
       tags: ["auth", "signup"],
       data: { email, countryCode },
@@ -103,6 +109,8 @@ export async function POST(request: NextRequest) {
         role: "user",
         subscriptionPlan: "free",
         isActive: true,
+        accountStatus: "active",
+        signupSource: signupSource,
         emailVerified: false,
         emailVerificationToken: verificationToken,
         emailVerificationExpires: verificationExpires,
