@@ -1,11 +1,30 @@
 import { ImageResponse } from "next/og"
 import { resolveSlugToMatchId } from "@/lib/match-slug-server"
 import prisma from "@/lib/db"
+import fs from "node:fs"
+import path from "node:path"
 
 export const runtime = "nodejs"
 export const alt = "Match Prediction — SnapBet AI"
 export const size = { width: 1200, height: 630 }
 export const contentType = "image/png"
+
+// Stadium background image — read once and reused as a data URL for Satori.
+// Reading from disk avoids the network round-trip Satori would do for a
+// regular URL src, and the output PNG isn't bloated by the input bytes
+// (Satori discards them after rasterising).
+let _stadiumBgCache: string | null = null
+function getStadiumBgDataUrl(): string {
+  if (_stadiumBgCache !== null) return _stadiumBgCache
+  try {
+    const buf = fs.readFileSync(path.join(process.cwd(), "public/branding/stadium-bg.png"))
+    _stadiumBgCache = `data:image/png;base64,${buf.toString("base64")}`
+    return _stadiumBgCache
+  } catch {
+    _stadiumBgCache = ""
+    return ""
+  }
+}
 
 /**
  * Dynamic Open Graph image for `/match/[slug]`.
@@ -142,50 +161,36 @@ export default async function OGImage({
           overflow: "hidden",
         }}
       >
-        {/* Diagonal green stripes — bottom-left accent */}
+        {/* Stadium background (full bleed) — read from /public/branding/stadium-bg.png
+            via data URL. Source is 2172×724; objectFit: cover center-crops to
+            1200×630 keeping the field/centre-circle in frame. */}
+        {(() => {
+          const bg = getStadiumBgDataUrl()
+          return bg ? (
+            <img
+              src={bg}
+              width={1200}
+              height={630}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: 1200,
+                height: 630,
+                objectFit: "cover",
+              }}
+            />
+          ) : null
+        })()}
+
+        {/* Dark vignette overlay — keeps text legible against the brighter
+            field area while letting the stadium colours bleed through. */}
         <div
           style={{
             position: "absolute",
             inset: 0,
             background:
-              "linear-gradient(45deg, rgba(132,204,22,0.18) 0%, rgba(132,204,22,0.07) 18%, transparent 38%)",
-          }}
-        />
-        {/* Faint diagonal lines on the left half (field-grid feel) */}
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            width: 720,
-            height: "100%",
-            background:
-              "repeating-linear-gradient(60deg, transparent 0px, transparent 22px, rgba(132,204,22,0.05) 22px, rgba(132,204,22,0.05) 24px)",
-          }}
-        />
-        {/* Blue spotlight glow — top-right */}
-        <div
-          style={{
-            position: "absolute",
-            top: -200,
-            right: -200,
-            width: 720,
-            height: 720,
-            borderRadius: "50%",
-            background:
-              "radial-gradient(circle, rgba(34,211,238,0.28) 0%, rgba(34,211,238,0.10) 35%, transparent 65%)",
-          }}
-        />
-        {/* Soft cyan rim at far right */}
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            right: 0,
-            width: 4,
-            height: "100%",
-            background:
-              "linear-gradient(180deg, transparent 0%, rgba(34,211,238,0.6) 50%, transparent 100%)",
+              "linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.20) 35%, rgba(0,0,0,0.20) 65%, rgba(0,0,0,0.65) 100%)",
           }}
         />
         {/* Background accents */}
