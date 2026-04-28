@@ -17,14 +17,16 @@ export function AdminHeader() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   const navigationLinks = [
-    { href: "/admin/users", label: "Users", icon: Users },
-    { href: "/admin/payments", label: "Payments", icon: CreditCard },
+    // Content tools (left group)
     { href: "/admin/emails", label: "Email Templates", icon: Mail },
     { href: "/admin/blogs", label: "Blog", icon: FileText },
     { href: "/admin/blog-automation", label: "Blog Automation", icon: FileText },
     { href: "/admin/social-automation", label: "Social Automation", icon: Twitter },
+    // Operational dashboards (right group — Matches / Reports / Users / Payments)
     { href: "/admin/matches", label: "Matches", icon: Target },
     { href: "/admin/reports", label: "Reports", icon: BarChart3 },
+    { href: "/admin/users", label: "Users", icon: Users },
+    { href: "/admin/payments", label: "Payments", icon: CreditCard },
   ]
 
   return (
