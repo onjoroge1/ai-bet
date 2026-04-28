@@ -15,7 +15,6 @@ import {
   Loader2,
   ExternalLink,
   Crown,
-  XCircle,
   RefreshCw,
   Zap,
   TrendingUp,
@@ -166,35 +165,10 @@ export function PaymentSettings() {
     }
   }
 
-  const handleCancel = async () => {
-    if (
-      !confirm(
-        "Are you sure you want to cancel your subscription? You will keep access until the end of the billing period."
-      )
-    )
-      return
-    setIsActionLoading(true)
-    setMessage(null)
-    try {
-      const res = await fetch("/api/subscriptions/manage", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "cancel" }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Failed to cancel subscription")
-      setMessage({ type: "success", text: data.message })
-      await loadData()
-    } catch (err) {
-      setMessage({
-        type: "error",
-        text: err instanceof Error ? err.message : "Failed to cancel subscription.",
-      })
-    } finally {
-      setIsActionLoading(false)
-    }
-  }
+  // handleCancel intentionally removed — cancellation now goes through Stripe
+  // Customer Portal via handlePortal. Single source of truth, less code to
+  // maintain, Stripe handles refunds/proration/dispute UX. The /api/subscriptions/manage
+  // POST action='cancel' endpoint is preserved on the backend for scripting/admin use.
 
   const handleReactivate = async () => {
     setIsActionLoading(true)
@@ -355,6 +329,25 @@ export function PaymentSettings() {
         </div>
       )}
 
+      {/* Cancellation pending banner — user has cancelled but still has access
+          until period end. Surface this prominently so they remember to either
+          reactivate or accept that access ends. */}
+      {subscription?.status === "canceled" && subscription?.hasAccess && subscription?.expiresAt && !subscription?.isAdminAccess && (
+        <div className="p-4 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-200 flex items-start gap-3">
+          <Clock className="w-5 h-5 shrink-0 mt-0.5 text-amber-400" />
+          <div className="flex-1">
+            <p className="font-medium text-amber-300">Subscription Cancelled</p>
+            <p className="text-sm text-amber-200/90 mt-1">
+              Your access ends on <strong>{new Date(subscription.expiresAt).toLocaleDateString("en-US", {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              })}</strong>. Click <strong>Reactivate</strong> below to keep your subscription, or use <strong>Manage Subscription</strong> for changes.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── Current Plan + Actions ── */}
       <Card className="bg-slate-800/50 border-slate-700">
         <CardHeader>
@@ -393,14 +386,31 @@ export function PaymentSettings() {
             <div className="flex gap-2 flex-wrap">
               {subscription?.isAdminAccess ? (
                 // Admin role — full access, no Stripe sub. Don't render Manage
-                // Billing or Cancel Plan because there's nothing on the Stripe
-                // side to manage; clicking would 404 or 500.
+                // Subscription because there's nothing on the Stripe side to
+                // manage; clicking would 404 or 500.
                 <div className="px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-sm flex items-center gap-2">
                   <CheckCircle className="w-4 h-4" />
                   Admin access — no billing required
                 </div>
               ) : subscription?.hasAccess ? (
                 <>
+                  {/* Cancelled-but-still-active: reactivate is a positive
+                      one-click action, keep in-app. */}
+                  {subscription.status === "canceled" && (
+                    <Button
+                      onClick={handleReactivate}
+                      disabled={isActionLoading}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Reactivate
+                    </Button>
+                  )}
+                  {/* Single canonical "Manage Subscription" button.
+                      Stripe Portal handles cancel, change card, view invoices,
+                      pause/resume — single source of truth. Webhook on
+                      customer.subscription.deleted keeps our DB in sync
+                      regardless of which path the user takes. */}
                   <Button
                     variant="outline"
                     onClick={handlePortal}
@@ -412,28 +422,8 @@ export function PaymentSettings() {
                     ) : (
                       <ExternalLink className="w-4 h-4 mr-2" />
                     )}
-                    Manage Billing
+                    Manage Subscription
                   </Button>
-                  {subscription.status !== "canceled" ? (
-                    <Button
-                      variant="outline"
-                      onClick={handleCancel}
-                      disabled={isActionLoading}
-                      className="border-red-500/50 text-red-400 hover:bg-red-500/10"
-                    >
-                      <XCircle className="w-4 h-4 mr-2" />
-                      Cancel Plan
-                    </Button>
-                  ) : (
-                    <Button
-                      onClick={handleReactivate}
-                      disabled={isActionLoading}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                    >
-                      <RefreshCw className="w-4 h-4 mr-2" />
-                      Reactivate
-                    </Button>
-                  )}
                 </>
               ) : (
                 <Button
