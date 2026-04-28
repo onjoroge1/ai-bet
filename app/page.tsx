@@ -97,10 +97,12 @@ export default function HomePage() {
   const [heroMatches, setHeroMatches] = useState<HeroMatch[]>([])
   const [heroParlays, setHeroParlays] = useState<HeroParlay[]>([])
   const [activeMatchIdx, setActiveMatchIdx] = useState(0)
+  // Hero stats — populated from real APIs in the effect below. Initial values
+  // are 0; the fetch fires immediately on mount so the gap is sub-second.
   const [liveStats, setLiveStats] = useState({
-    activeOpportunities: 47,
-    avgConfidence: 82,
-    liveMatches: 23,
+    activeOpportunities: 0,
+    avgConfidence: 0,
+    liveMatches: 0,
   })
   const [selectedSport, setSelectedSport] = useState<string>("soccer")
 
@@ -218,16 +220,42 @@ export default function HomePage() {
     return () => clearInterval(interval)
   }, [heroMatches.length])
 
-  // ── Simulate live stats updates ─────────────────────────────────────────────
+  // ── Real live stats (replaces the previous random-walk simulation) ──────────
+  // Pulls actual counts from /api/market and /api/premium/snapbet-picks so
+  // hero numbers match what the rest of the page shows. Refreshes every 60s.
   useEffect(() => {
-    const interval = setInterval(() => {
-      setLiveStats((prev) => ({
-        activeOpportunities: Math.max(20, prev.activeOpportunities + Math.floor(Math.random() * 5) - 2),
-        avgConfidence: Math.max(75, Math.min(95, prev.avgConfidence + Math.floor(Math.random() * 3) - 1)),
-        liveMatches: Math.max(5, prev.liveMatches + Math.floor(Math.random() * 3) - 1),
-      }))
-    }, 3000)
-    return () => clearInterval(interval)
+    let cancelled = false
+
+    const fetchStats = async () => {
+      try {
+        const [liveRes, picksRes] = await Promise.all([
+          fetch('/api/market?status=live&mode=lite&limit=1', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch('/api/premium/snapbet-picks?limit=50', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null),
+        ])
+        if (cancelled) return
+
+        const liveCount = typeof liveRes?.total_count === 'number' ? liveRes.total_count : (liveRes?.matches?.length ?? 0)
+        const picks = picksRes?.picks || []
+        const picksCount = picks.length || (picksRes?.total ?? 0)
+        // Compute average confidence across surfaced picks (skip redacted "🔒" picks)
+        const numericConfs = picks.map((p: any) => Number(p.confidence) || 0).filter((c: number) => c > 0)
+        const avgConf = numericConfs.length > 0
+          ? Math.round(numericConfs.reduce((s: number, c: number) => s + c, 0) / numericConfs.length)
+          : 0
+
+        setLiveStats({
+          activeOpportunities: picksCount,
+          avgConfidence: avgConf || 0,
+          liveMatches: liveCount,
+        })
+      } catch {
+        // Keep last value on error — better than zeroing the hero
+      }
+    }
+
+    fetchStats()
+    const interval = setInterval(fetchStats, 60_000)
+    return () => { cancelled = true; clearInterval(interval) }
   }, [])
 
   const SOURCE_TO_PLAN: Record<string, string> = {
@@ -381,10 +409,17 @@ export default function HomePage() {
                   <Sparkles className="h-3 w-3 mr-1" />
                   AI-Powered
                 </Badge>
-                <Badge className="bg-blue-500/15 text-blue-300 border-blue-500/25 text-xs px-3 py-1 animate-[fadeIn_0.5s_0.2s_ease-out_both]">
-                  <Activity className="h-3 w-3 mr-1 animate-pulse" />
-                  {liveStats.liveMatches} Live Matches
-                </Badge>
+                {liveStats.liveMatches > 0 ? (
+                  <Badge className="bg-blue-500/15 text-blue-300 border-blue-500/25 text-xs px-3 py-1 animate-[fadeIn_0.5s_0.2s_ease-out_both]">
+                    <Activity className="h-3 w-3 mr-1 animate-pulse" />
+                    {liveStats.liveMatches} Live Matches
+                  </Badge>
+                ) : heroMatches.length > 0 ? (
+                  <Badge className="bg-blue-500/15 text-blue-300 border-blue-500/25 text-xs px-3 py-1 animate-[fadeIn_0.5s_0.2s_ease-out_both]">
+                    <Activity className="h-3 w-3 mr-1" />
+                    {heroMatches.length} Upcoming Today
+                  </Badge>
+                ) : null}
                 {heroParlays.length > 0 && (
                   <Badge className="bg-purple-500/15 text-purple-300 border-purple-500/25 text-xs px-3 py-1 animate-[fadeIn_0.5s_0.4s_ease-out_both]">
                     <Layers className="h-3 w-3 mr-1" />
