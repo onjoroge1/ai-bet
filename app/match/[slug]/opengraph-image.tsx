@@ -82,10 +82,13 @@ export default async function OGImage({
             year: "numeric",
           })
         }
-        const finalScore = (market.finalResult ?? market.currentScore) as Record<string, number> | null
-        if (isFinished && finalScore) {
-          scoreHome = finalScore.home ?? null
-          scoreAway = finalScore.away ?? null
+        // Final result JSON shape: { score: { home, away }, outcome, outcome_text }
+        // currentScore (live) shape: { home, away } (flat). Handle both.
+        const fr = (market.finalResult ?? market.currentScore) as any
+        if (isFinished && fr) {
+          const sc = fr.score ?? fr
+          scoreHome = typeof sc?.home === "number" ? sc.home : null
+          scoreAway = typeof sc?.away === "number" ? sc.away : null
         }
       } else if (qp?.name) {
         const parts = qp.name.split(" vs ")
@@ -119,6 +122,11 @@ export default async function OGImage({
     return (words[0][0] + words[words.length - 1][0]).toUpperCase()
   }
 
+  /* ── Confidence colour token + label for the AI Pick pill ───── */
+  const confColor = confidence >= 60 ? "#a3e635" : confidence >= 40 ? "#facc15" : "#f87171"
+  const pickUpper = (pickLabel && pickLabel !== "—" ? `${pickLabel} WIN` : "—").toUpperCase()
+  const showPickPill = !isFinished && pickLabel && pickLabel !== "—" && confidence > 0
+
   /* ── Render ─────────────────────────────────────────────────── */
   return new ImageResponse(
     (
@@ -128,12 +136,58 @@ export default async function OGImage({
           height: "100%",
           display: "flex",
           flexDirection: "column",
-          background: "linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)",
-          fontFamily: "system-ui, -apple-system, sans-serif",
+          background: "#000000",
+          fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif",
           position: "relative",
           overflow: "hidden",
         }}
       >
+        {/* Diagonal green stripes — bottom-left accent */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "linear-gradient(45deg, rgba(132,204,22,0.18) 0%, rgba(132,204,22,0.07) 18%, transparent 38%)",
+          }}
+        />
+        {/* Faint diagonal lines on the left half (field-grid feel) */}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: 720,
+            height: "100%",
+            background:
+              "repeating-linear-gradient(60deg, transparent 0px, transparent 22px, rgba(132,204,22,0.05) 22px, rgba(132,204,22,0.05) 24px)",
+          }}
+        />
+        {/* Blue spotlight glow — top-right */}
+        <div
+          style={{
+            position: "absolute",
+            top: -200,
+            right: -200,
+            width: 720,
+            height: 720,
+            borderRadius: "50%",
+            background:
+              "radial-gradient(circle, rgba(34,211,238,0.28) 0%, rgba(34,211,238,0.10) 35%, transparent 65%)",
+          }}
+        />
+        {/* Soft cyan rim at far right */}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            width: 4,
+            height: "100%",
+            background:
+              "linear-gradient(180deg, transparent 0%, rgba(34,211,238,0.6) 50%, transparent 100%)",
+          }}
+        />
         {/* Background accents */}
         <div
           style={{
@@ -158,205 +212,237 @@ export default async function OGImage({
           }}
         />
 
-        {/* Top bar */}
+        {/* Top bar — SnapBet branding (left) + status badge (right) */}
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            padding: "28px 48px 0",
+            padding: "32px 56px 0",
+            position: "relative",
+            zIndex: 2,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            {/* Circular green-outlined "S" emblem (mirrors brand mark) */}
             <div
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: 10,
-                background: "linear-gradient(135deg, #10b981, #059669)",
+                width: 56,
+                height: 56,
+                borderRadius: "50%",
+                border: "3px solid #84cc16",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: 22,
+                background: "rgba(0,0,0,0.4)",
+                boxShadow: "0 0 24px rgba(132,204,22,0.4)",
               }}
             >
-              ⚡
+              <span
+                style={{
+                  color: "#84cc16",
+                  fontSize: 30,
+                  fontWeight: 900,
+                  fontStyle: "italic",
+                  lineHeight: 1,
+                }}
+              >
+                S
+              </span>
             </div>
-            <span style={{ color: "#e2e8f0", fontSize: 24, fontWeight: 700 }}>
-              SnapBet AI
+            <span
+              style={{
+                color: "#84cc16",
+                fontSize: 32,
+                fontWeight: 800,
+                letterSpacing: -0.5,
+              }}
+            >
+              SnapBet
             </span>
           </div>
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 8,
-              background: "rgba(16,185,129,0.15)",
-              borderRadius: 24,
-              padding: "6px 18px",
-              border: "1px solid rgba(16,185,129,0.3)",
+              background: "rgba(34,211,238,0.12)",
+              borderRadius: 999,
+              padding: "8px 20px",
+              border: "1px solid rgba(34,211,238,0.45)",
             }}
           >
-            <span style={{ color: "#34d399", fontSize: 14, fontWeight: 600 }}>
+            <span
+              style={{
+                color: "#67e8f9",
+                fontSize: 14,
+                fontWeight: 700,
+                letterSpacing: 1.5,
+              }}
+            >
               {isFinished ? "MATCH RESULT" : "AI PREDICTION"}
             </span>
           </div>
         </div>
 
-        {/* League + date */}
+        {/* League + date — small subtle line above the matchup */}
         <div
           style={{
             display: "flex",
             justifyContent: "center",
-            padding: "16px 48px 0",
+            padding: "20px 56px 0",
+            position: "relative",
+            zIndex: 2,
           }}
         >
-          <span style={{ color: "#94a3b8", fontSize: 18, fontWeight: 500 }}>
-            {league}
-            {kickoff ? ` · ${kickoff}` : ""}
+          <span
+            style={{
+              color: "#94a3b8",
+              fontSize: 18,
+              fontWeight: 500,
+              letterSpacing: 1.2,
+            }}
+          >
+            {league.toUpperCase()}
+            {kickoff ? ` · ${kickoff.toUpperCase()}` : ""}
           </span>
         </div>
 
-        {/* Teams row with logos */}
+        {/* Teams row — crest + name on each side, dramatic VS slash in middle */}
         <div
           style={{
             flex: 1,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            padding: "0 48px",
-            gap: 32,
+            padding: "0 56px",
+            gap: 24,
+            position: "relative",
+            zIndex: 2,
           }}
         >
-          {/* Home team */}
+          {/* Home team — crest left of name */}
           <div
             style={{
               display: "flex",
-              flexDirection: "column",
               alignItems: "center",
               flex: 1,
-              gap: 12,
+              justifyContent: "flex-end",
+              gap: 28,
             }}
           >
-            {/* Logo or initial circle */}
+            <span
+              style={{
+                color: "#f1f5f9",
+                fontSize: 56,
+                fontWeight: 900,
+                letterSpacing: -1,
+                textAlign: "right",
+                maxWidth: 360,
+                lineHeight: 1,
+              }}
+            >
+              {homeTeam.toUpperCase()}
+            </span>
             {homeTeamLogo ? (
               <img
                 src={homeTeamLogo}
-                width={80}
-                height={80}
+                width={130}
+                height={130}
                 style={{
-                  borderRadius: "50%",
                   objectFit: "contain",
-                  background: "rgba(30,41,59,0.8)",
-                  border: "2px solid rgba(148,163,184,0.2)",
-                  padding: 6,
+                  filter: "drop-shadow(0 0 20px rgba(220,38,38,0.35))",
                 }}
               />
             ) : (
               <div
                 style={{
-                  width: 80,
-                  height: 80,
+                  width: 130,
+                  height: 130,
                   borderRadius: "50%",
                   background: "linear-gradient(135deg, #334155, #1e293b)",
-                  border: "2px solid rgba(148,163,184,0.25)",
+                  border: "3px solid rgba(148,163,184,0.25)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: 32,
-                  fontWeight: 800,
-                  color: "#94a3b8",
+                  fontSize: 48,
+                  fontWeight: 900,
+                  color: "#cbd5e1",
                 }}
               >
                 {getInitials(homeTeam)}
               </div>
             )}
+          </div>
 
+          {/* VS — bold + diagonal slash effect through the middle */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              position: "relative",
+              minWidth: 110,
+              height: 160,
+            }}
+          >
+            {/* Diagonal cyan→green slash bar behind the VS text */}
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                left: "50%",
+                width: 8,
+                height: 160,
+                background:
+                  "linear-gradient(180deg, #67e8f9 0%, #84cc16 100%)",
+                transform: "translateX(-50%) rotate(15deg)",
+                borderRadius: 4,
+                boxShadow: "0 0 22px rgba(132,204,22,0.5), 0 0 44px rgba(34,211,238,0.3)",
+              }}
+            />
             <span
               style={{
                 color: "#f1f5f9",
-                fontSize: 34,
-                fontWeight: 800,
-                textAlign: "center",
-                lineHeight: 1.15,
-                maxWidth: 360,
+                fontSize: 56,
+                fontWeight: 900,
+                letterSpacing: -1,
+                position: "relative",
+                zIndex: 2,
               }}
             >
-              {homeTeam}
+              VS
             </span>
-            {isFinished && scoreHome !== null && (
-              <span style={{ color: "#10b981", fontSize: 52, fontWeight: 800 }}>
-                {scoreHome}
-              </span>
-            )}
           </div>
 
-          {/* VS divider */}
+          {/* Away team — crest right of name */}
           <div
             style={{
               display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            <div
-              style={{
-                width: 64,
-                height: 64,
-                borderRadius: "50%",
-                background: "rgba(30,41,59,0.9)",
-                border: "1px solid rgba(71,85,105,0.5)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <span
-                style={{
-                  color: "#64748b",
-                  fontSize: 22,
-                  fontWeight: 800,
-                  letterSpacing: 2,
-                }}
-              >
-                VS
-              </span>
-            </div>
-          </div>
-
-          {/* Away team */}
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
               alignItems: "center",
               flex: 1,
-              gap: 12,
+              justifyContent: "flex-start",
+              gap: 28,
             }}
           >
-            {/* Logo or initial circle */}
             {awayTeamLogo ? (
               <img
                 src={awayTeamLogo}
-                width={80}
-                height={80}
+                width={130}
+                height={130}
                 style={{
-                  borderRadius: "50%",
                   objectFit: "contain",
-                  background: "rgba(30,41,59,0.8)",
-                  border: "2px solid rgba(148,163,184,0.2)",
-                  padding: 6,
+                  filter: "drop-shadow(0 0 20px rgba(34,211,238,0.35))",
                 }}
               />
             ) : (
               <div
                 style={{
-                  width: 80,
-                  height: 80,
+                  width: 130,
+                  height: 130,
                   borderRadius: "50%",
                   background: "linear-gradient(135deg, #334155, #1e293b)",
-                  border: "2px solid rgba(148,163,184,0.25)",
+                  border: "3px solid rgba(148,163,184,0.25)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -372,80 +458,122 @@ export default async function OGImage({
             <span
               style={{
                 color: "#f1f5f9",
-                fontSize: 34,
-                fontWeight: 800,
-                textAlign: "center",
-                lineHeight: 1.15,
+                fontSize: 56,
+                fontWeight: 900,
+                letterSpacing: -1,
+                textAlign: "left",
                 maxWidth: 360,
+                lineHeight: 1,
               }}
             >
-              {awayTeam}
+              {awayTeam.toUpperCase()}
             </span>
-            {isFinished && scoreAway !== null && (
-              <span style={{ color: "#10b981", fontSize: 52, fontWeight: 800 }}>
-                {scoreAway}
-              </span>
-            )}
           </div>
         </div>
 
-        {/* Bottom bar — confidence + pick */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            gap: 32,
-            padding: "0 48px 32px",
-          }}
-        >
-          {confidence > 0 && (
+        {/* Score row (only when finished) — replaces pick pill */}
+        {isFinished && (scoreHome !== null || scoreAway !== null) && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              padding: "0 56px 36px",
+              gap: 24,
+              position: "relative",
+              zIndex: 2,
+            }}
+          >
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 10,
-                background: "rgba(30,41,59,0.9)",
-                borderRadius: 16,
-                padding: "12px 24px",
-                border: "1px solid rgba(71,85,105,0.5)",
+                gap: 32,
+                background: "rgba(0,0,0,0.55)",
+                border: "2px solid rgba(132,204,22,0.55)",
+                borderRadius: 999,
+                padding: "14px 40px",
+                boxShadow: "0 0 30px rgba(132,204,22,0.35)",
               }}
             >
-              <span style={{ color: "#94a3b8", fontSize: 16, fontWeight: 500 }}>
-                AI Confidence
+              <span style={{ color: "#94a3b8", fontSize: 18, fontWeight: 700, letterSpacing: 2 }}>
+                FINAL
+              </span>
+              <span style={{ color: "#f1f5f9", fontSize: 44, fontWeight: 900 }}>
+                {scoreHome ?? "—"} <span style={{ color: "#475569", margin: "0 12px" }}>·</span> {scoreAway ?? "—"}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* AI Pick pill (only for upcoming matches) — glowing green border */}
+        {showPickPill && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              padding: "0 56px 40px",
+              position: "relative",
+              zIndex: 2,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 18,
+                background: "rgba(0,0,0,0.55)",
+                border: "2px solid #84cc16",
+                borderRadius: 999,
+                padding: "14px 32px",
+                boxShadow: "0 0 30px rgba(132,204,22,0.45), inset 0 0 18px rgba(132,204,22,0.08)",
+              }}
+            >
+              <span
+                style={{
+                  color: "#94a3b8",
+                  fontSize: 22,
+                  fontWeight: 700,
+                  letterSpacing: 1.2,
+                }}
+              >
+                AI PICK:
               </span>
               <span
                 style={{
-                  color: confidence >= 60 ? "#34d399" : confidence >= 40 ? "#fbbf24" : "#f87171",
-                  fontSize: 22,
-                  fontWeight: 800,
+                  color: "#a3e635",
+                  fontSize: 26,
+                  fontWeight: 900,
+                  letterSpacing: 0.5,
+                }}
+              >
+                {pickUpper}
+              </span>
+              <span style={{ color: "#475569", fontSize: 24, fontWeight: 600 }}>|</span>
+              <span
+                style={{
+                  color: confColor,
+                  fontSize: 26,
+                  fontWeight: 900,
+                  letterSpacing: 0.5,
                 }}
               >
                 {confidence}%
               </span>
-            </div>
-          )}
-          {pickLabel && pickLabel !== "—" && !isFinished && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                background: "rgba(16,185,129,0.12)",
-                borderRadius: 16,
-                padding: "12px 24px",
-                border: "1px solid rgba(16,185,129,0.3)",
-              }}
-            >
-              <span style={{ color: "#94a3b8", fontSize: 16, fontWeight: 500 }}>
-                Prediction
-              </span>
-              <span style={{ color: "#34d399", fontSize: 22, fontWeight: 800 }}>
-                {pickLabel}
+              <span
+                style={{
+                  color: "#94a3b8",
+                  fontSize: 22,
+                  fontWeight: 700,
+                  letterSpacing: 1.2,
+                }}
+              >
+                CONFIDENCE
               </span>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     ),
     { ...size }
