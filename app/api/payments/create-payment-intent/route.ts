@@ -71,6 +71,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "User country not set" }, { status: 400 })
     }
 
+    // Block admin users from making payments — they already have full access
+    // via role check. Prevents accidental real charges on admin/staff cards.
+    if (user.role?.toLowerCase() === 'admin') {
+      console.log("ℹ️ Admin user — payment skipped (has full access via role)")
+      return NextResponse.json({
+        error: "You already have full admin access. No payment needed.",
+        code: "ADMIN_HAS_ACCESS",
+      }, { status: 409 })
+    }
+
     // Require email verification before paying.
     // Same rule as the subscription checkout — keeps disposable-email signups
     // from completing purchases that we then can't honor disputes against.

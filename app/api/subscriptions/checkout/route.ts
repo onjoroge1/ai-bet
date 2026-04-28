@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
         id: true,
         email: true,
         emailVerified: true,
+        role: true,
         countryId: true,
         country: {
           select: {
@@ -56,6 +57,20 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
+    // Admin users already have full access via role check (lib/premium-access).
+    // Block them from accidentally creating a real Stripe subscription on top
+    // of their admin role — would charge the company card with no benefit.
+    if (user.role?.toLowerCase() === 'admin') {
+      logger.info('Checkout blocked for admin user — already has full access', {
+        tags: ['api', 'subscriptions', 'checkout', 'admin'],
+        data: { userId: user.id },
+      })
+      return NextResponse.json({
+        error: 'You already have full admin access. No subscription needed.',
+        code: 'ADMIN_HAS_ACCESS',
+      }, { status: 409 })
     }
 
     // Require email verification before paying.

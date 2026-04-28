@@ -59,6 +59,20 @@ export default function SubscribePage() {
         throw new Error(data.error || 'Access denied')
       }
 
+      if (response.status === 409) {
+        // 409 covers two cases:
+        //  - Admin role (no subscription needed, full access via role)
+        //  - Existing active subscription at same/higher tier
+        // In both cases the user already has access, so route them to the
+        // dashboard rather than showing an error — better UX.
+        const data = await response.json().catch(() => ({}))
+        if (data.code === 'ADMIN_HAS_ACCESS' || data.existingPlan) {
+          router.push('/dashboard?already_subscribed=true')
+          return
+        }
+        throw new Error(data.error || 'Cannot create checkout session')
+      }
+
       if (!response.ok) {
         const data = await response.json()
         throw new Error(data.error || 'Failed to create checkout session')

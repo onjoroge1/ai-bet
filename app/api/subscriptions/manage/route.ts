@@ -118,13 +118,20 @@ export async function GET(_req: NextRequest) {
       finalStatus = finalHasAccess ? (status ?? 'active') : status
     }
 
+    // Admin synthesised access — admins get full premium without a real Stripe
+    // subscription. Surface this explicitly so UI can render an "Admin Access"
+    // panel instead of broken Cancel/Manage Billing buttons (which would call
+    // Stripe APIs against a non-existent customer record).
+    const isAdminSynth = isAdmin && !user.stripeSubscriptionId && !activePackage
+
     return NextResponse.json({
       hasAccess: finalHasAccess,
-      plan: isAdmin && (!finalPlan || finalPlan === 'free') ? 'VIP Monthly (Admin)' : finalPlan,
+      plan: isAdminSynth ? 'VIP Monthly (Admin)' : finalPlan,
       status: finalStatus,
       expiresAt: finalExpiresAt,
       isExpired: finalExpiresAt ? new Date(finalExpiresAt) < new Date() : true,
       hasActivePackage: !!activePackage, // Include flag for frontend
+      isAdminAccess: isAdminSynth, // ← UI uses this to hide billing actions
       // Raw Stripe info (for portal / cancel actions)
       stripeCustomerId: user.stripeCustomerId,
       stripeSubscriptionId: user.stripeSubscriptionId,

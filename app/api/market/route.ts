@@ -186,16 +186,25 @@ export async function GET(request: NextRequest) {
     // Multi-match request - check database first
     const isLive = status === 'live'
     const dbStatus = status.toUpperCase() // Convert 'live' to 'LIVE', 'upcoming' to 'UPCOMING'
-    
+
     // Declare dbMatches outside try block so it's accessible in catch block for stale data fallback
     let dbMatches: any[] = []
-    
+
     try {
       // Build database query
       const whereClause: any = {
         status: dbStatus,
         isActive: true,
         isArchived: false,
+      }
+
+      // Defensive filter for LIVE: a soccer match never runs longer than ~3h
+      // (90min + extra time + half-time + buffer). Anything still flagged LIVE
+      // beyond that is a stuck row from a missed sync transition. Hide it from
+      // public surfaces immediately (the zombie-sweep cron will clean the DB).
+      // Without this, stuck rows from weeks ago show up on the homepage as "LIVE".
+      if (isLive) {
+        whereClause.kickoffDate = { gte: new Date(Date.now() - 3 * 60 * 60 * 1000) }
       }
 
       if (leagueId) {

@@ -36,6 +36,9 @@ interface SubscriptionStatus {
   expiresAt: string | null
   isExpired: boolean
   status: string | null
+  isAdminAccess?: boolean // true when access is via admin role, no Stripe sub
+  stripeCustomerId?: string | null
+  stripeSubscriptionId?: string | null
 }
 
 interface Invoice {
@@ -388,7 +391,15 @@ export function PaymentSettings() {
             </div>
 
             <div className="flex gap-2 flex-wrap">
-              {subscription?.hasAccess ? (
+              {subscription?.isAdminAccess ? (
+                // Admin role — full access, no Stripe sub. Don't render Manage
+                // Billing or Cancel Plan because there's nothing on the Stripe
+                // side to manage; clicking would 404 or 500.
+                <div className="px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-sm flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4" />
+                  Admin access — no billing required
+                </div>
+              ) : subscription?.hasAccess ? (
                 <>
                   <Button
                     variant="outline"

@@ -217,7 +217,14 @@ async function getSoccerPicks(): Promise<SnapBetPick[]> {
 
       const pickSide = v3pick || v1pick
       const pickTeam = pickSide === 'home' ? m.homeTeam : pickSide === 'away' ? m.awayTeam : 'Draw'
-      const bestConf = Math.max(v3conf, v1conf)
+      // Display V3's calibrated confidence (the V2 single source) so the number
+      // shown on this card matches what users see on the match detail page.
+      // Previously used Math.max(v3conf, v1conf) which led to picks-card showing
+      // 89% (V1) but match-detail showing 39% (V3) on the same match.
+      // V1 is still factored into qualification criteria above, but the
+      // headline % users see is now consistent.
+      const calibratedConf = (pd?.predictions?.calibrated_confidence as number | undefined) ?? v3conf
+      const headlineConf = calibratedConf || v3conf || v1conf
       const odds = m.consensusOdds as any
 
       // Generate slug
@@ -234,7 +241,7 @@ async function getSoccerPicks(): Promise<SnapBetPick[]> {
         kickoff: m.kickoffDate.toISOString(),
         pick: pickSide.charAt(0).toUpperCase() + pickSide.slice(1),
         pickTeam,
-        confidence: Math.round(bestConf * 100),
+        confidence: Math.round(headlineConf * 100),
         tier,
         starRating: tier === 'premium' ? 5 : tier === 'strong' ? 4 : 3,
         reasons,

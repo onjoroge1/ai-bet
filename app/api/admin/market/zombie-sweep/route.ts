@@ -37,11 +37,16 @@ const FINISHED_FETCH_LIMIT = 100
 const LIVE_FETCH_LIMIT = 50
 
 interface ZombieSweepResult {
+  // UPCOMING zombies (status=UPCOMING + kickoff in past)
   scanned: number
   stillInGrace: number      // 4-48h past, deferred to next sweep
   recoveredAsFinished: number
   recoveredAsLive: number   // edge case: match running into extra time
   cancelled: number
+  // LIVE zombies (status=LIVE + kickoff > 4h ago — match should have ended by now)
+  liveScanned: number
+  liveRecoveredAsFinished: number   // matched in backend finished list with real score
+  liveFlippedNoScore: number        // unrecoverable, flipped to FINISHED with no score
   errors: number
   dryRun: boolean
   details?: Array<{
@@ -50,10 +55,14 @@ interface ZombieSweepResult {
     awayTeam: string
     kickoffDate: Date
     hoursPastKickoff: number
-    action: 'grace' | 'recover-finished' | 'recover-live' | 'cancel' | 'error'
+    action: 'grace' | 'recover-finished' | 'recover-live' | 'cancel' | 'live-recover-finished' | 'live-flip-no-score' | 'error'
     note?: string
   }>
 }
+
+// LIVE zombies have a smaller grace window — no soccer match runs longer than 3h
+// (90min + ET + half-time + buffer). Anything still LIVE > 4h after kickoff is stuck.
+const LIVE_ZOMBIE_THRESHOLD_HOURS = 4
 
 /**
  * Extract a final-result object from a backend match payload.
@@ -128,25 +137,42 @@ async function runSweep(dryRun: boolean): Promise<ZombieSweepResult> {
     orderBy: { kickoffDate: 'asc' },
   })
 
+  // LIVE zombies — matches stuck in LIVE status > 4h after kickoff. Backend's
+  // sync should have transitioned them to FINISHED but didn't, leaving the
+  // homepage's "Live Matches" widget showing weeks-old fixtures.
+  const liveZombieCutoff = new Date(now.getTime() - LIVE_ZOMBIE_THRESHOLD_HOURS * 3600 * 1000)
+  const liveZombies = await prisma.marketMatch.findMany({
+    where: {
+      status: 'LIVE',
+      isActive: true,
+      kickoffDate: { lt: liveZombieCutoff },
+    },
+    select: { id: true, matchId: true, homeTeam: true, awayTeam: true, league: true, kickoffDate: true },
+    orderBy: { kickoffDate: 'asc' },
+  })
+
   const result: ZombieSweepResult = {
     scanned: zombies.length,
     stillInGrace: 0,
     recoveredAsFinished: 0,
     recoveredAsLive: 0,
     cancelled: 0,
+    liveScanned: liveZombies.length,
+    liveRecoveredAsFinished: 0,
+    liveFlippedNoScore: 0,
     errors: 0,
     dryRun,
     details: [],
   }
 
-  if (zombies.length === 0) {
+  if (zombies.length === 0 && liveZombies.length === 0) {
     logger.info('[Zombie Sweep] No zombies found — DB is clean', {
       tags: ['cron', 'market', 'zombie-sweep'],
     })
     return result
   }
 
-  logger.info(`[Zombie Sweep] Starting sweep over ${zombies.length} zombies (dryRun=${dryRun})`, {
+  logger.info(`[Zombie Sweep] Starting sweep — ${zombies.length} UPCOMING zombies, ${liveZombies.length} LIVE zombies (dryRun=${dryRun})`, {
     tags: ['cron', 'market', 'zombie-sweep'],
   })
 
@@ -280,14 +306,97 @@ async function runSweep(dryRun: boolean): Promise<ZombieSweepResult> {
     }
   }
 
+  // ─── LIVE zombies ────────────────────────────────────────────────────────
+  // Match was kicked off, frontend's sync flagged it LIVE, but the LIVE→FINISHED
+  // transition never happened. Unlike UPCOMING zombies (which might have been
+  // cancelled outright), LIVE zombies definitely played — we just lost the result.
+  // So we never use status=CANCELLED here. We try to recover the score, and
+  // failing that, flip to FINISHED with no result and a diagnostic note.
+  for (const z of liveZombies) {
+    const hoursPastKickoff = (now.getTime() - z.kickoffDate.getTime()) / (3600 * 1000)
+    const finishedMatch = finishedMap.get(z.matchId)
+
+    if (finishedMatch) {
+      const finalResult = extractFinalResult(finishedMatch)
+      result.liveRecoveredAsFinished++
+      result.details!.push({
+        matchId: z.matchId,
+        homeTeam: z.homeTeam,
+        awayTeam: z.awayTeam,
+        kickoffDate: z.kickoffDate,
+        hoursPastKickoff: Math.round(hoursPastKickoff * 10) / 10,
+        action: 'live-recover-finished',
+        note: finalResult ? `score ${finalResult.score?.home}-${finalResult.score?.away}` : 'no-score-in-payload',
+      })
+      if (!dryRun) {
+        try {
+          await prisma.marketMatch.update({
+            where: { id: z.id },
+            data: {
+              status: 'FINISHED',
+              finalResult: finalResult ?? undefined,
+              lastSyncedAt: now,
+              syncErrors: 0,
+              lastSyncError: null,
+              nextSyncAt: null,
+            },
+          })
+        } catch (e) {
+          result.errors++
+          logger.error(`[Zombie Sweep] Failed to recover LIVE zombie ${z.matchId} as FINISHED`, {
+            tags: ['cron', 'market', 'zombie-sweep', 'live', 'error'],
+            error: e instanceof Error ? e : undefined,
+          })
+        }
+      }
+      continue
+    }
+
+    // Not in backend's finished list — flip to FINISHED with no score.
+    // Match definitely ran, we just don't have the result. Stamp the note so
+    // it's visible in admin tooling and won't be confused with a real recovery.
+    result.liveFlippedNoScore++
+    result.details!.push({
+      matchId: z.matchId,
+      homeTeam: z.homeTeam,
+      awayTeam: z.awayTeam,
+      kickoffDate: z.kickoffDate,
+      hoursPastKickoff: Math.round(hoursPastKickoff * 10) / 10,
+      action: 'live-flip-no-score',
+      note: `LIVE > ${Math.round(hoursPastKickoff)}h, backend has no record — flipped to FINISHED with no score`,
+    })
+    if (!dryRun) {
+      try {
+        await prisma.marketMatch.update({
+          where: { id: z.id },
+          data: {
+            status: 'FINISHED',
+            lastSyncedAt: now,
+            lastSyncError: `zombie-sweep: stuck LIVE > ${Math.round(hoursPastKickoff)}h, no result available`,
+            nextSyncAt: null,
+          },
+        })
+      } catch (e) {
+        result.errors++
+        logger.error(`[Zombie Sweep] Failed to flip LIVE zombie ${z.matchId}`, {
+          tags: ['cron', 'market', 'zombie-sweep', 'live', 'error'],
+          error: e instanceof Error ? e : undefined,
+        })
+      }
+    }
+  }
+
   logger.info('[Zombie Sweep] Complete', {
     tags: ['cron', 'market', 'zombie-sweep'],
     data: {
-      scanned: result.scanned,
+      upcomingScanned: result.scanned,
       stillInGrace: result.stillInGrace,
       recoveredAsFinished: result.recoveredAsFinished,
       recoveredAsLive: result.recoveredAsLive,
       cancelled: result.cancelled,
+      liveScanned: result.liveScanned,
+      liveRecoveredAsFinished: result.liveRecoveredAsFinished,
+      liveFlippedNoScore: result.liveFlippedNoScore,
       errors: result.errors,
       dryRun,
     },
