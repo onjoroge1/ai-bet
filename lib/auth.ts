@@ -219,6 +219,16 @@ export const authOptions = {
           }
 
           console.log('NextAuth authorize: Authentication successful', { userId: user.id, email: user.email, role: user.role })
+
+          // Stamp last-login timestamp for the /admin/users dashboard.
+          // Best-effort — never block sign-in on a write failure.
+          prisma.user.update({
+            where: { id: user.id },
+            data: { lastLoginAt: new Date() },
+          }).catch(err => {
+            console.error('NextAuth authorize: failed to update lastLoginAt', { userId: user.id, err })
+          })
+
           return {
             id: user.id,
             email: user.email,
