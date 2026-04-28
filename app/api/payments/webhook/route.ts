@@ -1249,7 +1249,11 @@ async function handleChargeDispute(dispute: Stripe.Dispute, eventType: string) {
     return;
   }
 
-  // Resolve the affected user by looking up the original payment intent → package purchase
+  // Resolve the affected user. Two paths:
+  //  1. PaymentIntent metadata.userId (we set this on every payment we create)
+  //  2. Customer → user via stripeCustomerId (fallback)
+  // Note: PackagePurchase schema has no stripePaymentIntentId column today,
+  // so we resolve through PaymentIntent metadata directly.
   let userId: string | null = null;
   try {
     const charge = await stripe.charges.retrieve(chargeId);
@@ -1257,14 +1261,17 @@ async function handleChargeDispute(dispute: Stripe.Dispute, eventType: string) {
       typeof charge.payment_intent === 'string'
         ? charge.payment_intent
         : charge.payment_intent?.id ?? null;
+
     if (paymentIntentId) {
-      const pp = await prisma.packagePurchase.findFirst({
-        where: { stripePaymentIntentId: paymentIntentId },
-        select: { userId: true },
-      });
-      userId = pp?.userId ?? null;
+      try {
+        const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+        userId = (pi.metadata?.userId as string) ?? null;
+      } catch (piErr) {
+        console.error('[handleChargeDispute] Failed to retrieve payment intent', piErr);
+      }
     }
-    // Subscription dispute: try matching customer
+
+    // Fallback: subscription dispute (no metadata.userId on auto invoice charges)
     if (!userId && charge.customer) {
       const customerId = typeof charge.customer === 'string' ? charge.customer : charge.customer.id;
       const u = await prisma.user.findFirst({ where: { stripeCustomerId: customerId }, select: { id: true } });

@@ -87,7 +87,10 @@ export async function GET(_req: NextRequest) {
         ? new Date(stripeSubscription.currentPeriodEnd * 1000).toISOString()
         : null
 
-    const blockedStatuses = ['canceled', 'cancelled', 'unpaid', 'incomplete_expired']
+    // Keep this list in sync with lib/premium-access.ts and middleware.ts.
+    // past_due (Stripe retry window) and disputed (chargeback opened) are both
+    // hard-blocks: we don't want to grant premium while money is at risk.
+    const blockedStatuses = ['canceled', 'cancelled', 'unpaid', 'incomplete_expired', 'past_due', 'disputed']
     const isExplicitlyBlocked =
       !!status && blockedStatuses.includes(status.toLowerCase())
     const isExpired = expiresAt ? new Date(expiresAt) < new Date() : false
