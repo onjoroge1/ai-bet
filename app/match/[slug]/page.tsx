@@ -1010,8 +1010,11 @@ export default function MatchDetailPage() {
   // when backend has flagged this match as low-conviction or "no bet". Paying
   // users still see the actual prediction (they paid for transparency); we
   // just don't oversell conviction we don't have.
+  // Pass the full predictions object so deriveSurface can use explicit
+  // should_surface/surface_reason fields when backend exposes them; falls
+  // back to recommended_bet string parsing automatically otherwise.
   const surfaceDecision = deriveSurface(
-    prediction?.predictions?.recommended_bet ?? quickPurchaseInfo?.predictionType
+    prediction?.predictions ?? { recommended_bet: quickPurchaseInfo?.predictionType }
   )
   // Effective tier visible to user — degraded to 'standard' when V2 says don't surface
   const effectiveTier: string | null = surfaceDecision.shouldSurface
