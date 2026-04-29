@@ -760,6 +760,154 @@ export const DEFAULT_EMAIL_TEMPLATES: CreateTemplateData[] = [
     `,
     variables: EMAIL_VARIABLES.marketing,
     createdBy: 'system'
+  },
+  {
+    name: 'Nightly Briefing',
+    slug: 'nightly-briefing',
+    subject: '🎯 Tomorrow\'s Edge — Your AI Briefing for {{briefingDate}}',
+    category: 'marketing',
+    description: 'Daily promo email sent every evening with top picks, hot parlay, CLV explainer. Variables computed server-side and passed as pre-rendered HTML blocks.',
+    htmlContent: `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tomorrow's Edge — SnapBet AI</title>
+</head>
+<body style="margin:0;padding:0;background:#000;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#f1f5f9;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#000;padding:24px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#0a0e1a;border:1px solid rgba(132,204,22,0.15);border-radius:16px;overflow:hidden;">
+
+        <!-- ── Header ───────────────────────────────────── -->
+        <tr><td style="padding:28px 32px 16px;background:linear-gradient(135deg,rgba(132,204,22,0.08) 0%,rgba(34,211,238,0.05) 100%);border-bottom:1px solid rgba(132,204,22,0.12);">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td valign="middle">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td valign="middle" style="padding-right:12px;">
+                      <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                        <tr><td width="44" height="44" align="center" valign="middle" style="border:3px solid #84cc16;border-radius:50%;background:rgba(0,0,0,0.4);">
+                          <span style="color:#84cc16;font-size:22px;font-weight:900;font-style:italic;line-height:1;">S</span>
+                        </td></tr>
+                      </table>
+                    </td>
+                    <td valign="middle">
+                      <div style="color:#84cc16;font-size:22px;font-weight:800;letter-spacing:-0.3px;">SnapBet</div>
+                      <div style="color:#94a3b8;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;margin-top:2px;">Tomorrow's Edge · {{briefingDate}}</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+              <td valign="middle" align="right">
+                <span style="display:inline-block;padding:6px 14px;background:rgba(34,211,238,0.12);border:1px solid rgba(34,211,238,0.4);color:#67e8f9;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:1.2px;">AI BRIEFING</span>
+              </td>
+            </tr>
+          </table>
+        </td></tr>
+
+        <!-- ── Greeting ─────────────────────────────────── -->
+        <tr><td style="padding:28px 32px 8px;">
+          <h1 style="margin:0;color:#f1f5f9;font-size:22px;font-weight:800;letter-spacing:-0.3px;">Hi {{firstName}},</h1>
+          <p style="margin:8px 0 0;color:#94a3b8;font-size:15px;line-height:1.5;">Here's what our AI has flagged for tomorrow's slate. {{briefingHeadline}}</p>
+        </td></tr>
+
+        <!-- ── AI Briefing bullets ─────────────────────── -->
+        <tr><td style="padding:20px 32px 0;">
+          <div style="background:rgba(16,185,129,0.06);border:1px solid rgba(132,204,22,0.25);border-radius:12px;padding:18px 20px;">
+            <div style="color:#84cc16;font-size:11px;font-weight:700;letter-spacing:1.5px;margin-bottom:10px;">🧠 TODAY'S BRIEFING</div>
+            {{briefingBulletsHtml}}
+          </div>
+        </td></tr>
+
+        <!-- ── Top Picks ─────────────────────────────────── -->
+        <tr><td style="padding:24px 32px 0;">
+          <div style="color:#94a3b8;font-size:11px;font-weight:700;letter-spacing:1.5px;margin-bottom:10px;">⭐ TOP PICKS</div>
+          {{topPicksHtml}}
+        </td></tr>
+
+        <!-- ── Hot Parlay ────────────────────────────────── -->
+        {{hotParlaySection}}
+
+        <!-- ── CLV explainer ─────────────────────────────── -->
+        <tr><td style="padding:24px 32px 0;">
+          <div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.25);border-radius:12px;padding:18px 20px;">
+            <div style="color:#fbbf24;font-size:11px;font-weight:700;letter-spacing:1.5px;margin-bottom:10px;">📈 WHAT IS CLV?</div>
+            <p style="margin:0;color:#cbd5e1;font-size:14px;line-height:1.55;">
+              <strong style="color:#f1f5f9;">Closing Line Value</strong> is how much your bet's price moved between when you placed it and kickoff.
+              When you consistently beat the closing line, you're betting smarter than the market.
+              {{clvOpportunityLine}}
+            </p>
+            <a href="{{dashboardUrl}}/dashboard/clv" style="display:inline-block;margin-top:12px;color:#fbbf24;font-size:13px;font-weight:600;text-decoration:none;">Open the CLV Tracker →</a>
+          </div>
+        </td></tr>
+
+        <!-- ── Primary CTA ─────────────────────────────── -->
+        <tr><td style="padding:28px 32px 8px;" align="center">
+          <a href="{{dashboardUrl}}/dashboard"
+             style="display:inline-block;padding:14px 36px;background:linear-gradient(135deg,#84cc16 0%,#65a30d 100%);color:#000;text-decoration:none;font-weight:800;font-size:15px;border-radius:999px;letter-spacing:0.3px;box-shadow:0 4px 16px rgba(132,204,22,0.35);">
+            View Full Briefing →
+          </a>
+        </td></tr>
+
+        <!-- ── Footer ──────────────────────────────────── -->
+        <tr><td style="padding:32px 32px 28px;border-top:1px solid rgba(148,163,184,0.1);margin-top:24px;">
+          <p style="margin:0;color:#64748b;font-size:12px;line-height:1.6;text-align:center;">
+            You're receiving this because you opted into SnapBet briefings.<br>
+            <a href="{{dashboardUrl}}/dashboard/settings?tab=notifications" style="color:#84cc16;text-decoration:underline;">Manage email preferences</a>
+            · <a href="{{unsubscribeUrl}}" style="color:#94a3b8;text-decoration:underline;">Unsubscribe</a>
+          </p>
+          <p style="margin:14px 0 0;color:#475569;font-size:11px;text-align:center;">
+            SnapBet · AI-powered sports predictions · 21+ only · Bet responsibly
+          </p>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+    textContent: `Hi {{firstName}},
+
+Here's what our AI has flagged for tomorrow's slate. {{briefingHeadline}}
+
+TODAY'S BRIEFING
+{{briefingBulletsText}}
+
+TOP PICKS
+{{topPicksText}}
+
+{{hotParlayText}}
+
+WHAT IS CLV?
+Closing Line Value is how much your bet's price moved between when you placed it and kickoff. When you consistently beat the closing line, you're betting smarter than the market. {{clvOpportunityLine}}
+
+Open the CLV Tracker: {{dashboardUrl}}/dashboard/clv
+
+View full briefing on your dashboard: {{dashboardUrl}}/dashboard
+
+—
+You're receiving this because you opted into SnapBet briefings.
+Manage email preferences: {{dashboardUrl}}/dashboard/settings?tab=notifications
+Unsubscribe: {{unsubscribeUrl}}
+
+SnapBet · 21+ only · Bet responsibly`,
+    variables: [
+      { name: 'firstName', description: 'User first name', type: 'string', required: true, example: 'Alex' },
+      { name: 'briefingDate', description: 'Date label (e.g., "Apr 30")', type: 'string', required: true, example: 'Apr 30' },
+      { name: 'briefingHeadline', description: 'One-sentence summary line', type: 'string', required: true, example: '12 matches across 4 leagues with 3 picks worth your attention.' },
+      { name: 'briefingBulletsHtml', description: 'Pre-rendered HTML for AI briefing bullets', type: 'string', required: true, example: '<div style="...">...</div>' },
+      { name: 'briefingBulletsText', description: 'Plain-text fallback for briefing bullets', type: 'string', required: false, example: '- Sporting CP at 89% confidence\\n- ...' },
+      { name: 'topPicksHtml', description: 'Pre-rendered HTML for top picks rows', type: 'string', required: true, example: '<table>...</table>' },
+      { name: 'topPicksText', description: 'Plain-text fallback for top picks', type: 'string', required: false, example: 'Sporting CP vs Tondela — Home 89%' },
+      { name: 'hotParlaySection', description: 'Pre-rendered <tr> block for parlay card (or empty)', type: 'string', required: false, example: '<tr><td>...</td></tr>' },
+      { name: 'hotParlayText', description: 'Plain-text fallback for parlay', type: 'string', required: false, example: '3-leg parlay, 5.88x payout, +22% edge' },
+      { name: 'clvOpportunityLine', description: 'One-sentence CLV teaser', type: 'string', required: false, example: 'We surfaced a +8.5% move on Bayern today.' },
+      { name: 'dashboardUrl', description: 'Base app URL', type: 'string', required: true, example: 'https://www.snapbet.bet' },
+      { name: 'unsubscribeUrl', description: 'One-click unsubscribe URL with token', type: 'string', required: true, example: 'https://www.snapbet.bet/unsubscribe?t=...' },
+    ],
+    createdBy: 'system'
   }
 ]
 

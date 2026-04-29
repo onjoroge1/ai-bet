@@ -41,6 +41,7 @@ const cronEndpoints = [
   '/api/admin/parlays/generate-best-scheduled',
   '/api/admin/market/sync-scheduled',
   '/api/admin/market/zombie-sweep',
+  '/api/admin/email/nightly-briefing/send',
   '/api/admin/predictions/enrich-scheduled',
   '/api/admin/predictions/sync-from-availability-scheduled',
   '/api/admin/additional-markets/sync-scheduled',
