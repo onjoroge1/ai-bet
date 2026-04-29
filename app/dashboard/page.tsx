@@ -41,19 +41,22 @@ const PackageCredits = dynamic(
   { loading: () => <WidgetSkeleton /> }
 )
 
-// ── Snapshot panels (the new 4-up grid) ──────────────────────────
-const HotPicks = dynamic(
-  () => import("@/components/dashboard/hot-picks").then((mod) => mod.HotPicks),
+// ── Snapshot panels (the new 4-up grid) — purpose-built slim widgets
+//    sharing one template for visual consistency. The richer
+//    ParlaysPreviewWidget / CLVPreviewWidget / HotPicks live in
+//    /components/dashboard but are used on dedicated pages, not here.
+const TopPicksSnapshot = dynamic(
+  () => import("@/components/dashboard/snapshots/top-picks-snapshot").then((mod) => mod.TopPicksSnapshot),
   { loading: () => <WidgetSkeleton /> }
 )
 
-const ParlaysPreviewWidget = dynamic(
-  () => import("@/components/dashboard/parlays-preview-widget").then((mod) => mod.ParlaysPreviewWidget),
+const ParlaysSnapshot = dynamic(
+  () => import("@/components/dashboard/snapshots/parlays-snapshot").then((mod) => mod.ParlaysSnapshot),
   { loading: () => <WidgetSkeleton /> }
 )
 
-const CLVPreviewWidget = dynamic(
-  () => import("@/components/dashboard/clv-preview-widget").then((mod) => mod.CLVPreviewWidget),
+const CLVSnapshot = dynamic(
+  () => import("@/components/dashboard/snapshots/clv-snapshot").then((mod) => mod.CLVSnapshot),
   { loading: () => <WidgetSkeleton /> }
 )
 
@@ -181,21 +184,24 @@ export default function DashboardPage() {
         </Suspense>
       </DashboardErrorBoundary>
 
-      {/* ── 4-up snapshot grid: Top Picks · Hot Parlays · CLV · Matches ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      {/* ── 4-up snapshot grid: Top Picks · Hot Parlays · CLV · Matches ──
+           Each card uses the same template (h-full flex column, identical
+           header padding, hero stat, 3-row list, footer view-all link)
+           so the row reads as a coherent unit. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 auto-rows-fr">
         <DashboardErrorBoundary section="Top Picks" compact>
           <Suspense fallback={<WidgetSkeleton />}>
-            <HotPicks />
+            <TopPicksSnapshot />
           </Suspense>
         </DashboardErrorBoundary>
         <DashboardErrorBoundary section="Hot Parlays" compact>
           <Suspense fallback={<WidgetSkeleton />}>
-            <ParlaysPreviewWidget />
+            <ParlaysSnapshot />
           </Suspense>
         </DashboardErrorBoundary>
         <DashboardErrorBoundary section="CLV Tracker" compact>
           <Suspense fallback={<WidgetSkeleton />}>
-            <CLVPreviewWidget />
+            <CLVSnapshot />
           </Suspense>
         </DashboardErrorBoundary>
         <DashboardErrorBoundary section="Today's Matches" compact>

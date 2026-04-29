@@ -71,16 +71,16 @@ export function TodaysMatchesWidget() {
 
   return (
     <Card className="bg-slate-800/50 border-slate-700 h-full flex flex-col">
-      <CardHeader className="pb-3">
+      <CardHeader className="pb-2 pt-4 px-4">
         <CardTitle className="text-sm font-semibold text-white flex items-center gap-2">
-          <Activity className="w-4 h-4 text-emerald-400" />
+          <Activity className="w-4 h-4 text-cyan-400" />
           Today&apos;s Matches
           <Badge className="ml-auto bg-slate-700/50 text-slate-300 border-slate-600 text-[10px]">
             FREE
           </Badge>
         </CardTitle>
       </CardHeader>
-      <CardContent className="flex-1 flex flex-col">
+      <CardContent className="px-4 pb-4 flex-1 flex flex-col">
         {loading ? (
           <div className="flex-1 flex items-center justify-center py-6">
             <Loader2 className="w-5 h-5 animate-spin text-emerald-400" />
@@ -89,18 +89,18 @@ export function TodaysMatchesWidget() {
           <>
             <div className="text-2xl font-bold text-white mb-3">
               {total}
-              <span className="text-sm font-medium text-slate-400 ml-2">upcoming</span>
+              <span className="text-xs font-medium text-slate-400 ml-2 align-middle">upcoming</span>
             </div>
             <div className="space-y-1.5 flex-1">
               {matches.length === 0 ? (
-                <p className="text-xs text-slate-500 text-center py-4">No upcoming matches in the next window.</p>
+                <p className="text-xs text-slate-500 text-center py-2">No upcoming matches in the next window.</p>
               ) : (
                 matches.map(m => (
-                  <div key={m.id} className="text-xs text-slate-300 flex items-center justify-between gap-2 hover:bg-slate-700/30 rounded px-2 py-1">
-                    <span className="truncate">
+                  <div key={m.id} className="text-xs flex items-center justify-between gap-2 px-2 py-1 rounded hover:bg-slate-700/30">
+                    <span className="truncate text-slate-200 min-w-0 flex-1">
                       {teamName(m.home)} <span className="text-slate-500">vs</span> {teamName(m.away)}
                     </span>
-                    <span className="text-slate-500 text-[10px] shrink-0">{fmtKickoff(m.kickoff_at)}</span>
+                    <span className="shrink-0 text-slate-500 font-mono">{fmtKickoff(m.kickoff_at)}</span>
                   </div>
                 ))
               )}
