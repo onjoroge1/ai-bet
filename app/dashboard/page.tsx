@@ -62,6 +62,12 @@ const TodaysMatchesWidget = dynamic(
   { loading: () => <WidgetSkeleton /> }
 )
 
+// ── AI daily briefing (Phase 2) ──────────────────────────────────
+const DailyBriefing = dynamic(
+  () => import("@/components/dashboard/daily-briefing").then((mod) => mod.DailyBriefing),
+  { loading: () => <WidgetSkeleton />, ssr: false }
+)
+
 // ── Activity (collapsed/secondary) ───────────────────────────────
 const NotificationsWidget = dynamic(
   () => import("@/components/notifications-widget").then((mod) => mod.NotificationsWidget),
@@ -167,6 +173,13 @@ export default function DashboardPage() {
         {/* Real header KPIs — replaces the random-walk numbers from the old dashboard */}
         <HeaderStats />
       </div>
+
+      {/* ── AI Daily Briefing (Phase 2) ─ LLM-generated, cached 1h ── */}
+      <DashboardErrorBoundary section="Daily Briefing" compact>
+        <Suspense fallback={<WidgetSkeleton />}>
+          <DailyBriefing />
+        </Suspense>
+      </DashboardErrorBoundary>
 
       {/* ── 4-up snapshot grid: Top Picks · Hot Parlays · CLV · Matches ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
