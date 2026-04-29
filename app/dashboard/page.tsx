@@ -2,32 +2,35 @@
 
 import dynamic from "next/dynamic"
 import { Suspense, useState, useEffect } from "react"
-import { Loader2, Trophy, Layers, Users, Zap, Crown, X, ArrowRight, BarChart3, Activity, CheckCircle } from "lucide-react"
-import { Card } from "@/components/ui/card"
+import { Loader2, X, Crown, ArrowRight } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useDashboardData } from "@/hooks/use-dashboard-data"
 import { DashboardErrorBoundary } from "@/components/dashboard/ErrorBoundary"
+import { HeaderStats } from "@/components/dashboard/header-stats"
 
 /**
- * DashboardPage - Streamlined Overview
+ * DashboardPage — One-stop overview (Phase 1).
  *
- * Optimized for fast loading and clear purpose:
- * - Welcome message with quick stats
- * - Quick action navigation cards
- * - Essential widgets only (Stats, Credits, Notifications, Live Matches)
- * - Progressive loading (critical first, secondary after)
- * 
- * Moved to standalone pages:
- * - Referrals → /dashboard/referrals
- * - Quiz Credits → /dashboard/rewards
- * - Claimed Tips → /dashboard/my-bets
- * - Upgrade Offers → Simplified or in /dashboard/premium
+ * Distils the four core surfaces (Top Picks, Hot Parlays, CLV Tracker,
+ * Today's Matches) into a single 4-up grid. Each panel is a snapshot with
+ * a drill-down link to its dedicated page. Free vs premium gating is
+ * handled inside each widget — anonymous users see locked previews,
+ * subscribers see real data.
+ *
+ * Removed in this refactor (vs the prior dashboard):
+ *  - Quick-action chip row (redundant with the snapshot grid)
+ *  - LiveMatchesWidget (rolled into TodaysMatchesWidget)
+ *  - AIRecommendations placeholder (replaced by Phase 2 AI Briefing)
+ *  - TimelineFeed (low-value, eats vertical space)
+ *  - PersonalizedOffers / UpgradeOffers (consolidated into upgrade banner)
+ *
+ * Phase 2 will inject an AI-generated daily briefing card above the grid.
  */
 
-// ── Critical Components (Load First) ────────────────────────────────
+// ── Critical (load first) ────────────────────────────────────────
 const StatsOverview = dynamic(
   () => import("@/components/dashboard/stats-overview").then((mod) => mod.StatsOverview),
   { loading: () => <WidgetSkeleton /> }
@@ -38,52 +41,33 @@ const PackageCredits = dynamic(
   { loading: () => <WidgetSkeleton /> }
 )
 
-// ── Secondary Components (Load After Critical) ────────────────────────
+// ── Snapshot panels (the new 4-up grid) ──────────────────────────
+const HotPicks = dynamic(
+  () => import("@/components/dashboard/hot-picks").then((mod) => mod.HotPicks),
+  { loading: () => <WidgetSkeleton /> }
+)
+
+const ParlaysPreviewWidget = dynamic(
+  () => import("@/components/dashboard/parlays-preview-widget").then((mod) => mod.ParlaysPreviewWidget),
+  { loading: () => <WidgetSkeleton /> }
+)
+
+const CLVPreviewWidget = dynamic(
+  () => import("@/components/dashboard/clv-preview-widget").then((mod) => mod.CLVPreviewWidget),
+  { loading: () => <WidgetSkeleton /> }
+)
+
+const TodaysMatchesWidget = dynamic(
+  () => import("@/components/dashboard/todays-matches-widget").then((mod) => mod.TodaysMatchesWidget),
+  { loading: () => <WidgetSkeleton /> }
+)
+
+// ── Activity (collapsed/secondary) ───────────────────────────────
 const NotificationsWidget = dynamic(
   () => import("@/components/notifications-widget").then((mod) => mod.NotificationsWidget),
   { loading: () => <WidgetSkeleton /> }
 )
 
-const LiveMatchesWidget = dynamic(
-  () => import("@/components/live-matches-widget").then((mod) => mod.LiveMatchesWidget),
-  { loading: () => <WidgetSkeleton /> }
-)
-
-// ── AI Recommendations ────────────────────────────────────────────────
-const AIRecommendations = dynamic(
-  () => import("@/components/dashboard/ai-recommendations").then((mod) => mod.AIRecommendations),
-  {
-    loading: () => <WidgetSkeleton />,
-    ssr: false,
-  }
-)
-
-// ── Tertiary Components (Load Last or On-Demand) ──────────────────────
-const TimelineFeed = dynamic(
-  () => import("@/components/dashboard/timeline-feed").then((mod) => mod.TimelineFeed),
-  { 
-    loading: () => <WidgetSkeleton />,
-    ssr: false // Client-side only for better initial load
-  }
-)
-
-const UpgradeOffers = dynamic(
-  () => import("@/components/upgrade-offers").then((mod) => mod.UpgradeOffers),
-  { 
-    loading: () => <WidgetSkeleton />,
-    ssr: false // Client-side only
-  }
-)
-
-const PersonalizedOffers = dynamic(
-  () => import("@/components/personalized-offers").then((mod) => mod.PersonalizedOffers),
-  { 
-    loading: () => <WidgetSkeleton />,
-    ssr: false // Client-side only
-  }
-)
-
-/** Shared loading skeleton for widget placeholders */
 function WidgetSkeleton() {
   return (
     <div className="h-48 flex items-center justify-center rounded-xl bg-slate-800/30 border border-slate-800/50">
@@ -92,55 +76,18 @@ function WidgetSkeleton() {
   )
 }
 
-/** Quick action card links */
-const quickActions = [
-  {
-    href: "/dashboard/matches",
-    icon: Trophy,
-    title: "Browse Matches",
-    subtitle: "AI predictions",
-    gradient: "from-emerald-500/10 to-emerald-500/5",
-    border: "border-emerald-500/20 hover:border-emerald-500/40",
-    iconColor: "text-emerald-400",
-  },
-  {
-    href: "/dashboard/parlays",
-    icon: Layers,
-    title: "AI Parlays",
-    subtitle: "Curated picks",
-    gradient: "from-orange-500/10 to-orange-500/5",
-    border: "border-orange-500/20 hover:border-orange-500/40",
-    iconColor: "text-orange-400",
-  },
-  {
-    href: "/dashboard/my-tips",
-    icon: Users,
-    title: "My Tips",
-    subtitle: "Purchased picks",
-    gradient: "from-blue-500/10 to-blue-500/5",
-    border: "border-blue-500/20 hover:border-blue-500/40",
-    iconColor: "text-blue-400",
-  },
-  {
-    href: "/dashboard/daily-tips",
-    icon: Zap,
-    title: "Daily Tips",
-    subtitle: "Today's best",
-    gradient: "from-purple-500/10 to-purple-500/5",
-    border: "border-purple-500/20 hover:border-purple-500/40",
-    iconColor: "text-purple-400",
-  },
-]
-
 export default function DashboardPage() {
-  const { data, isLoading } = useDashboardData()
+  const { data } = useDashboardData()
   const searchParams = useSearchParams()
   const showUpgrade = searchParams.get("upgrade") === "true"
+  const showAlreadySubscribed = searchParams.get("already_subscribed") === "true"
   const [upgradeVisible, setUpgradeVisible] = useState(false)
+  const [subscribedVisible, setSubscribedVisible] = useState(false)
 
   useEffect(() => {
     if (showUpgrade) setUpgradeVisible(true)
-  }, [showUpgrade])
+    if (showAlreadySubscribed) setSubscribedVisible(true)
+  }, [showUpgrade, showAlreadySubscribed])
 
   const firstName = data?.user?.fullName?.split(" ")[0] || "User"
   const winStreak = data?.user?.winStreak || 0
@@ -148,7 +95,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* ── Upgrade Banner (shown when redirected from premium route) ── */}
+      {/* ── Premium-required banner (when redirected from premium route) ── */}
       {upgradeVisible && (
         <div className="relative overflow-hidden rounded-2xl border border-amber-500/40 bg-gradient-to-r from-amber-900/40 via-slate-800/80 to-slate-900/60 p-5 shadow-[0_0_30px_rgba(245,158,11,0.15)]">
           <button
@@ -165,7 +112,7 @@ export default function DashboardPage() {
             <div className="flex-1">
               <h3 className="text-lg font-bold text-white">Premium Required</h3>
               <p className="text-slate-300 text-sm mt-1">
-                The page you tried to access requires a VIP subscription. Upgrade now to unlock
+                The page you tried to access requires a VIP subscription. Upgrade to unlock
                 AI Parlays, Analytics, CLV Tracker, and the VIP Intelligence Feed.
               </p>
             </div>
@@ -180,50 +127,72 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Page Header ──────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-white">
-            Welcome back, {firstName}!
-          </h1>
-          <p className="text-slate-400 mt-1">
-            {winStreak > 0 && (
-              <span className="text-emerald-400 font-semibold">{winStreak}-win streak</span>
-            )}
-            {winStreak > 0 && " • "}
-            {accuracy} accuracy • Here&apos;s your overview
-          </p>
+      {/* ── Already-subscribed nudge (admin or duplicate-tier checkout attempt) ── */}
+      {subscribedVisible && (
+        <div className="relative rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4 flex items-start gap-3">
+          <button
+            onClick={() => setSubscribedVisible(false)}
+            className="absolute top-2 right-2 text-emerald-300 hover:text-white"
+            aria-label="Dismiss"
+          >
+            <X className="w-4 h-4" />
+          </button>
+          <Crown className="w-5 h-5 shrink-0 mt-0.5 text-emerald-400" />
+          <div>
+            <p className="font-medium text-emerald-300">You already have full access</p>
+            <p className="text-sm text-emerald-200/90 mt-0.5">No subscription needed — explore the dashboard.</p>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+      )}
+
+      {/* ── Header: welcome + accuracy + AI active badge + 4 quick KPIs ── */}
+      <div className="space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Welcome back, {firstName}!</h1>
+            <p className="text-slate-400 mt-1 text-sm">
+              {winStreak > 0 && (
+                <span className="text-emerald-400 font-semibold">{winStreak}-win streak</span>
+              )}
+              {winStreak > 0 && " • "}
+              {accuracy} accuracy • Here&apos;s what&apos;s hot today
+            </p>
+          </div>
+          <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 self-start sm:self-auto">
             <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2 animate-pulse" />
             AI Active
           </Badge>
         </div>
+
+        {/* Real header KPIs — replaces the random-walk numbers from the old dashboard */}
+        <HeaderStats />
       </div>
 
-      {/* ── Quick Actions Grid ───────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {quickActions.map((action) => (
-          <Link key={action.href} href={action.href}>
-            <Card
-              className={`bg-gradient-to-br ${action.gradient} ${action.border} border p-4 transition-all duration-200 cursor-pointer hover:shadow-lg group`}
-            >
-              <div className="flex items-center gap-3">
-                <action.icon className={`w-7 h-7 ${action.iconColor}`} />
-                <div>
-                  <p className="font-semibold text-white text-sm group-hover:text-emerald-300 transition-colors">
-                    {action.title}
-                  </p>
-                  <p className="text-xs text-slate-400">{action.subtitle}</p>
-                </div>
-              </div>
-            </Card>
-          </Link>
-        ))}
+      {/* ── 4-up snapshot grid: Top Picks · Hot Parlays · CLV · Matches ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <DashboardErrorBoundary section="Top Picks" compact>
+          <Suspense fallback={<WidgetSkeleton />}>
+            <HotPicks />
+          </Suspense>
+        </DashboardErrorBoundary>
+        <DashboardErrorBoundary section="Hot Parlays" compact>
+          <Suspense fallback={<WidgetSkeleton />}>
+            <ParlaysPreviewWidget />
+          </Suspense>
+        </DashboardErrorBoundary>
+        <DashboardErrorBoundary section="CLV Tracker" compact>
+          <Suspense fallback={<WidgetSkeleton />}>
+            <CLVPreviewWidget />
+          </Suspense>
+        </DashboardErrorBoundary>
+        <DashboardErrorBoundary section="Today's Matches" compact>
+          <Suspense fallback={<WidgetSkeleton />}>
+            <TodaysMatchesWidget />
+          </Suspense>
+        </DashboardErrorBoundary>
       </div>
 
-      {/* ── Critical Content: Stats + Credits ──────────────── */}
+      {/* ── Performance + Credits (your numbers) ──────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           <DashboardErrorBoundary section="Stats Overview" compact>
@@ -241,45 +210,10 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── Secondary Content: Notifications + Live Matches ─────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <DashboardErrorBoundary section="Notifications">
-          <Suspense fallback={<WidgetSkeleton />}>
-            <NotificationsWidget />
-          </Suspense>
-        </DashboardErrorBoundary>
-        <DashboardErrorBoundary section="Live Matches">
-          <Suspense fallback={<WidgetSkeleton />}>
-            <LiveMatchesWidget />
-          </Suspense>
-        </DashboardErrorBoundary>
-      </div>
-
-      {/* ── AI Intelligence Feed ──────────────────────────────────────────── */}
-      <DashboardErrorBoundary section="AI Recommendations">
+      {/* ── Recent Activity: Notifications (collapsed by default in widget) ── */}
+      <DashboardErrorBoundary section="Notifications">
         <Suspense fallback={<WidgetSkeleton />}>
-          <AIRecommendations />
-        </Suspense>
-      </DashboardErrorBoundary>
-
-      {/* ── Tertiary Content: Timeline Feed (Loads Last) ───────────────────────────── */}
-      <DashboardErrorBoundary section="Timeline Feed">
-        <Suspense fallback={<WidgetSkeleton />}>
-          <TimelineFeed />
-        </Suspense>
-      </DashboardErrorBoundary>
-
-      {/* ── Premium Packages (Loads Last, Client-Side Only) ──────────────────── */}
-      <DashboardErrorBoundary section="Personalized Offers" compact>
-        <Suspense fallback={<WidgetSkeleton />}>
-          <PersonalizedOffers />
-        </Suspense>
-      </DashboardErrorBoundary>
-
-      {/* ── Upgrade Offers (Loads Last, Client-Side Only) ──────────────────── */}
-      <DashboardErrorBoundary section="Upgrade Offers" compact>
-        <Suspense fallback={<WidgetSkeleton />}>
-          <UpgradeOffers />
+          <NotificationsWidget />
         </Suspense>
       </DashboardErrorBoundary>
     </div>
