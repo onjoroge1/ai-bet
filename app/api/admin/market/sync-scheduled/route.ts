@@ -501,6 +501,20 @@ async function syncMatchesByStatus(status: 'upcoming' | 'live' | 'completed') {
       }
     }
 
+    // ── Capture odds snapshots (LIVE + UPCOMING with consensus odds) ──
+    // Only insert when last snapshot is >10 min old OR odds drifted >2% on any side.
+    // Keeps the timeseries dense enough for sparklines without unbounded growth.
+    if (status === 'LIVE' || status === 'UPCOMING') {
+      try {
+        await captureOddsSnapshots(matchesToSync)
+      } catch (snapErr) {
+        logger.warn(`Odds snapshot capture failed for ${status}`, {
+          tags: ['market', 'sync', status, 'odds-snapshot'],
+          error: snapErr instanceof Error ? snapErr : undefined,
+        })
+      }
+    }
+
     logger.info(`✅ Completed sync for ${status} matches`, {
       tags: ['market', 'sync', status],
       data: { synced, errors, skipped, total: apiMatches.length },
@@ -614,3 +628,68 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// ─── Odds snapshot capture ────────────────────────────────────────
+// Inserts a row in OddsSnapshot per match where consensus odds drifted
+// materially OR no snapshot exists in the last 10 minutes.
+const SNAPSHOT_MIN_INTERVAL_MS = 10 * 60 * 1000
+const SNAPSHOT_DRIFT_THRESHOLD = 0.02 // 2 % move on any side triggers a snapshot
+
+async function captureOddsSnapshots(
+  matchesToSync: Array<{ apiMatch: any; transformed: any }>
+): Promise<void> {
+  const candidates = matchesToSync
+    .map(({ transformed }) => transformed)
+    .filter((m) => m?.matchId && m.consensusOdds && (m.consensusOdds.home || m.consensusOdds.draw || m.consensusOdds.away))
+
+  if (candidates.length === 0) return
+
+  const matchIds = candidates.map((m) => m.matchId as string)
+
+  // Pull each match's most recent snapshot in one query
+  const recents = await prisma.oddsSnapshot.findMany({
+    where: { matchId: { in: matchIds } },
+    orderBy: { capturedAt: 'desc' },
+    distinct: ['matchId'],
+    select: { matchId: true, capturedAt: true, homeOdds: true, drawOdds: true, awayOdds: true },
+  })
+  const recentMap = new Map(recents.map((r) => [r.matchId, r]))
+
+  const now = Date.now()
+  const toInsert: Array<{ matchId: string; homeOdds: number | null; drawOdds: number | null; awayOdds: number | null }> = []
+
+  for (const m of candidates) {
+    const odds = m.consensusOdds as { home?: number; draw?: number; away?: number }
+    const recent = recentMap.get(m.matchId)
+    const home = Number(odds.home) || null
+    const draw = Number(odds.draw) || null
+    const away = Number(odds.away) || null
+
+    if (!recent) {
+      toInsert.push({ matchId: m.matchId, homeOdds: home, drawOdds: draw, awayOdds: away })
+      continue
+    }
+
+    const ageMs = now - new Date(recent.capturedAt).getTime()
+    const drift = Math.max(
+      pctDelta(Number(recent.homeOdds), home),
+      pctDelta(Number(recent.drawOdds), draw),
+      pctDelta(Number(recent.awayOdds), away)
+    )
+
+    if (ageMs >= SNAPSHOT_MIN_INTERVAL_MS || drift >= SNAPSHOT_DRIFT_THRESHOLD) {
+      toInsert.push({ matchId: m.matchId, homeOdds: home, drawOdds: draw, awayOdds: away })
+    }
+  }
+
+  if (toInsert.length === 0) return
+
+  await prisma.oddsSnapshot.createMany({
+    data: toInsert,
+    skipDuplicates: false,
+  })
+}
+
+function pctDelta(a: number | null, b: number | null): number {
+  if (!a || !b || !isFinite(a) || !isFinite(b)) return 0
+  return Math.abs((b - a) / a)
+}

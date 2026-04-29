@@ -21,6 +21,7 @@ import { MomentumIndicator } from "@/components/live/MomentumIndicator"
 import { LiveMarketsCard } from "@/components/live/LiveMarketsCard"
 import { LiveMatchStats } from "@/components/live/LiveMatchStats"
 import { LiveAIAnalysis } from "@/components/live/LiveAIAnalysis"
+import { LiveBettingIntelligence } from "@/components/live/LiveBettingIntelligence"
 import { ConnectionStatusIndicator } from "@/components/live/ConnectionStatusIndicator"
 import { generateMatchSlug, isNumericSlug } from "@/lib/match-slug"
 import { deriveSurface } from "@/lib/predictions/should-surface"
@@ -1580,6 +1581,13 @@ export default function MatchDetailPage() {
               )}
               {matchData.ai_analysis && (
                 <LiveAIAnalysis aiAnalysis={matchData.ai_analysis} />
+              )}
+              {matchId && (
+                <LiveBettingIntelligence
+                  matchId={matchId}
+                  homeTeam={matchData.home?.name || "Home"}
+                  awayTeam={matchData.away?.name || "Away"}
+                />
               )}
             </div>
           )}

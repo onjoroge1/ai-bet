@@ -2057,6 +2057,7 @@ model MarketMatch {
   socialMediaPosts     SocialMediaPost[]
   additionalMarketData AdditionalMarketData[]
   matchEvents          MatchEvent[]
+  oddsSnapshots        OddsSnapshot[]
 
   @@index([matchId])
   @@index([status, kickoffDate])
@@ -2067,6 +2068,24 @@ model MarketMatch {
   @@index([syncPriority, status])
   @@index([isArchived, status])
   @@index([leagueId, status])
+}
+
+// Time-series of consensus 1X2 odds — populated by the live/upcoming sync cron
+// when odds drift materially or every ~10 minutes. Used for the live page's
+// "odds drift" sparkline and CLV trajectory analysis.
+model OddsSnapshot {
+  id         String   @id @default(cuid())
+  matchId    String
+  capturedAt DateTime @default(now())
+  homeOdds   Decimal? @db.Decimal(8, 3)
+  drawOdds   Decimal? @db.Decimal(8, 3)
+  awayOdds   Decimal? @db.Decimal(8, 3)
+  source     String   @default("consensus") // "consensus" | "novig_current" | bookmaker key
+
+  match MarketMatch @relation(fields: [matchId], references: [matchId], onDelete: Cascade)
+
+  @@index([matchId, capturedAt])
+  @@index([capturedAt])
 }
 
 model MultisportMatch {
