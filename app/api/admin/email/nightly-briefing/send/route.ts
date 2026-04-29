@@ -213,8 +213,9 @@ async function authoriseRequest(request: NextRequest): Promise<{ allowed: boolea
 async function gatherBriefingData() {
   const now = new Date()
   const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000)
+  const in72h = new Date(now.getTime() + 72 * 3600 * 1000)
 
-  const [picks, upcomingCount, recentFinished] = await Promise.all([
+  const [picks, upcomingCount, recentFinished, topParlay] = await Promise.all([
     getSnapBetPicks(5).catch(() => []),
     prisma.marketMatch.count({
       where: { status: 'UPCOMING', isActive: true, kickoffDate: { gte: now } },
@@ -230,6 +231,17 @@ async function gatherBriefingData() {
       select: { league: true, v3Model: true, finalResult: true },
       take: 200,
     }),
+    // Best active 3-leg parlay kicking off soon — used for the "Hot Parlay" block
+    prisma.parlayConsensus.findFirst({
+      where: {
+        status: 'active',
+        legCount: 3,
+        earliestKickoff: { gte: now },
+        latestKickoff: { lte: in72h },
+      },
+      orderBy: [{ edgePct: 'desc' }, { combinedProb: 'desc' }],
+      include: { legs: { orderBy: { legOrder: 'asc' } } },
+    }).catch(() => null),
   ])
 
   // Per-league accuracy snapshot (mirrors the briefing endpoint)
@@ -257,7 +269,7 @@ async function gatherBriefingData() {
   const bullets = await generateBulletsLLM({ picks, upcomingCount, topLeagues, weakLeagues })
     .catch(() => makeBulletsFallback({ picks, upcomingCount, topLeagues, weakLeagues }))
 
-  return { picks, upcomingCount, topLeagues, weakLeagues, bullets }
+  return { picks, upcomingCount, topLeagues, weakLeagues, bullets, topParlay }
 }
 
 async function generateBulletsLLM(inputs: {
@@ -326,11 +338,21 @@ function makeBulletsFallback(inputs: {
 
 // ─── Pre-render variable blocks for the email template ───────────
 function renderBriefingBlocks(data: Awaited<ReturnType<typeof gatherBriefingData>>) {
-  const { picks, upcomingCount, bullets } = data
+  const { picks, upcomingCount, bullets, topParlay } = data
 
   // Date label (e.g., "Apr 30")
   const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000)
   const briefingDate = tomorrow.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+
+  // ── Header stats (top of email) ──
+  const topPicks = picks.slice(0, 3)
+  const edgeCount = picks.filter(p => p.tier === 'premium' || p.tier === 'strong').length
+  const topPickCount = picks.length || upcomingCount
+  const avgConfidence = picks.length
+    ? Math.round(picks.reduce((s, p) => s + p.confidence, 0) / picks.length)
+    : 0
+  // CLV watch = picks with measurable model-vs-market edge
+  const clvWatchCount = picks.filter(p => typeof p.edge === 'number' && p.edge > 0).length
 
   // Headline summary
   const briefingHeadline = upcomingCount > 0
@@ -348,39 +370,13 @@ function renderBriefingBlocks(data: Awaited<ReturnType<typeof gatherBriefingData
       `).join('')
   const briefingBulletsText = bullets.map(b => `${ICON_EMOJI[b.icon] ?? '-'} ${b.text}`).join('\n')
 
-  // ── Top picks block (3 rows) ──
-  const topPicks = picks.slice(0, 3)
-  const topPicksHtml = topPicks.length === 0
-    ? `<p style="margin:0;color:#94a3b8;font-size:14px;">No picks surfaced yet for tomorrow's slate.</p>`
-    : `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-        ${topPicks.map(p => {
-          const confColor = p.confidence >= 60 ? '#84cc16' : p.confidence >= 40 ? '#facc15' : '#94a3b8'
-          return `<tr>
-            <td style="padding:10px 14px;background:rgba(15,23,42,0.6);border:1px solid rgba(148,163,184,0.1);border-radius:8px;margin-bottom:8px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td style="color:#f1f5f9;font-size:14px;font-weight:700;">${escapeHtml(p.homeTeam)} <span style="color:#475569;font-weight:400;">vs</span> ${escapeHtml(p.awayTeam)}</td>
-                  <td align="right" style="color:${confColor};font-size:14px;font-weight:800;font-family:monospace;">${p.confidence}%</td>
-                </tr>
-                <tr>
-                  <td style="color:#94a3b8;font-size:12px;padding-top:4px;">${escapeHtml(p.league || '')} · Pick: <strong style="color:${confColor};">${escapeHtml(p.pickTeam)}</strong></td>
-                  <td align="right" style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:1px;padding-top:4px;">${escapeHtml(p.tier)}</td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-          <tr><td height="6"></td></tr>`
-        }).join('')}
-      </table>`
-  const topPicksText = topPicks.length === 0
-    ? '(no picks today)'
-    : topPicks.map(p => `• ${p.homeTeam} vs ${p.awayTeam} (${p.league}) — ${p.pickTeam} ${p.confidence}% [${p.tier}]`).join('\n')
+  // ── Per-pick variables (1..3) ──
+  const pickVars = buildPerPickVars(topPicks)
 
-  // ── Hot parlay placeholder — wired in next pass when /api/premium/suggested-parlays is reliable
-  const hotParlaySection = ''
-  const hotParlayText = ''
+  // ── Hot parlay block ──
+  const parlayVars = buildParlayVars(topParlay)
 
-  // ── CLV opportunity teaser line ──
+  // ── CLV teaser ──
   const clvOpportunityLine = topPicks[0]
     ? `Today the model spotted <strong style="color:#fbbf24;">${escapeHtml(topPicks[0].pickTeam)}</strong> as a value opportunity in <strong>${escapeHtml(topPicks[0].league || 'a top league')}</strong>.`
     : `We surface CLV moves daily across all major leagues — premium members see the live tracker.`
@@ -388,14 +384,118 @@ function renderBriefingBlocks(data: Awaited<ReturnType<typeof gatherBriefingData
   return {
     briefingDate,
     briefingHeadline: escapeHtml(briefingHeadline),
+    edgeCount: String(edgeCount),
+    topPickCount: String(topPickCount),
+    avgConfidence: String(avgConfidence),
+    clvWatchCount: String(clvWatchCount),
     briefingBulletsHtml,
     briefingBulletsText,
-    topPicksHtml,
-    topPicksText,
-    hotParlaySection,
-    hotParlayText,
+    ...pickVars,
+    ...parlayVars,
     clvOpportunityLine,
+    clvTrackerUrl: `${APP_URL}/dashboard/clv`,
+    briefingUrl: `${APP_URL}/dashboard`,
+    preferencesUrl: `${APP_URL}/dashboard/settings?tab=notifications`,
   }
+}
+
+// ─── Per-pick variable builder ────────────────────────────────────
+type PickRow = Awaited<ReturnType<typeof getSnapBetPicks>>[number]
+
+function buildPerPickVars(picks: PickRow[]): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (let i = 0; i < 3; i++) {
+    const n = i + 1
+    const p = picks[i]
+    if (!p) {
+      out[`pick${n}League`] = '—'
+      out[`pick${n}Kickoff`] = 'TBD'
+      out[`pick${n}Matchup`] = 'No additional pick today'
+      out[`pick${n}MarketPick`] = '—'
+      out[`pick${n}Reason`] = 'Check back tomorrow for fresh picks.'
+      out[`pick${n}Confidence`] = '0'
+      out[`pick${n}ModelEdge`] = '—'
+      out[`pick${n}Risk`] = '—'
+      out[`pick${n}MarketSignal`] = '—'
+      continue
+    }
+    out[`pick${n}League`] = escapeHtml(p.league || 'League')
+    out[`pick${n}Kickoff`] = relativeKickoff(p.kickoff)
+    out[`pick${n}Matchup`] = `${escapeHtml(p.homeTeam)} vs ${escapeHtml(p.awayTeam)}`
+    out[`pick${n}MarketPick`] = escapeHtml(formatMarketPick(p))
+    out[`pick${n}Reason`] = escapeHtml(p.reasons?.[0] || 'Model conviction')
+    out[`pick${n}Confidence`] = String(p.confidence)
+    out[`pick${n}ModelEdge`] = formatEdge(p.edge)
+    out[`pick${n}Risk`] = riskLabel(p.confidence)
+    out[`pick${n}MarketSignal`] = marketSignal(p.tier)
+  }
+  return out
+}
+
+function buildParlayVars(parlay: any): Record<string, string> {
+  if (!parlay || !parlay.legs?.length) {
+    return {
+      parlayTitle: 'Hot Parlay loading',
+      parlaySummary: 'Fresh parlay candidates publish before kickoff — check the dashboard.',
+      parlayLeg1: 'Coming soon',
+      parlayLeg2: 'Coming soon',
+      parlayLeg3: 'Coming soon',
+      parlayUrl: `${APP_URL}/dashboard/parlays`,
+    }
+  }
+  const legs = parlay.legs as Array<{ homeTeam: string; awayTeam: string; outcome: string }>
+  const fmtLeg = (l: { homeTeam: string; awayTeam: string; outcome: string }) => {
+    const team = l.outcome === 'H' ? l.homeTeam : l.outcome === 'A' ? l.awayTeam : 'Draw'
+    const market = l.outcome === 'D' ? 'Draw' : `${team} Win`
+    return `${l.homeTeam} vs ${l.awayTeam} — ${market}`
+  }
+  const edge = Number(parlay.edgePct ?? 0)
+  const odds = Number(parlay.impliedOdds ?? 0)
+  return {
+    parlayTitle: `${parlay.legCount}-leg ${String(parlay.parlayType || 'cross-league').replace(/_/g, ' ')} play`,
+    parlaySummary: `Combined +${edge.toFixed(1)}% edge${odds > 0 ? `, ${odds.toFixed(2)}x payout` : ''}.`,
+    parlayLeg1: escapeHtml(legs[0] ? fmtLeg(legs[0]) : '—'),
+    parlayLeg2: escapeHtml(legs[1] ? fmtLeg(legs[1]) : '—'),
+    parlayLeg3: escapeHtml(legs[2] ? fmtLeg(legs[2]) : '—'),
+    parlayUrl: `${APP_URL}/dashboard/parlays`,
+  }
+}
+
+function formatMarketPick(p: PickRow): string {
+  if (p.pick === 'Draw') return 'Draw'
+  return `${p.pickTeam} Win`
+}
+
+function relativeKickoff(iso: string): string {
+  const t = new Date(iso).getTime()
+  const diff = t - Date.now()
+  if (diff <= 0) return 'live/past'
+  const hrs = Math.floor(diff / 3600000)
+  if (hrs < 1) return `in ${Math.floor(diff / 60000)}m`
+  if (hrs < 36) return `in ${hrs}h`
+  const days = Math.floor(hrs / 24)
+  const remH = hrs - days * 24
+  return remH ? `in ${days}d ${remH}h` : `in ${days}d`
+}
+
+function formatEdge(edge: number | undefined): string {
+  if (typeof edge !== 'number' || !isFinite(edge)) return '—'
+  // edge is a fraction (0.05) or %; assume fraction if |edge| < 1
+  const pct = Math.abs(edge) < 1 ? edge * 100 : edge
+  const sign = pct >= 0 ? '+' : ''
+  return `${sign}${pct.toFixed(1)}%`
+}
+
+function riskLabel(confidence: number): string {
+  if (confidence >= 60) return 'Low'
+  if (confidence >= 40) return 'Med'
+  return 'High'
+}
+
+function marketSignal(tier: string): string {
+  if (tier === 'premium') return 'Sharp'
+  if (tier === 'strong') return 'Aligned'
+  return 'Mixed'
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────

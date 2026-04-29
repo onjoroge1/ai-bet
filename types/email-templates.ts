@@ -766,149 +766,337 @@ export const DEFAULT_EMAIL_TEMPLATES: CreateTemplateData[] = [
     slug: 'nightly-briefing',
     subject: '🎯 Tomorrow\'s Edge — Your AI Briefing for {{briefingDate}}',
     category: 'marketing',
-    description: 'Daily promo email sent every evening with top picks, hot parlay, CLV explainer. Variables computed server-side and passed as pre-rendered HTML blocks.',
+    description: 'Daily promo email at 19:00 UTC. Per-pick variables computed server-side from getSnapBetPicks(); LLM bullets via OpenAI gpt-4o-mini.',
     htmlContent: `<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tomorrow's Edge — SnapBet AI</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="x-apple-disable-message-reformatting" />
+  <title>SnapBet Nightly Briefing</title>
+  <style>
+    @media only screen and (max-width: 640px) {
+      .container { width: 100% !important; max-width: 100% !important; border-radius: 0 !important; }
+      .content-padding { padding-left: 20px !important; padding-right: 20px !important; }
+      .hero-title { font-size: 30px !important; line-height: 37px !important; }
+      .mobile-stack { display: block !important; width: 100% !important; }
+      .mobile-card { margin-bottom: 12px !important; }
+      .hide-mobile { display: none !important; }
+      .pick-main { padding-left: 0 !important; padding-top: 14px !important; }
+      .pick-stats { padding-top: 14px !important; }
+      .cta-button { width: 100% !important; box-sizing: border-box !important; }
+    }
+  </style>
 </head>
-<body style="margin:0;padding:0;background:#000;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#f1f5f9;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#000;padding:24px 16px;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#0a0e1a;border:1px solid rgba(132,204,22,0.15);border-radius:16px;overflow:hidden;">
+<body style="margin:0; padding:0; background:#03070d; font-family:Arial, Helvetica, sans-serif; color:#ffffff;">
+  <div style="display:none; max-height:0; overflow:hidden; opacity:0; color:transparent;">Tomorrow's AI-powered betting briefing: top picks, CLV watch, confidence scores, and risk notes.</div>
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#03070d; padding:28px 0;"><tr><td align="center" style="padding:0 12px;">
+    <table class="container" width="680" cellpadding="0" cellspacing="0" border="0" style="width:680px; max-width:680px; background:#07111d; border:1px solid #17283a; border-radius:20px; overflow:hidden; box-shadow:0 24px 70px rgba(0,0,0,0.55);">
 
-        <!-- ── Header ───────────────────────────────────── -->
-        <tr><td style="padding:28px 32px 16px;background:linear-gradient(135deg,rgba(132,204,22,0.08) 0%,rgba(34,211,238,0.05) 100%);border-bottom:1px solid rgba(132,204,22,0.12);">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-            <tr>
+      <!-- Gradient accent -->
+      <tr><td style="height:6px; background:#7CFC00; background:linear-gradient(90deg,#7CFC00 0%,#00D4FF 70%,#7CFC00 100%); font-size:0; line-height:0;">&nbsp;</td></tr>
+
+      <!-- Header -->
+      <tr><td class="content-padding" style="padding:28px 32px; background:#081722; background:linear-gradient(135deg,#0d231b 0%,#071321 55%,#062030 100%); border-bottom:1px solid #162638;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td valign="middle">
+            <table cellpadding="0" cellspacing="0" border="0"><tr>
+              <td valign="middle" style="padding-right:14px;">
+                <img src="https://www.snapbet.bet/uploads/image/snapbet_logo.png" alt="SnapBet" width="56" height="56" style="display:block; width:56px; height:56px; border:0; outline:none; text-decoration:none;" />
+              </td>
               <td valign="middle">
-                <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                  <tr>
-                    <td valign="middle" style="padding-right:12px;">
-                      <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                        <tr><td width="44" height="44" align="center" valign="middle" style="border:3px solid #84cc16;border-radius:50%;background:rgba(0,0,0,0.4);">
-                          <span style="color:#84cc16;font-size:22px;font-weight:900;font-style:italic;line-height:1;">S</span>
-                        </td></tr>
-                      </table>
-                    </td>
-                    <td valign="middle">
-                      <div style="color:#84cc16;font-size:22px;font-weight:800;letter-spacing:-0.3px;">SnapBet</div>
-                      <div style="color:#94a3b8;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;margin-top:2px;">Tomorrow's Edge · {{briefingDate}}</div>
-                    </td>
-                  </tr>
-                </table>
+                <div style="font-size:28px; line-height:32px; font-weight:900; color:#7CFC00; letter-spacing:-0.6px;">SnapBet</div>
+                <div style="font-size:11px; line-height:16px; color:#d7dee8; text-transform:uppercase; letter-spacing:3px; padding-top:5px;">Tomorrow's Edge · {{briefingDate}}</div>
               </td>
-              <td valign="middle" align="right">
-                <span style="display:inline-block;padding:6px 14px;background:rgba(34,211,238,0.12);border:1px solid rgba(34,211,238,0.4);color:#67e8f9;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:1.2px;">AI BRIEFING</span>
-              </td>
-            </tr>
-          </table>
-        </td></tr>
+            </tr></table>
+          </td>
+          <td align="right" valign="middle">
+            <span style="display:inline-block; padding:10px 16px; border:1px solid #00D4FF; color:#5beeff; border-radius:999px; font-size:12px; line-height:12px; font-weight:900; text-transform:uppercase; letter-spacing:1.5px;">AI Briefing</span>
+          </td>
+        </tr></table>
+      </td></tr>
 
-        <!-- ── Greeting ─────────────────────────────────── -->
-        <tr><td style="padding:28px 32px 8px;">
-          <h1 style="margin:0;color:#f1f5f9;font-size:22px;font-weight:800;letter-spacing:-0.3px;">Hi {{firstName}},</h1>
-          <p style="margin:8px 0 0;color:#94a3b8;font-size:15px;line-height:1.5;">Here's what our AI has flagged for tomorrow's slate. {{briefingHeadline}}</p>
-        </td></tr>
+      <!-- Hero -->
+      <tr><td class="content-padding" style="padding:34px 32px 20px 32px; background:#07111d;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td class="mobile-stack" width="58%" valign="top">
+            <div style="font-size:18px; line-height:24px; font-weight:700; color:#ffffff; margin-bottom:8px;">Hi {{firstName}},</div>
+            <div class="hero-title" style="font-size:36px; line-height:43px; font-weight:900; color:#ffffff; letter-spacing:-1px;">Tomorrow's slate has<br /><span style="color:#7CFC00;">{{edgeCount}} AI-flagged</span> opportunities.</div>
+            <div style="font-size:15px; line-height:24px; color:#b8c5d8; margin-top:13px;">{{briefingHeadline}}</div>
+          </td>
+          <td class="mobile-stack hide-mobile" width="42%" align="right" valign="middle">
+            <div style="width:230px; height:150px; border-radius:22px; background:radial-gradient(circle at center,#0c3d32 0%,#082132 42%,#07111d 75%); border:1px solid rgba(0,212,255,0.18);">
+              <div style="font-size:58px; line-height:150px; text-align:center; color:#7CFC00; text-shadow:0 0 22px rgba(124,252,0,0.55);">↗</div>
+            </div>
+          </td>
+        </tr></table>
+      </td></tr>
 
-        <!-- ── AI Briefing bullets ─────────────────────── -->
-        <tr><td style="padding:20px 32px 0;">
-          <div style="background:rgba(16,185,129,0.06);border:1px solid rgba(132,204,22,0.25);border-radius:12px;padding:18px 20px;">
-            <div style="color:#84cc16;font-size:11px;font-weight:700;letter-spacing:1.5px;margin-bottom:10px;">🧠 TODAY'S BRIEFING</div>
-            {{briefingBulletsHtml}}
-          </div>
-        </td></tr>
+      <!-- Stats row -->
+      <tr><td class="content-padding" style="padding:0 32px 22px 32px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td class="mobile-stack mobile-card" width="33.33%" style="padding-right:8px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0c1724; border:1px solid #26384b; border-radius:14px;"><tr><td style="padding:16px 18px;">
+              <div style="font-size:12px; color:#c7d1de; font-weight:900; text-transform:uppercase; letter-spacing:1.4px;">Top Picks</div>
+              <div style="font-size:32px; line-height:36px; color:#7CFC00; font-weight:900;">{{topPickCount}}</div>
+            </td></tr></table>
+          </td>
+          <td class="mobile-stack mobile-card" width="33.33%" style="padding-left:4px; padding-right:4px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0c1724; border:1px solid #26384b; border-radius:14px;"><tr><td style="padding:16px 18px;">
+              <div style="font-size:12px; color:#c7d1de; font-weight:900; text-transform:uppercase; letter-spacing:1.4px;">Avg Confidence</div>
+              <div style="font-size:32px; line-height:36px; color:#5beeff; font-weight:900;">{{avgConfidence}}%</div>
+            </td></tr></table>
+          </td>
+          <td class="mobile-stack mobile-card" width="33.33%" style="padding-left:8px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0c1724; border:1px solid #26384b; border-radius:14px;"><tr><td style="padding:16px 18px;">
+              <div style="font-size:12px; color:#c7d1de; font-weight:900; text-transform:uppercase; letter-spacing:1.4px;">CLV Watch</div>
+              <div style="font-size:32px; line-height:36px; color:#7CFC00; font-weight:900;">{{clvWatchCount}}</div>
+            </td></tr></table>
+          </td>
+        </tr></table>
+      </td></tr>
 
-        <!-- ── Top Picks ─────────────────────────────────── -->
-        <tr><td style="padding:24px 32px 0;">
-          <div style="color:#94a3b8;font-size:11px;font-weight:700;letter-spacing:1.5px;margin-bottom:10px;">⭐ TOP PICKS</div>
-          {{topPicksHtml}}
-        </td></tr>
+      <!-- AI Read -->
+      <tr><td class="content-padding" style="padding:0 32px 22px 32px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#061c1e; border:1px solid rgba(124,252,0,0.45); border-radius:16px;"><tr><td style="padding:22px;">
+          <div style="font-size:13px; line-height:18px; font-weight:900; color:#7CFC00; text-transform:uppercase; letter-spacing:2px; margin-bottom:12px;">🧠 Tonight's AI Read</div>
+          <div style="font-size:15px; line-height:25px; color:#e0e8f2;">{{briefingBulletsHtml}}</div>
+        </td></tr></table>
+      </td></tr>
 
-        <!-- ── Hot Parlay ────────────────────────────────── -->
-        {{hotParlaySection}}
+      <!-- Top Picks header -->
+      <tr><td class="content-padding" style="padding:0 32px 10px 32px;">
+        <div style="font-size:18px; line-height:24px; color:#ffffff; font-weight:900; letter-spacing:2px; text-transform:uppercase;">⭐ Top Picks</div>
+      </td></tr>
 
-        <!-- ── CLV explainer ─────────────────────────────── -->
-        <tr><td style="padding:24px 32px 0;">
-          <div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.25);border-radius:12px;padding:18px 20px;">
-            <div style="color:#fbbf24;font-size:11px;font-weight:700;letter-spacing:1.5px;margin-bottom:10px;">📈 WHAT IS CLV?</div>
-            <p style="margin:0;color:#cbd5e1;font-size:14px;line-height:1.55;">
-              <strong style="color:#f1f5f9;">Closing Line Value</strong> is how much your bet's price moved between when you placed it and kickoff.
-              When you consistently beat the closing line, you're betting smarter than the market.
-              {{clvOpportunityLine}}
-            </p>
-            <a href="{{dashboardUrl}}/dashboard/clv" style="display:inline-block;margin-top:12px;color:#fbbf24;font-size:13px;font-weight:600;text-decoration:none;">Open the CLV Tracker →</a>
-          </div>
-        </td></tr>
+      <!-- Pick 1 -->
+      <tr><td class="content-padding" style="padding:0 32px 10px 32px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0c1724; border:1px solid #243548; border-radius:15px;"><tr><td style="padding:18px;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+            <td class="mobile-stack" width="20%" valign="middle" style="border-right:1px solid #26384b; padding-right:16px;">
+              <div style="font-size:13px; line-height:19px; color:#ffffff; font-weight:800;">{{pick1League}}</div>
+              <div style="font-size:13px; line-height:19px; color:#a9b8ca;">{{pick1Kickoff}}</div>
+            </td>
+            <td class="mobile-stack pick-main" width="43%" valign="middle" style="padding-left:18px;">
+              <div style="font-size:19px; line-height:24px; color:#ffffff; font-weight:900;">{{pick1Matchup}}</div>
+              <div style="font-size:15px; line-height:22px; color:#7CFC00; font-weight:900;">AI Pick: {{pick1MarketPick}}</div>
+              <div style="font-size:13px; line-height:19px; color:#c8d4e4; margin-top:4px;">{{pick1Reason}}</div>
+            </td>
+            <td class="mobile-stack" width="17%" align="center" valign="middle">
+              <div style="display:inline-block; border:1px solid rgba(124,252,0,0.5); background:#07170e; border-radius:16px; padding:10px 14px;">
+                <div style="font-size:24px; line-height:26px; color:#7CFC00; font-weight:900;">{{pick1Confidence}}%</div>
+                <div style="font-size:10px; line-height:13px; color:#b9ff70; font-weight:900; text-transform:uppercase;">Confidence</div>
+              </div>
+            </td>
+            <td class="mobile-stack pick-stats" width="20%" valign="middle" style="border-left:1px solid #26384b; padding-left:18px;">
+              <div style="font-size:12px; line-height:18px; color:#b7c5d8;">Model Edge <span style="float:right; color:#7CFC00; font-weight:900;">{{pick1ModelEdge}}</span></div>
+              <div style="font-size:12px; line-height:18px; color:#b7c5d8;">Risk <span style="float:right; color:#ffc400; font-weight:900;">{{pick1Risk}}</span></div>
+              <div style="font-size:12px; line-height:18px; color:#b7c5d8;">Market <span style="float:right; color:#7CFC00; font-weight:900;">{{pick1MarketSignal}}</span></div>
+            </td>
+          </tr></table>
+        </td></tr></table>
+      </td></tr>
 
-        <!-- ── Primary CTA ─────────────────────────────── -->
-        <tr><td style="padding:28px 32px 8px;" align="center">
-          <a href="{{dashboardUrl}}/dashboard"
-             style="display:inline-block;padding:14px 36px;background:linear-gradient(135deg,#84cc16 0%,#65a30d 100%);color:#000;text-decoration:none;font-weight:800;font-size:15px;border-radius:999px;letter-spacing:0.3px;box-shadow:0 4px 16px rgba(132,204,22,0.35);">
-            View Full Briefing →
-          </a>
-        </td></tr>
+      <!-- Pick 2 -->
+      <tr><td class="content-padding" style="padding:0 32px 10px 32px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0c1724; border:1px solid #243548; border-radius:15px;"><tr><td style="padding:18px;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+            <td class="mobile-stack" width="20%" valign="middle" style="border-right:1px solid #26384b; padding-right:16px;">
+              <div style="font-size:13px; line-height:19px; color:#ffffff; font-weight:800;">{{pick2League}}</div>
+              <div style="font-size:13px; line-height:19px; color:#a9b8ca;">{{pick2Kickoff}}</div>
+            </td>
+            <td class="mobile-stack pick-main" width="43%" valign="middle" style="padding-left:18px;">
+              <div style="font-size:19px; line-height:24px; color:#ffffff; font-weight:900;">{{pick2Matchup}}</div>
+              <div style="font-size:15px; line-height:22px; color:#7CFC00; font-weight:900;">AI Pick: {{pick2MarketPick}}</div>
+              <div style="font-size:13px; line-height:19px; color:#c8d4e4; margin-top:4px;">{{pick2Reason}}</div>
+            </td>
+            <td class="mobile-stack" width="17%" align="center" valign="middle">
+              <div style="display:inline-block; border:1px solid rgba(124,252,0,0.5); background:#07170e; border-radius:16px; padding:10px 14px;">
+                <div style="font-size:24px; line-height:26px; color:#7CFC00; font-weight:900;">{{pick2Confidence}}%</div>
+                <div style="font-size:10px; line-height:13px; color:#b9ff70; font-weight:900; text-transform:uppercase;">Confidence</div>
+              </div>
+            </td>
+            <td class="mobile-stack pick-stats" width="20%" valign="middle" style="border-left:1px solid #26384b; padding-left:18px;">
+              <div style="font-size:12px; line-height:18px; color:#b7c5d8;">Model Edge <span style="float:right; color:#7CFC00; font-weight:900;">{{pick2ModelEdge}}</span></div>
+              <div style="font-size:12px; line-height:18px; color:#b7c5d8;">Risk <span style="float:right; color:#ffc400; font-weight:900;">{{pick2Risk}}</span></div>
+              <div style="font-size:12px; line-height:18px; color:#b7c5d8;">Market <span style="float:right; color:#7CFC00; font-weight:900;">{{pick2MarketSignal}}</span></div>
+            </td>
+          </tr></table>
+        </td></tr></table>
+      </td></tr>
 
-        <!-- ── Footer ──────────────────────────────────── -->
-        <tr><td style="padding:32px 32px 28px;border-top:1px solid rgba(148,163,184,0.1);margin-top:24px;">
-          <p style="margin:0;color:#64748b;font-size:12px;line-height:1.6;text-align:center;">
-            You're receiving this because you opted into SnapBet briefings.<br>
-            <a href="{{dashboardUrl}}/dashboard/settings?tab=notifications" style="color:#84cc16;text-decoration:underline;">Manage email preferences</a>
-            · <a href="{{unsubscribeUrl}}" style="color:#94a3b8;text-decoration:underline;">Unsubscribe</a>
-          </p>
-          <p style="margin:14px 0 0;color:#475569;font-size:11px;text-align:center;">
-            SnapBet · AI-powered sports predictions · 21+ only · Bet responsibly
-          </p>
-        </td></tr>
+      <!-- Pick 3 -->
+      <tr><td class="content-padding" style="padding:0 32px 18px 32px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0c1724; border:1px solid #243548; border-radius:15px;"><tr><td style="padding:18px;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+            <td class="mobile-stack" width="20%" valign="middle" style="border-right:1px solid #26384b; padding-right:16px;">
+              <div style="font-size:13px; line-height:19px; color:#ffffff; font-weight:800;">{{pick3League}}</div>
+              <div style="font-size:13px; line-height:19px; color:#a9b8ca;">{{pick3Kickoff}}</div>
+            </td>
+            <td class="mobile-stack pick-main" width="43%" valign="middle" style="padding-left:18px;">
+              <div style="font-size:19px; line-height:24px; color:#ffffff; font-weight:900;">{{pick3Matchup}}</div>
+              <div style="font-size:15px; line-height:22px; color:#7CFC00; font-weight:900;">AI Pick: {{pick3MarketPick}}</div>
+              <div style="font-size:13px; line-height:19px; color:#c8d4e4; margin-top:4px;">{{pick3Reason}}</div>
+            </td>
+            <td class="mobile-stack" width="17%" align="center" valign="middle">
+              <div style="display:inline-block; border:1px solid rgba(124,252,0,0.5); background:#07170e; border-radius:16px; padding:10px 14px;">
+                <div style="font-size:24px; line-height:26px; color:#7CFC00; font-weight:900;">{{pick3Confidence}}%</div>
+                <div style="font-size:10px; line-height:13px; color:#b9ff70; font-weight:900; text-transform:uppercase;">Confidence</div>
+              </div>
+            </td>
+            <td class="mobile-stack pick-stats" width="20%" valign="middle" style="border-left:1px solid #26384b; padding-left:18px;">
+              <div style="font-size:12px; line-height:18px; color:#b7c5d8;">Model Edge <span style="float:right; color:#7CFC00; font-weight:900;">{{pick3ModelEdge}}</span></div>
+              <div style="font-size:12px; line-height:18px; color:#b7c5d8;">Risk <span style="float:right; color:#ffc400; font-weight:900;">{{pick3Risk}}</span></div>
+              <div style="font-size:12px; line-height:18px; color:#b7c5d8;">Market <span style="float:right; color:#ffc400; font-weight:900;">{{pick3MarketSignal}}</span></div>
+            </td>
+          </tr></table>
+        </td></tr></table>
+      </td></tr>
 
-      </table>
-    </td></tr>
-  </table>
+      <!-- Parlay + CLV row -->
+      <tr><td class="content-padding" style="padding:0 32px 22px 32px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td class="mobile-stack mobile-card" width="50%" valign="top" style="padding-right:8px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#071b17; border:1px solid rgba(124,252,0,0.55); border-radius:16px;"><tr><td style="padding:20px;">
+              <div style="font-size:14px; line-height:20px; color:#7CFC00; font-weight:900; letter-spacing:1.6px; text-transform:uppercase;">🔥 Hot Parlay Watch</div>
+              <div style="font-size:17px; line-height:23px; color:#ffffff; font-weight:900; margin-top:12px;">{{parlayTitle}}</div>
+              <div style="font-size:13px; line-height:19px; color:#aebccd; margin-top:4px;">{{parlaySummary}}</div>
+              <div style="margin-top:12px;">
+                <div style="font-size:14px; line-height:24px; color:#ffffff;"><span style="display:inline-block; background:#7CFC00; color:#07100a; border-radius:999px; width:20px; height:20px; text-align:center; line-height:20px; font-size:12px; font-weight:900;">1</span>&nbsp;{{parlayLeg1}}</div>
+                <div style="font-size:14px; line-height:24px; color:#ffffff;"><span style="display:inline-block; background:#7CFC00; color:#07100a; border-radius:999px; width:20px; height:20px; text-align:center; line-height:20px; font-size:12px; font-weight:900;">2</span>&nbsp;{{parlayLeg2}}</div>
+                <div style="font-size:14px; line-height:24px; color:#ffffff;"><span style="display:inline-block; background:#7CFC00; color:#07100a; border-radius:999px; width:20px; height:20px; text-align:center; line-height:20px; font-size:12px; font-weight:900;">3</span>&nbsp;{{parlayLeg3}}</div>
+              </div>
+              <div style="margin-top:14px;"><a href="{{parlayUrl}}" style="font-size:14px; line-height:20px; color:#7CFC00; font-weight:900; text-decoration:none;">View Parlay Breakdown →</a></div>
+            </td></tr></table>
+          </td>
+          <td class="mobile-stack" width="50%" valign="top" style="padding-left:8px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#12140d; border:1px solid rgba(255,196,0,0.65); border-radius:16px;"><tr><td style="padding:20px;">
+              <div style="font-size:14px; line-height:20px; color:#ffc400; font-weight:900; letter-spacing:1.6px; text-transform:uppercase;">📈 CLV Watch</div>
+              <div style="font-size:18px; line-height:24px; color:#ffffff; font-weight:900; margin-top:12px;">Are you beating the closing line?</div>
+              <div style="font-size:14px; line-height:21px; color:#d7dee8; margin-top:10px;">Closing Line Value is one of the best signals for whether your entries are beating the market. {{clvOpportunityLine}}</div>
+              <div style="margin-top:16px;"><a href="{{clvTrackerUrl}}" style="font-size:14px; line-height:20px; color:#ffc400; font-weight:900; text-decoration:none;">Open the CLV Tracker →</a></div>
+            </td></tr></table>
+          </td>
+        </tr></table>
+      </td></tr>
+
+      <!-- CTA -->
+      <tr><td class="content-padding" align="center" style="padding:0 32px 26px 32px;">
+        <a class="cta-button" href="{{briefingUrl}}" style="display:inline-block; background:#7CFC00; color:#07100a; font-size:19px; line-height:22px; font-weight:900; text-decoration:none; padding:17px 52px; border-radius:12px; box-shadow:0 0 28px rgba(124,252,0,0.45);">View Full Briefing →</a>
+        <div style="font-size:13px; line-height:20px; color:#aebccd; margin-top:12px;">Includes full reasoning, market movement, and risk notes.</div>
+      </td></tr>
+
+      <!-- Responsible Betting -->
+      <tr><td class="content-padding" style="padding:0 32px 24px 32px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#081321; border:1px solid #223247; border-radius:12px;"><tr><td style="padding:15px 18px;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+            <td valign="middle" style="font-size:13px; line-height:20px; color:#b8c5d8;">🛡️ &nbsp; Bet responsibly. Gambling involves risk. Only wager what you can afford to lose.</td>
+            <td align="right" valign="middle" style="font-size:13px; line-height:20px; color:#5beeff; font-weight:900;">21+</td>
+          </tr></table>
+        </td></tr></table>
+      </td></tr>
+
+      <!-- Footer -->
+      <tr><td align="center" style="padding:24px 32px 28px 32px; background:#06101b; border-top:1px solid #17283a;">
+        <div style="font-size:12px; line-height:19px; color:#8fa1b8;">You're receiving this because you opted into SnapBet briefings.</div>
+        <div style="font-size:12px; line-height:19px; margin-top:9px;">
+          <a href="{{preferencesUrl}}" style="color:#7CFC00; text-decoration:underline;">Manage preferences</a>
+          <span style="color:#4d5c70;"> &nbsp; · &nbsp; </span>
+          <a href="{{unsubscribeUrl}}" style="color:#7CFC00; text-decoration:underline;">Unsubscribe</a>
+        </div>
+        <div style="font-size:11px; line-height:18px; color:#63728a; margin-top:15px;">SnapBet · AI-powered sports predictions · 21+ only · Bet responsibly</div>
+      </td></tr>
+    </table>
+  </td></tr></table>
 </body>
 </html>`,
     textContent: `Hi {{firstName}},
 
-Here's what our AI has flagged for tomorrow's slate. {{briefingHeadline}}
+Tomorrow's slate has {{edgeCount}} AI-flagged opportunities.
+{{briefingHeadline}}
 
-TODAY'S BRIEFING
+TONIGHT'S AI READ
 {{briefingBulletsText}}
 
 TOP PICKS
-{{topPicksText}}
+1) {{pick1Matchup}} ({{pick1League}}, {{pick1Kickoff}})
+   AI Pick: {{pick1MarketPick}} · {{pick1Confidence}}% confidence
+   {{pick1Reason}}
+2) {{pick2Matchup}} ({{pick2League}}, {{pick2Kickoff}})
+   AI Pick: {{pick2MarketPick}} · {{pick2Confidence}}% confidence
+   {{pick2Reason}}
+3) {{pick3Matchup}} ({{pick3League}}, {{pick3Kickoff}})
+   AI Pick: {{pick3MarketPick}} · {{pick3Confidence}}% confidence
+   {{pick3Reason}}
 
-{{hotParlayText}}
+HOT PARLAY WATCH
+{{parlayTitle}}
+{{parlayLeg1}}
+{{parlayLeg2}}
+{{parlayLeg3}}
 
-WHAT IS CLV?
-Closing Line Value is how much your bet's price moved between when you placed it and kickoff. When you consistently beat the closing line, you're betting smarter than the market. {{clvOpportunityLine}}
+CLV WATCH
+Closing Line Value is one of the best signals for whether your entries are beating the market. {{clvOpportunityLine}}
 
-Open the CLV Tracker: {{dashboardUrl}}/dashboard/clv
-
-View full briefing on your dashboard: {{dashboardUrl}}/dashboard
+View full briefing: {{briefingUrl}}
+Open the CLV Tracker: {{clvTrackerUrl}}
 
 —
-You're receiving this because you opted into SnapBet briefings.
-Manage email preferences: {{dashboardUrl}}/dashboard/settings?tab=notifications
+Manage preferences: {{preferencesUrl}}
 Unsubscribe: {{unsubscribeUrl}}
 
 SnapBet · 21+ only · Bet responsibly`,
     variables: [
       { name: 'firstName', description: 'User first name', type: 'string', required: true, example: 'Alex' },
-      { name: 'briefingDate', description: 'Date label (e.g., "Apr 30")', type: 'string', required: true, example: 'Apr 30' },
+      { name: 'briefingDate', description: 'Date label, e.g. "Apr 30"', type: 'string', required: true, example: 'Apr 30' },
       { name: 'briefingHeadline', description: 'One-sentence summary line', type: 'string', required: true, example: '12 matches across 4 leagues with 3 picks worth your attention.' },
-      { name: 'briefingBulletsHtml', description: 'Pre-rendered HTML for AI briefing bullets', type: 'string', required: true, example: '<div style="...">...</div>' },
-      { name: 'briefingBulletsText', description: 'Plain-text fallback for briefing bullets', type: 'string', required: false, example: '- Sporting CP at 89% confidence\\n- ...' },
-      { name: 'topPicksHtml', description: 'Pre-rendered HTML for top picks rows', type: 'string', required: true, example: '<table>...</table>' },
-      { name: 'topPicksText', description: 'Plain-text fallback for top picks', type: 'string', required: false, example: 'Sporting CP vs Tondela — Home 89%' },
-      { name: 'hotParlaySection', description: 'Pre-rendered <tr> block for parlay card (or empty)', type: 'string', required: false, example: '<tr><td>...</td></tr>' },
-      { name: 'hotParlayText', description: 'Plain-text fallback for parlay', type: 'string', required: false, example: '3-leg parlay, 5.88x payout, +22% edge' },
-      { name: 'clvOpportunityLine', description: 'One-sentence CLV teaser', type: 'string', required: false, example: 'We surfaced a +8.5% move on Bayern today.' },
-      { name: 'dashboardUrl', description: 'Base app URL', type: 'string', required: true, example: 'https://www.snapbet.bet' },
-      { name: 'unsubscribeUrl', description: 'One-click unsubscribe URL with token', type: 'string', required: true, example: 'https://www.snapbet.bet/unsubscribe?t=...' },
+      { name: 'edgeCount', description: 'Number of AI-flagged opportunities', type: 'string', required: true, example: '3' },
+      { name: 'topPickCount', description: 'Total surfaced picks today', type: 'string', required: true, example: '12' },
+      { name: 'avgConfidence', description: 'Average confidence across surfaced picks', type: 'string', required: true, example: '78' },
+      { name: 'clvWatchCount', description: 'CLV opportunities found', type: 'string', required: true, example: '5' },
+      { name: 'briefingBulletsHtml', description: 'Pre-rendered HTML for AI bullets', type: 'string', required: true, example: '<div>...</div>' },
+      { name: 'briefingBulletsText', description: 'Plain-text fallback', type: 'string', required: false, example: '- ...' },
+      { name: 'pick1League', description: 'Pick 1 league name', type: 'string', required: true, example: 'Premier League' },
+      { name: 'pick1Kickoff', description: 'Pick 1 kickoff (relative)', type: 'string', required: true, example: 'in 21h' },
+      { name: 'pick1Matchup', description: 'Pick 1 home vs away', type: 'string', required: true, example: 'Arsenal vs Chelsea' },
+      { name: 'pick1MarketPick', description: 'Pick 1 market pick', type: 'string', required: true, example: 'Arsenal Win' },
+      { name: 'pick1Reason', description: 'Pick 1 short reason', type: 'string', required: true, example: 'Strong home form, V1+V3 agree' },
+      { name: 'pick1Confidence', description: 'Pick 1 confidence %', type: 'string', required: true, example: '78' },
+      { name: 'pick1ModelEdge', description: 'Pick 1 model edge vs market', type: 'string', required: true, example: '+5.2%' },
+      { name: 'pick1Risk', description: 'Pick 1 risk: Low/Med/High', type: 'string', required: true, example: 'Low' },
+      { name: 'pick1MarketSignal', description: 'Pick 1 market alignment: Sharp/Aligned/Mixed', type: 'string', required: true, example: 'Sharp' },
+      { name: 'pick2League', description: 'Pick 2 league', type: 'string', required: true, example: 'La Liga' },
+      { name: 'pick2Kickoff', description: 'Pick 2 kickoff', type: 'string', required: true, example: 'in 22h' },
+      { name: 'pick2Matchup', description: 'Pick 2 home vs away', type: 'string', required: true, example: 'Real vs Atletico' },
+      { name: 'pick2MarketPick', description: 'Pick 2 market pick', type: 'string', required: true, example: 'Draw' },
+      { name: 'pick2Reason', description: 'Pick 2 short reason', type: 'string', required: true, example: 'Tight derby, model favors low-scoring' },
+      { name: 'pick2Confidence', description: 'Pick 2 confidence %', type: 'string', required: true, example: '64' },
+      { name: 'pick2ModelEdge', description: 'Pick 2 model edge', type: 'string', required: true, example: '+3.1%' },
+      { name: 'pick2Risk', description: 'Pick 2 risk', type: 'string', required: true, example: 'Med' },
+      { name: 'pick2MarketSignal', description: 'Pick 2 market signal', type: 'string', required: true, example: 'Aligned' },
+      { name: 'pick3League', description: 'Pick 3 league', type: 'string', required: true, example: 'Bundesliga' },
+      { name: 'pick3Kickoff', description: 'Pick 3 kickoff', type: 'string', required: true, example: 'in 1d 4h' },
+      { name: 'pick3Matchup', description: 'Pick 3 home vs away', type: 'string', required: true, example: 'Bayern vs Dortmund' },
+      { name: 'pick3MarketPick', description: 'Pick 3 market pick', type: 'string', required: true, example: 'Bayern Win' },
+      { name: 'pick3Reason', description: 'Pick 3 short reason', type: 'string', required: true, example: 'Home favorites, 12-game form leader' },
+      { name: 'pick3Confidence', description: 'Pick 3 confidence %', type: 'string', required: true, example: '71' },
+      { name: 'pick3ModelEdge', description: 'Pick 3 model edge', type: 'string', required: true, example: '+4.0%' },
+      { name: 'pick3Risk', description: 'Pick 3 risk', type: 'string', required: true, example: 'Low' },
+      { name: 'pick3MarketSignal', description: 'Pick 3 market signal', type: 'string', required: true, example: 'Sharp' },
+      { name: 'parlayTitle', description: 'Hot parlay headline', type: 'string', required: true, example: '3-leg cross-league play' },
+      { name: 'parlaySummary', description: 'Parlay summary line', type: 'string', required: true, example: 'Combined +22% edge, 5.88x payout' },
+      { name: 'parlayLeg1', description: 'Parlay leg 1 description', type: 'string', required: true, example: 'Sporting CP — Home Win' },
+      { name: 'parlayLeg2', description: 'Parlay leg 2', type: 'string', required: true, example: 'Atletico — Draw No Bet' },
+      { name: 'parlayLeg3', description: 'Parlay leg 3', type: 'string', required: true, example: 'Liverpool — Over 2.5' },
+      { name: 'parlayUrl', description: 'Parlay deep link', type: 'string', required: true, example: 'https://www.snapbet.bet/dashboard/parlays' },
+      { name: 'clvOpportunityLine', description: 'One-line CLV teaser', type: 'string', required: true, example: 'Today the model spotted Bayern as a value opportunity.' },
+      { name: 'clvTrackerUrl', description: 'CLV tracker URL', type: 'string', required: true, example: 'https://www.snapbet.bet/dashboard/clv' },
+      { name: 'briefingUrl', description: 'Full briefing URL', type: 'string', required: true, example: 'https://www.snapbet.bet/dashboard' },
+      { name: 'preferencesUrl', description: 'Email preferences URL', type: 'string', required: true, example: 'https://www.snapbet.bet/dashboard/settings?tab=notifications' },
+      { name: 'unsubscribeUrl', description: 'One-click unsubscribe URL with HMAC token', type: 'string', required: true, example: 'https://www.snapbet.bet/unsubscribe?email=...&token=...' },
     ],
     createdBy: 'system'
-  }
+  },
 ]
 
 // API Response Types
