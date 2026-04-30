@@ -51,7 +51,7 @@ const sidebarLinks: SidebarLink[] = [
   { name: "Matches", href: "/dashboard/matches", icon: Trophy },
   { name: "Parlays", href: "/dashboard/parlays", icon: Layers, badge: "AI", badgeVariant: "hot" },
   { name: "My Bets", href: "/dashboard/my-bets", icon: History },
-  { name: "CLV Tracker", href: "/dashboard/clv", icon: Activity, badge: "Live", badgeVariant: "live", premiumOnly: true },
+  { name: "Edge Finder", href: "/dashboard/edge-finder", icon: Activity, badge: "Live", badgeVariant: "live", premiumOnly: true },
   { name: "Home", href: "/dashboard", icon: LayoutDashboard },
 ]
 
