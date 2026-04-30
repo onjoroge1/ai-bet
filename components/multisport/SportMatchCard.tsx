@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ConfidenceRing, getRelativeTime } from "@/components/match/shared"
@@ -32,8 +33,8 @@ interface MatchData {
   status: string
   commence_time: string
   league: { name: string; sport_key: string }
-  home: { name: string; team_id: number | null }
-  away: { name: string; team_id: number | null }
+  home: { name: string; team_id: number | null; logo?: string | null }
+  away: { name: string; team_id: number | null; logo?: string | null }
   odds: {
     consensus: any | null
     books: Record<string, any>
@@ -65,6 +66,27 @@ function buildMatchSlug(home: string | undefined, away: string | undefined, even
   return `${slugify(home)}-vs-${slugify(away)}-${suffix}`
 }
 
+/** Small team crest with letter fallback when logo URL is missing or fails to load. */
+function TeamCrest({ name, logo }: { name: string; logo: string | null }) {
+  const [errored, setErrored] = useState(false)
+  const initial = (name || "?").trim().charAt(0).toUpperCase()
+  if (logo && !errored) {
+    return (
+      <img
+        src={logo}
+        alt=""
+        className="w-5 h-5 rounded-full object-cover bg-slate-700 flex-shrink-0"
+        onError={() => setErrored(true)}
+      />
+    )
+  }
+  return (
+    <span className="w-5 h-5 rounded-full bg-slate-700 text-slate-300 text-[10px] font-bold inline-flex items-center justify-center flex-shrink-0">
+      {initial}
+    </span>
+  )
+}
+
 export function SportMatchCard({ match, sportKey, href }: Props) {
   const isFinished = match.status === "FINISHED" || match.status === "finished" || (typeof match.final_result === 'string' && match.final_result !== '')
   const isLive = match.status === "LIVE" || match.status === "live"
@@ -88,6 +110,8 @@ export function SportMatchCard({ match, sportKey, href }: Props) {
   // Handle both object ({ name: "Team" }) and string ("Team") formats from DB/API
   const homeName = typeof match.home === 'string' ? match.home : match.home?.name || match.homeTeam || "Home"
   const awayName = typeof match.away === 'string' ? match.away : match.away?.name || match.awayTeam || "Away"
+  const homeLogo = typeof match.home === 'object' ? (match.home?.logo ?? null) : null
+  const awayLogo = typeof match.away === 'object' ? (match.away?.logo ?? null) : null
   const confidenceScore = model ? Math.round((model.confidence || 0) * 100) : 0
   const pickTeam = model?.pick === "H" || model?.pick === "home" ? homeName : awayName
 
@@ -137,6 +161,7 @@ export function SportMatchCard({ match, sportKey, href }: Props) {
                 {(model?.pick === "H" || model?.pick === "home") && (
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
                 )}
+                <TeamCrest name={homeName} logo={homeLogo} />
                 <span className={`text-sm font-medium truncate ${model?.pick === "H" || model?.pick === "home" ? "text-white" : "text-slate-300"}`}>
                   {homeName}
                 </span>
@@ -151,6 +176,7 @@ export function SportMatchCard({ match, sportKey, href }: Props) {
                 {(model?.pick === "A" || model?.pick === "away") && (
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
                 )}
+                <TeamCrest name={awayName} logo={awayLogo} />
                 <span className={`text-sm font-medium truncate ${model?.pick === "A" || model?.pick === "away" ? "text-white" : "text-slate-300"}`}>
                   {awayName}
                 </span>

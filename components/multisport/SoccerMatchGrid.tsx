@@ -65,8 +65,8 @@ export function SoccerMatchGrid({ status, limit = 20 }: SoccerMatchGridProps) {
                 name: m.league?.name || "Football",
                 sport_key: "soccer",
               },
-              home: { name: m.home?.name, team_id: null },
-              away: { name: m.away?.name, team_id: null },
+              home: { name: m.home?.name, team_id: null, logo: m.home?.logo_url ?? null },
+              away: { name: m.away?.name, team_id: null, logo: m.away?.logo_url ?? null },
               odds: {
                 consensus: consensus
                   ? {
