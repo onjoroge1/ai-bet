@@ -2070,6 +2070,27 @@ model MarketMatch {
   @@index([leagueId, status])
 }
 
+// Cross-instance cache for OpenAI-generated dashboard insights (briefing,
+// CLV trade plans, etc.). Module-level memos don't survive Vercel instance
+// forks or cold starts, so we keep a Postgres-backed L2 cache keyed by a
+// deterministic cacheKey (e.g. "briefing:global:2026-04-30-19" or
+// "clv-trade:<sha1(sorted-opp-ids|bankroll-bucket)>").
+model AIInsightCache {
+  id           String   @id @default(cuid())
+  cacheKey     String   @unique
+  payload      Json
+  modelUsed    String // e.g. "gpt-4o-mini"
+  promptHash   String? // SHA-1 of input — useful for diffing across deploys
+  inputTokens  Int?
+  outputTokens Int?
+  generatedAt  DateTime @default(now())
+  expiresAt    DateTime
+  hitCount     Int      @default(0) // observability — was this worth caching?
+
+  @@index([cacheKey, expiresAt])
+  @@index([expiresAt]) // cleanup cron
+}
+
 // Time-series of consensus 1X2 odds — populated by the live/upcoming sync cron
 // when odds drift materially or every ~10 minutes. Used for the live page's
 // "odds drift" sparkline and CLV trajectory analysis.

@@ -4,6 +4,9 @@ import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { getSnapBetPicks } from '@/lib/premium-picks-engine'
 import { hasPremiumAccess } from '@/lib/premium-access'
+import { getOrCompute } from '@/lib/ai-cache'
+
+const BRIEFING_CACHE_VERSION = 'v1'
 
 export const dynamic = 'force-dynamic'
 
@@ -108,17 +111,25 @@ async function gatherBriefingInputs() {
   }
 }
 
+/** Floor `now` to the start of the current UTC hour — used as the briefing
+ *  cache key suffix so all instances within an hour converge on one entry. */
+function currentHourKey(): string {
+  const d = new Date()
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}-${String(d.getUTCHours()).padStart(2, '0')}`
+}
+
 async function generateBriefing(): Promise<BriefingResponse> {
-  // Cache hit
+  // ── L1 hot-path: module memo (per-instance, saves a Postgres roundtrip) ──
   if (_cache && _cache.expiresAt > Date.now()) {
     return { ..._cache.data, cached: true }
   }
 
   const inputs = await gatherBriefingInputs()
 
-  // No-data fallback (e.g., empty DB after reset)
+  // No-data fallback (e.g., empty DB after reset). Don't cache — this is a
+  // signal that the system is in a bad state, not steady-state.
   if (inputs.topPicks.length === 0 && inputs.matchesToday === 0) {
-    const fallback: BriefingResponse = {
+    return {
       bullets: [
         { text: 'No matches in the next 24 hours — check back when fixtures are scheduled.', tier: 'free', icon: 'check' },
         { text: 'Browse upcoming matches to start tracking opportunities.', tier: 'free', icon: 'trend' },
@@ -126,7 +137,6 @@ async function generateBriefing(): Promise<BriefingResponse> {
       generatedAt: new Date().toISOString(),
       cached: false,
     }
-    return fallback
   }
 
   const apiKey = process.env.OPENAI_API_KEY?.trim()
@@ -135,10 +145,17 @@ async function generateBriefing(): Promise<BriefingResponse> {
     return makeFallbackBriefing(inputs)
   }
 
+  // ── L2: DB-backed cache — survives instance forks + cold starts ──
+  const cacheKey = `briefing:${BRIEFING_CACHE_VERSION}:global:${currentHourKey()}`
   try {
-    const openai = new OpenAI({ apiKey })
+    const { payload, cached, generatedAt } = await getOrCompute<{ bullets: BriefingBullet[] }>({
+      key: cacheKey,
+      ttlMs: CACHE_TTL_MS,
+      model: 'gpt-4o-mini',
+      compute: async () => {
+        const openai = new OpenAI({ apiKey })
 
-    const systemPrompt = `You are a sharp sports-betting analyst writing a daily briefing for a sports-tip product called SnapBet.
+        const systemPrompt = `You are a sharp sports-betting analyst writing a daily briefing for a sports-tip product called SnapBet.
 
 Tone: confident, concise, data-driven — never salesy or hype-y. Each bullet must be ≤25 words. Speak directly to the bettor.
 
@@ -154,7 +171,7 @@ Each bullet needs an icon from this set:
 Return ONLY valid JSON with this exact shape:
 {"bullets": [{"text": "...", "tier": "free", "icon": "fire"}, ...]}`
 
-    const userPrompt = `DATA FOR TODAY:
+        const userPrompt = `DATA FOR TODAY:
 - Matches in the next 24h: ${inputs.matchesToday}
 - Top surfaced picks (model is most confident on these):
 ${inputs.topPicks.map(p => `  - ${p.match} (${p.league}): pick ${p.pick}, ${p.confidence}% confidence, tier ${p.tier}`).join('\n') || '  (none today)'}
@@ -166,34 +183,43 @@ ${inputs.weakLeagues.map(l => `  - ${l.league}: ${(l.accuracy * 100).toFixed(0)}
 
 Generate the 5-bullet briefing now.`
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.6,
-      max_tokens: 800,
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.6,
+          max_tokens: 800,
+        })
+
+        const raw = completion.choices[0]?.message?.content
+        if (!raw) throw new Error('Empty response from OpenAI')
+
+        const parsed = JSON.parse(raw) as { bullets: BriefingBullet[] }
+        const bullets = (parsed.bullets || []).slice(0, 5)
+        if (bullets.length === 0) throw new Error('No bullets in response')
+
+        return {
+          payload: { bullets },
+          usage: {
+            input: completion.usage?.prompt_tokens,
+            output: completion.usage?.completion_tokens,
+          },
+        }
+      },
     })
-
-    const raw = completion.choices[0]?.message?.content
-    if (!raw) throw new Error('Empty response from OpenAI')
-
-    const parsed = JSON.parse(raw) as { bullets: BriefingBullet[] }
-    const bullets = (parsed.bullets || []).slice(0, 5)
-    if (bullets.length === 0) throw new Error('No bullets in response')
 
     const result: BriefingResponse = {
-      bullets,
-      generatedAt: new Date().toISOString(),
-      cached: false,
+      bullets: payload.bullets,
+      generatedAt: generatedAt.toISOString(),
+      cached,
     }
-    _cache = { data: result, expiresAt: Date.now() + CACHE_TTL_MS }
-    logger.info('[Briefing] Generated fresh briefing', {
-      tags: ['briefing'],
-      data: { bulletCount: bullets.length, matchesToday: inputs.matchesToday, picksUsed: inputs.topPicks.length },
-    })
+
+    // Populate L1 from L2 result so the next request on this instance is free.
+    // TTL on the L1 entry mirrors the L2 entry's remaining freshness.
+    _cache = { data: result, expiresAt: generatedAt.getTime() + CACHE_TTL_MS }
     return result
   } catch (e) {
     logger.error('[Briefing] OpenAI call failed — falling back to data-only summary', {
