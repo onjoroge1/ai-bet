@@ -61,6 +61,8 @@ export interface EmailVariable {
   defaultValue?: any
   validation?: ValidationRule[]
   category?: string
+  /** Example value rendered in admin template previews. */
+  example?: string
 }
 
 export interface ValidationRule {
