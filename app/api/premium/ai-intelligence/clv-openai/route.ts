@@ -2,11 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { hasPremiumAccess } from '@/lib/premium-access'
+import { getOrCompute, hashInput, bucketBankroll } from '@/lib/ai-cache'
 import OpenAI from 'openai'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
+
+// Trade plans for the same opportunity set + bankroll bucket are deterministic
+// (temperature 0.3) and don't change intra-window. 30 min keeps us well under
+// the typical CLV opportunity expiry while collapsing duplicate calls.
+const CLV_PLAN_TTL_MS = 30 * 60 * 1000
+const CLV_CACHE_VERSION = 'v1'
 
 /**
  * POST /api/premium/ai-intelligence/clv-openai
@@ -82,6 +89,15 @@ export async function POST(request: NextRequest) {
       }
     })
 
+    // ── Cache key: hash of sorted (match_id, market) pairs + bankroll bucket ──
+    // Same opportunity set + bankroll bucket ⇒ same plan, regardless of which
+    // user requested it. The hash ignores ordering and per-user noise.
+    const cacheSignature = bets
+      .map((b) => `${b.match_id}:${b.market}:${b.price_offered}`)
+      .sort()
+      .join('|')
+    const cacheKey = `clv-trade:${CLV_CACHE_VERSION}:${hashInput(cacheSignature)}:${bucketBankroll(bankrollUnits)}`
+
     const prompt = `You are SnapBet's CLV Execution Trader.
 
 Goal:
@@ -110,46 +126,61 @@ Input:
 
 ${JSON.stringify({ bankroll_units: bankrollUnits, bets }, null, 2)}`
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini', // or 'gpt-4' for better quality
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a professional CLV (Closing Line Value) trading advisor. Return ONLY valid JSON, no markdown, no explanations outside the JSON structure.',
-        },
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-      temperature: 0.3, // Lower temperature for more consistent, analytical responses
-      response_format: { type: 'json_object' },
+    const { payload, cached, generatedAt } = await getOrCompute<{ tradingPlan: unknown }>({
+      key: cacheKey,
+      ttlMs: CLV_PLAN_TTL_MS,
+      model: 'gpt-4o-mini',
+      compute: async () => {
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o-mini', // or 'gpt-4' for better quality
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a professional CLV (Closing Line Value) trading advisor. Return ONLY valid JSON, no markdown, no explanations outside the JSON structure.',
+            },
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          temperature: 0.3, // Lower temperature for more consistent, analytical responses
+          response_format: { type: 'json_object' },
+        })
+
+        const responseText = completion.choices[0]?.message?.content
+        if (!responseText) {
+          throw new Error('No response from OpenAI')
+        }
+
+        // Parse the JSON response (strip markdown fences as last resort)
+        let tradingPlan
+        try {
+          tradingPlan = JSON.parse(responseText)
+        } catch (parseError) {
+          const jsonMatch = responseText.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/) ||
+                           responseText.match(/\{[\s\S]*\}/)
+          if (jsonMatch) {
+            tradingPlan = JSON.parse(jsonMatch[1] || jsonMatch[0])
+          } else {
+            throw new Error('Failed to parse OpenAI response as JSON')
+          }
+        }
+
+        return {
+          payload: { tradingPlan },
+          usage: {
+            input: completion.usage?.prompt_tokens,
+            output: completion.usage?.completion_tokens,
+          },
+        }
+      },
     })
-
-    const responseText = completion.choices[0]?.message?.content
-    if (!responseText) {
-      throw new Error('No response from OpenAI')
-    }
-
-    // Parse the JSON response
-    let tradingPlan
-    try {
-      tradingPlan = JSON.parse(responseText)
-    } catch (parseError) {
-      // Try to extract JSON from markdown code blocks if present
-      const jsonMatch = responseText.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/) || 
-                       responseText.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        tradingPlan = JSON.parse(jsonMatch[1] || jsonMatch[0])
-      } else {
-        throw new Error('Failed to parse OpenAI response as JSON')
-      }
-    }
 
     return NextResponse.json({
       success: true,
-      tradingPlan,
-      generatedAt: new Date().toISOString(),
+      tradingPlan: payload.tradingPlan,
+      generatedAt: generatedAt.toISOString(),
+      cached,
     })
   } catch (error) {
     console.error('Error generating OpenAI CLV analysis:', error)
