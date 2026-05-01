@@ -5,6 +5,7 @@ import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { getSnapBetPicks } from '@/lib/premium-picks-engine'
 import { EmailTemplateService } from '@/lib/email-template-service'
+import { DEFAULT_EMAIL_TEMPLATES } from '@/types/email-templates'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import crypto from 'node:crypto'
@@ -59,13 +60,43 @@ export async function POST(request: NextRequest) {
     const data = await gatherBriefingData()
     const blocks = renderBriefingBlocks(data)
 
-    // ─── Auto-seed template if missing (idempotent) ───────────────
+    // ─── Auto-seed + self-heal template ───────────────────────────
+    // seedDefaultTemplates() only inserts on missing slug, so an old version
+    // of the nightly-briefing HTML can sit in the DB after we ship a redesign.
+    // We force-sync the DB row to match the source template on every run
+    // (cheap; one query). This makes deploys self-healing.
     let tpl = await EmailTemplateService.getTemplateBySlug('nightly-briefing')
     if (!tpl) {
       logger.info('[NightlyBriefing] Template missing — seeding defaults')
       await EmailTemplateService.seedDefaultTemplates()
-      // Re-fetch so EmailLog rows get a real templateId (not '')
       tpl = await EmailTemplateService.getTemplateBySlug('nightly-briefing')
+    }
+
+    const sourceTemplate = DEFAULT_EMAIL_TEMPLATES.find((t) => t.slug === 'nightly-briefing')
+    if (tpl && sourceTemplate && tpl.htmlContent !== sourceTemplate.htmlContent) {
+      logger.info('[NightlyBriefing] DB template drift detected — force-syncing from source', {
+        tags: ['email', 'nightly-briefing', 'template-sync'],
+      })
+      try {
+        await prisma.emailTemplate.update({
+          where: { id: tpl.id },
+          data: {
+            htmlContent: sourceTemplate.htmlContent,
+            textContent: sourceTemplate.textContent ?? null,
+            subject: sourceTemplate.subject,
+            variables: (sourceTemplate.variables ?? []) as any,
+            description: sourceTemplate.description ?? tpl.description,
+            version: { increment: 1 },
+          },
+        })
+        // Re-fetch so subsequent renderTemplate() calls hit the fresh row
+        tpl = await EmailTemplateService.getTemplateBySlug('nightly-briefing')
+      } catch (e) {
+        logger.warn('[NightlyBriefing] Template sync failed — will continue with stale DB version', {
+          tags: ['email', 'nightly-briefing', 'template-sync', 'error'],
+          error: e instanceof Error ? e : undefined,
+        })
+      }
     }
 
     // ─── Dry-run: render with sample user, return HTML, no send ───
