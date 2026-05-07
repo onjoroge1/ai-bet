@@ -4,7 +4,7 @@
   "framework": "nextjs",
   "functions": {
     "app/api/admin/market/**/*.ts": {
-      "maxDuration": 60
+      "maxDuration": 120
     },
     "app/api/admin/parlays/**/*.ts": {
       "maxDuration": 60
