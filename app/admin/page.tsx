@@ -15,6 +15,7 @@ import { PredictionQuickPurchaseManager } from "@/components/admin/prediction-qu
 import { PricingManagement } from "@/components/admin/pricing-management" // Import new
 import { GlobalMatchSync } from "@/components/admin/global-match-sync" // Import new Global Sync
 import { MarketSyncButton } from "@/components/admin/market-sync-button"
+import { CronHealthWidget } from "@/components/admin/cron-health-widget"
 import { AdditionalMarketsSyncButton } from "@/components/admin/additional-markets-sync-button" // Import Market Sync Button
 import { ParlayManagement } from "@/components/admin/parlay-management" // Import Parlay Management
 import { BestParlayGeneratorButton } from "@/components/admin/best-parlay-generator-button" // Import Best Parlay Generator
@@ -37,6 +38,10 @@ export default function AdminPage() {
 
         {/* Market Data Sync - Manual Sync Button */}
         <MarketSyncButton />
+
+        {/* Cron Health — surfaces silently-killed cron runs (e.g. timeout
+            kills before catch block records error). Polls every 30s. */}
+        <CronHealthWidget />
 
         {/* Additional Markets Data Sync */}
         <AdditionalMarketsSyncButton />

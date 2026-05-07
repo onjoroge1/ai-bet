@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { retryWithBackoff } from '@/lib/retry-utils'
+import { beginCron, endCron } from '@/lib/cron-heartbeat'
 
 const BASE_URL = process.env.BACKEND_API_URL || process.env.BACKEND_URL
 const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY || "betgenius_secure_key_2024"
@@ -570,17 +571,36 @@ export async function GET(request: NextRequest) {
 
     const results: Record<string, { synced: number; errors: number; skipped: number }> = {}
 
+    // Heartbeat-wrapped sync — see lib/cron-heartbeat.ts. Each status gets its
+    // own row so /admin can show per-status freshness. If the function is
+    // killed mid-flight (timeout, OOM), endCron never fires and lastCompletedAt
+    // stays stale, which is exactly the signal the admin widget watches for.
+    async function runWithHeartbeat(status: 'live' | 'upcoming' | 'completed') {
+      const hb = await beginCron(`market-sync:${status}`)
+      try {
+        const r = await syncMatchesByStatus(status)
+        await endCron(hb, {
+          status: r.errors > 0 ? 'error' : 'ok',
+          rowsAffected: r.synced,
+        })
+        return r
+      } catch (e) {
+        await endCron(hb, { status: 'error', error: e })
+        throw e
+      }
+    }
+
     // Sync based on type
     if (syncType === 'all' || syncType === 'live') {
-      results.live = await syncMatchesByStatus('live')
+      results.live = await runWithHeartbeat('live')
     }
 
     if (syncType === 'all' || syncType === 'upcoming') {
-      results.upcoming = await syncMatchesByStatus('upcoming')
+      results.upcoming = await runWithHeartbeat('upcoming')
     }
 
     if (syncType === 'all' || syncType === 'completed') {
-      results.completed = await syncMatchesByStatus('completed')
+      results.completed = await runWithHeartbeat('completed')
     }
 
     const totalSynced = Object.values(results).reduce((sum, r) => sum + r.synced, 0)

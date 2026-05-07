@@ -2070,6 +2070,27 @@ model MarketMatch {
   @@index([leagueId, status])
 }
 
+// One row per cron job — upserted on each run with entry + exit timestamps.
+// Powers the /admin "Cron Health" widget so a silently-killed function (e.g.
+// the upcoming-match sync exceeding maxDuration before the catch block) is
+// visible as a stale lastCompletedAt instead of a quiet missing-data
+// plateau. See app/api/admin/market/sync-scheduled for usage pattern.
+model CronHeartbeat {
+  id              String    @id @default(cuid())
+  name            String    @unique // e.g. "market-sync:upcoming"
+  lastStartedAt   DateTime?
+  lastCompletedAt DateTime?
+  lastDurationMs  Int? // most recent run wall-time
+  lastStatus      String? // "ok" | "error" | "timeout-suspected"
+  lastError       String? // truncated error message on failure
+  rowsAffected    Int? // count metric the job exposes (matches synced, etc.)
+  runCount        Int       @default(0)
+  errorCount      Int       @default(0)
+  updatedAt       DateTime  @updatedAt
+
+  @@index([lastCompletedAt])
+}
+
 // Cross-instance cache for OpenAI-generated dashboard insights (briefing,
 // CLV trade plans, etc.). Module-level memos don't survive Vercel instance
 // forks or cold starts, so we keep a Postgres-backed L2 cache keyed by a
