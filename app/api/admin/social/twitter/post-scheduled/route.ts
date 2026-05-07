@@ -5,6 +5,7 @@ import { postTweet, postTweetWithMedia, isTwitterConfigured } from '@/lib/social
 import { postViaOpenTweet, isOpenTweetConfigured } from '@/lib/social/opentweet-client'
 import { postTweetViaLate, postToAllPlatforms, isLateConfigured } from '@/lib/social/late-client'
 import { getProductionBaseUrl } from '@/lib/social/url-utils'
+import { beginCron, endCron, type HeartbeatToken } from '@/lib/cron-heartbeat'
 
 /**
  * GET /api/admin/social/twitter/post-scheduled - Post scheduled Twitter posts (for cron jobs)
@@ -18,6 +19,7 @@ import { getProductionBaseUrl } from '@/lib/social/url-utils'
  */
 export async function GET(request: NextRequest) {
   const startTime = Date.now()
+  let hb: HeartbeatToken | null = null
 
   try {
     // Verify cron secret — must be set in environment, no hardcoded fallback
@@ -38,6 +40,8 @@ export async function GET(request: NextRequest) {
       })
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    hb = await beginCron('social:twitter-post')
 
     // Check rate limits
     const now = new Date()
@@ -378,6 +382,8 @@ export async function GET(request: NextRequest) {
       },
     })
 
+    if (hb) await endCron(hb, { status: failed > 0 ? 'error' : 'ok', rowsAffected: posted })
+
     return NextResponse.json({
       success: true,
       message: 'Twitter posting completed',
@@ -392,6 +398,7 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString(),
     })
   } catch (error) {
+    if (hb) await endCron(hb, { status: 'error', error })
     const duration = Date.now() - startTime
     logger.error('🕐 CRON: Twitter posting failed', {
       tags: ['api', 'admin', 'social', 'twitter', 'cron', 'error'],

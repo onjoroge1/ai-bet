@@ -3,6 +3,7 @@ import { logger } from '@/lib/logger'
 import prisma from '@/lib/db'
 import { buildSocialUrl } from '@/lib/social/url-utils'
 import { generateMatchSlug } from '@/lib/match-slug'
+import { beginCron, endCron, type HeartbeatToken } from '@/lib/cron-heartbeat'
 
 export const maxDuration = 30
 
@@ -14,11 +15,14 @@ export const maxDuration = 30
  * Posts are created with scheduledAt = now for immediate posting.
  */
 export async function GET(request: NextRequest) {
+  let hb: HeartbeatToken | null = null
   try {
     const cronSecret = process.env.CRON_SECRET
     if (!cronSecret) return NextResponse.json({ error: 'CRON_SECRET not configured' }, { status: 500 })
     const authHeader = request.headers.get('authorization')
     if (authHeader !== `Bearer ${cronSecret}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    hb = await beginCron('social:live-events')
 
     // Rate limit: max 1 live post per 5 minutes
     const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000)
@@ -106,8 +110,10 @@ export async function GET(request: NextRequest) {
       break
     }
 
+    if (hb) await endCron(hb, { status: 'ok', rowsAffected: posted })
     return NextResponse.json({ success: true, posted, pending: events.length - posted })
   } catch (error) {
+    if (hb) await endCron(hb, { status: 'error', error })
     logger.error('[Live Events] Failed', { tags: ['social', 'live', 'error'], error: error instanceof Error ? error : undefined })
     return NextResponse.json({ error: 'Failed' }, { status: 500 })
   }

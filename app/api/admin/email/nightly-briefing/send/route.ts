@@ -9,6 +9,7 @@ import { DEFAULT_EMAIL_TEMPLATES } from '@/types/email-templates'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import crypto from 'node:crypto'
+import { beginCron, endCron, type HeartbeatToken } from '@/lib/cron-heartbeat'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300 // 5 min — accommodate Resend batch latency
@@ -49,6 +50,12 @@ export async function POST(request: NextRequest) {
 
   let body: { testEmail?: string; testFirstName?: string; dryRun?: boolean } = {}
   try { body = await request.json() } catch { /* no body, fine */ }
+
+  // Only heartbeat the production-cron path — skip dry-run and admin previews
+  // so they don't pollute the freshness signal.
+  const isCronRun = auth.via === 'cron' && !body.testEmail && !body.dryRun
+  let hb: HeartbeatToken | null = null
+  if (isCronRun) hb = await beginCron('email:nightly-briefing')
 
   // Test/preview modes require an admin session — never via CRON_SECRET
   if ((body.testEmail || body.dryRun) && auth.via !== 'admin') {
@@ -205,6 +212,8 @@ export async function POST(request: NextRequest) {
       data: { sent, failed, total: recipients.length },
     })
 
+    if (hb) await endCron(hb, { status: failed > 0 ? 'error' : 'ok', rowsAffected: sent })
+
     return NextResponse.json({
       success: true,
       total: recipients.length,
@@ -213,6 +222,7 @@ export async function POST(request: NextRequest) {
       errors: errors.slice(0, 10),
     })
   } catch (error) {
+    if (hb) await endCron(hb, { status: 'error', error })
     logger.error('[NightlyBriefing] Fatal', { error: error instanceof Error ? error : undefined })
     return NextResponse.json({
       success: false,

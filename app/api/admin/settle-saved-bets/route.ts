@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/db'
 import { Prisma } from '@prisma/client'
+import { withHeartbeat } from '@/lib/cron-heartbeat'
 
 /**
  * GET|POST /api/admin/settle-saved-bets
@@ -113,13 +114,19 @@ async function handleRequest() {
   return { processed: pendingBets.length, settled, errors }
 }
 
+async function runWithHeartbeat() {
+  return withHeartbeat('settle-saved-bets', async () => {
+    const r = await handleRequest() as { processed: number; settled: number; errors: number }
+    return { ...r, rowsAffected: r.settled }
+  })
+}
+
 export async function GET(_req: NextRequest) {
   const apiKey = _req.headers.get('x-api-key')
   if (apiKey !== process.env.CRON_API_KEY) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const result = await handleRequest()
-  return NextResponse.json(result)
+  return NextResponse.json(await runWithHeartbeat())
 }
 
 export async function POST(_req: NextRequest) {
@@ -127,7 +134,6 @@ export async function POST(_req: NextRequest) {
   if (apiKey !== process.env.CRON_API_KEY) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const result = await handleRequest()
-  return NextResponse.json(result)
+  return NextResponse.json(await runWithHeartbeat())
 }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { withHeartbeat } from '@/lib/cron-heartbeat'
 
 /**
  * GET|POST /api/admin/clv/sync-scheduled
@@ -97,13 +98,21 @@ async function handleRequest() {
   return { success: true, results }
 }
 
+async function runWithHeartbeat() {
+  const result = await withHeartbeat('clv-sync', async () => {
+    const r = await handleRequest() as { success: boolean; results?: Record<string, number> }
+    const totalCached = r.results ? Object.values(r.results).reduce((a, b) => a + b, 0) : 0
+    return { ...r, rowsAffected: totalCached }
+  })
+  return result
+}
+
 export async function GET(req: NextRequest) {
   const apiKey = req.headers.get('x-api-key')
   if (apiKey !== process.env.CRON_API_KEY) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const result = await handleRequest()
-  return NextResponse.json(result)
+  return NextResponse.json(await runWithHeartbeat())
 }
 
 export async function POST(req: NextRequest) {
@@ -111,7 +120,6 @@ export async function POST(req: NextRequest) {
   if (apiKey !== process.env.CRON_API_KEY) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const result = await handleRequest()
-  return NextResponse.json(result)
+  return NextResponse.json(await runWithHeartbeat())
 }
 

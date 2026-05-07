@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
 import prisma from '@/lib/db'
 import { generateResultPosts } from '@/lib/social/result-generator'
+import { beginCron, endCron, type HeartbeatToken } from '@/lib/cron-heartbeat'
 
 export const maxDuration = 60
 
@@ -13,6 +14,7 @@ export const maxDuration = 60
  */
 export async function GET(request: NextRequest) {
   const startTime = Date.now()
+  let hb: HeartbeatToken | null = null
 
   try {
     const cronSecret = process.env.CRON_SECRET
@@ -24,6 +26,8 @@ export async function GET(request: NextRequest) {
     if (authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    hb = await beginCron('social:results')
 
     logger.info('[Results Cron] Starting result post generation', {
       tags: ['social', 'results', 'cron'],
@@ -68,6 +72,8 @@ export async function GET(request: NextRequest) {
       data: { found: resultPosts.length, created, duration: `${duration}ms` },
     })
 
+    if (hb) await endCron(hb, { status: 'ok', rowsAffected: created })
+
     return NextResponse.json({
       success: true,
       found: resultPosts.length,
@@ -75,6 +81,7 @@ export async function GET(request: NextRequest) {
       duration: `${duration}ms`,
     })
   } catch (error) {
+    if (hb) await endCron(hb, { status: 'error', error })
     logger.error('[Results Cron] Failed', {
       tags: ['social', 'results', 'cron', 'error'],
       error: error instanceof Error ? error : undefined,

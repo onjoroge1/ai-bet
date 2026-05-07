@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { beginCron, endCron, type HeartbeatToken } from '@/lib/cron-heartbeat'
 
 /**
  * GET /api/admin/predictions/refresh-progressive - Progressive prediction refresh
@@ -39,6 +40,7 @@ interface RefreshResult {
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now()
+  let hb: HeartbeatToken | null = null
 
   try {
     // Auth: cron secret
@@ -51,6 +53,8 @@ export async function GET(request: NextRequest) {
     if (authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    hb = await beginCron('predictions-sync:progressive')
 
     const now = new Date()
     const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000)
@@ -304,6 +308,8 @@ export async function GET(request: NextRequest) {
       },
     })
 
+    if (hb) await endCron(hb, { status: failed.length > 0 ? 'error' : 'ok', rowsAffected: successful.length })
+
     return NextResponse.json({
       success: true,
       summary: {
@@ -320,6 +326,7 @@ export async function GET(request: NextRequest) {
       timestamp: now.toISOString(),
     })
   } catch (error) {
+    if (hb) await endCron(hb, { status: 'error', error })
     logger.error('🔄 Progressive refresh: fatal error', {
       tags: ['predictions', 'progressive-refresh', 'cron', 'error'],
       error: error instanceof Error ? error : undefined,

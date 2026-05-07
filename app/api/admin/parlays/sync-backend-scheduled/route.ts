@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
 import { scoreAllActiveParlays } from '@/lib/parlays/premium-parlay-scorer'
+import { beginCron, endCron, type HeartbeatToken } from '@/lib/cron-heartbeat'
 
 /**
  * GET/POST /api/admin/parlays/sync-backend-scheduled - Cron job endpoint for syncing parlays from backend APIs
@@ -26,6 +27,7 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleRequest(request: NextRequest) {
+  let hb: HeartbeatToken | null = null
   try {
     // Verify CRON_SECRET
     const authHeader = request.headers.get('authorization')
@@ -48,6 +50,8 @@ async function handleRequest(request: NextRequest) {
     logger.info('🕐 CRON: Starting scheduled parlay sync from backend APIs (V1/V2)', {
       tags: ['api', 'admin', 'parlays', 'cron', 'sync-backend']
     })
+
+    hb = await beginCron('parlay-sync:backend')
 
     // Call the POST /api/parlays endpoint with CRON_SECRET
     const isProduction = process.env.VERCEL === '1'
@@ -110,6 +114,8 @@ async function handleRequest(request: NextRequest) {
       })
     }
 
+    await endCron(hb, { status: 'ok', rowsAffected: result.totals?.synced ?? 0 })
+
     return NextResponse.json({
       success: true,
       message: `Synced ${result.totals?.synced || 0} parlays from backend APIs (${result.totals?.errors || 0} errors)`,
@@ -118,6 +124,7 @@ async function handleRequest(request: NextRequest) {
       ...result
     })
   } catch (error) {
+    if (hb) await endCron(hb, { status: 'error', error })
     logger.error('🕐 CRON: Error in scheduled backend parlay sync', {
       tags: ['api', 'admin', 'parlays', 'cron', 'sync-backend'],
       data: { error: error instanceof Error ? error.message : 'Unknown error' }

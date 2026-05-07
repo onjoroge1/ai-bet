@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { beginCron, endCron, type HeartbeatToken } from '@/lib/cron-heartbeat'
 
 const BASE_URL = process.env.BACKEND_API_URL || process.env.BACKEND_URL
 const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY || "betgenius_secure_key_2024"
@@ -429,12 +430,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Create a synthetic POST request body with default params
-  const syntheticRequest = new NextRequest(request.url, {
-    method: 'POST',
-    headers: request.headers,
-    body: JSON.stringify({ sports: SPORTS, predictions: true, force: false }),
-  })
-
-  return POST(syntheticRequest)
+  // Heartbeat-wrap the synthetic POST so the multisport cron is visible on /admin
+  const hb = await beginCron('multisport-sync')
+  try {
+    const syntheticRequest = new NextRequest(request.url, {
+      method: 'POST',
+      headers: request.headers,
+      body: JSON.stringify({ sports: SPORTS, predictions: true, force: false }),
+    })
+    const resp = await POST(syntheticRequest)
+    await endCron(hb, { status: resp.ok ? 'ok' : 'error' })
+    return resp
+  } catch (e) {
+    await endCron(hb, { status: 'error', error: e })
+    throw e
+  }
 }

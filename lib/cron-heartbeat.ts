@@ -54,6 +54,37 @@ interface EndCronOpts {
 }
 
 /**
+ * One-shot wrapper — `withHeartbeat('name', async () => { ... })`. Runs the
+ * inner function inside a heartbeat, reports `ok` on resolve and `error` on
+ * throw, then re-throws so the route can return its normal error response.
+ *
+ * If the inner function returns an object with a numeric `rowsAffected`
+ * property, that count is recorded too. Anything else is fine — it's just
+ * passed back to the caller untouched.
+ */
+export async function withHeartbeat<T>(
+  name: string,
+  fn: () => Promise<T>
+): Promise<T> {
+  const hb = await beginCron(name)
+  try {
+    const result = await fn()
+    const rowsAffected =
+      typeof result === 'object' && result !== null && 'rowsAffected' in result
+        ? (result as { rowsAffected?: unknown }).rowsAffected
+        : undefined
+    await endCron(hb, {
+      status: 'ok',
+      rowsAffected: typeof rowsAffected === 'number' ? rowsAffected : undefined,
+    })
+    return result
+  } catch (e) {
+    await endCron(hb, { status: 'error', error: e })
+    throw e
+  }
+}
+
+/**
  * Mark the end of a cron run. Records duration, status, error, and an
  * optional rows-affected metric the job wants surfaced.
  */

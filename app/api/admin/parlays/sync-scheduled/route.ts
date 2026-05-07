@@ -3,6 +3,7 @@ import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { randomUUID } from 'crypto'
 import { areLegsCorrelated, calculateCorrelationPenalty } from '@/lib/parlays/quality-utils'
+import { beginCron, endCron, type HeartbeatToken } from '@/lib/cron-heartbeat'
 
 // This endpoint is called by cron jobs
 // Uses CRON_SECRET for authentication instead of user session
@@ -393,6 +394,7 @@ async function generateAndSyncSGPs() {
  * POST /api/admin/parlays/sync-scheduled - Cron job endpoint for automatic sync
  */
 export async function POST(req: NextRequest) {
+  let hb: HeartbeatToken | null = null
   try {
     // Verify CRON_SECRET
     const authHeader = req.headers.get('authorization')
@@ -404,7 +406,7 @@ export async function POST(req: NextRequest) {
       })
       return NextResponse.json({ error: 'Cron secret not configured' }, { status: 500 })
     }
-    
+
     if (authHeader !== `Bearer ${cronSecret}`) {
       logger.warn('Unauthorized cron job attempt', {
         tags: ['api', 'admin', 'parlays', 'cron']
@@ -416,7 +418,9 @@ export async function POST(req: NextRequest) {
       tags: ['api', 'admin', 'parlays', 'cron']
     })
 
+    hb = await beginCron('parlay-sync:lite')
     const result = await generateAndSyncSGPs()
+    await endCron(hb, { status: 'ok', rowsAffected: result.created })
 
     logger.info('🕐 CRON: Completed parlay sync', {
       tags: ['api', 'admin', 'parlays', 'cron'],
@@ -429,6 +433,7 @@ export async function POST(req: NextRequest) {
       stats: result
     })
   } catch (error) {
+    if (hb) await endCron(hb, { status: 'error', error })
     logger.error('🕐 CRON: Error syncing parlays', {
       tags: ['api', 'admin', 'parlays', 'cron'],
       data: { error: error instanceof Error ? error.message : 'Unknown error' }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { beginCron, endCron, type HeartbeatToken } from '@/lib/cron-heartbeat'
 
 /**
  * Zombie Sweep — periodic cleanup of stale UPCOMING matches.
@@ -406,6 +407,7 @@ async function runSweep(dryRun: boolean): Promise<ZombieSweepResult> {
 }
 
 export async function GET(request: NextRequest) {
+  let hb: HeartbeatToken | null = null
   try {
     // Auth: Bearer CRON_SECRET (same pattern as sync-scheduled)
     const authHeader = request.headers.get('authorization')
@@ -421,9 +423,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const dryRun = searchParams.get('dryRun') === 'true'
 
-    const result = await runSweep(dryRun)
+    hb = await beginCron('market-sync:zombie-sweep')
+    const result = await runSweep(dryRun) as any
+    if (hb) await endCron(hb, { status: 'ok', rowsAffected: result?.swept ?? result?.deactivated ?? 0 })
     return NextResponse.json({ success: true, ...result })
   } catch (error) {
+    if (hb) await endCron(hb, { status: 'error', error })
     logger.error('[Zombie Sweep] Fatal error', {
       tags: ['cron', 'market', 'zombie-sweep', 'error'],
       error: error instanceof Error ? error : undefined,

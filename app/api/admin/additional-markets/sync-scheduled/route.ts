@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { syncAdditionalMarketsForUpcomingMatches } from '@/lib/market/sync-additional-markets'
 import { logger } from '@/lib/logger'
+import { beginCron, endCron } from '@/lib/cron-heartbeat'
 
 /**
  * GET /api/admin/additional-markets/sync-scheduled - Cron job endpoint (Vercel crons use GET)
@@ -44,12 +45,20 @@ async function handleRequest(req: NextRequest) {
       tags: ['api', 'admin', 'additional-markets', 'cron'],
     })
 
-    const result = await syncAdditionalMarketsForUpcomingMatches()
+    const hb = await beginCron('market-sync:additional-markets')
+    try {
+      const result = await syncAdditionalMarketsForUpcomingMatches()
+      const rowsAffected = (result as any)?.matchesProcessed ?? (result as any)?.synced
+      await endCron(hb, { status: 'ok', rowsAffected: typeof rowsAffected === 'number' ? rowsAffected : undefined })
 
-    return NextResponse.json({
-      success: true,
-      ...result,
-    })
+      return NextResponse.json({
+        success: true,
+        ...result,
+      })
+    } catch (innerError) {
+      await endCron(hb, { status: 'error', error: innerError })
+      throw innerError
+    }
   } catch (error) {
     logger.error('❌ Failed to sync additional markets in cron job', {
       tags: ['api', 'admin', 'additional-markets', 'cron', 'error'],

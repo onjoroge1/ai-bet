@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
+import { beginCron, endCron, type HeartbeatToken } from '@/lib/cron-heartbeat'
 
 /**
  * GET /api/admin/predictions/sync-from-availability-scheduled - Scheduled global match sync (for cron jobs)
@@ -14,6 +15,7 @@ import { logger } from '@/lib/logger'
  */
 export async function GET(request: NextRequest) {
   const startTime = Date.now()
+  let hb: HeartbeatToken | null = null
 
   try {
     // Verify cron secret
@@ -32,6 +34,8 @@ export async function GET(request: NextRequest) {
       tags: ['api', 'admin', 'global-sync', 'cron', 'sync'],
       data: { startTime: new Date(startTime).toISOString() },
     })
+
+    hb = await beginCron('predictions-sync:availability')
 
     // Call the main sync endpoint internally
     // In production (Vercel), we can use the internal URL
@@ -89,6 +93,8 @@ export async function GET(request: NextRequest) {
       },
     })
 
+    if (hb) await endCron(hb, { status: 'ok', rowsAffected: result.summary?.synced ?? result.summary?.matchesProcessed })
+
     return NextResponse.json({
       success: true,
       message: 'Scheduled global sync completed',
@@ -97,6 +103,7 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString(),
     })
   } catch (error) {
+    if (hb) await endCron(hb, { status: 'error', error })
     const duration = Date.now() - startTime
     logger.error('🕐 CRON: Global sync failed', {
       tags: ['api', 'admin', 'global-sync', 'cron', 'sync', 'error'],

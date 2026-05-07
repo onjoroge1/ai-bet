@@ -21,6 +21,7 @@ import { generateBestParlays, GenerationConfig } from '@/lib/parlays/best-parlay
 import { scoreAndUpdateParlay } from '@/lib/parlays/premium-parlay-scorer'
 import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { beginCron, endCron, type HeartbeatToken } from '@/lib/cron-heartbeat'
 import { randomUUID } from 'crypto'
 
 // ── Save helpers ─────────────────────────────────────────────────────────────
@@ -207,6 +208,7 @@ export async function POST(req: NextRequest) {
 }
 
 async function handleRequest(req: NextRequest) {
+  let hb: HeartbeatToken | null = null
   try {
     // ── Auth ───────────────────────────────────────────────────────────
     const authHeader = req.headers.get('authorization')
@@ -221,6 +223,8 @@ async function handleRequest(req: NextRequest) {
       logger.warn('Unauthorized cron request', { tags: ['parlays', 'cron'] })
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    hb = await beginCron('parlay-sync:generate-best')
 
     // ── Check for premium backfill action ──────────────────────────────
     const { searchParams } = new URL(req.url)
@@ -313,6 +317,8 @@ async function handleRequest(req: NextRequest) {
       data: { expired, parlaysGenerated: parlays.length, created, skipped, errors },
     })
 
+    if (hb) await endCron(hb, { status: errors > 0 ? 'error' : 'ok', rowsAffected: created })
+
     return NextResponse.json({
       success: true,
       message: `Generated ${parlays.length}, created ${created}, skipped ${skipped}`,
@@ -332,6 +338,7 @@ async function handleRequest(req: NextRequest) {
       },
     })
   } catch (error) {
+    if (hb) await endCron(hb, { status: 'error', error })
     logger.error('Error in scheduled curated parlay generation', {
       tags: ['parlays', 'cron'],
       error: error instanceof Error ? error.message : String(error),

@@ -26,10 +26,27 @@ interface HealthRow {
 // Per-cron expected interval (ms). If lastCompletedAt is older than 2× this,
 // we mark the row 'stale' regardless of lastStatus. Pulled from vercel.json
 // schedules — keep in sync if those change.
+const MIN = 60 * 1000
+const HOUR = 60 * MIN
+const DAY = 24 * HOUR
 const EXPECTED_INTERVAL_MS: Record<string, number> = {
-  'market-sync:live': 60 * 1000,
-  'market-sync:upcoming': 10 * 60 * 1000,
-  'market-sync:completed': 10 * 60 * 1000,
+  'market-sync:live': 1 * MIN,
+  'market-sync:upcoming': 10 * MIN,
+  'market-sync:completed': 10 * MIN,
+  'market-sync:zombie-sweep': 2 * HOUR,
+  'market-sync:additional-markets': 3 * HOUR,
+  'parlay-sync:backend': 15 * MIN,
+  'parlay-sync:lite': 30 * MIN,
+  'parlay-sync:generate-best': 3 * HOUR,
+  'predictions-sync:availability': 2 * HOUR,
+  'predictions-sync:progressive': 30 * MIN,
+  'multisport-sync': 2 * HOUR,
+  'settle-saved-bets': 30 * MIN,
+  'clv-sync': 30 * MIN,
+  'social:twitter-post': 5 * MIN,
+  'social:live-events': 2 * MIN,
+  'social:results': 30 * MIN,
+  'email:nightly-briefing': 1 * DAY,
 }
 
 /**
