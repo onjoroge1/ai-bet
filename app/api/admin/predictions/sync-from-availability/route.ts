@@ -897,10 +897,11 @@ export async function POST(req: NextRequest) {
           ? `${matchInfo.home_team} vs ${matchInfo.away_team}`
           : `Match ${matchId}`
 
-        const predictionType = prediction.predictions?.recommended_bet ?? 
-                              prediction.comprehensive_analysis?.ai_verdict?.recommended_outcome?.toLowerCase().replace(' ', '_') ?? 
-                              'no_prediction'
-        
+        const _pickNorm: Record<string, string> = { home: 'home', home_win: 'home', away: 'away', away_win: 'away', draw: 'draw' }
+        const _rawBet = prediction.predictions?.recommended_bet ??
+                        prediction.comprehensive_analysis?.ai_verdict?.recommended_outcome?.toLowerCase().replace(' ', '_')
+        const predictionType = _pickNorm[_rawBet || ''] ?? _rawBet ?? 'no_prediction'
+
         const confidenceScore = Math.round(confidence * 100)
         const valueRating = toValueRating(confidence)
         const odds = probToImpliedOdds(prediction.predictions)

@@ -301,11 +301,12 @@ async function performDirectEnrichment(matches: any[], timeWindow: string, leagu
           continue
         }
 
-        // Extract prediction details
-        const predictionType = prediction.predictions?.recommended_bet ?? 
-                              prediction.comprehensive_analysis?.ai_verdict?.recommended_outcome?.toLowerCase().replace(' ', '_') ?? 
-                              'no_prediction'
-        
+        // Extract prediction details — normalize raw bet names (home_win→home, away_win→away)
+        const _pickNorm: Record<string, string> = { home: 'home', home_win: 'home', away: 'away', away_win: 'away', draw: 'draw' }
+        const _rawBet = prediction.predictions?.recommended_bet ??
+                        prediction.comprehensive_analysis?.ai_verdict?.recommended_outcome?.toLowerCase().replace(' ', '_')
+        const predictionType = _pickNorm[_rawBet || ''] ?? _rawBet ?? 'no_prediction'
+
         const confidenceScore = Math.round(confidence * 100)
         const valueRating = toValueRating(confidence)
         const odds = probToImpliedOdds(prediction.predictions)
