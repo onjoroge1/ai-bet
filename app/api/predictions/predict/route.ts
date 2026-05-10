@@ -472,24 +472,26 @@ export async function POST(request: Request) {
       // Ensure it's a valid number
       confidenceScore = Math.max(0, Math.min(100, Math.round(Number(confidenceScore) || 50)))
 
-      // Determine prediction type
-      const probabilities = predictionData.comprehensive_analysis?.ml_prediction?.probs ||
-                          predictionData.comprehensive_analysis?.ml_prediction ||
-                          predictionData.predictions?.probs || 
-                          predictionData.predictions ||
-                          {}
-      
-      let predictionType = 'unknown'
-      const homeWin = probabilities.home_win || probabilities.home || 0
-      const draw = probabilities.draw || 0
-      const awayWin = probabilities.away_win || probabilities.away || 0
-      
-      if (homeWin > draw && homeWin > awayWin) {
-        predictionType = 'home'
-      } else if (awayWin > draw && awayWin > homeWin) {
-        predictionType = 'away'
-      } else {
-        predictionType = 'draw'
+      // Normalize pick strings from backend (home_win/away_win → home/away)
+      const _pickNorm: Record<string, string> = {
+        home: 'home', home_win: 'home',
+        away: 'away', away_win: 'away',
+        draw: 'draw',
+      }
+
+      // Primary: use recommended_bet from backend — it's already computed with all
+      // overrides (V1/V3 disagreement, confidence gating, etc.)
+      const _recBet = predictionData.predictions?.recommended_bet as string | undefined
+      let predictionType = _pickNorm[_recBet || ''] || 'unknown'
+
+      // Fallback: direct probability comparison from top-level predictions object
+      if (predictionType === 'unknown') {
+        const homeWin = (predictionData.predictions?.home_win as number) || 0
+        const draw = (predictionData.predictions?.draw as number) || 0
+        const awayWin = (predictionData.predictions?.away_win as number) || 0
+        if (homeWin > draw && homeWin > awayWin) predictionType = 'home'
+        else if (awayWin > draw && awayWin > homeWin) predictionType = 'away'
+        else if (draw > 0 || homeWin > 0 || awayWin > 0) predictionType = 'draw'
       }
 
       // Extract odds and value rating from prediction data
@@ -540,14 +542,22 @@ export async function POST(request: Request) {
           const models = predictionData.predictions?.models || []
           const finalDecision = predictionData.predictions?.final_decision || {}
 
-          // Find V3 model in the models array
+          // Find V3 model in the models array — only accept entries that actually ran
+          // (status 'primary' or 'shadow'). Skip 'unavailable' entries: those have
+          // null predictions and recommended_bet, so the fallback would silently store
+          // V1's pick/confidence under the V3 label.
           const v3Model = models.find((m: any) =>
-            m.id === 'v3_sharp' || m.id === 'v3_sharp_lgbm' || m.id?.startsWith('v3')
+            (m.id === 'v3_sharp' || m.id === 'v3_sharp_lgbm' || m.id?.startsWith('v3')) &&
+            m.status !== 'unavailable' &&
+            m.status !== 'skipped' &&
+            m.predictions != null
           )
 
           // Build v3Model data from either explicit model entry or top-level predictions
           const v3Data = v3Model ? {
-            pick: predictionType,
+            // Use the V3 model's own recommended_bet, NOT predictionType (which may reflect
+            // a V1 override applied after the V3 entry was built in the models array)
+            pick: _pickNorm[v3Model.recommended_bet as string || ''] || predictionType,
             confidence: v3Model.confidence ?? confidenceScore / 100,
             probs: v3Model.predictions || {
               home: predictionData.predictions?.home_win,
