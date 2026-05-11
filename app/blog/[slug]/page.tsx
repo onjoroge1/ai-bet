@@ -8,7 +8,6 @@ import {
   Clock,
   User,
   Eye,
-  Share2,
   ArrowLeft,
   Sparkles,
   ArrowRight,
@@ -28,6 +27,7 @@ import { MarqueeTicker } from '@/components/marquee-ticker'
 import { UpcomingMatchesSpotlight } from '@/components/trending-topics'
 import { NewsletterSignup } from '@/components/newsletter-signup'
 import { BlogMediaDisplay } from '@/components/blog-media-display'
+import { MatchCTA, NewsletterCTA, ShareButtons } from '@/components/blog/BlogConversionCTAs'
 import { BlogComments } from '@/components/blog-comments'
 import { BlogMatchSalesSidebar } from '@/components/blog-match-sales-sidebar'
 
@@ -42,6 +42,15 @@ interface BlogMedia {
   alt?: string
   caption?: string
   uploadedAt: string
+}
+
+interface LinkedMarketMatch {
+  matchId: string
+  homeTeam: string
+  awayTeam: string
+  league: string | null
+  kickoffDate: string
+  status: string
 }
 
 interface BlogPost {
@@ -67,6 +76,7 @@ interface BlogPost {
   isActive: boolean
   media?: BlogMedia[]
   matchId?: string | null
+  marketMatch?: LinkedMarketMatch | null
 }
 
 interface TeamLogoInfo {
@@ -553,14 +563,18 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                   <Bookmark className="w-3.5 h-3.5 mr-1" />
                   <span className="hidden sm:inline">Save</span>
                 </Button>
-                <Button variant="ghost" size="sm" className="text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 h-8 px-2.5 text-xs">
-                  <Share2 className="w-3.5 h-3.5 mr-1" />
-                  <span className="hidden sm:inline">Share</span>
-                </Button>
+                <ShareButtons blogId={post.id} title={post.title} slug={post.slug} />
               </div>
             </div>
           </div>
         </div>
+
+        {/* ── Match CTA (only when blog is linked to a MarketMatch) ───────── */}
+        {post.marketMatch && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+            <MatchCTA marketMatch={post.marketMatch as any} />
+          </div>
+        )}
 
         {/* ── Article Content Grid ────────────────────────────────────────── */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
@@ -596,6 +610,10 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                   />
                 </div>
               </Card>
+
+              {/* Conversion CTA — newsletter signup. Highest-intent reader has
+                  finished the article; ask them to subscribe. */}
+              <NewsletterCTA />
 
               {/* Tags */}
               {post.tags && post.tags.length > 0 && (

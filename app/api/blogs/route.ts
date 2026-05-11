@@ -50,6 +50,18 @@ export async function GET(request: NextRequest) {
             select: { id: true, type: true, url: true, filename: true, size: true, alt: true, caption: true, uploadedAt: true },
             orderBy: { uploadedAt: 'asc' },
           },
+          // Include linked match so the CTA component can render
+          // "Read AI Prediction for X vs Y →" without re-fetching.
+          marketMatch: {
+            select: {
+              matchId: true,
+              homeTeam: true,
+              awayTeam: true,
+              league: true,
+              kickoffDate: true,
+              status: true,
+            },
+          },
         },
       })
       if (!blog) {
