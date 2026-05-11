@@ -47,12 +47,27 @@ const TIER_TOOLTIPS: Record<SnapBetPick["tier"], { title: string; body: string; 
 }
 
 // Per-pick EV estimate for value picks, derived from the reason string the
-// engine emits (see lib/premium-picks-engine.ts criteria 6 & 7). These map
-// to the empirical EV measured in Matrix F over 90 days.
-function valueEvHint(reasons: string[]): { pct: number; label: string } | null {
+// engine emits. These map to the empirical EV measured in Matrix F /
+// multisport-alpha-analysis over the last 90 days. The full historical
+// (acc, odds, n) is included so the tooltip can show how the EV was earned.
+interface ValueHint {
+  pct: number      // EV % per unit
+  label: string    // short label for tooltip headline
+  acc: number      // historical accuracy %
+  odds: number     // average decimal odds
+  sample: number   // n
+}
+
+function valueEvHint(reasons: string[]): ValueHint | null {
   const first = reasons[0] ?? ""
-  if (first.includes("V3 contrarian")) return { pct: 31, label: "contrarian alpha" }
-  if (first.includes("V3 high-conf draw")) return { pct: 39, label: "draw-detection alpha" }
+  // ── Soccer ──
+  if (first.includes("V3 contrarian")) return { pct: 31, label: "contrarian alpha", acc: 38, odds: 3.45, sample: 95 }
+  if (first.includes("V3 high-conf draw")) return { pct: 39, label: "draw-detection alpha", acc: 40, odds: 3.48, sample: 20 }
+  // ── NBA ──
+  if (first.includes("NBA value bucket")) return { pct: 19, label: "NBA mid-confidence alpha", acc: 71, odds: 1.67, sample: 28 }
+  // ── NHL ──
+  if (first.includes("NHL sweet spot")) return { pct: 31, label: "NHL calibration alpha", acc: 60, odds: 2.18, sample: 60 }
+  if (first.includes("NHL underdog")) return { pct: 15, label: "NHL underdog alpha", acc: 49, odds: 2.36, sample: 164 }
   return null
 }
 
@@ -195,10 +210,11 @@ export function SnapBetPickCard({ pick, isPremium, index }: Props) {
                     <TooltipContent side="bottom" className="max-w-[280px] text-xs leading-relaxed">
                       <div className="font-semibold mb-1 text-violet-300">Implied EV: +{ev.pct}% per unit</div>
                       <div className="text-slate-300">
-                        Based on historical {ev.label}: this pattern hit ~{ev.pct === 39 ? 40 : 38}%
-                        at avg {ev.pct === 39 ? 3.48 : 3.45}x odds over the last 90 days
-                        ({ev.pct === 39 ? 'n=20' : 'n=95'} sample). Hit-rate is lower than premium
-                        picks but the market under-prices it, so profitable returns over volume.
+                        Based on historical {ev.label}: this pattern hit ~{ev.acc}%
+                        at avg {ev.odds.toFixed(2)}x odds over the last 90 days
+                        (n={ev.sample} sample). The market under-prices this kind
+                        of pick, so even at the lower hit-rate the payoff covers
+                        the misses over volume.
                       </div>
                     </TooltipContent>
                   </Tooltip>
