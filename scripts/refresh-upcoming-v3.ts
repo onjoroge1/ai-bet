@@ -93,7 +93,10 @@ async function callPredict(matchId: string): Promise<Result> {
         Authorization: `Bearer ${CRON_SECRET}`,
       },
       body: JSON.stringify({ match_id: Number(matchId), force: true }),
-      signal: AbortSignal.timeout(60000),
+      // Client-side abort sits just under the Vercel function maxDuration of
+      // 90s (declared in vercel.json for app/api/predictions/**). Setting it
+      // lower (e.g. 60s) wastes work — Vercel would have completed.
+      signal: AbortSignal.timeout(85000),
     })
     const ms = Date.now() - t0
     if (!r.ok) {
