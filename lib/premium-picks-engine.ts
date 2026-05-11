@@ -52,29 +52,61 @@ export interface SnapBetPick {
   slug?: string         // For linking to detail page
 }
 
-// Strong leagues where models perform best (from report data)
+// Strong leagues where models perform best.
+// Last reviewed: 2026-05-11 — empirical update from 90-day fresh-era V3 insights.
+// Confirmed entries (n ≥ 20) have current accuracy noted; legacy entries kept
+// from prior curation are flagged. To regenerate the empirical rationale,
+// run `npx tsx scripts/premium-tier-analysis.ts --days 90`.
 const STRONG_SOCCER_LEAGUES = [
-  'Africa Cup of Nations',    // V3: 70%, V1: 74%
-  'Scottish Premiership',     // V1: 72%
-  'League 78',                // V3: 67% (Bundesliga)
-  'Bundesliga',               // V3: 67%
-  'Eredivisie',               // V3: 64%
-  'Championship',             // V1: 50%+
-  'Süper Lig',                // V1: 64%
-  'League One',               // V1: 64%
-  'Super League Greece',      // V1: 55%
-  'Serie A',                  // V3: 50%+
-  'La Liga',                  // V3: 75% (small sample)
-  'UEFA Champions League',    // V3: 52%
-  'UEFA Europa League',       // V3: 52%
-  'Swiss Super League',       // V1: 75%
+  // ── V3-DOMINANT (V3 > V1, n ≥ 20, large agreement lift) ──
+  'Bundesliga',               // V1: 52%, V3: 59%  agree-lift +37pp  (n=29)
+  'La Liga',                  // V1: 58%, V3: 61%  agree-lift +50pp  (n=33)
+
+  // ── Confirmed strong (n ≥ 20, V1 or V3 ≥ 50%) ──
+  'Premier League',           // V1: 55%, V3: 52%  agree-lift +12pp  (n=42)  [empirical add 2026-05-11]
+  'Eredivisie',               // V1: 43%, V3: 47%  agree-lift +12pp  (n=30)
+  'UEFA Champions League',    // V1: 57%, V3: 50%  agree-lift +27pp  (n=8 fresh-era; legacy)
+  'UEFA Europa League',       // V1: 52%, V3: 38%  legacy
+  'Serie A',                  // V1: 35%, V3: 38% — KEEP for surfacing, but consensus is anti-signal (-4pp agree lift)
+
+  // ── Exploratory (n < 20, promising but small sample) ──
+  'Süper Lig',                // V1: 55%, V3: 83%  agree-lift +83pp  (n=6 — exploratory)  [add 2026-05-11]
+  'Eliteserien',              // V1: 63%, V3: 71%  agree-lift +83pp  (n=7 — exploratory)  [add 2026-05-11]
+  'Allsvenskan',              // V1: 67%, V3: 56%                  (n=9 — exploratory)  [add 2026-05-11]
+  'Jupiler Pro League',       // V1: 64%, V3: 56%  agree-lift  +7pp (n=11 — exploratory) [add 2026-05-11]
+  'J1 League',                // V1: 45%, V3: 60%  agree-lift +30pp (n=15 — exploratory) [add 2026-05-11]
+
+  // ── Legacy entries (kept from prior curation, no current n ≥ 20 data) ──
+  'Africa Cup of Nations',    // V3: 70%, V1: 74% (legacy)
+  'Scottish Premiership',     // V1: 72% (legacy)
+  'League 78',                // V3: 67% (Bundesliga 2 alias)
+  'Championship',             // V1: 50%+ (legacy)
+  'League One',               // V1: 64% (legacy)
+  'Super League Greece',      // V1: 55% (legacy)
+  'Swiss Super League',       // V1: 75% (legacy)
 ]
 
-// Weak leagues to deprioritize
+// Weak leagues to deprioritize.
+// Last reviewed: 2026-05-11 — see scripts/premium-tier-analysis.ts for rationale.
 const WEAK_SOCCER_LEAGUES = [
-  'Ligue 1',       // V3: 20%
+  // ── Confirmed weak (n ≥ 20, V1 < 50% AND V3 < 40%) ──
+  'Primeira Liga', // V1: 47%, V3: 34% (n=86) — high-volume but consistently weak  [empirical add 2026-05-11]
+
+  // ── Exploratory weak (small sample, clearly poor accuracy) ──
+  'K League 1',    // V1: 17%, V3: 27% (n=11 — clearly weak even at small n)  [empirical add 2026-05-11]
+
+  // ── Legacy entries (kept from prior curation) ──
+  'Ligue 1',       // V3: 20% (legacy) — note: current 90d V1: 45%, V3: 45% — re-evaluate after more data
   'Ligue 2',       // V1: 0%
   'A-League',      // V3: 30%
+]
+
+// Soccer leagues where V1+V3 *agreement* is empirically an anti-signal
+// (agreement lift < 0 pp in last 90d). Picks engine should NOT promote
+// agreement-on-home in these leagues to "strong" tier — accuracy drops.
+// Last reviewed: 2026-05-11
+const NEGATIVE_CONSENSUS_LEAGUES = [
+  'Serie A',       // agree: 33%, disagree: 38% — Δ -4 pp (n=18 / 16)
 ]
 
 // ─── Main Selection Function ────────────────────────────────────────────────
@@ -177,8 +209,15 @@ async function getSoccerPicks(): Promise<SnapBetPick[]> {
         reasons.push(`V3 ${Math.round(v3conf * 100)}% + strong league (${league})`)
       }
 
-      // Criterion 3: V1+V3 agree + home pick + low draw league
-      if (v1pick === v3pick && v1pick === 'home' && !isHighDrawLeague(league)) {
+      // Criterion 3: V1+V3 agree + home pick + low-draw league + not a
+      // negative-consensus league (e.g. Serie A — empirically agreement is
+      // anti-signal there, see NEGATIVE_CONSENSUS_LEAGUES).
+      if (
+        v1pick === v3pick &&
+        v1pick === 'home' &&
+        !isHighDrawLeague(league) &&
+        !isNegativeConsensusLeague(league)
+      ) {
         qualifies = true
         if (tier === 'standard') tier = 'strong'
         reasons.push('V1+V3 agree on home pick in low-draw league')
@@ -370,4 +409,10 @@ function isHighDrawLeague(league: string): boolean {
   // Leagues with >30% draw rate from our data
   const highDraw = ['LaLiga2', 'Jupiler Pro League', 'League 39', 'League 88', '2. Bundesliga']
   return highDraw.some(hd => league.toLowerCase().includes(hd.toLowerCase()))
+}
+
+function isNegativeConsensusLeague(league: string): boolean {
+  return NEGATIVE_CONSENSUS_LEAGUES.some(nl =>
+    league.toLowerCase().includes(nl.toLowerCase())
+  )
 }
