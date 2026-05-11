@@ -23,7 +23,8 @@ import {
   Bot,
   Star,
   MoreVertical,
-  ArrowUpDown
+  ArrowUpDown,
+  BarChart3
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -398,6 +399,13 @@ export default function AdminBlogsPage() {
           </div>
 
           <div className="flex items-center space-x-4 mt-4 md:mt-0">
+            <Button asChild className="bg-blue-600 hover:bg-blue-700">
+              <Link href="/admin/blogs/performance">
+                <BarChart3 className="w-4 h-4 mr-2" />
+                Performance
+              </Link>
+            </Button>
+
             <Button asChild className="bg-violet-600 hover:bg-violet-700">
               <Link href="/admin/blogs/evergreen">
                 <Star className="w-4 h-4 mr-2" />
