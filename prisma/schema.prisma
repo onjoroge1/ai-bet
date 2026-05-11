@@ -1428,6 +1428,35 @@ model BlogPost {
   @@index([marketMatchId, isPublished])
 }
 
+// Evergreen content pipeline — curated topic queue that drives the AI blog
+// generator. Each row represents a single "shape" we want to publish (e.g.
+// "How AI Predictions Work", "What is CLV?"), tracked through the lifecycle
+// of: queued → drafted → reviewed → published → refresh_due (after 90d).
+//
+// Drives:
+//   - /admin/blogs/evergreen (topic queue UI)
+//   - /api/admin/blogs/generate-evergreen (draft from AI)
+//   - /api/admin/blogs/evergreen-refresh-scheduled (weekly cron)
+model EvergreenTopic {
+  id              String   @id @default(cuid())
+  title           String // canonical evergreen title — e.g. "How AI Predictions Work"
+  slug            String   @unique // url-safe slug, also reused as blog post slug
+  bucket          String // explainer | strategy | concept | league | beginner
+  productAnchor   String? // feature for internal linking: snapbet-picks | clv | parlays | v3 | premium
+  targetQuery     String? // primary SEO query, e.g. "how do ai predictions work"
+  seoKeywords     String[] // additional keywords for the published blog's seoKeywords field
+  promptHint      String? // extra context for the AI generation prompt (sport-specific framing, etc.)
+  status          String   @default("queued") // queued | drafted | reviewed | published | refresh_due
+  blogPostId      String? // FK to the published BlogPost when status='published'
+  lastPublishedAt DateTime?
+  refreshDueAt    DateTime? // computed: lastPublishedAt + 90d
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status, refreshDueAt])
+  @@index([bucket, status])
+}
+
 model SocialMediaPost {
   id String @id @default(cuid())
 
