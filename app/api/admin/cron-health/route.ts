@@ -47,6 +47,8 @@ const EXPECTED_INTERVAL_MS: Record<string, number> = {
   'social:live-events': 2 * MIN,
   'social:results': 30 * MIN,
   'email:nightly-briefing': 1 * DAY,
+  // Weekly Mondays — flag evergreens older than 90d for refresh.
+  'blog:evergreen-refresh': 7 * DAY,
 }
 
 /**

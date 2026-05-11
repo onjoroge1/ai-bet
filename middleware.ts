@@ -61,6 +61,7 @@ const cronEndpoints = [
   // itself has no internal auth; CRON_SECRET via this allowlist is the only
   // way scripts can call it without an admin session.
   '/api/predictions/predict',
+  '/api/admin/blogs/evergreen-refresh-scheduled',
 ]
 
 // Paths that require admin role
