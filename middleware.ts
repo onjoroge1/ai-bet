@@ -57,6 +57,10 @@ const cronEndpoints = [
   '/api/admin/social/summary/evening',
   '/api/admin/social/multisport/scheduled',
   '/api/admin/social/live-events',
+  // Service-to-service endpoint for one-shot V3 refresh scripts. The route
+  // itself has no internal auth; CRON_SECRET via this allowlist is the only
+  // way scripts can call it without an admin session.
+  '/api/predictions/predict',
 ]
 
 // Paths that require admin role
