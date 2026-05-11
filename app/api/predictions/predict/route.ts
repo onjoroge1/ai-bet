@@ -9,7 +9,7 @@ import { Prisma } from '@prisma/client';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { match_id } = body;
+    const { match_id, force } = body;
 
     if (!match_id) {
       return NextResponse.json(
@@ -17,6 +17,12 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    // `force: true` bypasses the QuickPurchase predictionData cache and
+    // forces a fresh upstream /predict call. Used by refresh-upcoming-v3
+    // and similar scripts that need post-fix v3 data. Cron callers usually
+    // omit this so the route stays cheap for user-facing requests.
+    const forceFresh = force === true || force === 'true'
 
     const matchIdStr = String(match_id);
 
@@ -80,7 +86,8 @@ export async function POST(request: Request) {
     }
 
     // If QuickPurchase exists with valid predictionData, return it instead of calling backend
-    if (hasValidPredictionData && quickPurchase) {
+    // — unless caller passed `force: true` (e.g. one-shot refresh scripts).
+    if (hasValidPredictionData && quickPurchase && !forceFresh) {
       console.log(`[Predict API] Using existing predictionData from QuickPurchase for match ${match_id}`);
 
       // Compute premium score if not yet computed

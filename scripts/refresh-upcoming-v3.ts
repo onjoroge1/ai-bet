@@ -85,7 +85,7 @@ async function callPredict(matchId: string): Promise<Result> {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${CRON_SECRET}`,
       },
-      body: JSON.stringify({ match_id: Number(matchId) }),
+      body: JSON.stringify({ match_id: Number(matchId), force: true }),
       signal: AbortSignal.timeout(60000),
     })
     const ms = Date.now() - t0
