@@ -52,10 +52,17 @@ const DRY_RUN = process.argv.includes('--dry-run')
 const LIMIT_ARG = process.argv.indexOf('--limit')
 const LIMIT = LIMIT_ARG !== -1 ? parseInt(process.argv[LIMIT_ARG + 1], 10) : undefined
 const CONC_ARG = process.argv.indexOf('--concurrency')
-const CONCURRENCY = CONC_ARG !== -1 ? parseInt(process.argv[CONC_ARG + 1], 10) : 3
+// Default 2 — observed in production that concurrency 3 saturated the
+// upstream Replit instance after ~30 min sustained, triggering 504s.
+const CONCURRENCY = CONC_ARG !== -1 ? parseInt(process.argv[CONC_ARG + 1], 10) : 2
 const BASE_ARG = process.argv.indexOf('--base-url')
 const BASE_URL = BASE_ARG !== -1 ? process.argv[BASE_ARG + 1] : 'https://www.snapbet.bet'
-const BATCH_DELAY_MS = 500
+const DELAY_ARG = process.argv.indexOf('--batch-delay')
+const BATCH_DELAY_MS = DELAY_ARG !== -1 ? parseInt(process.argv[DELAY_ARG + 1], 10) : 1500
+// --id-file <path>: read newline-separated match_ids from file instead of
+// querying upcoming. Use for targeted retries or backfilling finished matches.
+const ID_FILE_ARG = process.argv.indexOf('--id-file')
+const ID_FILE = ID_FILE_ARG !== -1 ? process.argv[ID_FILE_ARG + 1] : undefined
 
 interface Match {
   matchId: string
@@ -122,16 +129,35 @@ async function main() {
   if (LIMIT) console.log(`  limit:       ${LIMIT}`)
   console.log()
 
-  const matches = (await prisma.marketMatch.findMany({
-    where: {
-      status: 'UPCOMING',
-      isActive: true,
-      kickoffDate: { gte: now },
-    },
-    select: { matchId: true, homeTeam: true, awayTeam: true, league: true, kickoffDate: true },
-    orderBy: { kickoffDate: 'asc' },
-    ...(LIMIT ? { take: LIMIT } : {}),
-  })) as Match[]
+  let matches: Match[]
+  if (ID_FILE) {
+    // Targeted mode: read IDs from file, look up metadata for logging.
+    if (!fs.existsSync(ID_FILE)) {
+      console.error(`--id-file not found: ${ID_FILE}`)
+      process.exit(1)
+    }
+    const ids = fs.readFileSync(ID_FILE, 'utf-8').split('\n').map(s => s.trim()).filter(Boolean)
+    console.log(`  source:      --id-file ${ID_FILE} (${ids.length} IDs)`)
+    matches = (await prisma.marketMatch.findMany({
+      where: { matchId: { in: ids } },
+      select: { matchId: true, homeTeam: true, awayTeam: true, league: true, kickoffDate: true },
+      ...(LIMIT ? { take: LIMIT } : {}),
+    })) as Match[]
+    // Preserve file order
+    const order = new Map(ids.map((id, i) => [id, i]))
+    matches.sort((a, b) => (order.get(a.matchId) ?? 0) - (order.get(b.matchId) ?? 0))
+  } else {
+    matches = (await prisma.marketMatch.findMany({
+      where: {
+        status: 'UPCOMING',
+        isActive: true,
+        kickoffDate: { gte: now },
+      },
+      select: { matchId: true, homeTeam: true, awayTeam: true, league: true, kickoffDate: true },
+      orderBy: { kickoffDate: 'asc' },
+      ...(LIMIT ? { take: LIMIT } : {}),
+    })) as Match[]
+  }
 
   console.log(`Targets: ${matches.length} matches\n`)
 

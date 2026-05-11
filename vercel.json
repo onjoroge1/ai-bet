@@ -21,6 +21,9 @@
     "app/api/admin/predictions/**/*.ts": {
       "maxDuration": 120
     },
+    "app/api/predictions/**/*.ts": {
+      "maxDuration": 90
+    },
     "app/api/**/*.ts": {
       "maxDuration": 30
     }
