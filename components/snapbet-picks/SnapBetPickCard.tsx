@@ -32,6 +32,10 @@ interface Props {
 const tierColors = {
   premium: { border: "border-l-amber-400", bg: "bg-amber-500/5", badge: "bg-amber-500/20 text-amber-300 border-amber-500/30" },
   strong: { border: "border-l-emerald-400", bg: "bg-emerald-500/5", badge: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" },
+  // Value picks: contrarian / draw-detection patterns with empirical +EV.
+  // Violet chosen to be visually distinct from premium (amber) and strong
+  // (emerald) — these are a DIFFERENT KIND of pick, not a lower-confidence one.
+  value: { border: "border-l-violet-400", bg: "bg-violet-500/5", badge: "bg-violet-500/20 text-violet-300 border-violet-500/30" },
   standard: { border: "border-l-blue-400", bg: "bg-blue-500/5", badge: "bg-blue-500/20 text-blue-300 border-blue-500/30" },
 }
 
@@ -81,7 +85,12 @@ export function SnapBetPickCard({ pick, isPremium, index }: Props) {
                   <circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" strokeWidth="3" className="text-slate-700/50" />
                   <circle
                     cx="24" cy="24" r="21" fill="none" strokeWidth="3" strokeLinecap="round"
-                    className={pick.tier === 'premium' ? 'stroke-amber-400' : pick.tier === 'strong' ? 'stroke-emerald-400' : 'stroke-blue-400'}
+                    className={
+                      pick.tier === 'premium' ? 'stroke-amber-400'
+                      : pick.tier === 'strong' ? 'stroke-emerald-400'
+                      : pick.tier === 'value' ? 'stroke-violet-400'
+                      : 'stroke-blue-400'
+                    }
                     strokeDasharray={`${2 * Math.PI * 21}`}
                     strokeDashoffset={`${2 * Math.PI * 21 * (1 - pick.confidence / 100)}`}
                     style={{ transition: 'stroke-dashoffset 0.6s' }}

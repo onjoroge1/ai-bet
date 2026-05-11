@@ -41,7 +41,14 @@ export interface SnapBetPick {
   pick: string          // "Home", "Away", "Draw"
   pickTeam: string      // Actual team name
   confidence: number    // 0-100
-  tier: 'premium' | 'strong' | 'standard'
+  // 'premium' — highest accuracy (~71% on V3 conf ≥60%, but break-even EV)
+  // 'strong'  — moderate accuracy with V1/V3 conviction signals
+  // 'value'   — contrarian or draw-detection picks with empirical positive EV
+  //             (+0.30 to +0.40/unit) despite lower accuracy. Different KIND
+  //             of pick than premium — surfaced for users seeking market alpha
+  //             rather than high hit-rate.
+  // 'standard'— baseline V2-gated pick, near coin-flip
+  tier: 'premium' | 'strong' | 'value' | 'standard'
   starRating: number    // 1-5
   reasons: string[]     // Why this pick qualifies
   // Premium-only fields
@@ -126,7 +133,10 @@ export async function getSnapBetPicks(limit: number = 10): Promise<SnapBetPick[]
 
   // Sort by tier (premium first), then confidence, then kickoff
   allPicks.sort((a, b) => {
-    const tierOrder = { premium: 0, strong: 1, standard: 2 }
+    // Value picks sit between strong and standard — they're not high-accuracy
+    // so they shouldn't out-rank a 70%+ premium, but their EV warrants
+    // surfacing above generic standard picks.
+    const tierOrder = { premium: 0, strong: 1, value: 2, standard: 3 }
     if (tierOrder[a.tier] !== tierOrder[b.tier]) return tierOrder[a.tier] - tierOrder[b.tier]
     if (b.confidence !== a.confidence) return b.confidence - a.confidence
     return new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()
@@ -193,7 +203,7 @@ async function getSoccerPicks(): Promise<SnapBetPick[]> {
       // ── Apply selection criteria ──
 
       let qualifies = false
-      let tier: 'premium' | 'strong' | 'standard' = 'standard'
+      let tier: 'premium' | 'strong' | 'value' | 'standard' = 'standard'
 
       // Criterion 1: V3 confidence ≥ 60% → 100% historical accuracy
       if (v3conf >= 0.6) {
@@ -235,6 +245,39 @@ async function getSoccerPicks(): Promise<SnapBetPick[]> {
         qualifies = true
         if (tier === 'standard') tier = 'strong'
         reasons.push(`V1 ${Math.round(v1conf * 100)}% in ${league}`)
+      }
+
+      // ── VALUE TIER — empirically positive-EV patterns ──
+      // These are surfaced *only* if no higher tier already applies.
+      // Source: scripts/premium-tier-analysis.ts Matrix F (last 90d).
+
+      // Criterion 6: V1+V3 disagreement, V3 surfaced (V3 contrarian).
+      // Matrix F: 38% accuracy at avg 3.45 odds → +0.31 EV/unit (n=95).
+      // The market and V1 agree; V3 dissents. When V3 dissent is right,
+      // payoff is large because odds are loose.
+      if (
+        v1pick && v3pick &&
+        v1pick !== v3pick &&
+        v3conf >= 0.40 &&
+        !isWeakLeague(league)
+      ) {
+        qualifies = true
+        if (tier === 'standard') tier = 'value'
+        reasons.push(`V3 contrarian (V1: ${v1pick}, V3 ${Math.round(v3conf * 100)}%: ${v3pick})`)
+      }
+
+      // Criterion 7: V3 high-confidence draw call.
+      // Matrix F: 40% accuracy at avg 3.48 odds → +0.39 EV/unit (n=20).
+      // Draws are systematically under-called by 1X2 markets; V3 is the
+      // only model that ever picks draws (V1 architecturally cannot).
+      if (
+        v3pick === 'draw' &&
+        v3conf >= 0.40 &&
+        !isWeakLeague(league)
+      ) {
+        qualifies = true
+        if (tier === 'standard') tier = 'value'
+        reasons.push(`V3 high-conf draw call (${Math.round(v3conf * 100)}%) — market under-prices draws`)
       }
 
       // Skip weak leagues unless very high confidence
@@ -282,7 +325,7 @@ async function getSoccerPicks(): Promise<SnapBetPick[]> {
         pickTeam,
         confidence: Math.round(headlineConf * 100),
         tier,
-        starRating: tier === 'premium' ? 5 : tier === 'strong' ? 4 : 3,
+        starRating: tier === 'premium' ? 5 : tier === 'strong' ? 4 : tier === 'value' ? 4 : 3,
         reasons,
         edge: v3preds.edge_vs_market || undefined,
         odds: odds ? { home: odds.home, draw: odds.draw, away: odds.away } : undefined,
@@ -338,7 +381,8 @@ async function getMultisportPicks(
       const pickSide = pick === 'H' ? 'Home' : 'Away'
       const reasons: string[] = []
 
-      let tier: 'premium' | 'strong' | 'standard' = 'standard'
+      // Multisport doesn't currently emit 'value' tier — soccer-only for now.
+      let tier: 'premium' | 'strong' | 'value' | 'standard' = 'standard'
 
       if (confidence >= 0.90) {
         tier = 'premium'
@@ -375,6 +419,8 @@ async function getMultisportPicks(
         pickTeam,
         confidence: Math.round(confidence * 100),
         tier,
+        // Multisport never assigns 'value' (it's soccer-only for now), so the
+        // ternary only needs to cover the multisport-reachable tiers.
         starRating: tier === 'premium' ? 5 : tier === 'strong' ? 4 : 3,
         reasons,
         edge: preds.edge_vs_market || undefined,

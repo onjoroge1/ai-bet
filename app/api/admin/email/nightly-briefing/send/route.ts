@@ -387,7 +387,9 @@ function renderBriefingBlocks(data: Awaited<ReturnType<typeof gatherBriefingData
 
   // ── Header stats (top of email) ──
   const topPicks = picks.slice(0, 3)
-  const edgeCount = picks.filter(p => p.tier === 'premium' || p.tier === 'strong').length
+  // 'value' tier represents empirically +EV contrarian / draw-detection
+  // picks — they count as edges even though accuracy is lower than premium.
+  const edgeCount = picks.filter(p => p.tier === 'premium' || p.tier === 'strong' || p.tier === 'value').length
   const topPickCount = picks.length || upcomingCount
   const avgConfidence = picks.length
     ? Math.round(picks.reduce((s, p) => s + p.confidence, 0) / picks.length)
@@ -536,6 +538,7 @@ function riskLabel(confidence: number): string {
 function marketSignal(tier: string): string {
   if (tier === 'premium') return 'Sharp'
   if (tier === 'strong') return 'Aligned'
+  if (tier === 'value') return 'Contrarian'
   return 'Mixed'
 }
 
