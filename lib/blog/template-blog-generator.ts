@@ -47,41 +47,41 @@ export interface MarketMatchWithQP {
  * Template-only blog generator for QuickPurchase predictions
  * Creates simple HTML previews without AI generation
  */
+// Re-export the pure helpers so existing callers keep working.
+export { buildBlogEligibilityWhere, MAX_BLOGS_PER_RUN } from './eligibility'
+import { buildBlogEligibilityWhere as _build, MAX_BLOGS_PER_RUN as _CAP } from './eligibility'
+
 export class TemplateBlogGenerator {
   /**
-   * Get eligible MarketMatch records for blog generation
-   * Sources from MarketMatch table and uses QuickPurchase data for content
-   * Includes matches without blogs (for generation) but also returns blog status
+   * Get eligible MarketMatch records for blog generation.
+   *
+   * Filters: UPCOMING + active + kickoff within next 48h + no existing blog.
+   * Sorted by V3/V1 confidence desc so the highest-quality matches are first.
+   * Hard-capped at MAX_BLOGS_PER_RUN (default 15).
    */
   static async getEligibleMarketMatches(includeWithBlogs: boolean = false): Promise<MarketMatchWithQP[]> {
-    console.log('[TemplateBlog] Fetching eligible MarketMatches...')
+    const t0 = Date.now()
+    const whereClause = _build({ includeWithBlogs })
+
+    console.log('[TemplateBlog] Eligibility filter:', JSON.stringify(whereClause, null, 2))
     
-    const whereClause: any = {
-      status: 'UPCOMING',
-      isActive: true,
-    }
-    
-    // Only exclude matches with blogs if we don't want to include them
-    if (!includeWithBlogs) {
-      whereClause.blogPosts = {
-        none: {
-          isActive: true
-        }
-      }
-    }
-    
-    console.log('[TemplateBlog] Query where clause:', JSON.stringify(whereClause, null, 2))
-    
-    // First, let's check basic counts for debugging
-    const totalMarketMatches = await prisma.marketMatch.count({
-      where: {
-        status: 'UPCOMING',
-        isActive: true,
-      }
-    })
-    console.log(`[TemplateBlog] Total UPCOMING MarketMatches: ${totalMarketMatches}`)
-    
-    // Fetch MarketMatch records first (including odds data)
+    // Diagnostics: total UPCOMING (raw) and how many were skipped by the
+    // new pre-match window filter. Logged so /admin can see what the cron
+    // is actually doing rather than guessing.
+    const [totalUpcoming, skippedZombies] = await Promise.all([
+      prisma.marketMatch.count({ where: { status: 'UPCOMING', isActive: true } }),
+      prisma.marketMatch.count({
+        where: {
+          status: 'UPCOMING', isActive: true,
+          kickoffDate: { lt: new Date() }, // upcoming but kickoff in past = zombie
+        },
+      }),
+    ])
+    console.log(`[TemplateBlog] UPCOMING total: ${totalUpcoming}, zombies (past kickoff): ${skippedZombies}`)
+
+    // Fetch MarketMatch records — capped, sorted by V3 confidence then kickoff.
+    // Prisma can't sort by JSON path directly, so we over-fetch slightly and
+    // sort in-memory.
     const matches = await prisma.marketMatch.findMany({
       where: whereClause,
       select: {
@@ -93,21 +93,39 @@ export class TemplateBlogGenerator {
         league: true,
         kickoffDate: true,
         consensusOdds: true,
+        v3Model: true,
+        v1Model: true,
         blogPosts: {
           where: { isActive: true },
-          select: {
-            id: true,
-            title: true,
-            isPublished: true,
-          },
-          take: 1
-        }
+          select: { id: true, title: true, isPublished: true },
+          take: 1,
+        },
       },
       orderBy: { kickoffDate: 'asc' },
-      take: 50 // Limit results
+      take: _CAP * 3, // over-fetch for in-memory sort by confidence
     })
 
-    console.log(`[TemplateBlog] Found ${matches.length} MarketMatch records`)
+    // Sort by max(v3.confidence, v1.confidence) DESC — highest-quality first
+    matches.sort((a: any, b: any) => {
+      const aConf = Math.max(
+        Number(a.v3Model?.confidence ?? 0),
+        Number(a.v1Model?.confidence ?? 0),
+      )
+      const bConf = Math.max(
+        Number(b.v3Model?.confidence ?? 0),
+        Number(b.v1Model?.confidence ?? 0),
+      )
+      if (bConf !== aConf) return bConf - aConf
+      return a.kickoffDate.getTime() - b.kickoffDate.getTime()
+    })
+
+    // Trim to per-run cap
+    const capped = matches.slice(0, _CAP)
+
+    console.log(`[TemplateBlog] Eligible candidates: ${matches.length} (sorted by confidence); capped to ${capped.length}/run`)
+    // Replace `matches` reference downstream
+    matches.length = 0
+    matches.push(...capped)
     
     if (matches.length === 0) {
       console.log('[TemplateBlog] No MarketMatch records found, returning empty array')

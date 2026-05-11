@@ -1390,6 +1390,9 @@ model BlogPost {
   viewCount Int @default(0)
 
   shareCount Int @default(0)
+  // Increments when a reader clicks the "See the full AI prediction →"
+  // CTA on a blog post. Drives the blog→match conversion KPI.
+  ctaClickCount Int @default(0)
 
   readTime Int
 

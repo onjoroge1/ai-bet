@@ -31,6 +31,7 @@ function relativeKickoff(iso: string): string {
 // ─── Match CTA (renders only when blog is linked to a MarketMatch) ───────
 
 interface MatchCtaProps {
+  blogId: string
   marketMatch: {
     matchId: string
     homeTeam: string
@@ -41,11 +42,10 @@ interface MatchCtaProps {
   }
 }
 
-export function MatchCTA({ marketMatch }: MatchCtaProps) {
+export function MatchCTA({ blogId, marketMatch }: MatchCtaProps) {
   const slug = matchSlug(marketMatch.homeTeam, marketMatch.awayTeam, marketMatch.matchId)
   const isFinished = marketMatch.status === 'FINISHED'
   const isLive = marketMatch.status === 'LIVE'
-  const isUpcoming = marketMatch.status === 'UPCOMING'
 
   const headline = isFinished
     ? 'See how the AI prediction played out'
@@ -59,9 +59,33 @@ export function MatchCTA({ marketMatch }: MatchCtaProps) {
     ? `${marketMatch.homeTeam} vs ${marketMatch.awayTeam} — LIVE NOW`
     : `${marketMatch.homeTeam} vs ${marketMatch.awayTeam} — ${relativeKickoff(marketMatch.kickoffDate)}`
 
+  // Fire-and-forget click tracking. Using sendBeacon when available so the
+  // request still completes after the page starts navigating; falls back to
+  // fetch with keepalive otherwise. We don't block navigation on this.
+  function trackClick() {
+    const url = `/api/blogs/${blogId}/cta-click`
+    const payload = JSON.stringify({ destination: 'match' })
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+        const blob = new Blob([payload], { type: 'application/json' })
+        navigator.sendBeacon(url, blob)
+      } else {
+        fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload,
+          keepalive: true,
+        }).catch(() => { /* non-fatal */ })
+      }
+    } catch {
+      /* never fail the click */
+    }
+  }
+
   return (
     <Link
       href={`/match/${slug}`}
+      onClick={trackClick}
       className="block rounded-xl overflow-hidden border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-blue-500/10 hover:from-emerald-500/15 hover:to-blue-500/15 transition-all my-8 group"
     >
       <div className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-4">

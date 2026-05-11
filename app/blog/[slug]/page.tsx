@@ -572,7 +572,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
         {/* ── Match CTA (only when blog is linked to a MarketMatch) ───────── */}
         {post.marketMatch && (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
-            <MatchCTA marketMatch={post.marketMatch as any} />
+            <MatchCTA blogId={post.id} marketMatch={post.marketMatch as any} />
           </div>
         )}
 

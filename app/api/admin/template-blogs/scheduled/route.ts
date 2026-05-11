@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
-import { TemplateBlogGenerator } from '@/lib/blog/template-blog-generator'
+import { TemplateBlogGenerator, MAX_BLOGS_PER_RUN } from '@/lib/blog/template-blog-generator'
 import prisma from '@/lib/db'
+import { beginCron, endCron, type HeartbeatToken } from '@/lib/cron-heartbeat'
 
 /**
  * GET /api/admin/template-blogs/scheduled - Scheduled blog generation (for cron jobs)
@@ -17,6 +18,7 @@ import prisma from '@/lib/db'
  */
 export async function GET(request: NextRequest) {
   const startTime = Date.now()
+  let hb: HeartbeatToken | null = null
 
   try {
     // Verify cron secret
@@ -31,9 +33,37 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    hb = await beginCron('blog:templates')
+
     logger.info('🕐 CRON: Starting scheduled blog generation', {
       tags: ['api', 'admin', 'template-blogs', 'cron', 'generation'],
-      data: { startTime: new Date(startTime).toISOString() },
+      data: {
+        startTime: new Date(startTime).toISOString(),
+        maxPerRun: MAX_BLOGS_PER_RUN,
+        scheduleNote: 'Every 3h since 2026-05-12 (was once daily)',
+      },
+    })
+
+    // Pre-flight: count what's in the universe AND what'll be skipped.
+    // Surfaces the "we generated blogs for finished matches" failure mode
+    // in the logs directly so the next operator doesn't need a separate audit.
+    const [totalUpcomingActive, zombieCount] = await Promise.all([
+      prisma.marketMatch.count({ where: { status: 'UPCOMING', isActive: true } }),
+      prisma.marketMatch.count({
+        where: {
+          status: 'UPCOMING',
+          isActive: true,
+          kickoffDate: { lt: new Date() }, // upcoming but past kickoff = zombie
+        },
+      }),
+    ])
+    logger.info('🕐 CRON: Pre-flight match census', {
+      tags: ['api', 'admin', 'template-blogs', 'cron'],
+      data: {
+        totalUpcomingActive,
+        zombiesSkippedByFilter: zombieCount,
+        note: 'zombies = UPCOMING rows with past kickoff; excluded since 2026-05-12 filter fix',
+      },
     })
 
     // Get eligible matches (matches without blogs)
@@ -170,6 +200,8 @@ export async function GET(request: NextRequest) {
       },
     })
 
+    if (hb) await endCron(hb, { status: errors.length > 0 ? 'error' : 'ok', rowsAffected: generated })
+
     return NextResponse.json({
       success: true,
       message: 'Scheduled blog generation completed',
@@ -177,6 +209,7 @@ export async function GET(request: NextRequest) {
         generated,
         skipped,
         total: eligibleMatches.length,
+        capPerRun: MAX_BLOGS_PER_RUN,
         errors: errors.length,
       },
       errors: errors.slice(0, 10), // Return first 10 errors
@@ -184,6 +217,7 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString(),
     })
   } catch (error) {
+    if (hb) await endCron(hb, { status: 'error', error })
     const duration = Date.now() - startTime
     logger.error('🕐 CRON: Blog generation failed', {
       tags: ['api', 'admin', 'template-blogs', 'cron', 'generation', 'error'],

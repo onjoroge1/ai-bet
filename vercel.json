@@ -67,7 +67,7 @@
     },
     {
       "path": "/api/admin/template-blogs/scheduled",
-      "schedule": "0 2 * * *"
+      "schedule": "0 */3 * * *"
     },
     {
       "path": "/api/admin/social/twitter/scheduled",

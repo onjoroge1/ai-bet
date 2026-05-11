@@ -49,6 +49,8 @@ const EXPECTED_INTERVAL_MS: Record<string, number> = {
   'email:nightly-briefing': 1 * DAY,
   // Weekly Mondays — flag evergreens older than 90d for refresh.
   'blog:evergreen-refresh': 7 * DAY,
+  // Template-blog generation runs every 3h (since 2026-05-12), max 15 posts/run.
+  'blog:templates': 3 * HOUR,
 }
 
 /**

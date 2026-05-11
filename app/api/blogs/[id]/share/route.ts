@@ -42,7 +42,10 @@ export async function POST(
     return NextResponse.json({ success: true, shareCount: updated.shareCount })
   } catch (error) {
     // P2025: record not found
-    if (typeof error === 'object' && error && 'code' in error && (error as any).code === 'P2025') {
+    if (
+      typeof error === 'object' && error !== null && 'code' in error &&
+      (error as { code: string }).code === 'P2025'
+    ) {
       return NextResponse.json({ success: false, error: 'Blog not found' }, { status: 404 })
     }
     console.error('[Blog Share] Error:', error)
