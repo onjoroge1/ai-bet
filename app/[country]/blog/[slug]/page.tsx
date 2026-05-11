@@ -7,6 +7,7 @@ import prisma from '@/lib/db'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
+import { NewsletterPopup } from '@/components/blog/BlogConversionCTAs'
 import { 
   ArrowLeft, 
   User, 
@@ -232,6 +233,11 @@ export default async function CountryBlogPostPage({ params }: CountryBlogPostPag
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      {/* Newsletter popup — same scroll/exit-intent trigger as the
+          non-country blog route. Renders nothing until armed and respects
+          the snapbet_nl cookie. */}
+      <NewsletterPopup blogId={post.id} />
+
       {/* Navigation */}
       <div>
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -347,7 +353,7 @@ export default async function CountryBlogPostPage({ params }: CountryBlogPostPag
                 </div>
                 <div className="flex items-start gap-2">
                   <div className="w-2 h-2 bg-emerald-400 rounded-full mt-2 flex-shrink-0"></div>
-                  <p className="text-slate-300 text-sm">Higher confidence doesn't guarantee wins, but indicates stronger historical support</p>
+                  <p className="text-slate-300 text-sm">Higher confidence doesn&apos;t guarantee wins, but indicates stronger historical support</p>
                 </div>
                 <div className="flex items-start gap-2">
                   <div className="w-2 h-2 bg-emerald-400 rounded-full mt-2 flex-shrink-0"></div>
@@ -381,7 +387,7 @@ export default async function CountryBlogPostPage({ params }: CountryBlogPostPag
               <Button asChild className="bg-emerald-600 hover:bg-emerald-700">
                 <Link href={`/${country.toLowerCase()}`}>
                   <Target className="w-4 h-4 mr-2" />
-                  View Today's Predictions
+                  View Today&apos;s Predictions
                 </Link>
               </Button>
               <Button asChild variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700">

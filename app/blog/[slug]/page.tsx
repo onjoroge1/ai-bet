@@ -10,7 +10,6 @@ import {
   Eye,
   ArrowLeft,
   Sparkles,
-  ArrowRight,
   Heart,
   MessageCircle,
   Bookmark,
@@ -27,7 +26,7 @@ import { MarqueeTicker } from '@/components/marquee-ticker'
 import { UpcomingMatchesSpotlight } from '@/components/trending-topics'
 import { NewsletterSignup } from '@/components/newsletter-signup'
 import { BlogMediaDisplay } from '@/components/blog-media-display'
-import { MatchCTA, NewsletterCTA, ShareButtons } from '@/components/blog/BlogConversionCTAs'
+import { MatchCTA, NewsletterCTA, NewsletterPopup, ShareButtons } from '@/components/blog/BlogConversionCTAs'
 import { BlogComments } from '@/components/blog-comments'
 import { BlogMatchSalesSidebar } from '@/components/blog-match-sales-sidebar'
 
@@ -572,9 +571,21 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
         {/* ── Match CTA (only when blog is linked to a MarketMatch) ───────── */}
         {post.marketMatch && (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
-            <MatchCTA blogId={post.id} marketMatch={post.marketMatch as any} />
+            <MatchCTA blogId={post.id} marketMatch={{
+              matchId: post.marketMatch.matchId,
+              homeTeam: post.marketMatch.homeTeam,
+              awayTeam: post.marketMatch.awayTeam,
+              league: post.marketMatch.league,
+              kickoffDate: post.marketMatch.kickoffDate instanceof Date ? post.marketMatch.kickoffDate.toISOString() : String(post.marketMatch.kickoffDate),
+              status: post.marketMatch.status,
+            }} />
           </div>
         )}
+
+        {/* ── Newsletter popup (scroll-triggered + exit-intent, dismissible).
+            Renders nothing until the trigger fires. Suppresses itself when
+            the snapbet_nl cookie says 'dismissed' or 'subscribed'. ─────── */}
+        <NewsletterPopup blogId={post.id} />
 
         {/* ── Article Content Grid ────────────────────────────────────────── */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
@@ -613,7 +624,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
               {/* Conversion CTA — newsletter signup. Highest-intent reader has
                   finished the article; ask them to subscribe. */}
-              <NewsletterCTA />
+              <NewsletterCTA blogId={post.id} />
 
               {/* Tags */}
               {post.tags && post.tags.length > 0 && (
@@ -645,7 +656,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                     <Button asChild className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2.5 shadow-lg shadow-emerald-900/30 hover:shadow-emerald-800/40 hover:scale-[1.02] transition-all">
                       <Link href="/matches">
                         <Target className="w-4 h-4 mr-2" />
-                        View Today's Predictions
+                        View Today&apos;s Predictions
                       </Link>
                     </Button>
                     <Button asChild variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800/60 hover:border-slate-600 px-6 py-2.5 transition-all">

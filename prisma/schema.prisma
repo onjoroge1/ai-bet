@@ -1772,6 +1772,26 @@ model NewsletterSubscription {
   @@index([subscribedAt])
 }
 
+// Lightweight funnel tracking for the newsletter widgets on the public blog.
+// Lets the performance dashboard answer:
+//   - popup impression-to-subscribe rate
+//   - popup dismissal rate
+//   - which source (static_widget vs popup) converts better
+//   - which blogs drive the most signups
+// We store a row per event (not aggregates) so we can slice freely.
+model NewsletterEvent {
+  id        String   @id @default(cuid())
+  type      String   // 'impression' | 'dismiss' | 'subscribe'
+  source    String   // 'static_widget' | 'popup'
+  blogId    String?  // BlogPost.id when fired from a blog page
+  email     String?  // only set on 'subscribe' for de-dupe + funnel join
+  createdAt DateTime @default(now())
+
+  @@index([type, source, createdAt])
+  @@index([blogId, createdAt])
+  @@index([createdAt])
+}
+
 // CLV Opportunity Cache for low-bandwidth users
 model CLVOpportunityCache {
   id           String   @id @default(cuid())
