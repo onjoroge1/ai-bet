@@ -1,7 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { Star, Lock, TrendingUp, Clock } from "lucide-react"
+import { Star, Lock, TrendingUp, Clock, Info } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface SnapBetPick {
   id: string
@@ -14,13 +15,45 @@ interface SnapBetPick {
   pick: string
   pickTeam: string
   confidence: number
-  tier: "premium" | "strong" | "standard"
+  tier: "premium" | "strong" | "value" | "standard"
   starRating: number
   reasons: string[]
   edge?: number
   spread?: number
   totalLine?: number
   slug?: string
+}
+
+// Tier explanations shown in the badge tooltip. Sources: 90-day fresh-era
+// soccer insights (scripts/premium-tier-analysis.ts Matrix F).
+const TIER_TOOLTIPS: Record<SnapBetPick["tier"], { title: string; body: string; ev?: string }> = {
+  premium: {
+    title: "Premium Pick",
+    body: "Highest accuracy tier — model is exceptionally confident. Historical hit-rate ~71% at short odds. Best for steady, low-variance plays.",
+  },
+  strong: {
+    title: "Strong Pick",
+    body: "High-conviction pick — model signals align across V1 and V3. Historical hit-rate ~53%. Good baseline play.",
+  },
+  value: {
+    title: "Value Pick — Market Edge",
+    body: "Contrarian or draw-detection pick. Lower hit-rate (~38-40%) but the market under-prices it, so payoff covers the misses. Best as part of a portfolio.",
+    ev: "+31 to +39% avg EV per unit (last 90d)",
+  },
+  standard: {
+    title: "Standard Pick",
+    body: "Baseline pick that passes our quality gate. Near coin-flip accuracy — surface area for users who want broader coverage.",
+  },
+}
+
+// Per-pick EV estimate for value picks, derived from the reason string the
+// engine emits (see lib/premium-picks-engine.ts criteria 6 & 7). These map
+// to the empirical EV measured in Matrix F over 90 days.
+function valueEvHint(reasons: string[]): { pct: number; label: string } | null {
+  const first = reasons[0] ?? ""
+  if (first.includes("V3 contrarian")) return { pct: 31, label: "contrarian alpha" }
+  if (first.includes("V3 high-conf draw")) return { pct: 39, label: "draw-detection alpha" }
+  return null
 }
 
 interface Props {
@@ -41,10 +74,12 @@ const tierColors = {
 
 export function SnapBetPickCard({ pick, isPremium, index }: Props) {
   const colors = tierColors[pick.tier]
+  const tooltipCopy = TIER_TOOLTIPS[pick.tier]
   const kickoff = new Date(pick.kickoff)
   const now = new Date()
   const hoursUntil = Math.round((kickoff.getTime() - now.getTime()) / 3600000)
   const timeLabel = hoursUntil < 1 ? "Starting soon" : hoursUntil < 24 ? `In ${hoursUntil}h` : `In ${Math.ceil(hoursUntil / 24)}d`
+  const ev = pick.tier === "value" ? valueEvHint(pick.reasons) : null
 
   return (
     <Link href={pick.slug || "#"} className="block group">
@@ -64,9 +99,28 @@ export function SnapBetPickCard({ pick, isPremium, index }: Props) {
                 <Star key={i} className="w-3 h-3 text-slate-600" />
               ))}
             </div>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${colors.badge}`}>
-              {pick.tier.charAt(0).toUpperCase() + pick.tier.slice(1)}
-            </span>
+            <TooltipProvider delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border font-semibold cursor-help ${colors.badge}`}
+                    onClick={(e) => e.preventDefault() /* let the tooltip handle, don't navigate */}
+                  >
+                    {pick.tier.charAt(0).toUpperCase() + pick.tier.slice(1)}
+                    <Info className="w-3 h-3 opacity-70" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-[260px] text-xs leading-relaxed">
+                  <div className="font-semibold mb-1">{tooltipCopy.title}</div>
+                  <div className="text-slate-300">{tooltipCopy.body}</div>
+                  {tooltipCopy.ev && (
+                    <div className="mt-2 pt-2 border-t border-slate-700 text-violet-300 font-medium">
+                      {tooltipCopy.ev}
+                    </div>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
 
@@ -96,7 +150,12 @@ export function SnapBetPickCard({ pick, isPremium, index }: Props) {
                     style={{ transition: 'stroke-dashoffset 0.6s' }}
                   />
                 </svg>
-                <span className={`absolute text-xs font-bold ${pick.tier === 'premium' ? 'text-amber-400' : pick.tier === 'strong' ? 'text-emerald-400' : 'text-blue-400'}`}>
+                <span className={`absolute text-xs font-bold ${
+                  pick.tier === 'premium' ? 'text-amber-400'
+                  : pick.tier === 'strong' ? 'text-emerald-400'
+                  : pick.tier === 'value' ? 'text-violet-400'
+                  : 'text-blue-400'
+                }`}>
                   {pick.confidence}%
                 </span>
               </div>
@@ -111,13 +170,39 @@ export function SnapBetPickCard({ pick, isPremium, index }: Props) {
         {/* Pick info */}
         {isPremium ? (
           <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="text-sm font-medium text-emerald-400">Pick: {pick.pickTeam}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <TrendingUp className={`w-3.5 h-3.5 ${pick.tier === 'value' ? 'text-violet-400' : 'text-emerald-400'}`} />
+              <span className={`text-sm font-medium ${pick.tier === 'value' ? 'text-violet-300' : 'text-emerald-400'}`}>
+                Pick: {pick.pickTeam}
+              </span>
               {pick.edge && pick.edge > 0 && (
                 <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500/20 text-emerald-300 rounded-full">
                   +{Math.round(pick.edge * 100)}% edge
                 </span>
+              )}
+              {ev && (
+                <TooltipProvider delayDuration={150}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span
+                        className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-violet-500/20 text-violet-300 rounded-full font-semibold cursor-help"
+                        onClick={(e) => e.preventDefault()}
+                      >
+                        +{ev.pct}% EV
+                        <Info className="w-2.5 h-2.5 opacity-70" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-[280px] text-xs leading-relaxed">
+                      <div className="font-semibold mb-1 text-violet-300">Implied EV: +{ev.pct}% per unit</div>
+                      <div className="text-slate-300">
+                        Based on historical {ev.label}: this pattern hit ~{ev.pct === 39 ? 40 : 38}%
+                        at avg {ev.pct === 39 ? 3.48 : 3.45}x odds over the last 90 days
+                        ({ev.pct === 39 ? 'n=20' : 'n=95'} sample). Hit-rate is lower than premium
+                        picks but the market under-prices it, so profitable returns over volume.
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               )}
             </div>
             {pick.spread != null && (
