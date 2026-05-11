@@ -21,7 +21,19 @@ interface SnapBetPick {
   edge?: number
   spread?: number
   totalLine?: number
+  // Per-pick EV inputs from the engine. If both are present the UI can compute
+  // live per-pick EV: (pickProb * pickOdds) - 1.
+  pickProb?: number
+  pickOdds?: number
   slug?: string
+}
+
+// Live per-pick EV from model prob × market decimal odds.
+// Returns null when inputs are missing.
+function perPickEv(pick: SnapBetPick): number | null {
+  if (pick.pickProb == null || pick.pickOdds == null) return null
+  if (pick.pickOdds <= 1) return null
+  return pick.pickProb * pick.pickOdds - 1
 }
 
 // Tier explanations shown in the badge tooltip. Sources: 90-day fresh-era
@@ -95,6 +107,10 @@ export function SnapBetPickCard({ pick, isPremium, index }: Props) {
   const hoursUntil = Math.round((kickoff.getTime() - now.getTime()) / 3600000)
   const timeLabel = hoursUntil < 1 ? "Starting soon" : hoursUntil < 24 ? `In ${hoursUntil}h` : `In ${Math.ceil(hoursUntil / 24)}d`
   const ev = pick.tier === "value" ? valueEvHint(pick.reasons) : null
+  // Live per-pick EV from model prob × current market odds. Falls back to
+  // pattern EV if engine didn't supply pickProb/pickOdds.
+  const liveEv = pick.tier === "value" ? perPickEv(pick) : null
+  const displayEvPct = liveEv != null ? Math.round(liveEv * 100) : ev?.pct ?? null
 
   return (
     <Link href={pick.slug || "#"} className="block group">
@@ -195,27 +211,50 @@ export function SnapBetPickCard({ pick, isPremium, index }: Props) {
                   +{Math.round(pick.edge * 100)}% edge
                 </span>
               )}
-              {ev && (
+              {ev && displayEvPct != null && (
                 <TooltipProvider delayDuration={150}>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span
-                        className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-violet-500/20 text-violet-300 rounded-full font-semibold cursor-help"
+                        className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-semibold cursor-help ${
+                          displayEvPct >= 0
+                            ? "bg-violet-500/20 text-violet-300"
+                            : "bg-slate-500/20 text-slate-400"
+                        }`}
                         onClick={(e) => e.preventDefault()}
                       >
-                        +{ev.pct}% EV
+                        {displayEvPct >= 0 ? "+" : ""}{displayEvPct}% EV
                         <Info className="w-2.5 h-2.5 opacity-70" />
                       </span>
                     </TooltipTrigger>
-                    <TooltipContent side="bottom" className="max-w-[280px] text-xs leading-relaxed">
-                      <div className="font-semibold mb-1 text-violet-300">Implied EV: +{ev.pct}% per unit</div>
-                      <div className="text-slate-300">
-                        Based on historical {ev.label}: this pattern hit ~{ev.acc}%
-                        at avg {ev.odds.toFixed(2)}x odds over the last 90 days
-                        (n={ev.sample} sample). The market under-prices this kind
-                        of pick, so even at the lower hit-rate the payoff covers
-                        the misses over volume.
-                      </div>
+                    <TooltipContent side="bottom" className="max-w-[300px] text-xs leading-relaxed">
+                      {liveEv != null ? (
+                        <>
+                          <div className="font-semibold mb-1 text-violet-300">
+                            Live EV: {liveEv >= 0 ? "+" : ""}{Math.round(liveEv * 100)}% per unit
+                          </div>
+                          <div className="text-slate-300">
+                            Computed from <span className="font-mono text-white">{Math.round((pick.pickProb ?? 0) * 100)}%</span> model
+                            probability × <span className="font-mono text-white">{(pick.pickOdds ?? 0).toFixed(2)}x</span> market
+                            decimal odds for <span className="text-violet-200">{pick.pickTeam}</span>.
+                          </div>
+                          <div className="mt-2 pt-2 border-t border-slate-700 text-slate-400">
+                            Historical pattern ({ev.label}): hit ~{ev.acc}% at avg {ev.odds.toFixed(2)}x
+                            over the last 90 days (n={ev.sample}). Live number above reflects
+                            this specific match's pricing.
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="font-semibold mb-1 text-violet-300">Pattern EV: +{ev.pct}% per unit</div>
+                          <div className="text-slate-300">
+                            Historical {ev.label}: this pattern hit ~{ev.acc}%
+                            at avg {ev.odds.toFixed(2)}x odds over the last 90 days
+                            (n={ev.sample} sample). Live odds not available for this match
+                            yet — pattern average shown.
+                          </div>
+                        </>
+                      )}
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>

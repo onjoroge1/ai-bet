@@ -54,6 +54,12 @@ export interface SnapBetPick {
   // Premium-only fields
   edge?: number         // Model edge vs market
   odds?: { home?: number; draw?: number; away?: number }
+  // Per-pick EV inputs — populated when the engine can compute them.
+  // pickProb: the model's probability for the picked side (0-1).
+  // pickOdds: the consensus decimal odds for the picked side (>1).
+  // Together they let the UI compute live EV: (pickProb * pickOdds) - 1.
+  pickProb?: number
+  pickOdds?: number
   spread?: number
   totalLine?: number
   slug?: string         // For linking to detail page
@@ -309,6 +315,15 @@ async function getSoccerPicks(): Promise<SnapBetPick[]> {
       const headlineConf = calibratedConf || v3conf || v1conf
       const odds = m.consensusOdds as any
 
+      // Per-pick EV inputs: the V3 probability for the picked side, and the
+      // market's consensus decimal odds for that side. consensusOdds in DB are
+      // no-vig probabilities (0-1); convert to decimal odds via 1/prob.
+      const pickProbForSide = pickSide === 'home' ? v3hw : pickSide === 'away' ? v3aw : v3dw
+      const consensusProbForSide = odds ? Number(odds[pickSide]) || 0 : 0
+      const pickOddsDecimal = consensusProbForSide > 0 && consensusProbForSide < 1
+        ? 1 / consensusProbForSide
+        : undefined
+
       // Generate slug
       const slug = `${m.homeTeam.toLowerCase().replace(/\s+/g, '-')}-vs-${m.awayTeam.toLowerCase().replace(/\s+/g, '-')}-${m.matchId}`
 
@@ -329,6 +344,8 @@ async function getSoccerPicks(): Promise<SnapBetPick[]> {
         reasons,
         edge: v3preds.edge_vs_market || undefined,
         odds: odds ? { home: odds.home, draw: odds.draw, away: odds.away } : undefined,
+        pickProb: pickProbForSide > 0 ? pickProbForSide : undefined,
+        pickOdds: pickOddsDecimal,
         slug: `/match/${slug}`,
       })
     }
@@ -458,6 +475,14 @@ async function getMultisportPicks(
       const consensus = odds.consensus || {}
       const spreadData = m.spread as any || {}
 
+      // Per-pick EV inputs: model's prob for the picked side + decimal odds.
+      // multisport `consensus` holds home_prob/away_prob (no-vig probs).
+      const consensusProbForSide = pick === 'H' ? consensus.home_prob : consensus.away_prob
+      const pickOddsDecimal = typeof consensusProbForSide === 'number'
+        && consensusProbForSide > 0 && consensusProbForSide < 1
+          ? 1 / consensusProbForSide
+          : undefined
+
       // Build slug
       const slugHome = m.homeTeam.toLowerCase().replace(/[^a-z0-9]+/g, '-')
       const slugAway = m.awayTeam.toLowerCase().replace(/[^a-z0-9]+/g, '-')
@@ -480,6 +505,8 @@ async function getMultisportPicks(
         edge: preds.edge_vs_market || undefined,
         spread: consensus.home_spread || undefined,
         totalLine: consensus.total_line || undefined,
+        pickProb: pickedProb > 0 ? pickedProb : undefined,
+        pickOdds: pickOddsDecimal,
         slug: `/sports/${sportKey}/${m.eventId}`,
       })
     }
