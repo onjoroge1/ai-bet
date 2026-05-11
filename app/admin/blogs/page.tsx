@@ -59,35 +59,94 @@ interface BlogPost {
 }
 
 
+interface BlogStats {
+  totalAll: number
+  totalPublished: number
+  totalDrafts: number
+  totalFeatured: number
+  totalViews: number
+}
+
+const PAGE_SIZE = 50
+
 export default function AdminBlogsPage() {
   const [blogs, setBlogs] = useState<BlogPost[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [aiGeneratedFilter, setAiGeneratedFilter] = useState<'all' | 'true' | 'false'>('all')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [sortBy, setSortBy] = useState<'date' | 'views' | 'title'>('date')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [stats, setStats] = useState<BlogStats>({ totalAll: 0, totalPublished: 0, totalDrafts: 0, totalFeatured: 0, totalViews: 0 })
   const [selectedBlogs, setSelectedBlogs] = useState<Set<string>>(new Set())
   const [bulkActionLoading, setBulkActionLoading] = useState(false)
   const router = useRouter()
 
+  // Debounce the search input (300ms) so we don't hammer the API on each keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm), 300)
+    return () => clearTimeout(t)
+  }, [searchTerm])
+
+  // Reset to page 1 whenever the filter criteria change.
+  useEffect(() => {
+    setPage(1)
+  }, [debouncedSearch, categoryFilter, statusFilter, aiGeneratedFilter, dateFrom, dateTo, sortBy, sortOrder])
+
+  // Refetch on any filter / pagination change.
   useEffect(() => {
     fetchBlogs()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, categoryFilter, statusFilter, aiGeneratedFilter, dateFrom, dateTo, sortBy, sortOrder, page])
 
   const fetchBlogs = async () => {
+    setLoading(true)
     try {
-      const response = await fetch('/api/blogs?limit=50')
+      const params = new URLSearchParams({
+        limit: String(PAGE_SIZE),
+        page: String(page),
+        sortBy,
+        sortOrder,
+      })
+      if (debouncedSearch) params.set('search', debouncedSearch)
+      if (categoryFilter !== 'all') params.set('category', categoryFilter)
+      if (statusFilter !== 'all') params.set('status', statusFilter)
+      if (aiGeneratedFilter !== 'all') params.set('aiGenerated', aiGeneratedFilter)
+      if (dateFrom) params.set('dateFrom', dateFrom)
+      if (dateTo) params.set('dateTo', dateTo)
+
+      const response = await fetch(`/api/blogs?${params.toString()}`)
       const data = await response.json()
-      
+
       if (data.success) {
         setBlogs(data.data)
+        setTotal(typeof data.total === 'number' ? data.total : data.data.length)
+        setTotalPages(data.pagination?.totalPages ?? 1)
+        if (data.stats) setStats(data.stats)
       }
     } catch (error) {
       console.error('Error fetching blogs:', error)
     } finally {
       setLoading(false)
     }
+  }
+
+  const resetFilters = () => {
+    setSearchTerm('')
+    setCategoryFilter('all')
+    setStatusFilter('all')
+    setAiGeneratedFilter('all')
+    setDateFrom('')
+    setDateTo('')
+    setSortBy('date')
+    setSortOrder('desc')
   }
 
 
@@ -289,45 +348,23 @@ export default function AdminBlogsPage() {
   }
 
   const toggleSelectAll = () => {
-    if (selectedBlogs.size === filteredBlogs.length) {
+    if (selectedBlogs.size === blogs.length) {
       setSelectedBlogs(new Set())
     } else {
-      setSelectedBlogs(new Set(filteredBlogs.map(b => b.id)))
+      setSelectedBlogs(new Set(blogs.map(b => b.id)))
     }
   }
 
-
-  const filteredBlogs = blogs
-    .filter(blog => {
-      const matchesSearch = blog.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           blog.excerpt.toLowerCase().includes(searchTerm.toLowerCase())
-      const matchesCategory = categoryFilter === 'all' || blog.category === categoryFilter
-      const matchesStatus = statusFilter === 'all' || 
-                           (statusFilter === 'published' && blog.isPublished) ||
-                           (statusFilter === 'draft' && !blog.isPublished)
-
-      return matchesSearch && matchesCategory && matchesStatus
-    })
-    .sort((a, b) => {
-      let comparison = 0
-      
-      if (sortBy === 'date') {
-        const dateA = new Date(a.publishedAt || a.createdAt).getTime()
-        const dateB = new Date(b.publishedAt || b.createdAt).getTime()
-        comparison = dateA - dateB
-      } else if (sortBy === 'views') {
-        comparison = a.viewCount - b.viewCount
-      } else if (sortBy === 'title') {
-        comparison = a.title.localeCompare(b.title)
-      }
-      
-      return sortOrder === 'asc' ? comparison : -comparison
-    })
-
-  const categories = ['all', 'predictions', 'strategy', 'analysis', 'technology', 'success-stories', 'tips']
+  // Filtering + sorting now happens server-side in /api/blogs. `blogs` already
+  // reflects the current filter state.
+  const categories = ['all', 'predictions', 'strategy', 'analysis', 'technology', 'success-stories', 'tips', 'upcoming-matches', 'match-analysis', 'general']
   const statuses = ['all', 'published', 'draft']
+  const hasActiveFilters = !!(debouncedSearch || categoryFilter !== 'all' || statusFilter !== 'all' || aiGeneratedFilter !== 'all' || dateFrom || dateTo)
 
-  if (loading) {
+  // Show full skeleton only on first load (no blogs yet). Subsequent refetches
+  // (filter changes, pagination) just keep the existing list visible with a
+  // subtle dimmed-while-loading effect so the page doesn't reset its scroll.
+  if (loading && blogs.length === 0) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="animate-pulse">
@@ -386,7 +423,10 @@ export default function AdminBlogsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-slate-400 text-sm">Total Posts</p>
-                  <p className="text-2xl font-bold text-white">{blogs.length}</p>
+                  <p className="text-2xl font-bold text-white">{stats.totalAll.toLocaleString()}</p>
+                  {hasActiveFilters && (
+                    <p className="text-xs text-emerald-400 mt-1">{total.toLocaleString()} match filters</p>
+                  )}
                 </div>
                 <div className="p-3 bg-blue-500/20 rounded-lg">
                   <Edit className="w-6 h-6 text-blue-400" />
@@ -400,12 +440,8 @@ export default function AdminBlogsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-slate-400 text-sm">Published</p>
-                  <p className="text-2xl font-bold text-white">
-                    {blogs.filter(b => b.isPublished).length}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    {blogs.filter(b => !b.isPublished).length} drafts
-                  </p>
+                  <p className="text-2xl font-bold text-white">{stats.totalPublished.toLocaleString()}</p>
+                  <p className="text-xs text-slate-500 mt-1">{stats.totalDrafts.toLocaleString()} drafts</p>
                 </div>
                 <div className="p-3 bg-green-500/20 rounded-lg">
                   <Eye className="w-6 h-6 text-green-400" />
@@ -419,9 +455,7 @@ export default function AdminBlogsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-slate-400 text-sm">Total Views</p>
-                  <p className="text-2xl font-bold text-white">
-                    {blogs.reduce((sum, blog) => sum + blog.viewCount, 0).toLocaleString()}
-                  </p>
+                  <p className="text-2xl font-bold text-white">{stats.totalViews.toLocaleString()}</p>
                 </div>
                 <div className="p-3 bg-purple-500/20 rounded-lg">
                   <TrendingUp className="w-6 h-6 text-purple-400" />
@@ -435,9 +469,7 @@ export default function AdminBlogsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-slate-400 text-sm">Featured</p>
-                  <p className="text-2xl font-bold text-white">
-                    {blogs.filter(b => b.featured).length}
-                  </p>
+                  <p className="text-2xl font-bold text-white">{stats.totalFeatured.toLocaleString()}</p>
                   <button
                     onClick={handleAutoFeatureLatest}
                     disabled={bulkActionLoading}
@@ -522,6 +554,51 @@ export default function AdminBlogsPage() {
               </Select>
             </div>
 
+            {/* Date range + AI-generated row */}
+            <div className="flex flex-col md:flex-row gap-4 items-end">
+              <div className="flex-1">
+                <label className="text-[11px] text-slate-400 uppercase tracking-wider mb-1 block">Published From</label>
+                <Input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="bg-slate-700 border-slate-600 text-white"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="text-[11px] text-slate-400 uppercase tracking-wider mb-1 block">Published To</label>
+                <Input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="bg-slate-700 border-slate-600 text-white"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="text-[11px] text-slate-400 uppercase tracking-wider mb-1 block">Author</label>
+                <Select value={aiGeneratedFilter} onValueChange={(v) => setAiGeneratedFilter(v as 'all' | 'true' | 'false')}>
+                  <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
+                    <SelectValue placeholder="Author" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Authors</SelectItem>
+                    <SelectItem value="true">AI-Generated</SelectItem>
+                    <SelectItem value="false">Human-Written</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {hasActiveFilters && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={resetFilters}
+                  className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
+                >
+                  Clear filters
+                </Button>
+              )}
+            </div>
+
             {/* Bulk Actions Bar */}
             {selectedBlogs.size > 0 && (
               <div className="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg border border-slate-600">
@@ -535,7 +612,7 @@ export default function AdminBlogsPage() {
                     onClick={toggleSelectAll}
                     className="text-slate-400 hover:text-white"
                   >
-                    {selectedBlogs.size === filteredBlogs.length ? 'Deselect All' : 'Select All'}
+                    {selectedBlogs.size === blogs.length ? 'Deselect All' : 'Select All'}
                   </Button>
                 </div>
                 <div className="flex items-center gap-2">
@@ -608,7 +685,7 @@ export default function AdminBlogsPage() {
 
       {/* Blog List */}
       <div className="px-8 space-y-4">
-        {filteredBlogs.map((blog) => (
+        {blogs.map((blog) => (
           <Card key={blog.id} className={`bg-slate-800 border-slate-700 hover:border-slate-600 transition-colors ${selectedBlogs.has(blog.id) ? 'border-emerald-500/50 bg-emerald-900/10' : ''}`}>
             <CardContent className="p-6">
               <div className="flex items-start gap-4">
@@ -728,21 +805,66 @@ export default function AdminBlogsPage() {
           </Card>
         ))}
         
-        {filteredBlogs.length === 0 && (
+        {blogs.length === 0 && !loading && (
           <Card className="bg-slate-800 border-slate-700">
             <CardContent className="p-12 text-center">
-              <p className="text-slate-400 mb-4">No blog posts found</p>
-              <Button 
-                onClick={() => router.push('/admin/blogs/create')}
-                className="bg-emerald-600 hover:bg-emerald-700"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Create Your First Post
-              </Button>
+              <p className="text-slate-400 mb-4">
+                {hasActiveFilters ? 'No blog posts match the current filters' : 'No blog posts found'}
+              </p>
+              {hasActiveFilters ? (
+                <Button
+                  onClick={resetFilters}
+                  variant="outline"
+                  className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
+                >
+                  Clear filters
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => router.push('/admin/blogs/create')}
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Your First Post
+                </Button>
+              )}
             </CardContent>
           </Card>
+        )}
+
+        {/* Pagination controls */}
+        {totalPages > 1 && (
+          <div className="flex flex-col md:flex-row items-center justify-between gap-3 mt-6 px-2">
+            <div className="text-sm text-slate-400">
+              Showing <span className="text-white font-medium">{(page - 1) * PAGE_SIZE + 1}-{Math.min(page * PAGE_SIZE, total)}</span>
+              {' of '}<span className="text-white font-medium">{total.toLocaleString()}</span> {hasActiveFilters ? 'matching' : 'total'} posts
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page <= 1 || loading}
+                className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600 disabled:opacity-40"
+              >
+                ← Prev
+              </Button>
+              <span className="text-sm text-slate-300 font-mono min-w-[80px] text-center">
+                Page {page} / {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || loading}
+                className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600 disabled:opacity-40"
+              >
+                Next →
+              </Button>
+            </div>
+          </div>
         )}
       </div>
     </div>
   )
-} 
+}
