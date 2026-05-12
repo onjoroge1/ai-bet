@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { NewsletterPopup } from '@/components/blog/BlogConversionCTAs'
+import { PremiumTrackerCard } from '@/components/blog/PremiumTrackerCard'
 import { 
   ArrowLeft, 
   User, 
@@ -237,6 +238,13 @@ export default async function CountryBlogPostPage({ params }: CountryBlogPostPag
           non-country blog route. Renders nothing until armed and respects
           the snapbet_nl cookie. */}
       <NewsletterPopup blogId={post.id} />
+
+      {/* Premium Pick Tracker card on known-winner blogs only (viewCount ≥ 1500). */}
+      {post.viewCount >= 1500 && (
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+          <PremiumTrackerCard blogId={post.id} />
+        </div>
+      )}
 
       {/* Navigation */}
       <div>

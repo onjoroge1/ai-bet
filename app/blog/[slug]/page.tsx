@@ -27,6 +27,7 @@ import { UpcomingMatchesSpotlight } from '@/components/trending-topics'
 import { NewsletterSignup } from '@/components/newsletter-signup'
 import { BlogMediaDisplay } from '@/components/blog-media-display'
 import { MatchCTA, NewsletterCTA, NewsletterPopup, ShareButtons } from '@/components/blog/BlogConversionCTAs'
+import { PremiumTrackerCard } from '@/components/blog/PremiumTrackerCard'
 import { BlogComments } from '@/components/blog-comments'
 import { BlogMatchSalesSidebar } from '@/components/blog-match-sales-sidebar'
 
@@ -579,6 +580,16 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
               kickoffDate: post.marketMatch.kickoffDate instanceof Date ? post.marketMatch.kickoffDate.toISOString() : String(post.marketMatch.kickoffDate),
               status: post.marketMatch.status,
             }} />
+          </div>
+        )}
+
+        {/* ── Premium Pick Tracker card. Day 5 rollout strategy: only mount
+            on the ~9 high-traffic blogs (viewCount ≥ 1500) so we can A/B-by-
+            existence-test on known-traffic pages first. Expand site-wide
+            after we measure CTR over 7d. ─────────────────────────────── */}
+        {post.viewCount >= 1500 && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <PremiumTrackerCard blogId={post.id} />
           </div>
         )}
 
