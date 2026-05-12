@@ -62,6 +62,8 @@ const cronEndpoints = [
   // way scripts can call it without an admin session.
   '/api/predictions/predict',
   '/api/admin/blogs/evergreen-refresh-scheduled',
+  '/api/cron/premium-tracker-capture',
+  '/api/cron/premium-tracker-settle',
 ]
 
 // Paths that require admin role

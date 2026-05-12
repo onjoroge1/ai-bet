@@ -51,6 +51,9 @@ const EXPECTED_INTERVAL_MS: Record<string, number> = {
   'blog:evergreen-refresh': 7 * DAY,
   // Template-blog generation runs every 3h (since 2026-05-12), max 15 posts/run.
   'blog:templates': 3 * HOUR,
+  // Premium Pick Tracker — capture every 2h, settle every hour.
+  'premium-tracker:capture': 2 * HOUR,
+  'premium-tracker:settle': 1 * HOUR,
 }
 
 /**

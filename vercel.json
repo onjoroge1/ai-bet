@@ -124,6 +124,14 @@
     {
       "path": "/api/admin/blogs/evergreen-refresh-scheduled",
       "schedule": "0 8 * * 1"
+    },
+    {
+      "path": "/api/cron/premium-tracker-capture",
+      "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/cron/premium-tracker-settle",
+      "schedule": "15 * * * *"
     }
   ],
   "env": {

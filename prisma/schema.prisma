@@ -2110,6 +2110,7 @@ model MarketMatch {
   additionalMarketData AdditionalMarketData[]
   matchEvents          MatchEvent[]
   oddsSnapshots        OddsSnapshot[]
+  premiumPickHistory   PremiumPickHistory[]
 
   @@index([matchId])
   @@index([status, kickoffDate])
@@ -2120,6 +2121,74 @@ model MarketMatch {
   @@index([syncPriority, status])
   @@index([isArchived, status])
   @@index([leagueId, status])
+}
+
+// ─── Premium Pick Tracker ─────────────────────────────────────────────
+// Forward-only capture of every premium-qualified pick our engine surfaces,
+// locked at publish time so the public-facing /performance page and the
+// blog tracker card are always auditable.
+//
+// Capture cron: /api/cron/premium-tracker-capture  (every 2h)
+// Settle cron:  /api/cron/premium-tracker-settle   (every 1h)
+//
+// Pre-flight gate (2026-05-11) confirmed consensusOdds coverage is 83.5%
+// and premium-tier hit rate is 82% / +13% ROI on 30d sample. See plan at
+// ~/.claude/plans/indexed-bouncing-chipmunk.md "Chunk A".
+model PremiumPickHistory {
+  id              String   @id @default(cuid())
+  // What it is
+  marketMatchId   String
+  marketMatch     MarketMatch @relation(fields: [marketMatchId], references: [id])
+  externalMatchId String // MarketMatch.matchId (external) — denormalized for cron lookups
+  sport           String   // 'soccer' | 'nba' | 'nhl' | 'ncaab'
+  league          String?
+  homeTeam        String
+  awayTeam        String
+  market          String   // '1X2_HOME' | '1X2_AWAY' | '1X2_DRAW' | future: 'BTTS_YES' | 'O25' …
+  pick            String   // human-readable: 'Arsenal to win' / 'Over 2.5'
+  // The bet locked in at publish time
+  oddsAtPublish   Decimal  @db.Decimal(8, 3)
+  stakeUnits      Decimal  @default(1.0) @db.Decimal(8, 3)  // 1u = $100
+  stakeDollars    Decimal  @default(100) @db.Decimal(10, 2)
+  // Qualification snapshot (locked, never recalculated)
+  tier            String   // 'premium' | 'strong' | 'value' | 'parlay'
+  confidence      Decimal  @db.Decimal(6, 4)
+  evScore         Decimal? @db.Decimal(6, 4)
+  // Source attribution
+  surfacedBy      String   // 'getSnapBetPicks' | 'parlay-consensus' | 'admin-manual'
+  publishedAt     DateTime @default(now())
+  kickoffDate     DateTime
+  // Settlement
+  result          String   @default("pending")  // 'pending' | 'win' | 'loss' | 'push' | 'void'
+  settledAt       DateTime?
+  netDollars      Decimal? @db.Decimal(10, 2)  // +85 on $100@1.85 win, -100 on loss
+  netUnits        Decimal? @db.Decimal(8, 3)
+  // Audit
+  rawSnapshot     Json?    // full SnapBetPick object as captured
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([marketMatchId, market], name: "unique_match_market")
+  @@index([result, kickoffDate])
+  @@index([sport, kickoffDate])
+  @@index([tier, kickoffDate])
+  @@index([publishedAt])
+  @@index([externalMatchId])
+}
+
+// Funnel events for the tracker card (impressions + CTA clicks).
+// Mirrors NewsletterEvent's append-only, fire-and-forget shape so the
+// admin dashboard can compute impression→click rates per blog.
+model TrackerEvent {
+  id        String   @id @default(cuid())
+  type      String   // 'impression' | 'cta_click_picks' | 'cta_click_audit'
+  blogId    String?  // BlogPost.id when fired from a blog page
+  createdAt DateTime @default(now())
+
+  @@index([type, createdAt])
+  @@index([blogId, createdAt])
+  @@index([createdAt])
 }
 
 // One row per cron job — upserted on each run with entry + exit timestamps.
