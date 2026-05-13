@@ -144,6 +144,75 @@ export async function GET(request: Request) {
       evergreenStatusRaw.map(r => [r.status, r._count._all])
     )
 
+    // ── Premium Pick Tracker: capture + settle health + headline stats ──
+    // Read directly from PremiumPickHistory rather than re-using the public
+    // stats endpoint — admin dashboard wants origin split + cron freshness.
+    const trackerRows = await prisma.premiumPickHistory.findMany({
+      where: { publishedAt: { gte: windowStart } },
+      select: {
+        oddsAtPublish: true,
+        stakeDollars: true,
+        netDollars: true,
+        result: true,
+        tier: true,
+        surfacedBy: true,
+        publishedAt: true,
+      },
+    })
+
+    // Aggregate by tier in-memory (lightweight at our scale)
+    function aggT(rows: typeof trackerRows) {
+      let wins = 0, losses = 0, pushes = 0, voids = 0, pending = 0
+      let staked = 0, net = 0
+      for (const r of rows) {
+        if (r.result === 'win') { wins++; staked += Number(r.stakeDollars); net += Number(r.netDollars || 0) }
+        else if (r.result === 'loss') { losses++; staked += Number(r.stakeDollars); net += Number(r.netDollars || 0) }
+        else if (r.result === 'push') pushes++
+        else if (r.result === 'void') voids++
+        else pending++
+      }
+      return {
+        count: rows.length, wins, losses, pushes, voids, pending,
+        staked: +staked.toFixed(2),
+        net: +net.toFixed(2),
+        roiPct: staked > 0 ? +(net / staked * 100).toFixed(2) : 0,
+      }
+    }
+    const trackerAll = aggT(trackerRows)
+    const trackerPremium = aggT(trackerRows.filter(r => r.tier === 'premium'))
+    const trackerBackfillCount = trackerRows.filter(r => r.surfacedBy === 'backfill').length
+    const trackerLiveCount = trackerRows.filter(r => r.surfacedBy !== 'backfill').length
+
+    // Most-recent capture (cron freshness)
+    const lastCapture = await prisma.premiumPickHistory.findFirst({
+      where: { surfacedBy: { not: 'backfill' } },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true, homeTeam: true, awayTeam: true, tier: true, market: true },
+    })
+
+    // Most-recent settle event
+    const lastSettle = await prisma.premiumPickHistory.findFirst({
+      where: { settledAt: { not: null } },
+      orderBy: { settledAt: 'desc' },
+      select: { settledAt: true, result: true, homeTeam: true, awayTeam: true, netDollars: true },
+    })
+
+    // ── Tracker funnel events ────────────────────────────────────────────
+    const trackerEventsRaw = await prisma.trackerEvent.groupBy({
+      by: ['type'],
+      where: { createdAt: { gte: windowStart } },
+      _count: { _all: true },
+    })
+    const trackerFunnel = { impression: 0, cta_click_picks: 0, cta_click_audit: 0 }
+    for (const row of trackerEventsRaw) {
+      if (row.type === 'impression') trackerFunnel.impression = row._count._all
+      else if (row.type === 'cta_click_picks') trackerFunnel.cta_click_picks = row._count._all
+      else if (row.type === 'cta_click_audit') trackerFunnel.cta_click_audit = row._count._all
+    }
+    const trackerClickRatePct = trackerFunnel.impression > 0
+      ? +(((trackerFunnel.cta_click_picks + trackerFunnel.cta_click_audit) / trackerFunnel.impression) * 100).toFixed(2)
+      : 0
+
     return NextResponse.json({
       success: true,
       window: { days, start: windowStart.toISOString(), end: now.toISOString() },
@@ -181,6 +250,32 @@ export async function GET(request: Request) {
           kickoffDate: r.marketMatch?.kickoffDate,
           createdAt: r.createdAt,
         })),
+      },
+      tracker: {
+        windowDays: days,
+        all: trackerAll,
+        premium: trackerPremium,
+        origin: {
+          backfillCount: trackerBackfillCount,
+          liveCount: trackerLiveCount,
+        },
+        lastCapture: lastCapture ? {
+          at: lastCapture.createdAt.toISOString(),
+          match: `${lastCapture.homeTeam} vs ${lastCapture.awayTeam}`,
+          tier: lastCapture.tier,
+          market: lastCapture.market,
+        } : null,
+        lastSettle: lastSettle ? {
+          at: lastSettle.settledAt?.toISOString() ?? null,
+          match: `${lastSettle.homeTeam} vs ${lastSettle.awayTeam}`,
+          result: lastSettle.result,
+          netDollars: lastSettle.netDollars !== null ? Number(lastSettle.netDollars) : null,
+        } : null,
+        funnel: {
+          ...trackerFunnel,
+          totalClicks: trackerFunnel.cta_click_picks + trackerFunnel.cta_click_audit,
+          clickRatePct: trackerClickRatePct,
+        },
       },
       evergreenStatus: {
         queued: evergreenStatus.queued || 0,

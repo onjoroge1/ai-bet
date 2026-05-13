@@ -532,6 +532,11 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                 <span className="text-slate-300">{post.viewCount.toLocaleString()} views</span>
               </div>
             </div>
+            {post.updatedAt && post.updatedAt !== post.publishedAt && (
+              <p className="text-center text-xs text-slate-400 mt-2">
+                Last updated {new Date(post.updatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+              </p>
+            )}
           </div>
         </section>
 

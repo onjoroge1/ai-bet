@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { TrendingUp, Globe, MessageCircle, Twitter, Instagram, Facebook, CreditCard } from "lucide-react"
@@ -86,29 +87,34 @@ export function Footer() {
             <h3 className="text-white font-semibold mb-4">Support</h3>
             <ul className="space-y-2">
               <li>
-                <a href="/faq" className="text-slate-400 hover:text-white text-sm">
+                <Link href="/faq" className="text-slate-400 hover:text-white text-sm">
                   FAQ
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="/dashboard/support" className="text-slate-400 hover:text-white text-sm">
+                <Link href="/about" className="text-slate-400 hover:text-white text-sm">
+                  About
+                </Link>
+              </li>
+              <li>
+                <Link href="/methodology" className="text-slate-400 hover:text-white text-sm">
+                  Methodology
+                </Link>
+              </li>
+              <li>
+                <Link href="/performance" className="text-slate-400 hover:text-white text-sm">
+                  Performance
+                </Link>
+              </li>
+              <li>
+                <Link href="/contact" className="text-slate-400 hover:text-white text-sm">
                   Contact Us
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="/faq" className="text-slate-400 hover:text-white text-sm">
-                  Terms of Service
-                </a>
-              </li>
-              <li>
-                <a href="/faq" className="text-slate-400 hover:text-white text-sm">
-                  Privacy Policy
-                </a>
-              </li>
-              <li>
-                <a href="/blog/top-betting-strategies-football" className="text-slate-400 hover:text-white text-sm">
+                <Link href="/responsible-betting" className="text-slate-400 hover:text-white text-sm">
                   Responsible Gambling
-                </a>
+                </Link>
               </li>
             </ul>
           </div>

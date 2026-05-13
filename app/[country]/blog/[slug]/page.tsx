@@ -37,6 +37,7 @@ interface BlogPost {
   geoTarget: string[]
   featured: boolean
   publishedAt: string
+  updatedAt?: string
   viewCount: number
   shareCount: number
   readTime: number
@@ -166,6 +167,7 @@ async function getBlogPost(slug: string, countryCode: string): Promise<BlogPost 
       geoTarget: blogPost.geoTarget,
       featured: blogPost.featured,
       publishedAt: blogPost.publishedAt?.toISOString() || '',
+      updatedAt: blogPost.updatedAt?.toISOString(),
       viewCount: blogPost.viewCount,
       shareCount: blogPost.shareCount,
       readTime: blogPost.readTime,
@@ -296,6 +298,11 @@ export default async function CountryBlogPostPage({ params }: CountryBlogPostPag
               <Eye className="w-4 h-4" />
               {post.viewCount.toLocaleString()} views
             </div>
+            {post.updatedAt && post.updatedAt !== post.publishedAt && (
+              <div className="flex items-center gap-2 text-slate-500 text-xs">
+                <span>Last updated {new Date(post.updatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+              </div>
+            )}
             {post.featured && (
               <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
                 Featured

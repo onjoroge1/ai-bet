@@ -19,6 +19,7 @@ import {
   TrendingUp,
   Clock,
   XCircle,
+  Trophy,
 } from 'lucide-react'
 
 interface PerfData {
@@ -74,6 +75,15 @@ interface PerfData {
   }
   evergreenStatus: {
     queued: number; drafted: number; reviewed: number; published: number; refresh_due: number
+  }
+  tracker?: {
+    windowDays: number
+    all: { count: number; wins: number; losses: number; pushes: number; voids: number; pending: number; staked: number; net: number; roiPct: number }
+    premium: { count: number; wins: number; losses: number; pushes: number; voids: number; pending: number; staked: number; net: number; roiPct: number }
+    origin: { backfillCount: number; liveCount: number }
+    lastCapture: { at: string; match: string; tier: string; market: string } | null
+    lastSettle: { at: string | null; match: string; result: string; netDollars: number | null } | null
+    funnel: { impression: number; cta_click_picks: number; cta_click_audit: number; totalClicks: number; clickRatePct: number }
   }
 }
 
@@ -237,6 +247,95 @@ export default function BlogPerformancePage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* ─── Premium Pick Tracker ────────────────────────────────── */}
+            {data.tracker && (
+              <Card className="bg-slate-800 border-slate-700">
+                <CardContent className="p-6 space-y-5">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                      <Trophy className="w-5 h-5 text-amber-300" /> Premium Pick Tracker ({data.tracker.windowDays}d)
+                    </h2>
+                    <Link href="/performance">
+                      <Button variant="outline" size="sm" className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600">
+                        Open public page →
+                      </Button>
+                    </Link>
+                  </div>
+
+                  {/* Tier rows */}
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <TrackerTierRow
+                      label="Premium tier (headline)"
+                      colorClass="border-amber-500/30 bg-amber-950/20"
+                      wins={data.tracker.premium.wins}
+                      losses={data.tracker.premium.losses}
+                      pending={data.tracker.premium.pending}
+                      net={data.tracker.premium.net}
+                      roiPct={data.tracker.premium.roiPct}
+                      staked={data.tracker.premium.staked}
+                    />
+                    <TrackerTierRow
+                      label="All tiers (premium + strong)"
+                      colorClass="border-slate-700 bg-slate-900/40"
+                      wins={data.tracker.all.wins}
+                      losses={data.tracker.all.losses}
+                      pending={data.tracker.all.pending}
+                      net={data.tracker.all.net}
+                      roiPct={data.tracker.all.roiPct}
+                      staked={data.tracker.all.staked}
+                    />
+                  </div>
+
+                  {/* Data origin + cron freshness */}
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <div className="rounded-lg border border-slate-700 bg-slate-900/40 p-4">
+                      <p className="text-xs text-slate-400 uppercase tracking-wide">Data origin (in window)</p>
+                      <p className="text-sm text-slate-200 mt-2">
+                        <span className="text-emerald-300 font-mono">{num(data.tracker.origin.liveCount)}</span> live ·{' '}
+                        <span className="text-slate-300 font-mono">{num(data.tracker.origin.backfillCount)}</span> backfill
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-slate-700 bg-slate-900/40 p-4 space-y-1">
+                      <p className="text-xs text-slate-400 uppercase tracking-wide">Cron freshness</p>
+                      <p className="text-xs text-slate-300">
+                        Last capture: {data.tracker.lastCapture
+                          ? `${new Date(data.tracker.lastCapture.at).toLocaleString()} — ${data.tracker.lastCapture.match} (${data.tracker.lastCapture.tier})`
+                          : 'never (forward cron pending first tick)'}
+                      </p>
+                      <p className="text-xs text-slate-300">
+                        Last settle: {data.tracker.lastSettle && data.tracker.lastSettle.at
+                          ? `${new Date(data.tracker.lastSettle.at).toLocaleString()} — ${data.tracker.lastSettle.match} ${data.tracker.lastSettle.result.toUpperCase()}${data.tracker.lastSettle.netDollars !== null ? ` (${data.tracker.lastSettle.netDollars > 0 ? '+' : ''}$${data.tracker.lastSettle.netDollars.toFixed(0)})` : ''}`
+                          : 'no settled picks yet'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Tracker funnel */}
+                  <div className="rounded-lg border border-slate-700 bg-slate-900/40 p-4">
+                    <p className="text-xs text-slate-400 uppercase tracking-wide mb-3">Tracker card funnel ({data.tracker.windowDays}d)</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase">Impressions</p>
+                        <p className="text-xl font-bold text-white mt-1">{num(data.tracker.funnel.impression)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase">→ Picks click</p>
+                        <p className="text-xl font-bold text-emerald-300 mt-1">{num(data.tracker.funnel.cta_click_picks)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase">→ Audit click</p>
+                        <p className="text-xl font-bold text-blue-300 mt-1">{num(data.tracker.funnel.cta_click_audit)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase">Click rate</p>
+                        <p className="text-xl font-bold text-amber-300 mt-1">{pct(data.tracker.funnel.clickRatePct)}</p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* ─── Evergreen queue summary ─────────────────────────────── */}
             <Card className="bg-slate-800 border-slate-700">
@@ -408,6 +507,39 @@ function QueueChip({ label, count, color }: { label: string; count: number; colo
     <div>
       <p className="text-xs text-slate-400 uppercase tracking-wide">{label}</p>
       <p className={`text-2xl font-bold mt-1 ${color}`}>{count}</p>
+    </div>
+  )
+}
+
+function TrackerTierRow({
+  label, colorClass, wins, losses, pending, net, roiPct, staked,
+}: {
+  label: string; colorClass: string
+  wins: number; losses: number; pending: number
+  net: number; roiPct: number; staked: number
+}) {
+  const tone = net > 0 ? 'text-emerald-300' : net < 0 ? 'text-red-300' : 'text-slate-200'
+  const sign = (n: number) => (n > 0 ? '+' : n < 0 ? '−' : '')
+  return (
+    <div className={`rounded-lg border p-4 ${colorClass}`}>
+      <p className="text-xs text-slate-300 font-semibold mb-2">{label}</p>
+      <div className="flex items-baseline gap-4 flex-wrap">
+        <div>
+          <p className="text-[10px] text-slate-400 uppercase">Net</p>
+          <p className={`text-2xl font-bold ${tone}`}>{sign(net)}${Math.abs(net).toFixed(0)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-slate-400 uppercase">ROI</p>
+          <p className={`text-2xl font-bold ${tone}`}>{sign(roiPct)}{Math.abs(roiPct).toFixed(1)}%</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-slate-400 uppercase">Record</p>
+          <p className="text-2xl font-bold text-white">{wins}<span className="text-slate-500">–</span>{losses}</p>
+        </div>
+      </div>
+      <p className="text-xs text-slate-500 mt-2">
+        Staked ${staked.toLocaleString()} · {pending} pending
+      </p>
     </div>
   )
 }
