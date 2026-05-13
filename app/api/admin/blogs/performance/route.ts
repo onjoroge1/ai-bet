@@ -135,6 +135,22 @@ export async function GET(request: Request) {
       )
     )
 
+    // ── Team-pages health ─────────────────────────────────────────────────
+    const [teamTotal, teamWithUpcoming, lastTeamRoll, profileTotal, profileDue] = await Promise.all([
+      prisma.teamStats.count({ where: { isActive: true } }),
+      prisma.teamStats.count({ where: { isActive: true, hasUpcoming: true } }),
+      prisma.teamStats.findFirst({ orderBy: { lastRolledAt: 'desc' }, select: { lastRolledAt: true, name: true } }),
+      prisma.teamProfile.count(),
+      prisma.teamProfile.count({ where: { refreshDueAt: { lt: now } } }),
+    ])
+    const teamPages = {
+      total: teamTotal,
+      withUpcoming: teamWithUpcoming,
+      lastRolledAt: lastTeamRoll?.lastRolledAt.toISOString() ?? null,
+      profilesGenerated: profileTotal,
+      profilesDueForRefresh: profileDue,
+    }
+
     // ── Evergreen topic queue status ───────────────────────────────────────
     const evergreenStatusRaw = await prisma.evergreenTopic.groupBy({
       by: ['status'],
@@ -251,6 +267,7 @@ export async function GET(request: Request) {
           createdAt: r.createdAt,
         })),
       },
+      teamPages,
       tracker: {
         windowDays: days,
         all: trackerAll,

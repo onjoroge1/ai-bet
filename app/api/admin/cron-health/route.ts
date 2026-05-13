@@ -56,6 +56,8 @@ const EXPECTED_INTERVAL_MS: Record<string, number> = {
   'premium-tracker:settle': 1 * HOUR,
   // Team stats — daily 03:00 UTC nightly rollup of TeamStats from MarketMatch.
   'team-stats:roll': 1 * DAY,
+  // Team profile — daily 05:00 UTC, ≤20 OpenAI generations per run (quarterly cadence per team).
+  'team-stats:profile': 1 * DAY,
 }
 
 /**

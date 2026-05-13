@@ -91,6 +91,11 @@ export default async function TeamPredictionsPage({ params }: PageProps) {
   const team = await prisma.teamStats.findUnique({ where: { slug } })
   if (!team || !team.isActive) notFound()
 
+  const profile = await prisma.teamProfile.findUnique({
+    where: { slug },
+    select: { profileHtml: true, refreshedAt: true },
+  })
+
   // Upcoming fixtures (next 3) by team name on either side
   const now = new Date()
   const upcoming = await prisma.marketMatch.findMany({
@@ -293,6 +298,24 @@ export default async function TeamPredictionsPage({ params }: PageProps) {
                   </div>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── AI profile (quarterly refresh) ────────────────────── */}
+        {profile?.profileHtml && (
+          <Card className="bg-slate-800 border-slate-700">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-semibold text-white">About {team.name}</h2>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">
+                  Updated {fmtDate(profile.refreshedAt)}
+                </p>
+              </div>
+              <div
+                className="prose prose-sm prose-invert max-w-none text-slate-300 leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: profile.profileHtml }}
+              />
             </CardContent>
           </Card>
         )}

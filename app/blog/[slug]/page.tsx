@@ -28,6 +28,7 @@ import { NewsletterSignup } from '@/components/newsletter-signup'
 import { BlogMediaDisplay } from '@/components/blog-media-display'
 import { MatchCTA, NewsletterCTA, NewsletterPopup, ShareButtons } from '@/components/blog/BlogConversionCTAs'
 import { PremiumTrackerCard } from '@/components/blog/PremiumTrackerCard'
+import { TeamLinksRow } from '@/components/blog/TeamLinksRow'
 import { BlogComments } from '@/components/blog-comments'
 import { BlogMatchSalesSidebar } from '@/components/blog-match-sales-sidebar'
 
@@ -573,6 +574,13 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
             </div>
           </div>
         </div>
+
+        {/* ── Team analysis links (only when blog is linked to a match) ──── */}
+        {post.marketMatch && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+            <TeamLinksRow homeTeam={post.marketMatch.homeTeam} awayTeam={post.marketMatch.awayTeam} />
+          </div>
+        )}
 
         {/* ── Match CTA (only when blog is linked to a MarketMatch) ───────── */}
         {post.marketMatch && (

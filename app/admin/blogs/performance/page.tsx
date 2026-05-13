@@ -20,6 +20,7 @@ import {
   Clock,
   XCircle,
   Trophy,
+  Users,
 } from 'lucide-react'
 
 interface PerfData {
@@ -75,6 +76,13 @@ interface PerfData {
   }
   evergreenStatus: {
     queued: number; drafted: number; reviewed: number; published: number; refresh_due: number
+  }
+  teamPages?: {
+    total: number
+    withUpcoming: number
+    lastRolledAt: string | null
+    profilesGenerated: number
+    profilesDueForRefresh: number
   }
   tracker?: {
     windowDays: number
@@ -331,6 +339,44 @@ export default function BlogPerformancePage() {
                         <p className="text-[10px] text-slate-400 uppercase">Click rate</p>
                         <p className="text-xl font-bold text-amber-300 mt-1">{pct(data.tracker.funnel.clickRatePct)}</p>
                       </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* ─── Team pages health ───────────────────────────────────── */}
+            {data.teamPages && (
+              <Card className="bg-slate-800 border-slate-700">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                      <Users className="w-5 h-5 text-purple-300" /> Team pages
+                    </h2>
+                    <Link href="/team/arsenal/predictions" target="_blank">
+                      <Button variant="outline" size="sm" className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600">
+                        Open sample (Arsenal) →
+                      </Button>
+                    </Link>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wide">Live pages</p>
+                      <p className="text-2xl font-bold text-white mt-1">{num(data.teamPages.total)}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{num(data.teamPages.withUpcoming)} with upcoming</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wide">AI profiles</p>
+                      <p className="text-2xl font-bold text-emerald-300 mt-1">{num(data.teamPages.profilesGenerated)}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{num(data.teamPages.profilesDueForRefresh)} due refresh</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wide">Last rollup</p>
+                      <p className="text-sm font-semibold text-slate-200 mt-1">
+                        {data.teamPages.lastRolledAt
+                          ? new Date(data.teamPages.lastRolledAt).toLocaleString()
+                          : 'never'}
+                      </p>
                     </div>
                   </div>
                 </CardContent>
