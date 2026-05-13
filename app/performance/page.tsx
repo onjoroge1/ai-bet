@@ -103,6 +103,7 @@ export default async function PerformancePage({ searchParams }: PageProps) {
         publishedAt: true,
         kickoffDate: true,
         settledAt: true,
+        surfacedBy: true,
       },
       orderBy: { publishedAt: 'desc' },
       take: 500,
@@ -132,6 +133,20 @@ export default async function PerformancePage({ searchParams }: PageProps) {
   const filtered = filterRowsByTier(rows, tierParam)
   const stats = aggregateStats(filtered)
   const premiumOnly = aggregateStats(filterRowsByTier(rows, 'premium'))
+
+  // Provenance — surface the backfill window vs forward-capture window so the
+  // disclosure paragraph and per-row badges can be honest about origins.
+  const backfillRows = rawRows.filter(r => r.surfacedBy === 'backfill')
+  const forwardRows = rawRows.filter(r => r.surfacedBy !== 'backfill')
+  const backfillStart = backfillRows.length > 0
+    ? backfillRows.reduce((min, r) => (r.publishedAt < min ? r.publishedAt : min), backfillRows[0].publishedAt)
+    : null
+  const backfillEnd = backfillRows.length > 0
+    ? backfillRows.reduce((max, r) => (r.publishedAt > max ? r.publishedAt : max), backfillRows[0].publishedAt)
+    : null
+  const forwardStart = forwardRows.length > 0
+    ? forwardRows.reduce((min, r) => (r.publishedAt < min ? r.publishedAt : min), forwardRows[0].publishedAt)
+    : null
 
   const trackingSince = firstRow?.publishedAt
   const trackingSinceText = trackingSince ? fmtDate(trackingSince) : null
@@ -321,12 +336,13 @@ export default async function PerformancePage({ searchParams }: PageProps) {
                     <th className="text-center px-4 py-3">Tier</th>
                     <th className="text-center px-4 py-3">Result</th>
                     <th className="text-right px-4 py-3">Net</th>
+                    <th className="text-center px-4 py-3">Origin</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rawRows.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
+                      <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
                         No picks captured in this window yet.
                       </td>
                     </tr>
@@ -357,6 +373,23 @@ export default async function PerformancePage({ searchParams }: PageProps) {
                           <td className={`px-4 py-3 text-right font-mono ${net !== null ? dollarTone(net) : 'text-slate-500'}`}>
                             {net !== null ? fmtUSD(net) : '—'}
                           </td>
+                          <td className="px-4 py-3 text-center">
+                            {r.surfacedBy === 'backfill' ? (
+                              <span
+                                title="Reconstructed from model state + consensus odds at kickoff"
+                                className="text-[10px] uppercase tracking-wide text-slate-500 border border-slate-700 rounded px-1.5 py-0.5"
+                              >
+                                backfill
+                              </span>
+                            ) : (
+                              <span
+                                title="Captured at publish time by the live cron"
+                                className="text-[10px] uppercase tracking-wide text-emerald-400/70 border border-emerald-600/40 rounded px-1.5 py-0.5"
+                              >
+                                live
+                              </span>
+                            )}
+                          </td>
                         </tr>
                       )
                     })
@@ -375,13 +408,32 @@ export default async function PerformancePage({ searchParams }: PageProps) {
               <div className="text-xs text-slate-400 leading-relaxed space-y-2">
                 <p>
                   <strong className="text-slate-300">Methodology.</strong>{' '}
-                  Every pick is captured at publication time using a virtual <strong>$100 flat stake</strong> at the
+                  Every pick uses a virtual <strong>$100 flat stake</strong> at the
                   consensus odds available when the pick was surfaced. We never modify settled rows.
                   Pushes and voids do not affect ROI. Parlays are excluded from this tracker.
                 </p>
+                {backfillRows.length > 0 && (
+                  <p>
+                    <strong className="text-slate-300">Data origin.</strong>{' '}
+                    This tracker includes <strong>{backfillRows.length}</strong> reconstructed
+                    pick{backfillRows.length === 1 ? '' : 's'}
+                    {backfillStart && backfillEnd && (
+                      <> from <strong>{fmtDate(backfillStart)}</strong> to <strong>{fmtDate(backfillEnd)}</strong></>
+                    )}
+                    {forwardRows.length > 0 && forwardStart && (
+                      <> + <strong>{forwardRows.length}</strong> captured live since <strong>{fmtDate(forwardStart)}</strong></>
+                    )}
+                    . Reconstruction applies the same qualification rules and odds-resolution logic the live
+                    capture cron uses. Each row is labelled <span className="uppercase tracking-wide text-slate-500 border border-slate-700 rounded px-1">backfill</span> or <span className="uppercase tracking-wide text-emerald-400/70 border border-emerald-600/40 rounded px-1">live</span> in the table above.
+                    The same exclusion rule (no usable consensus odds → skip) was applied uniformly to both sets.
+                    {' '}
+                    <Link href="/methodology" className="text-blue-300 hover:text-blue-200 underline underline-offset-2">
+                      Full methodology →
+                    </Link>
+                  </p>
+                )}
                 <p>
-                  Forward capture started <strong>{trackingSinceText || 'today'}</strong>. This is a simulation
-                  of model performance, not a guarantee of future results. Betting involves risk.{' '}
+                  This is a simulation of model performance, not a guarantee of future results. Betting involves risk.{' '}
                   <Link href="/responsible-betting" className="text-blue-300 hover:text-blue-200 underline underline-offset-2">
                     Bet responsibly →
                   </Link>

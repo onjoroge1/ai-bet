@@ -31,10 +31,19 @@ interface TrackerStats {
   windowEnd: string | null
 }
 
+interface Provenance {
+  backfillCount: number
+  forwardCount: number
+  hasBackfill: boolean
+  dataStartDate: string | null
+  forwardCaptureStartDate: string | null
+}
+
 interface ApiResponse {
   success: boolean
   stats: TrackerStats
   premiumOnly: TrackerStats
+  provenance?: Provenance
   window: { days: number; start: string | null; end: string | null }
 }
 
@@ -79,6 +88,12 @@ function dollarTone(n: number): string {
   if (n > 0) return 'text-emerald-300'
   if (n < 0) return 'text-red-300'
   return 'text-slate-200'
+}
+
+function fmtMonthDay(iso: string | null): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 export function PremiumTrackerCard({ blogId, mode = 'premium' }: PremiumTrackerCardProps) {
@@ -229,7 +244,20 @@ export function PremiumTrackerCard({ blogId, mode = 'premium' }: PremiumTrackerC
         </Button>
       </div>
 
-      <p className="text-[10px] text-slate-500 mt-4 leading-relaxed">
+      {data.provenance?.hasBackfill && (
+        <p className="text-[10px] text-slate-500 mt-4 leading-relaxed">
+          Includes {data.provenance.backfillCount} reconstructed{' '}
+          {data.provenance.dataStartDate && `from ${fmtMonthDay(data.provenance.dataStartDate)}`}
+          {data.provenance.forwardCaptureStartDate && ` · live capture from ${fmtMonthDay(data.provenance.forwardCaptureStartDate)}`}
+          . Same qualification rules applied.{' '}
+          <Link href="/methodology" className="text-slate-400 hover:text-slate-300 underline underline-offset-2">
+            How we track
+          </Link>
+          .
+        </p>
+      )}
+
+      <p className="text-[10px] text-slate-500 mt-2 leading-relaxed">
         Simulation only. Past performance does not guarantee future results. Betting involves risk —{' '}
         <Link href="/responsible-betting" className="text-slate-400 hover:text-slate-300 underline underline-offset-2">
           bet responsibly

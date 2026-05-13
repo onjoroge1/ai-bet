@@ -79,10 +79,31 @@ export async function GET(request: NextRequest) {
         publishedAt: true,
         kickoffDate: true,
         settledAt: true,
+        surfacedBy: true,
       },
       orderBy: { publishedAt: 'desc' },
       take: 2000,
     })
+
+    // Compute provenance metadata for the UI:
+    // - dataStartDate: earliest publishedAt across rows (or window start)
+    // - forwardCaptureStartDate: earliest publishedAt where surfacedBy != 'backfill'
+    // - backfillCount: how many rows in this window are reconstructed
+    const backfillRows = rawRows.filter(r => r.surfacedBy === 'backfill')
+    const forwardRows = rawRows.filter(r => r.surfacedBy !== 'backfill')
+    const dataStartDate = rawRows.length > 0
+      ? rawRows.reduce((min, r) => (r.publishedAt < min ? r.publishedAt : min), rawRows[0].publishedAt)
+      : null
+    const forwardCaptureStartDate = forwardRows.length > 0
+      ? forwardRows.reduce((min, r) => (r.publishedAt < min ? r.publishedAt : min), forwardRows[0].publishedAt)
+      : null
+    const provenance = {
+      backfillCount: backfillRows.length,
+      forwardCount: forwardRows.length,
+      hasBackfill: backfillRows.length > 0,
+      dataStartDate: dataStartDate?.toISOString() || null,
+      forwardCaptureStartDate: forwardCaptureStartDate?.toISOString() || null,
+    }
 
     // Map Decimal → number for the pure helpers.
     const rows: TrackerPickRow[] = rawRows.map(r => ({
@@ -115,6 +136,7 @@ export async function GET(request: NextRequest) {
       filters: { tier, sport, teamId: teamId || null },
       stats,
       premiumOnly: premiumStats,
+      provenance,
       ...(includeRows ? {
         rows: rawRows.map(r => ({
           id: r.id,
@@ -132,6 +154,7 @@ export async function GET(request: NextRequest) {
           result: r.result,
           netDollars: r.netDollars !== null ? Number(r.netDollars) : null,
           netUnits: r.netUnits !== null ? Number(r.netUnits) : null,
+          surfacedBy: r.surfacedBy,
         })),
       } : {}),
     })
