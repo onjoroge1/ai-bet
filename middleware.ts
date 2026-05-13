@@ -64,6 +64,7 @@ const cronEndpoints = [
   '/api/admin/blogs/evergreen-refresh-scheduled',
   '/api/cron/premium-tracker-capture',
   '/api/cron/premium-tracker-settle',
+  '/api/cron/team-stats-roll',
 ]
 
 // Paths that require admin role

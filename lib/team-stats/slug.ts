@@ -22,9 +22,17 @@ export function slugify(input: string): string {
 
 export function makeTeamSlug(name: string, externalTeamId: string): string {
   const base = slugify(name)
-  const id = String(externalTeamId).trim()
-  if (!id) return base
-  return base ? `${base}-${id}` : id
+  const idRaw = String(externalTeamId).trim()
+  if (!idRaw) return base
+  // If externalTeamId IS the name (because upstream IDs aren't populated and
+  // we fall back to using team-name as key), suppress the redundant suffix
+  // and return slugify(name) only.
+  if (idRaw === name) return base
+  // External IDs may be numeric (preferred), or other free text — slugify
+  // for URL safety so slugs like `arsenal-fc-33` stay clean.
+  const idPart = /^[0-9a-zA-Z]+$/.test(idRaw) ? idRaw : slugify(idRaw)
+  if (!idPart) return base
+  return base ? `${base}-${idPart}` : idPart
 }
 
 /**
@@ -32,15 +40,25 @@ export function makeTeamSlug(name: string, externalTeamId: string): string {
  * external ID, which is alphanumeric (typically all digits). We split
  * on the LAST hyphen to extract it.
  */
-export function parseTeamSlug(slug: string): { baseSlug: string; externalTeamId: string } | null {
+export function parseTeamSlug(slug: string): { baseSlug: string; externalTeamId: string | null } | null {
   if (!slug) return null
+  // For name-only slugs (no external ID suffix), the whole thing is the
+  // base — no parse-back to ID is possible. Caller uses baseSlug to query.
   const idx = slug.lastIndexOf('-')
   if (idx === -1 || idx === slug.length - 1) {
-    // No hyphen, or trailing hyphen — treat the whole thing as the id
-    return { baseSlug: '', externalTeamId: slug }
+    return { baseSlug: slug, externalTeamId: null }
   }
-  const baseSlug = slug.slice(0, idx)
-  const externalTeamId = slug.slice(idx + 1)
-  if (!externalTeamId) return null
-  return { baseSlug, externalTeamId }
+  // Heuristic: if the trailing segment is purely alphanumeric (typical
+  // external ID shape from upstream APIs), treat it as an ID. Otherwise
+  // the whole slug is just slugify(name) and there is no ID suffix.
+  const trailing = slug.slice(idx + 1)
+  if (!/^[0-9a-zA-Z]+$/.test(trailing) || /[-]/.test(trailing)) {
+    return { baseSlug: slug, externalTeamId: null }
+  }
+  // Numeric-only trailing or short alphanumeric = treated as ID
+  if (/^\d+$/.test(trailing) || trailing.length <= 8) {
+    return { baseSlug: slug.slice(0, idx), externalTeamId: trailing }
+  }
+  // Long alphanumeric trailing — ambiguous, default to name-only
+  return { baseSlug: slug, externalTeamId: null }
 }

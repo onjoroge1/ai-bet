@@ -33,7 +33,8 @@ export async function GET(request: NextRequest) {
     const windowParam = sp.get('window') || '30'
     const tier = sp.get('tier') || 'all'
     const sport = sp.get('sport') || 'all'
-    const teamId = sp.get('teamId') || undefined
+    const teamId = sp.get('teamId') || undefined           // legacy — joins via MarketMatch ids (unpopulated)
+    const teamName = sp.get('teamName') || undefined        // current — matches PremiumPickHistory.homeTeam/awayTeam string
     const includeRows = sp.get('includeRows') === '1'
 
     const validWindows = new Set(['7', '30', '90', 'all'])
@@ -54,10 +55,15 @@ export async function GET(request: NextRequest) {
     const where: {
       publishedAt?: { gte: Date }
       marketMatch?: { OR: Array<{ homeTeamId: string } | { awayTeamId: string }> }
+      OR?: Array<{ homeTeam: string } | { awayTeam: string }>
     } = {}
     if (cutoff) where.publishedAt = { gte: cutoff }
     if (teamId) {
       where.marketMatch = { OR: [{ homeTeamId: teamId }, { awayTeamId: teamId }] }
+    }
+    // teamName takes precedence (current data has team names, not IDs).
+    if (teamName) {
+      where.OR = [{ homeTeam: teamName }, { awayTeam: teamName }]
     }
 
     const rawRows = await prisma.premiumPickHistory.findMany({
@@ -133,7 +139,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       window: { days: windowDays, start: cutoff?.toISOString() || null, end: now.toISOString() },
-      filters: { tier, sport, teamId: teamId || null },
+      filters: { tier, sport, teamId: teamId || null, teamName: teamName || null },
       stats,
       premiumOnly: premiumStats,
       provenance,

@@ -36,17 +36,23 @@ describe('slugify', () => {
 })
 
 describe('makeTeamSlug + parseTeamSlug', () => {
-  it('round-trips cleanly', () => {
+  it('round-trips cleanly with numeric id', () => {
     const slug = makeTeamSlug('Arsenal FC', '33')
     expect(slug).toBe('arsenal-fc-33')
     expect(parseTeamSlug(slug)).toEqual({ baseSlug: 'arsenal-fc', externalTeamId: '33' })
   })
-  it('handles numeric and alphanumeric ids', () => {
+  it('handles short alphanumeric ids', () => {
     expect(makeTeamSlug('FC Andorra', 'abc123')).toBe('fc-andorra-abc123')
   })
-  it('parseTeamSlug recovers the trailing id', () => {
+  it('parseTeamSlug recovers trailing numeric ids', () => {
     expect(parseTeamSlug('bayern-munchen-157')?.externalTeamId).toBe('157')
     expect(parseTeamSlug('borussia-monchengladbach-163')?.externalTeamId).toBe('163')
+  })
+  it('drops redundant suffix when externalTeamId equals name', () => {
+    // Current data fallback: when upstream IDs aren't populated and we use
+    // team-name as the key, the slug is name-only.
+    expect(makeTeamSlug('Arsenal', 'Arsenal')).toBe('arsenal')
+    expect(parseTeamSlug('arsenal')).toEqual({ baseSlug: 'arsenal', externalTeamId: null })
   })
   it('returns null for empty slug', () => {
     expect(parseTeamSlug('')).toBeNull()

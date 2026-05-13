@@ -53,6 +53,11 @@ interface PremiumTrackerCardProps {
    * has its strongest ROI on the premium tier and it's a cleaner story.
    * 'all' aggregates premium + strong. */
   mode?: 'premium' | 'all'
+  /** When set, scopes the tracker to picks involving this team. If fewer
+   * than 5 settled picks exist for the team, the card falls back to the
+   * site-wide tracker (so we never show "0 picks" for a thinly-tracked
+   * team — site-wide proof is better than empty proof). */
+  teamName?: string
 }
 
 function track(type: 'impression' | 'cta_click_picks' | 'cta_click_audit', blogId?: string) {
@@ -96,23 +101,47 @@ function fmtMonthDay(iso: string | null): string | null {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-export function PremiumTrackerCard({ blogId, mode = 'premium' }: PremiumTrackerCardProps) {
+export function PremiumTrackerCard({ blogId, mode = 'premium', teamName }: PremiumTrackerCardProps) {
   const [data, setData] = useState<ApiResponse | null>(null)
   const [error, setError] = useState(false)
   const [impressionFired, setImpressionFired] = useState(false)
+  const [scopedToTeam, setScopedToTeam] = useState<boolean>(Boolean(teamName))
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/premium-tracker/stats?window=30')
-      .then(r => r.json())
-      .then((j: ApiResponse) => {
-        if (!cancelled) setData(j)
-      })
-      .catch(() => {
+    async function load() {
+      // If a teamName is provided, first try the team-scoped query.
+      // Fall back to site-wide if <5 settled picks for the team.
+      if (teamName) {
+        try {
+          const res = await fetch(`/api/premium-tracker/stats?window=30&teamName=${encodeURIComponent(teamName)}`)
+          const json = (await res.json()) as ApiResponse
+          const headline = mode === 'premium' ? json.premiumOnly : json.stats
+          if (json.success && headline.settledCount >= 5) {
+            if (!cancelled) {
+              setData(json)
+              setScopedToTeam(true)
+            }
+            return
+          }
+        } catch {
+          // fall through to site-wide
+        }
+      }
+      try {
+        const res = await fetch('/api/premium-tracker/stats?window=30')
+        const json = (await res.json()) as ApiResponse
+        if (!cancelled) {
+          setData(json)
+          setScopedToTeam(false)
+        }
+      } catch {
         if (!cancelled) setError(true)
-      })
+      }
+    }
+    load()
     return () => { cancelled = true }
-  }, [])
+  }, [teamName, mode])
 
   // Fire impression once when we have data to actually show
   useEffect(() => {
@@ -179,7 +208,10 @@ export function PremiumTrackerCard({ blogId, mode = 'premium' }: PremiumTrackerC
   }
 
   // ── Headline rendering ──────────────────────────────────────────
-  const tierLabel = mode === 'premium' ? 'Premium tier' : 'All tracked picks'
+  const baseTierLabel = mode === 'premium' ? 'Premium tier' : 'All tracked picks'
+  const tierLabel = scopedToTeam && teamName
+    ? `${baseTierLabel} · ${teamName}`
+    : baseTierLabel
 
   return (
     <div className="rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-950/30 via-slate-900 to-slate-900 p-6 sm:p-8 my-10">

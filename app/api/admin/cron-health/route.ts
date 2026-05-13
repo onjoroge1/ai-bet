@@ -54,6 +54,8 @@ const EXPECTED_INTERVAL_MS: Record<string, number> = {
   // Premium Pick Tracker — capture every 2h, settle every hour.
   'premium-tracker:capture': 2 * HOUR,
   'premium-tracker:settle': 1 * HOUR,
+  // Team stats — daily 03:00 UTC nightly rollup of TeamStats from MarketMatch.
+  'team-stats:roll': 1 * DAY,
 }
 
 /**
