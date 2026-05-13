@@ -2299,3 +2299,93 @@ model MultisportMatch {
   @@index([status, commenceTime])
   @@index([lastSyncedAt])
 }
+
+// ─── Team Pages — Chunk B ────────────────────────────────────────────
+// Per-team rolled-up stats and a quarterly-refreshed AI profile, powering
+// the public /team/[slug]/predictions page. Identity is denormalized
+// (externalTeamId + canonical name from MarketMatch.homeTeamId), matching
+// the rest of our match-data stack rather than the FK-based Team model
+// used by the legacy Match table.
+//
+// Refresh cadence:
+//   - TeamStats: nightly cron (team-stats:roll)
+//   - TeamProfile: quarterly cron (team-stats:profile, ≤20 refreshes/day)
+//
+// See plan at ~/.claude/plans/indexed-bouncing-chipmunk.md "Chunk B".
+
+model TeamStats {
+  id              String   @id @default(cuid())
+  slug            String   @unique           // 'arsenal-fc-33'
+  externalTeamId  String                     // MarketMatch.homeTeamId
+  name            String                     // canonical display name
+  league          String?                    // primary/most-recent league
+  country         String?
+  logoUrl         String?
+
+  // Aggregate counters (last 365 days unless otherwise noted)
+  matchesPlayed   Int      @default(0)
+  wins            Int      @default(0)
+  draws           Int      @default(0)
+  losses          Int      @default(0)
+
+  // Goal stats
+  goalsFor        Int      @default(0)
+  goalsAgainst    Int      @default(0)
+  bttsCount       Int      @default(0)       // matches where both scored
+  over25Count     Int      @default(0)       // matches where total goals > 2.5
+
+  // Home/away splits (avg goals)
+  homeGoalsFor    Decimal? @db.Decimal(6, 3)
+  awayGoalsFor    Decimal? @db.Decimal(6, 3)
+
+  // Form (last 10) — encoded as 'WWDLW…'
+  formLast10      String?
+
+  // Model accuracy on this team's last 30 matches
+  v1ModelAccuracy Decimal? @db.Decimal(5, 4) // 0.6200 = 62%
+  v1ModelSampleN  Int?
+  v3ModelAccuracy Decimal? @db.Decimal(5, 4)
+  v3ModelSampleN  Int?
+  recommendedModel String?                   // 'v1' | 'v3' | null (tied/no data)
+
+  // H2H — top 5 frequent opponents.
+  // JSON shape:
+  //   [{ opponent: 'Chelsea', externalOpponentId: '49', last5: 'WWDLL',
+  //      wins: 3, draws: 1, losses: 1, lastResult: 'W 2-1',
+  //      lastDate: '2026-04-12' }, ...]
+  h2hGrid         Json?
+
+  // Most-recent league standing (if scraped/available)
+  leaguePosition  Int?
+
+  // Cache control
+  lastRolledAt    DateTime @default(now())
+  hasUpcoming     Boolean  @default(false)   // ≥1 UPCOMING match in next 30d
+  isActive        Boolean  @default(true)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([slug])
+  @@index([league, hasUpcoming])
+  @@index([isActive, hasUpcoming])
+  @@index([lastRolledAt])
+  @@index([externalTeamId])
+}
+
+model TeamProfile {
+  id             String   @id @default(cuid())
+  slug           String   @unique             // same slug as TeamStats
+  externalTeamId String
+  profileHtml    String                       // ~300-word HTML blurb
+  prompt         String?                      // prompt used for replay
+  modelUsed      String   @default("gpt-4o")
+  refreshedAt    DateTime @default(now())
+  refreshDueAt   DateTime                     // refreshedAt + 90d
+  version        Int      @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([slug])
+  @@index([refreshDueAt])
+}
