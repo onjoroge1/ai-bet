@@ -602,15 +602,14 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           </div>
         )}
 
-        {/* ── Premium Pick Tracker card. Day 5 rollout strategy: only mount
-            on the ~9 high-traffic blogs (viewCount ≥ 1500) so we can A/B-by-
-            existence-test on known-traffic pages first. Expand site-wide
-            after we measure CTR over 7d. ─────────────────────────────── */}
-        {post.viewCount >= 1500 && (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <PremiumTrackerCard blogId={post.id} />
-          </div>
-        )}
+        {/* ── Premium Pick Tracker card. Initially gated to viewCount ≥ 1500
+            (Day 5 A/B-by-existence test on known-traffic pages). Gate
+            dropped once funnel data confirmed positive engagement; now
+            renders on every blog so the proof element sits next to every
+            conversion path. ─────────────────────────────────────────── */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <PremiumTrackerCard blogId={post.id} />
+        </div>
 
         {/* ── Newsletter popup (scroll-triggered + exit-intent, dismissible).
             Renders nothing until the trigger fires. Suppresses itself when

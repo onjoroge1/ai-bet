@@ -242,12 +242,11 @@ export default async function CountryBlogPostPage({ params }: CountryBlogPostPag
           the snapbet_nl cookie. */}
       <NewsletterPopup blogId={post.id} />
 
-      {/* Premium Pick Tracker card on known-winner blogs only (viewCount ≥ 1500). */}
-      {post.viewCount >= 1500 && (
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
-          <PremiumTrackerCard blogId={post.id} />
-        </div>
-      )}
+      {/* Premium Pick Tracker card — now mounted on every country blog page
+          (viewCount gate dropped after positive funnel measurement). */}
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+        <PremiumTrackerCard blogId={post.id} />
+      </div>
 
       {/* Breadcrumb (SEO + nav) */}
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">

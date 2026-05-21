@@ -38,6 +38,7 @@ import { MarqueeTicker } from "@/components/marquee-ticker"
 import { MultisportMatchTable } from "@/components/multisport/MultisportMatchTable"
 import { SnapBetPicksSection } from "@/components/snapbet-picks/SnapBetPicksSection"
 import { SoccerMatchGrid } from "@/components/multisport/SoccerMatchGrid"
+import { PremiumTrackerCard } from "@/components/blog/PremiumTrackerCard"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -606,6 +607,13 @@ export default function HomePage() {
 
       {/* ── Marquee Ticker ── */}
       <MarqueeTicker />
+
+      {/* ── Premium Pick Tracker (live ROI band, links to /premium) ── */}
+      <section className="py-8 sm:py-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <PremiumTrackerCard mode="premium" />
+        </div>
+      </section>
 
       {/* ── SnapBet Picks (Premium Curated) ── */}
       <section className="py-8 sm:py-12">

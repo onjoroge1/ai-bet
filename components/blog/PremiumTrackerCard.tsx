@@ -190,7 +190,7 @@ export function PremiumTrackerCard({ blogId, mode = 'premium', teamName }: Premi
             </p>
             <div className="flex flex-wrap gap-3 mt-4">
               <Button asChild size="sm" className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold">
-                <Link href="/matches" onClick={onPicksClick}>
+                <Link href="/premium" onClick={onPicksClick}>
                   {"See today's picks"}
                   <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
                 </Link>
@@ -264,7 +264,7 @@ export function PremiumTrackerCard({ blogId, mode = 'premium', teamName }: Premi
 
       <div className="flex flex-wrap gap-3">
         <Button asChild size="sm" className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold">
-          <Link href="/matches" onClick={onPicksClick}>
+          <Link href="/premium" onClick={onPicksClick}>
             {"See today's premium picks"}
             <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
           </Link>

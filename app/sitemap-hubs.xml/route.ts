@@ -55,6 +55,10 @@ export async function GET() {
     entries.push({ url: buildSitemapUrl(baseUrl, path), lastmod: now, changefreq: 'weekly', priority: 0.6 })
   }
 
+  // /premium product/teaser page + /team index
+  entries.push({ url: buildSitemapUrl(baseUrl, '/premium'), lastmod: now, changefreq: 'daily', priority: 0.85 })
+  entries.push({ url: buildSitemapUrl(baseUrl, '/team'), lastmod: now, changefreq: 'daily', priority: 0.7 })
+
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${entries
