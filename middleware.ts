@@ -159,46 +159,48 @@ export async function middleware(request: NextRequest) {
   
   try {
     // ✅ CRON_SECRET Authentication Check (Early Exit for Automated Sync)
-    // This allows automated cron jobs to authenticate without user sessions
+    // Cron endpoints accept EITHER a valid Bearer CRON_SECRET (for scripts/
+    // Vercel cron) OR an admin session via the adminPaths gate below. The
+    // earlier behaviour rejected hard on missing Authorization header, which
+    // blocked browser admin calls to /api/predictions/predict — fixed
+    // 2026-05-13 so admins can still hit dual-purpose endpoints from the UI.
     const isCronEndpoint = cronEndpoints.some(endpoint => pathname.startsWith(endpoint))
     if (isCronEndpoint) {
       const authHeader = request.headers.get('authorization')
       const cronSecret = process.env.CRON_SECRET
-      
-      if (authHeader === `Bearer ${cronSecret}`) {
-        // Valid CRON_SECRET - allow through without user authentication
-        logger.info('Middleware - CRON_SECRET authenticated', {
-          tags: ['middleware', 'cron', 'auth'],
-          data: { pathname, authenticated: true }
-        })
-        
-        // Create response with security headers
-        const requestHeaders = new Headers(request.headers)
-        const forwarded = request.headers.get('x-forwarded-for')
-        const ip = forwarded ? forwarded.split(',')[0] : request.headers.get('x-real-ip') || 'unknown'
-        requestHeaders.set('x-client-ip', ip)
-        requestHeaders.set('x-cron-authenticated', 'true')
-        
-        const response = NextResponse.next({
-          request: {
-            headers: requestHeaders,
-          },
-        })
-        
-        return addSecurityHeaders(response)
-      } else {
-        // Invalid or missing CRON_SECRET - reject
-        logger.warn('Middleware - Invalid CRON_SECRET attempt', {
-          tags: ['middleware', 'cron', 'auth', 'unauthorized'],
-          data: { pathname, hasAuthHeader: !!authHeader }
-        })
-        
-        const response = new NextResponse(
-          JSON.stringify({ error: 'Unauthorized' }),
-          { status: 401, headers: { 'Content-Type': 'application/json' } }
-        )
-        return addSecurityHeaders(response)
+
+      if (authHeader) {
+        // A Bearer was presented — validate it strictly. Wrong secret = reject.
+        if (authHeader === `Bearer ${cronSecret}`) {
+          logger.info('Middleware - CRON_SECRET authenticated', {
+            tags: ['middleware', 'cron', 'auth'],
+            data: { pathname, authenticated: true }
+          })
+
+          const requestHeaders = new Headers(request.headers)
+          const forwarded = request.headers.get('x-forwarded-for')
+          const ip = forwarded ? forwarded.split(',')[0] : request.headers.get('x-real-ip') || 'unknown'
+          requestHeaders.set('x-client-ip', ip)
+          requestHeaders.set('x-cron-authenticated', 'true')
+
+          const response = NextResponse.next({ request: { headers: requestHeaders } })
+          return addSecurityHeaders(response)
+        } else {
+          logger.warn('Middleware - Invalid CRON_SECRET attempt', {
+            tags: ['middleware', 'cron', 'auth', 'unauthorized'],
+            data: { pathname, hasAuthHeader: !!authHeader }
+          })
+          const response = new NextResponse(
+            JSON.stringify({ error: 'Unauthorized' }),
+            { status: 401, headers: { 'Content-Type': 'application/json' } }
+          )
+          return addSecurityHeaders(response)
+        }
       }
+      // No Authorization header → fall through. If the path is also in
+      // adminPaths (e.g. /api/predictions/predict, /api/admin/*), the
+      // session check below will gate it. If it's a pure /api/cron/* route,
+      // the route handler itself enforces Bearer CRON_SECRET.
     }
     
     // Get client IP for rate limiting and country detection

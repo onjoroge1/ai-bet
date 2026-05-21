@@ -331,7 +331,11 @@ export default function AdminMatchesPage() {
         await fetchMatches()
         setBlogDialogOpen(false)
       } else {
-        toast.error(data.data?.error || 'Failed to generate blog')
+        // Route returns { success: false, error, details } — surface the
+        // specific reason instead of the generic fallback.
+        toast.error(data.error || data.data?.error || 'Failed to generate blog', {
+          description: data.details,
+        })
       }
     } catch (error) {
       toast.error('Error generating blog')

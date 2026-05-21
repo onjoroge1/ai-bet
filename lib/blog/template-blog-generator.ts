@@ -280,6 +280,100 @@ export class TemplateBlogGenerator {
   }
 
   /**
+   * Find a single MarketMatch by id and shape it into MarketMatchWithQP for
+   * MANUAL admin blog generation. Bypasses the cron's strict eligibility
+   * (48h window, top-15 confidence cap, no-existing-blog rule) — but
+   * preserves the safety floor: must be UPCOMING, must have predictionData.
+   *
+   * Use this for /api/admin/template-blogs?action=generate_single. Do NOT
+   * use it for the cron path — getEligibleMarketMatches() keeps that safe.
+   *
+   * Added 2026-05-13 after the stabilization-sprint cron filter
+   * inadvertently blocked manual generation for matches > 48h away or not
+   * in the top-15.
+   */
+  static async findOneEligibleForAdmin(marketMatchId: string): Promise<MarketMatchWithQP | null> {
+    const m = await prisma.marketMatch.findUnique({
+      where: { id: marketMatchId },
+      select: {
+        id: true,
+        matchId: true,
+        status: true,
+        homeTeam: true,
+        awayTeam: true,
+        league: true,
+        kickoffDate: true,
+        consensusOdds: true,
+        v3Model: true,
+        v1Model: true,
+        blogPosts: {
+          where: { isActive: true },
+          select: { id: true, title: true, isPublished: true },
+          take: 1,
+        },
+      },
+    })
+    if (!m) return null
+
+    // Safety floor: only UPCOMING matches. We never write a blog for a match
+    // that's already FINISHED/CANCELLED/etc. — same as the cron rule.
+    if (m.status !== 'UPCOMING') return null
+
+    // Need a QuickPurchase with predictionData — the blog generator reads
+    // from that. Without it the template renders empty.
+    const qp = await prisma.quickPurchase.findFirst({
+      where: {
+        matchId: m.matchId,
+        isActive: true,
+        isPredictionActive: true,
+        predictionData: { not: Prisma.JsonNull },
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        matchId: true,
+        confidenceScore: true,
+        valueRating: true,
+        analysisSummary: true,
+        createdAt: true,
+        matchData: true,
+        predictionData: true,
+      },
+      orderBy: { confidenceScore: 'desc' },
+    })
+    if (!qp) return null
+
+    return {
+      id: m.id,
+      matchId: m.matchId,
+      status: m.status,
+      homeTeam: m.homeTeam,
+      awayTeam: m.awayTeam,
+      league: m.league,
+      kickoffDate: m.kickoffDate,
+      consensusOdds: m.consensusOdds as { home: number; draw: number; away: number } | null,
+      quickPurchases: [{
+        id: qp.id,
+        name: qp.name,
+        description: qp.description,
+        matchId: qp.matchId,
+        confidenceScore: qp.confidenceScore,
+        valueRating: qp.valueRating,
+        analysisSummary: qp.analysisSummary,
+        createdAt: qp.createdAt,
+        matchData: qp.matchData,
+        predictionData: qp.predictionData,
+      }],
+      blogPosts: m.blogPosts.map(bp => ({
+        id: bp.id,
+        title: bp.title,
+        isPublished: bp.isPublished,
+      })),
+    }
+  }
+
+  /**
    * Get eligible QuickPurchase matches for blog generation
    * @deprecated Use getEligibleMarketMatches() instead
    */

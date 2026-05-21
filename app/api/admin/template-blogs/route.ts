@@ -51,12 +51,18 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      const matches = await TemplateBlogGenerator.getEligibleMarketMatches()
-      const target = matches.find((m) => m.id === body.marketMatchId)
-      
+      // Use the admin-specific lookup which bypasses cron-only filters
+      // (48h window, top-15 cap, no-existing-blog) but preserves the safety
+      // floor (UPCOMING + predictionData required).
+      const target = await TemplateBlogGenerator.findOneEligibleForAdmin(body.marketMatchId)
+
       if (!target) {
         return NextResponse.json(
-          { success: false, error: 'Match not eligible or not found' },
+          {
+            success: false,
+            error: 'Match not eligible for blog generation',
+            details: 'Match must be UPCOMING and have predictionData. Run /predict first if needed.',
+          },
           { status: 404 }
         )
       }
