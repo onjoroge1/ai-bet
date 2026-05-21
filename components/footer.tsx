@@ -55,6 +55,16 @@ export function Footer() {
             <h3 className="text-white font-semibold mb-4">Quick Links</h3>
             <ul className="space-y-2">
               <li>
+                <Link href="/soccer" className="text-slate-400 hover:text-white text-sm">
+                  Soccer Predictions
+                </Link>
+              </li>
+              <li>
+                <Link href="/soccer/today" className="text-slate-400 hover:text-white text-sm">
+                  Today&apos;s Picks
+                </Link>
+              </li>
+              <li>
                 <a href="/daily-tips" className="text-slate-400 hover:text-white text-sm">
                   Daily Predictions
                 </a>
@@ -70,13 +80,13 @@ export function Footer() {
                 </a>
               </li>
               <li>
-                <a href="/model-info" className="text-slate-400 hover:text-white text-sm">
-                  How It Works
-                </a>
+                <Link href="/guides" className="text-slate-400 hover:text-white text-sm">
+                  Guides
+                </Link>
               </li>
               <li>
-                <a href="#" className="text-slate-400 hover:text-white text-sm">
-                  Success Stories
+                <a href="/model-info" className="text-slate-400 hover:text-white text-sm">
+                  How It Works
                 </a>
               </li>
             </ul>

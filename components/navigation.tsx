@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Menu, X, User, MapPin, BookOpen, Target, Crown, Radio, HelpCircle, BarChart3, Gift, RefreshCw, Activity, Trophy } from "lucide-react"
+import { Menu, X, User, MapPin, BookOpen, Target, Crown, Radio, HelpCircle, BarChart3, Gift, RefreshCw, Activity, Trophy, Flame } from "lucide-react"
 import { useUserCountry } from "@/contexts/user-country-context"
 import { useSession } from "next-auth/react"
 import { LogoutButton } from "@/components/auth/logout-button"
@@ -104,9 +104,14 @@ export function Navigation() {
     )
   }
 
-  // Core navigation links - simplified and focused
+  // Core navigation links - simplified and focused.
+  // /soccer = editorial magazine entry (today's lead pick, league hubs, tracker).
+  // /sports = interactive multi-sport matches browser. Both ship; we keep
+  // them as siblings until /nba, /nhl, /ncaab editorial pages exist — then
+  // /sports can absorb a dropdown.
   const navLinks = [
     { href: isAuthenticated ? "/dashboard/matches" : "/matches", text: "Matches", icon: Target },
+    { href: "/soccer", text: "Soccer", icon: Flame },
     { href: "/sports", text: "Sports", icon: Trophy },
     { href: "/blog", text: "Blog", icon: BookOpen },
     { href: "/tips-history", text: "History", icon: BarChart3 },
