@@ -44,6 +44,10 @@ export async function GET(request: NextRequest) {
       loc: `${baseUrl}/sitemap-team.xml`,
       lastmod: currentDate,
     },
+    {
+      loc: `${baseUrl}/sitemap-hubs.xml`,
+      lastmod: currentDate,
+    },
   ]
 
   // Generate proper sitemap index XML
