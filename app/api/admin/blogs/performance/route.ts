@@ -219,11 +219,12 @@ export async function GET(request: Request) {
       where: { createdAt: { gte: windowStart } },
       _count: { _all: true },
     })
-    const trackerFunnel = { impression: 0, cta_click_picks: 0, cta_click_audit: 0 }
+    const trackerFunnel = { impression: 0, cta_click_picks: 0, cta_click_audit: 0, soccer_hub_impression: 0 }
     for (const row of trackerEventsRaw) {
       if (row.type === 'impression') trackerFunnel.impression = row._count._all
       else if (row.type === 'cta_click_picks') trackerFunnel.cta_click_picks = row._count._all
       else if (row.type === 'cta_click_audit') trackerFunnel.cta_click_audit = row._count._all
+      else if (row.type === 'soccer_hub_impression') trackerFunnel.soccer_hub_impression = row._count._all
     }
     const trackerClickRatePct = trackerFunnel.impression > 0
       ? +(((trackerFunnel.cta_click_picks + trackerFunnel.cta_click_audit) / trackerFunnel.impression) * 100).toFixed(2)

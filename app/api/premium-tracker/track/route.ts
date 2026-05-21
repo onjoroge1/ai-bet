@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid body' }, { status: 400 })
     }
 
-    const validTypes = new Set(['impression', 'cta_click_picks', 'cta_click_audit'])
+    const validTypes = new Set(['impression', 'cta_click_picks', 'cta_click_audit', 'soccer_hub_impression'])
     if (!body.type || !validTypes.has(body.type)) {
       return NextResponse.json({ success: false, error: 'Invalid type' }, { status: 400 })
     }
