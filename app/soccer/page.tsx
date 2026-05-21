@@ -170,7 +170,6 @@ export default async function SoccerHubPage() {
         excerpt: true,
         publishedAt: true,
         viewCount: true,
-        featuredImage: true,
       },
     }),
   ])
@@ -466,14 +465,13 @@ export default async function SoccerHubPage() {
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
               {recentBlogs.map(b => (
                 <Link key={b.id} href={`/blog/${b.slug}`} className="block group">
-                  <Card className="bg-slate-800 border-slate-700 hover:border-blue-500/40 transition-colors h-full overflow-hidden">
-                    {b.featuredImage && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={b.featuredImage} alt="" className="w-full h-28 object-cover" />
-                    )}
+                  <Card className="bg-slate-800 border-slate-700 hover:border-blue-500/40 transition-colors h-full">
                     <CardContent className="p-4">
                       <p className="text-sm font-semibold text-white group-hover:text-blue-300 leading-snug line-clamp-3">{b.title}</p>
-                      <p className="text-[10px] text-slate-400 mt-2">
+                      {b.excerpt && (
+                        <p className="text-xs text-slate-400 mt-2 line-clamp-2 leading-relaxed">{b.excerpt}</p>
+                      )}
+                      <p className="text-[10px] text-slate-500 mt-2">
                         {b.publishedAt && fmtDateShort(b.publishedAt)} · {b.viewCount.toLocaleString()} views
                       </p>
                     </CardContent>
