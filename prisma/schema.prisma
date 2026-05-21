@@ -2315,9 +2315,10 @@ model MultisportMatch {
 
 model TeamStats {
   id              String   @id @default(cuid())
-  slug            String   @unique           // 'arsenal-fc-33'
-  externalTeamId  String                     // MarketMatch.homeTeamId
+  slug            String   @unique           // 'arsenal' (soccer) or 'nba-lakers' (multisport)
+  externalTeamId  String                     // team name string (homeTeamId is unpopulated upstream)
   name            String                     // canonical display name
+  sport           String   @default("soccer")  // 'soccer' | 'basketball_nba' | 'icehockey_nhl' | 'basketball_ncaab'
   league          String?                    // primary/most-recent league
   country         String?
   logoUrl         String?
@@ -2371,6 +2372,7 @@ model TeamStats {
   @@index([isActive, hasUpcoming])
   @@index([lastRolledAt])
   @@index([externalTeamId])
+  @@index([sport, hasUpcoming])
 }
 
 model TeamProfile {

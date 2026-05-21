@@ -20,19 +20,32 @@ export function slugify(input: string): string {
     .replace(/^-+|-+$/g, '')
 }
 
-export function makeTeamSlug(name: string, externalTeamId: string): string {
+export function makeTeamSlug(name: string, externalTeamId: string, sport?: string): string {
   const base = slugify(name)
   const idRaw = String(externalTeamId).trim()
-  if (!idRaw) return base
+  // Sport prefix for non-soccer keeps slugs distinct across sports.
+  // 'basketball_nba' → 'nba', 'icehockey_nhl' → 'nhl', etc.
+  const prefix = sportSlugPrefix(sport)
+  const withPrefix = prefix ? `${prefix}-${base}` : base
+  if (!idRaw) return withPrefix
   // If externalTeamId IS the name (because upstream IDs aren't populated and
-  // we fall back to using team-name as key), suppress the redundant suffix
-  // and return slugify(name) only.
-  if (idRaw === name) return base
+  // we fall back to using team-name as key), suppress the redundant suffix.
+  if (idRaw === name) return withPrefix
   // External IDs may be numeric (preferred), or other free text — slugify
   // for URL safety so slugs like `arsenal-fc-33` stay clean.
   const idPart = /^[0-9a-zA-Z]+$/.test(idRaw) ? idRaw : slugify(idRaw)
-  if (!idPart) return base
-  return base ? `${base}-${idPart}` : idPart
+  if (!idPart) return withPrefix
+  return withPrefix ? `${withPrefix}-${idPart}` : idPart
+}
+
+/** Convert upstream sport key to short slug prefix. Empty string for soccer
+ *  so existing slugs (`arsenal`, `celta-vigo`) keep working unchanged. */
+export function sportSlugPrefix(sport?: string): string {
+  if (!sport || sport === 'soccer') return ''
+  if (sport === 'basketball_nba') return 'nba'
+  if (sport === 'icehockey_nhl') return 'nhl'
+  if (sport === 'basketball_ncaab') return 'ncaab'
+  return slugify(sport)
 }
 
 /**
