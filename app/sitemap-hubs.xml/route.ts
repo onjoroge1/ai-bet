@@ -24,7 +24,8 @@ export async function GET() {
 
   const entries: Array<{ url: string; lastmod: string; changefreq: string; priority: number }> = []
 
-  // Daily hubs — change frequently
+  // Soccer index + daily hubs — change frequently
+  entries.push({ url: buildSitemapUrl(baseUrl, '/soccer'), lastmod: now, changefreq: 'daily', priority: 0.85 })
   entries.push({ url: buildSitemapUrl(baseUrl, '/soccer/today'), lastmod: now, changefreq: 'hourly', priority: 0.9 })
   entries.push({ url: buildSitemapUrl(baseUrl, '/soccer/tomorrow'), lastmod: now, changefreq: 'hourly', priority: 0.8 })
 
