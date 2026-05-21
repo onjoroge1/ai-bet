@@ -146,16 +146,15 @@ export default async function TeamPredictionsPage({ params }: PageProps) {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       {/* NewsArticleSchema — feeds Google News + structured search */}
       <NewsArticleSchema
-        title={`${team.name} Predictions, Form & H2H`}
+        headline={`${team.name} Predictions, Form & H2H`}
         description={`AI-driven analysis of ${team.name}'s form, model accuracy, and head-to-head record.`}
-        url={`/team/${slug}/predictions`}
-        imageUrl={team.logoUrl ?? '/og-default.png'}
+        image={team.logoUrl ?? '/og-default.png'}
         datePublished={team.createdAt.toISOString()}
         dateModified={team.lastRolledAt.toISOString()}
         author="SnapBet AI Team"
+        publisher="SnapBet AI"
         articleBody={`Predictions and historical analysis for ${team.name}.`}
         articleSection="Predictions"
-        keywords={[team.name, team.league ?? 'football', 'predictions', 'H2H']}
       />
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
