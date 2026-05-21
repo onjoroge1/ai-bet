@@ -24,6 +24,7 @@ import { LiveAIAnalysis } from "@/components/live/LiveAIAnalysis"
 import { LiveBettingIntelligence } from "@/components/live/LiveBettingIntelligence"
 import { ConnectionStatusIndicator } from "@/components/live/ConnectionStatusIndicator"
 import { generateMatchSlug, isNumericSlug } from "@/lib/match-slug"
+import { AdvancedBreadcrumb } from "@/components/advanced-breadcrumb"
 import { deriveSurface } from "@/lib/predictions/should-surface"
 import { RealtimeAdvancedMarkets } from "@/components/live/RealtimeAdvancedMarkets"
 import { FinishedMatchStats } from "@/components/match/FinishedMatchStats"
@@ -1039,6 +1040,11 @@ export default function MatchDetailPage() {
         </div>
 
         <div className="relative max-w-6xl mx-auto px-4 py-8 space-y-6">
+          {/* ── Breadcrumb (SEO + nav) ───────────────────────────── */}
+          <AdvancedBreadcrumb
+            context={{ title: `${matchData.home_team} vs ${matchData.away_team}` }}
+          />
+
           {/* ── Back Button ──────────────────────────────────────── */}
           <Button
             onClick={() => router.push("/")}

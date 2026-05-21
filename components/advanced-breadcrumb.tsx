@@ -75,6 +75,28 @@ export function AdvancedBreadcrumb({ context, customItems }: AdvancedBreadcrumbP
         return { name: 'Blog', icon: BookOpen }
       case 'faq':
         return { name: 'FAQ', icon: HelpCircle }
+      case 'soccer':
+        return { name: 'Soccer', icon: Target }
+      case 'today':
+        return { name: 'Today', icon: Target }
+      case 'tomorrow':
+        return { name: 'Tomorrow', icon: Target }
+      case 'match':
+        return { name: 'Match', icon: Target }
+      case 'team':
+        return { name: 'Team', icon: Target }
+      case 'predictions':
+        return { name: 'Predictions', icon: Target }
+      case 'performance':
+        return { name: 'Performance', icon: Target }
+      case 'guides':
+        return { name: 'Guides', icon: BookOpen }
+      case 'methodology':
+        return { name: 'Methodology', icon: HelpCircle }
+      case 'about':
+        return { name: 'About', icon: User }
+      case 'responsible-betting':
+        return { name: 'Responsible Betting', icon: Shield }
       case 'daily-tips':
         return { name: 'Daily Tips', icon: Target }
       case 'weekly-specials':

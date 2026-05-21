@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { NewsletterPopup } from '@/components/blog/BlogConversionCTAs'
 import { PremiumTrackerCard } from '@/components/blog/PremiumTrackerCard'
+import { AdvancedBreadcrumb } from '@/components/advanced-breadcrumb'
 import { 
   ArrowLeft, 
   User, 
@@ -247,6 +248,11 @@ export default async function CountryBlogPostPage({ params }: CountryBlogPostPag
           <PremiumTrackerCard blogId={post.id} />
         </div>
       )}
+
+      {/* Breadcrumb (SEO + nav) */}
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+        <AdvancedBreadcrumb context={{ title: post.title }} />
+      </div>
 
       {/* Navigation */}
       <div>

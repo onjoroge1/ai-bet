@@ -31,6 +31,7 @@ import { PremiumTrackerCard } from '@/components/blog/PremiumTrackerCard'
 import { TeamLinksRow } from '@/components/blog/TeamLinksRow'
 import { BlogComments } from '@/components/blog-comments'
 import { BlogMatchSalesSidebar } from '@/components/blog-match-sales-sidebar'
+import { AdvancedBreadcrumb } from '@/components/advanced-breadcrumb'
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -365,6 +366,11 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
       </div>
 
       <div className="relative z-10">
+        {/* ── Breadcrumb (SEO + nav) ──────────────────────────────────────── */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+          <AdvancedBreadcrumb context={{ title: post.title }} />
+        </div>
+
         {/* ── Hero Banner ─────────────────────────────────────────────────── */}
         <section className="relative overflow-hidden border-b border-slate-800/50">
           {/* Background — team match or gradient */}
