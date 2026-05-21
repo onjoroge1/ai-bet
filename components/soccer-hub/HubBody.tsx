@@ -12,8 +12,11 @@ import {
   TrendingUp,
   ChevronRight,
 } from 'lucide-react'
+
+// (ChevronRight kept — used inside top-picks card link)
 import type { HubData } from '@/lib/soccer-hubs/data'
 import type { FAQEntry } from '@/lib/soccer-hubs/faq'
+import { FixturesByLeague } from './FixturesByLeague'
 
 interface HubBodyProps {
   data: HubData
@@ -132,53 +135,7 @@ export function HubBody({ data, intro, faqs }: HubBodyProps) {
           <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-3">
             <Calendar className="w-5 h-5 text-blue-300" /> All fixtures
           </h2>
-          <div className="space-y-4">
-            {data.byLeague.map(group => (
-              <Card key={group.league} className="bg-slate-800 border-slate-700">
-                <CardContent className="p-5">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold text-white">
-                      {group.flagEmoji && <span className="mr-2">{group.flagEmoji}</span>}
-                      {group.league}
-                    </h3>
-                    <span className="text-xs text-slate-400">{group.fixtures.length} fixture{group.fixtures.length === 1 ? '' : 's'}</span>
-                  </div>
-                  <div className="space-y-1">
-                    {group.fixtures.map(f => (
-                      <div key={f.matchId} className="flex items-center justify-between gap-3 py-2 px-3 rounded-lg border border-slate-700/50 bg-slate-900/40 text-sm">
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <span className="text-[10px] text-slate-500 w-12 flex-shrink-0">{fmtKickoffTime(f.kickoffDate)}</span>
-                          <span className="text-white truncate">
-                            {f.homeTeamSlug ? (
-                              <Link href={`/team/${f.homeTeamSlug}/predictions`} className="hover:text-blue-300">
-                                {f.homeTeam}
-                              </Link>
-                            ) : f.homeTeam}
-                            <span className="text-slate-500 mx-1.5">vs</span>
-                            {f.awayTeamSlug ? (
-                              <Link href={`/team/${f.awayTeamSlug}/predictions`} className="hover:text-blue-300">
-                                {f.awayTeam}
-                              </Link>
-                            ) : f.awayTeam}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          {f.confidence >= 0.5 && f.pick !== null && (
-                            <Badge className={`${confidenceBadgeClass(f.confidence)} text-[10px]`}>
-                              {pickLabel(f.pick, f.homeTeam, f.awayTeam)} · {(f.confidence * 100).toFixed(0)}%
-                            </Badge>
-                          )}
-                          <Link href={`/match/${f.matchSlug}`} className="text-xs text-blue-300 hover:text-blue-200 inline-flex items-center gap-0.5">
-                            View <ChevronRight className="w-3 h-3" />
-                          </Link>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <FixturesByLeague byLeague={data.byLeague} />
         </section>
       )}
 

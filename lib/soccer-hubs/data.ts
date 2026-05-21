@@ -125,6 +125,9 @@ function chooseConfidence(v3c: number | null, v1c: number | null): {
 export async function getHubData(opts: {
   dayName: 'today' | 'tomorrow'
   now?: Date
+  /** Optional league filter — exact match on MarketMatch.league. Used by
+   * league hubs to scope the fixture list. Daily hubs leave this null. */
+  league?: string
 }): Promise<HubData> {
   const now = opts.now ?? new Date()
   const offset: 0 | 1 = opts.dayName === 'tomorrow' ? 1 : 0
@@ -135,6 +138,7 @@ export async function getHubData(opts: {
       status: 'UPCOMING',
       isActive: true,
       kickoffDate: { gte: start, lt: end },
+      ...(opts.league ? { league: opts.league } : {}),
     },
     select: {
       id: true,
