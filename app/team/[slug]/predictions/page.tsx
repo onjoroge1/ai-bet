@@ -96,26 +96,84 @@ export default async function TeamPredictionsPage({ params }: PageProps) {
     select: { profileHtml: true, refreshedAt: true },
   })
 
-  // Upcoming fixtures (next 3) by team name on either side
+  // Upcoming fixtures (next 3) by team name on either side. Sport-aware:
+  // soccer reads MarketMatch, NBA/NHL read MultisportMatch with a 2-way
+  // model. Normalize to a shared shape so the renderer doesn't care.
   const now = new Date()
-  const upcoming = await prisma.marketMatch.findMany({
-    where: {
-      status: 'UPCOMING',
-      kickoffDate: { gte: now },
-      OR: [{ homeTeam: team.name }, { awayTeam: team.name }],
-      isActive: true,
-    },
-    select: {
-      matchId: true,
-      homeTeam: true, awayTeam: true,
-      league: true,
-      kickoffDate: true,
-      v1Model: true, v3Model: true,
-      consensusOdds: true,
-    },
-    orderBy: { kickoffDate: 'asc' },
-    take: 3,
-  })
+  const isSoccer = team.sport === 'soccer'
+  const upcoming: Array<{
+    matchId: string
+    homeTeam: string
+    awayTeam: string
+    league: string
+    kickoffDate: Date
+    confidence: number | null
+    pick: string | null
+  }> = []
+  if (isSoccer) {
+    const rows = await prisma.marketMatch.findMany({
+      where: {
+        status: 'UPCOMING',
+        kickoffDate: { gte: now },
+        OR: [{ homeTeam: team.name }, { awayTeam: team.name }],
+        isActive: true,
+      },
+      select: {
+        matchId: true,
+        homeTeam: true, awayTeam: true,
+        league: true,
+        kickoffDate: true,
+        v1Model: true, v3Model: true,
+      },
+      orderBy: { kickoffDate: 'asc' },
+      take: 3,
+    })
+    for (const m of rows) {
+      const v3 = m.v3Model as { confidence?: number; pick?: string } | null
+      const v1 = m.v1Model as { confidence?: number; pick?: string } | null
+      upcoming.push({
+        matchId: m.matchId,
+        homeTeam: m.homeTeam,
+        awayTeam: m.awayTeam,
+        league: m.league,
+        kickoffDate: m.kickoffDate,
+        confidence: v3?.confidence ?? v1?.confidence ?? null,
+        pick: v3?.pick ?? v1?.pick ?? null,
+      })
+    }
+  } else {
+    const rows = await prisma.multisportMatch.findMany({
+      where: {
+        sport: team.sport,
+        status: 'upcoming',
+        commenceTime: { gte: now },
+        OR: [{ homeTeam: team.name }, { awayTeam: team.name }],
+      },
+      select: {
+        eventId: true,
+        homeTeam: true, awayTeam: true,
+        league: true,
+        commenceTime: true,
+        model: true,
+      },
+      orderBy: { commenceTime: 'asc' },
+      take: 3,
+    })
+    for (const m of rows) {
+      const mp = (m.model as { predictions?: { pick?: string; confidence?: number } } | null)?.predictions
+      const raw = mp?.pick?.toUpperCase()
+      const pick = raw === 'H' ? 'home' : raw === 'A' ? 'away' : null
+      upcoming.push({
+        matchId: m.eventId,
+        homeTeam: m.homeTeam,
+        awayTeam: m.awayTeam,
+        league: m.league,
+        kickoffDate: m.commenceTime,
+        confidence: mp?.confidence ?? null,
+        pick,
+      })
+    }
+  }
 
   // Recent match-preview blogs referencing this team via marketMatch FK
   const recentBlogs = await prisma.blogPost.findMany({
@@ -190,8 +248,12 @@ export default async function TeamPredictionsPage({ params }: PageProps) {
                 <p className="text-xs text-slate-400 uppercase tracking-wider">Last {team.matchesPlayed} matches</p>
                 <p className="text-3xl font-bold text-white mt-1">
                   <span className="text-emerald-300">{team.wins}W</span>
-                  <span className="text-slate-500"> · </span>
-                  <span className="text-slate-200">{team.draws}D</span>
+                  {isSoccer && (
+                    <>
+                      <span className="text-slate-500"> · </span>
+                      <span className="text-slate-200">{team.draws}D</span>
+                    </>
+                  )}
                   <span className="text-slate-500"> · </span>
                   <span className="text-red-300">{team.losses}L</span>
                 </p>
@@ -215,23 +277,29 @@ export default async function TeamPredictionsPage({ params }: PageProps) {
               <BarChart3 className="w-5 h-5 text-blue-300" />
               Model accuracy on {team.name}&apos;s matches
             </h2>
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className={isSoccer ? 'grid sm:grid-cols-2 gap-4' : 'grid sm:grid-cols-1 gap-4'}>
+              {isSoccer && (
+                <ModelTile
+                  label="V1 model"
+                  accuracy={v1acc}
+                  sampleN={team.v1ModelSampleN}
+                  recommended={team.recommendedModel === 'v1'}
+                />
+              )}
               <ModelTile
-                label="V1 model"
-                accuracy={v1acc}
-                sampleN={team.v1ModelSampleN}
-                recommended={team.recommendedModel === 'v1'}
-              />
-              <ModelTile
-                label="V3 (Sharp Intelligence)"
+                label={isSoccer ? 'V3 (Sharp Intelligence)' : 'V3 Sharp Intelligence'}
                 accuracy={v3acc}
                 sampleN={team.v3ModelSampleN}
-                recommended={team.recommendedModel === 'v3'}
+                recommended={isSoccer ? team.recommendedModel === 'v3' : false}
               />
             </div>
             <p className="text-xs text-slate-500 mt-4">
-              Recommended badge appears when one model leads by ≥5 percentage points over a minimum of 10 settled matches.
-              {' '}<Link href="/methodology#models" className="text-blue-300 hover:text-blue-200 underline">How V1 vs V3 work →</Link>
+              {isSoccer ? (
+                <>Recommended badge appears when one model leads by ≥5 percentage points over a minimum of 10 settled matches. </>
+              ) : (
+                <>NBA / NHL uses a single V3 multisport model — no V1 comparison. </>
+              )}
+              <Link href="/methodology#models" className="text-blue-300 hover:text-blue-200 underline">How models work →</Link>
             </p>
           </CardContent>
         </Card>
@@ -239,27 +307,51 @@ export default async function TeamPredictionsPage({ params }: PageProps) {
         {/* ── Premium Tracker (team-scoped) ─────────────────────── */}
         <PremiumTrackerCard mode="premium" teamName={team.name} />
 
-        {/* ── Goal patterns ─────────────────────────────────────── */}
-        <Card className="bg-slate-800 border-slate-700">
-          <CardContent className="p-6">
-            <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
-              <Target className="w-5 h-5 text-amber-300" />
-              Goal patterns
-            </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <Stat label="Avg goals scored" value={avgGf.toFixed(2)} />
-              <Stat label="Avg goals conceded" value={avgGa.toFixed(2)} />
-              <Stat label="BTTS" value={`${(bttsRate * 100).toFixed(0)}%`} sub={`${team.bttsCount}/${team.matchesPlayed}`} />
-              <Stat label="Over 2.5" value={`${(over25Rate * 100).toFixed(0)}%`} sub={`${team.over25Count}/${team.matchesPlayed}`} />
-            </div>
-            {team.homeGoalsFor !== null && team.awayGoalsFor !== null && (
-              <div className="grid sm:grid-cols-2 gap-4 mt-4 pt-4 border-t border-slate-700">
-                <Stat label="At home (avg scored)" value={Number(team.homeGoalsFor).toFixed(2)} />
-                <Stat label="Away (avg scored)" value={Number(team.awayGoalsFor).toFixed(2)} />
+        {/* ── Patterns card ─────────────────────────────────────── */}
+        {isSoccer ? (
+          <Card className="bg-slate-800 border-slate-700">
+            <CardContent className="p-6">
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+                <Target className="w-5 h-5 text-amber-300" />
+                Goal patterns
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <Stat label="Avg goals scored" value={avgGf.toFixed(2)} />
+                <Stat label="Avg goals conceded" value={avgGa.toFixed(2)} />
+                <Stat label="BTTS" value={`${(bttsRate * 100).toFixed(0)}%`} sub={`${team.bttsCount}/${team.matchesPlayed}`} />
+                <Stat label="Over 2.5" value={`${(over25Rate * 100).toFixed(0)}%`} sub={`${team.over25Count}/${team.matchesPlayed}`} />
               </div>
-            )}
-          </CardContent>
-        </Card>
+              {team.homeGoalsFor !== null && team.awayGoalsFor !== null && (
+                <div className="grid sm:grid-cols-2 gap-4 mt-4 pt-4 border-t border-slate-700">
+                  <Stat label="At home (avg scored)" value={Number(team.homeGoalsFor).toFixed(2)} />
+                  <Stat label="Away (avg scored)" value={Number(team.awayGoalsFor).toFixed(2)} />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
+          // Multisport: no upstream score data — render home/away win rates
+          // (populated into homeGoalsFor/awayGoalsFor by the multisport rollup
+          // as a percentage × 100).
+          (team.homeGoalsFor !== null && team.awayGoalsFor !== null) && (
+            <Card className="bg-slate-800 border-slate-700">
+              <CardContent className="p-6">
+                <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+                  <Target className="w-5 h-5 text-amber-300" />
+                  Home / Away splits
+                </h2>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <Stat label="Home win rate" value={`${Number(team.homeGoalsFor).toFixed(0)}%`} />
+                  <Stat label="Away win rate" value={`${Number(team.awayGoalsFor).toFixed(0)}%`} />
+                </div>
+                <p className="text-[10px] text-slate-500 mt-3">
+                  Score-level detail (points scored/conceded) is not currently provided by the upstream
+                  data source for {team.sport === 'basketball_nba' ? 'NBA' : team.sport === 'icehockey_nhl' ? 'NHL' : team.sport}.
+                </p>
+              </CardContent>
+            </Card>
+          )
+        )}
 
         {/* ── H2H grid ──────────────────────────────────────────── */}
         {h2h.length > 0 && (
@@ -280,8 +372,12 @@ export default async function TeamPredictionsPage({ params }: PageProps) {
                     <div className="flex items-center gap-4">
                       <div className="text-xs">
                         <span className="text-emerald-300">{opp.wins}W</span>
-                        <span className="text-slate-500"> </span>
-                        <span className="text-slate-300">{opp.draws}D</span>
+                        {isSoccer && (
+                          <>
+                            <span className="text-slate-500"> </span>
+                            <span className="text-slate-300">{opp.draws}D</span>
+                          </>
+                        )}
                         <span className="text-slate-500"> </span>
                         <span className="text-red-300">{opp.losses}L</span>
                       </div>
@@ -330,28 +426,23 @@ export default async function TeamPredictionsPage({ params }: PageProps) {
               <p className="text-sm text-slate-400">No fixtures scheduled in the data window.</p>
             ) : (
               <div className="space-y-2">
-                {upcoming.map(m => {
-                  const v3 = m.v3Model as { confidence?: number; pick?: string } | null
-                  const v1 = m.v1Model as { confidence?: number; pick?: string } | null
-                  const conf = v3?.confidence ?? v1?.confidence
-                  return (
-                    <div key={m.matchId} className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border border-slate-700 bg-slate-900/40">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-white">
-                          {m.homeTeam} vs {m.awayTeam}
-                        </p>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          {m.league} · {fmtKickoff(m.kickoffDate)}
-                        </p>
-                      </div>
-                      {conf !== undefined && (
-                        <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/40 text-xs">
-                          {(conf * 100).toFixed(0)}% confidence
-                        </Badge>
-                      )}
+                {upcoming.map(m => (
+                  <div key={m.matchId} className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border border-slate-700 bg-slate-900/40">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-white">
+                        {m.homeTeam} vs {m.awayTeam}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {m.league} · {fmtKickoff(m.kickoffDate)}
+                      </p>
                     </div>
-                  )
-                })}
+                    {m.confidence !== null && (
+                      <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/40 text-xs">
+                        {(m.confidence * 100).toFixed(0)}% confidence
+                      </Badge>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>
