@@ -1,5 +1,6 @@
 import { normalizeBaseUrl, buildSitemapUrl } from '@/lib/sitemap-helpers'
 import { LEAGUES } from '@/lib/soccer-hubs/leagues'
+import { SPORTS as MULTISPORTS } from '@/lib/multisport-hubs/data'
 import { GUIDES } from '@/lib/guides/registry'
 
 export const dynamic = 'force-dynamic'
@@ -58,6 +59,13 @@ export async function GET() {
   // /premium product/teaser page + /team index
   entries.push({ url: buildSitemapUrl(baseUrl, '/premium'), lastmod: now, changefreq: 'daily', priority: 0.85 })
   entries.push({ url: buildSitemapUrl(baseUrl, '/team'), lastmod: now, changefreq: 'daily', priority: 0.7 })
+
+  // Multisport hubs (Phase 2)
+  for (const sport of MULTISPORTS) {
+    entries.push({ url: buildSitemapUrl(baseUrl, `/${sport.slug}`), lastmod: now, changefreq: 'daily', priority: 0.85 })
+    entries.push({ url: buildSitemapUrl(baseUrl, `/${sport.slug}/today`), lastmod: now, changefreq: 'hourly', priority: 0.9 })
+    entries.push({ url: buildSitemapUrl(baseUrl, `/${sport.slug}/tomorrow`), lastmod: now, changefreq: 'hourly', priority: 0.8 })
+  }
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">

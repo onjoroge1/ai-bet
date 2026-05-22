@@ -65,6 +65,16 @@ export function Footer() {
                 </Link>
               </li>
               <li>
+                <Link href="/nba" className="text-slate-400 hover:text-white text-sm">
+                  NBA Predictions
+                </Link>
+              </li>
+              <li>
+                <Link href="/nhl" className="text-slate-400 hover:text-white text-sm">
+                  NHL Predictions
+                </Link>
+              </li>
+              <li>
                 <a href="/daily-tips" className="text-slate-400 hover:text-white text-sm">
                   Daily Predictions
                 </a>
