@@ -79,6 +79,9 @@ async function handle(request: NextRequest) {
         const h2h = (t.h2hGrid as Array<{ opponent: string; wins: number; draws: number; losses: number }>) || []
         const inputs: TeamProfileInputs = {
           name: t.name,
+          sport: t.sport,
+          homeWinRatePct: t.sport !== 'soccer' && t.homeGoalsFor !== null ? Number(t.homeGoalsFor) : null,
+          awayWinRatePct: t.sport !== 'soccer' && t.awayGoalsFor !== null ? Number(t.awayGoalsFor) : null,
           league: t.league,
           country: t.country,
           matchesPlayed: t.matchesPlayed,

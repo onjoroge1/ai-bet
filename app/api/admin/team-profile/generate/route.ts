@@ -44,6 +44,9 @@ export async function POST(request: NextRequest) {
     const h2h = (team.h2hGrid as Array<{ opponent: string; wins: number; draws: number; losses: number }>) || []
     const inputs: TeamProfileInputs = {
       name: team.name,
+      sport: team.sport,
+      homeWinRatePct: team.sport !== 'soccer' && team.homeGoalsFor !== null ? Number(team.homeGoalsFor) : null,
+      awayWinRatePct: team.sport !== 'soccer' && team.awayGoalsFor !== null ? Number(team.awayGoalsFor) : null,
       league: team.league,
       country: team.country,
       matchesPlayed: team.matchesPlayed,
