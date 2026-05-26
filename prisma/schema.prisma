@@ -2169,12 +2169,76 @@ model PremiumPickHistory {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  parlayLegs PremiumParlayLeg[]
+
   @@unique([marketMatchId, market], name: "unique_match_market")
   @@index([result, kickoffDate])
   @@index([sport, kickoffDate])
   @@index([tier, kickoffDate])
   @@index([publishedAt])
   @@index([externalMatchId])
+}
+
+// ─── Premium-only Parlays ────────────────────────────────────────────
+// Multi-leg combinations of premium-qualified picks (PremiumPickHistory
+// where tier='premium'). Each parlay is locked at generation time with
+// combined odds = product of leg oddsAtPublish.
+//
+// Per 2026-05-15 analysis: the legacy ParlayConsensus engine runs at
+// −55% ROI. Premium-only single picks are +13%. Hypothetical premium-
+// only parlays show strong signal. This table backs the public surface.
+//
+// Settle path: when every leg's PremiumPickHistory row settles, the
+// settle cron rolls up the parlay (win iff every leg won; loss otherwise).
+model PremiumParlay {
+  id              String   @id @default(cuid())
+  legCount        Int                                  // 2 | 3 | 4 | 5
+  combinedOdds    Decimal  @db.Decimal(12, 4)           // product of leg oddsAtPublish
+  stakeDollars    Decimal  @default(10) @db.Decimal(10, 2)
+  // Window
+  publishedAt     DateTime @default(now())
+  earliestKickoff DateTime
+  latestKickoff   DateTime
+  // Settlement
+  result          String   @default("pending")          // 'pending' | 'win' | 'loss' | 'void'
+  settledAt       DateTime?
+  netDollars      Decimal? @db.Decimal(12, 2)
+  // Audit
+  surfacedBy      String   @default("live")             // 'live' | 'backfill'
+  rawSnapshot     Json?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  legs            PremiumParlayLeg[]
+
+  @@index([result, publishedAt])
+  @@index([legCount, publishedAt])
+  @@index([result, latestKickoff])
+  @@index([publishedAt])
+}
+
+model PremiumParlayLeg {
+  id              String   @id @default(cuid())
+  parlayId        String
+  parlay          PremiumParlay @relation(fields: [parlayId], references: [id], onDelete: Cascade)
+  pickId          String                                // FK to PremiumPickHistory.id
+  pick            PremiumPickHistory @relation(fields: [pickId], references: [id])
+  legOrder        Int
+
+  // Mirror leg metadata at parlay-generation time (lets us render parlays
+  // without joining back to PickHistory on every page-load)
+  oddsAtPublish   Decimal  @db.Decimal(8, 3)
+  homeTeam        String
+  awayTeam        String
+  league          String?
+  market          String
+  selection       String                                 // human label, e.g. 'Arsenal to win'
+  kickoffDate     DateTime
+  createdAt       DateTime @default(now())
+
+  @@unique([parlayId, pickId])
+  @@index([parlayId])
+  @@index([pickId])
 }
 
 // Funnel events for the tracker card (impressions + CTA clicks).

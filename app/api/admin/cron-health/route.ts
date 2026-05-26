@@ -58,6 +58,9 @@ const EXPECTED_INTERVAL_MS: Record<string, number> = {
   'team-stats:roll': 1 * DAY,
   // Team profile — daily 05:00 UTC, ≤20 OpenAI generations per run (quarterly cadence per team).
   'team-stats:profile': 1 * DAY,
+  // Premium-only parlay engine (post-2026-05-15 audit of legacy ParlayConsensus).
+  'premium-parlay:capture': 2 * HOUR,
+  'premium-parlay:settle': 1 * HOUR,
 }
 
 /**

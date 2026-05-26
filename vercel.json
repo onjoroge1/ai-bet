@@ -140,6 +140,14 @@
     {
       "path": "/api/cron/team-profile-refresh",
       "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/premium-parlay-capture",
+      "schedule": "30 */2 * * *"
+    },
+    {
+      "path": "/api/cron/premium-parlay-settle",
+      "schedule": "30 * * * *"
     }
   ],
   "env": {

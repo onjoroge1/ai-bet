@@ -83,7 +83,7 @@ export default async function PerformancePage({ searchParams }: PageProps) {
 
   // ── Single query for the rows + the earliest publishedAt (for the
   // "Tracking since" footer) ─────────────────────────────────────────────
-  const [rawRows, firstRow, totalCount] = await Promise.all([
+  const [rawRows, firstRow, totalCount, parlayRows] = await Promise.all([
     prisma.premiumPickHistory.findMany({
       where: cutoff ? { publishedAt: { gte: cutoff } } : {},
       select: {
@@ -113,7 +113,39 @@ export default async function PerformancePage({ searchParams }: PageProps) {
       select: { publishedAt: true },
     }),
     prisma.premiumPickHistory.count(),
+    prisma.premiumParlay.findMany({
+      where: cutoff ? { publishedAt: { gte: cutoff } } : {},
+      select: {
+        id: true, legCount: true, combinedOdds: true, stakeDollars: true,
+        result: true, netDollars: true, surfacedBy: true,
+        publishedAt: true, latestKickoff: true,
+      },
+      orderBy: { publishedAt: 'desc' },
+      take: 1000,
+    }),
   ])
+
+  // Roll up parlay numbers by leg count for the new section
+  interface ParlayBucket {
+    legCount: number; total: number; wins: number; losses: number;
+    voids: number; pending: number; staked: number; net: number;
+  }
+  const parlayByLeg = new Map<number, ParlayBucket>()
+  for (const p of parlayRows) {
+    let b = parlayByLeg.get(p.legCount)
+    if (!b) {
+      b = { legCount: p.legCount, total: 0, wins: 0, losses: 0, voids: 0, pending: 0, staked: 0, net: 0 }
+      parlayByLeg.set(p.legCount, b)
+    }
+    b.total++
+    const stake = Number(p.stakeDollars)
+    const net = p.netDollars !== null ? Number(p.netDollars) : 0
+    if (p.result === 'win') { b.wins++; b.staked += stake; b.net += net }
+    else if (p.result === 'loss') { b.losses++; b.staked += stake; b.net += net }
+    else if (p.result === 'void' || p.result === 'push') b.voids++
+    else b.pending++
+  }
+  const parlayBuckets = [...parlayByLeg.values()].sort((a, b) => a.legCount - b.legCount)
 
   const rows: TrackerPickRow[] = rawRows.map(r => ({
     oddsAtPublish: Number(r.oddsAtPublish),
@@ -314,6 +346,70 @@ export default async function PerformancePage({ searchParams }: PageProps) {
             </Link>
           ))}
         </div>
+
+        {/* ── Parlay performance by leg count ─────────────────────── */}
+        {parlayBuckets.length > 0 && (
+          <Card className="bg-slate-800 border-slate-700">
+            <CardContent className="p-0">
+              <div className="px-6 py-4 border-b border-slate-700">
+                <h2 className="text-lg font-semibold text-white">Premium parlay performance</h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  Multi-leg combinations of premium-qualified picks. Empirically: 2-leg outperforms; 4+ legs lose money.
+                </p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-900/50 text-xs uppercase tracking-wide text-slate-400">
+                    <tr>
+                      <th className="text-left px-4 py-3">Legs</th>
+                      <th className="text-right px-4 py-3">Total</th>
+                      <th className="text-right px-4 py-3">W–L</th>
+                      <th className="text-right px-4 py-3">Hit rate</th>
+                      <th className="text-right px-4 py-3">Net</th>
+                      <th className="text-right px-4 py-3">ROI</th>
+                      <th className="text-center px-4 py-3">Pending</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parlayBuckets.map(b => {
+                      const settledN = b.wins + b.losses
+                      const hit = settledN > 0 ? (b.wins / settledN * 100) : 0
+                      const roi = b.staked > 0 ? (b.net / b.staked * 100) : 0
+                      const isWinning = b.net >= 0 && settledN > 0
+                      return (
+                        <tr key={b.legCount} className="border-t border-slate-700/50">
+                          <td className="px-4 py-3 text-white font-semibold">{b.legCount}-leg</td>
+                          <td className="px-4 py-3 text-right text-slate-300 font-mono">{b.total}</td>
+                          <td className="px-4 py-3 text-right text-slate-200 font-mono">
+                            <span className="text-emerald-300">{b.wins}</span>
+                            <span className="text-slate-500">–</span>
+                            <span className="text-red-300">{b.losses}</span>
+                          </td>
+                          <td className="px-4 py-3 text-right text-slate-300 font-mono">
+                            {settledN > 0 ? `${hit.toFixed(1)}%` : '—'}
+                          </td>
+                          <td className={`px-4 py-3 text-right font-mono ${isWinning ? 'text-emerald-300' : settledN > 0 ? 'text-red-300' : 'text-slate-500'}`}>
+                            {settledN > 0 ? `${b.net >= 0 ? '+' : '−'}$${Math.abs(b.net).toFixed(2)}` : '—'}
+                          </td>
+                          <td className={`px-4 py-3 text-right font-mono ${isWinning ? 'text-emerald-300' : settledN > 0 ? 'text-red-300' : 'text-slate-500'}`}>
+                            {b.staked > 0 ? `${roi >= 0 ? '+' : '−'}${Math.abs(roi).toFixed(2)}%` : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-center text-slate-400 text-xs">{b.pending || '—'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="px-6 py-3 border-t border-slate-700 bg-slate-900/30 text-[11px] text-slate-500 leading-relaxed">
+                Backfill methodology: every valid combination of historical premium picks within a 7-day kickoff window.
+                Public surface defaults to 2 + 3 leg only (4+ shown here for transparency but withheld from
+                <Link href="/parlays" className="text-blue-300 hover:text-blue-200 underline mx-1">/parlays</Link>
+                since the data shows them as net-losing).
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* ── Audit table ─────────────────────────────────────────── */}
         <Card className="bg-slate-800 border-slate-700">
