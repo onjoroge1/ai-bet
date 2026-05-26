@@ -53,7 +53,14 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url)
     const includeAllLegCounts = url.searchParams.get('all') === '1'
-    const allowedLegCounts = includeAllLegCounts ? [2, 3, 4, 5] : [2, 3]
+    const includeCrossMatch = url.searchParams.get('crossmatch') === '1'
+    const allowedLegCounts = includeAllLegCounts ? [2, 3, 4, 5] : [2, 3, 4]
+    // Default: SGP variants only. Cross-match underperformed in the 30d
+    // backfill (−6.6% at 2-leg, worse at higher leg counts). The full
+    // audit including cross-match stays at /performance.
+    const allowedArchetypes = includeCrossMatch
+      ? ['sgp_single_match', 'cross_match']
+      : ['sgp_single_match']
     const now = new Date()
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400 * 1000)
 
@@ -118,6 +125,7 @@ export async function GET(request: Request) {
       where: {
         result: 'pending',
         legCount: { in: allowedLegCounts },
+        archetype: { in: allowedArchetypes },
         latestKickoff: { gte: now },
         surfacedBy: 'live',
       },
@@ -143,7 +151,7 @@ export async function GET(request: Request) {
       where: {
         result: { in: ['win', 'loss'] },
         legCount: { in: allowedLegCounts },
-        archetype: { in: ['cross_match', 'sgp_single_match'] },
+        archetype: { in: allowedArchetypes },
       },
       select: {
         id: true, archetype: true, legCount: true, sgpLegCount: true,
@@ -168,6 +176,7 @@ export async function GET(request: Request) {
       where: {
         result: { in: ['win', 'loss'] },
         legCount: { in: allowedLegCounts },
+        archetype: { in: allowedArchetypes },
         settledAt: { gte: thirtyDaysAgo },
       },
       select: {
