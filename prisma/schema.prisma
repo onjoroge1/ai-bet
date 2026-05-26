@@ -2195,6 +2195,15 @@ model PremiumParlay {
   legCount        Int                                  // 2 | 3 | 4 | 5
   combinedOdds    Decimal  @db.Decimal(12, 4)           // product of leg oddsAtPublish
   stakeDollars    Decimal  @default(10) @db.Decimal(10, 2)
+  // Archetype distinguishes parlay shapes for /performance breakdown.
+  // 'cross_match'      — 2+ premium 1X2 picks on different matches (original)
+  // 'sgp_single_match' — 1 premium 1X2 + same-match secondary markets (BTTS/totals)
+  // 'composite'        — cross-match base + per-leg SGP overlays (future)
+  archetype       String   @default("cross_match")
+  /** For sgp_single_match: the parent MarketMatch.id. Null otherwise. */
+  baseMatchId     String?
+  /** Number of SGP-overlay legs (Over/Under, BTTS). Cross-match parlays = 0. */
+  sgpLegCount     Int      @default(0)
   // Window
   publishedAt     DateTime @default(now())
   earliestKickoff DateTime
@@ -2213,6 +2222,7 @@ model PremiumParlay {
 
   @@index([result, publishedAt])
   @@index([legCount, publishedAt])
+  @@index([archetype, publishedAt])
   @@index([result, latestKickoff])
   @@index([publishedAt])
 }
@@ -2221,8 +2231,13 @@ model PremiumParlayLeg {
   id              String   @id @default(cuid())
   parlayId        String
   parlay          PremiumParlay @relation(fields: [parlayId], references: [id], onDelete: Cascade)
-  pickId          String                                // FK to PremiumPickHistory.id
-  pick            PremiumPickHistory @relation(fields: [pickId], references: [id])
+
+  /** For 'premium_1x2' legs: FK to the source pick. Null for 'sgp_overlay'
+   *  legs (BTTS / TOTALS) since those aren't stored as standalone picks. */
+  pickId          String?
+  pick            PremiumPickHistory? @relation(fields: [pickId], references: [id])
+  legType         String   @default("premium_1x2")     // 'premium_1x2' | 'sgp_overlay'
+
   legOrder        Int
 
   // Mirror leg metadata at parlay-generation time (lets us render parlays
@@ -2231,14 +2246,21 @@ model PremiumParlayLeg {
   homeTeam        String
   awayTeam        String
   league          String?
-  market          String
-  selection       String                                 // human label, e.g. 'Arsenal to win'
+  market          String                                  // '1X2_HOME' / 'TOTALS' / 'BTTS' / etc.
+  selection       String                                  // 'Arsenal to win' / 'OVER' / 'YES'
+  line            Decimal? @db.Decimal(6, 2)              // for TOTALS: 2.5 etc. Null otherwise.
   kickoffDate     DateTime
+
+  /** For SGP overlay legs: MarketMatch.id of the parent match used to settle
+   *  via finalResult.score. Joined manually in the settle cron (no FK
+   *  declared to keep the model simple). */
+  marketMatchId   String?
+
   createdAt       DateTime @default(now())
 
-  @@unique([parlayId, pickId])
   @@index([parlayId])
   @@index([pickId])
+  @@index([marketMatchId])
 }
 
 // Funnel events for the tracker card (impressions + CTA clicks).

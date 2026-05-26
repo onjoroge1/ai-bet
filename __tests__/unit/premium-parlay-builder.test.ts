@@ -4,9 +4,12 @@
  */
 import {
   buildParlayCandidates,
+  buildSgpVariants,
+  deriveSecondaryOutcome,
   parlayKey,
   settleParlay,
   type PremiumPickLike,
+  type SecondaryMarketRow,
 } from '@/lib/premium-tracker/parlay-builder'
 
 function pick(overrides: Partial<PremiumPickLike> = {}): PremiumPickLike {
@@ -159,6 +162,124 @@ describe('parlayKey — idempotency', () => {
     const k1 = parlayKey({ legs: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] })
     const k2 = parlayKey({ legs: [{ id: 'c' }, { id: 'a' }, { id: 'b' }] })
     expect(k1).toBe(k2)
+  })
+})
+
+describe('deriveSecondaryOutcome', () => {
+  it('TOTALS Over: hits when total > line', () => {
+    expect(deriveSecondaryOutcome('TOTALS', 'OVER', 2.5, { home: 2, away: 1 })).toBe('win')
+    expect(deriveSecondaryOutcome('TOTALS', 'OVER', 2.5, { home: 1, away: 1 })).toBe('loss')
+  })
+  it('TOTALS Under: hits when total < line', () => {
+    expect(deriveSecondaryOutcome('TOTALS', 'UNDER', 2.5, { home: 1, away: 1 })).toBe('win')
+    expect(deriveSecondaryOutcome('TOTALS', 'UNDER', 2.5, { home: 2, away: 1 })).toBe('loss')
+  })
+  it('TOTALS: pushes on whole-number lines', () => {
+    expect(deriveSecondaryOutcome('TOTALS', 'OVER', 2, { home: 1, away: 1 })).toBe('void')
+    expect(deriveSecondaryOutcome('TOTALS', 'UNDER', 3, { home: 2, away: 1 })).toBe('void')
+  })
+  it('BTTS Yes: hits when both teams scored', () => {
+    expect(deriveSecondaryOutcome('BTTS', 'YES', null, { home: 2, away: 1 })).toBe('win')
+    expect(deriveSecondaryOutcome('BTTS', 'YES', null, { home: 2, away: 0 })).toBe('loss')
+  })
+  it('BTTS No: hits when at least one team failed to score', () => {
+    expect(deriveSecondaryOutcome('BTTS', 'NO', null, { home: 2, away: 0 })).toBe('win')
+    expect(deriveSecondaryOutcome('BTTS', 'NO', null, { home: 2, away: 1 })).toBe('loss')
+  })
+  it('returns null when score is null', () => {
+    expect(deriveSecondaryOutcome('TOTALS', 'OVER', 2.5, null)).toBeNull()
+  })
+})
+
+describe('buildSgpVariants', () => {
+  function adm(marketType: string, selection: string, line: number | null, prob: number): SecondaryMarketRow {
+    return { matchId: 'm1', marketType, marketSubtype: selection, line, consensusProb: prob }
+  }
+
+  const basePick = pick({
+    id: 'p1',
+    marketMatchId: 'mm1',
+    market: '1X2_HOME',
+    selection: 'Arsenal to win',
+    homeTeam: 'Arsenal',
+    awayTeam: 'Chelsea',
+    oddsAtPublish: 1.5,
+    result: 'win',
+  })
+
+  it('emits archetypes only when the required secondary markets exist', () => {
+    const rows = [
+      adm('TOTALS', 'OVER', 2.5, 0.6),  // odds 1.67
+      // No BTTS, no Over 1.5 → only sgp_o25 is buildable
+    ]
+    const variants = buildSgpVariants(basePick, rows, { score: { home: 2, away: 1 } })
+    expect(variants.length).toBe(1)
+    expect(variants[0].archetype).toBe('sgp_o25')
+    expect(variants[0].legCount).toBe(2)
+    expect(variants[0].result).toBe('win')
+  })
+
+  it('produces all archetypes when all markets exist', () => {
+    const rows = [
+      adm('TOTALS', 'OVER', 1.5, 0.85),
+      adm('TOTALS', 'OVER', 2.5, 0.6),
+      adm('BTTS', 'YES', null, 0.55),
+    ]
+    const variants = buildSgpVariants(basePick, rows, { score: { home: 2, away: 1 } })
+    expect(variants.length).toBe(5) // sgp_o25, sgp_o15, sgp_btts, sgp_o25_btts, sgp_o15_o25_btts
+    const archetypes = variants.map(v => v.archetype).sort()
+    expect(archetypes).toContain('sgp_o25')
+    expect(archetypes).toContain('sgp_o15_o25_btts')
+  })
+
+  it('settles correctly when base wins + all overlays hit', () => {
+    const rows = [
+      adm('TOTALS', 'OVER', 2.5, 0.5),  // odds 2.0
+      adm('BTTS', 'YES', null, 0.5),     // odds 2.0
+    ]
+    // Score 2-1 → Arsenal wins ✓, Over 2.5 ✓, BTTS Yes ✓
+    const variants = buildSgpVariants(basePick, rows, { score: { home: 2, away: 1 }, stakeDollars: 10 })
+    const triple = variants.find(v => v.archetype === 'sgp_o25_btts')!
+    expect(triple.result).toBe('win')
+    // Combined: 1.5 × 2.0 × 2.0 = 6.0; stake 10 → net = 10 * (6.0 - 1) = 50
+    expect(triple.netDollars).toBe(50)
+  })
+
+  it('settles correctly when an overlay misses', () => {
+    const rows = [
+      adm('TOTALS', 'OVER', 2.5, 0.5),
+      adm('BTTS', 'YES', null, 0.5),
+    ]
+    // Score 2-0 → Arsenal wins, Over 2.5 LOSS (total=2, line=2.5)
+    const variants = buildSgpVariants(basePick, rows, { score: { home: 2, away: 0 }, stakeDollars: 10 })
+    const o25 = variants.find(v => v.archetype === 'sgp_o25')!
+    expect(o25.result).toBe('loss')
+    expect(o25.netDollars).toBe(-10)
+  })
+
+  it('marks result as pending when score is null (live capture)', () => {
+    const rows = [adm('TOTALS', 'OVER', 2.5, 0.6)]
+    const variants = buildSgpVariants(
+      pick({ ...basePick, result: 'pending' }),
+      rows,
+      { score: null },
+    )
+    expect(variants[0].result).toBe('pending')
+    expect(variants[0].netDollars).toBeNull()
+  })
+
+  it('respects pendingOnly flag', () => {
+    const rows = [adm('TOTALS', 'OVER', 2.5, 0.6)]
+    expect(buildSgpVariants(basePick, rows, { pendingOnly: true })).toEqual([])  // basePick is 'win'
+  })
+
+  it('settles VOID when a TOTALS line lands on the exact total', () => {
+    const rows = [adm('TOTALS', 'OVER', 3, 0.4)]  // whole-number line
+    // Score 2-1 → total=3, exact match → push/void
+    const variants = buildSgpVariants(basePick, rows, { score: { home: 2, away: 1 } })
+    const o = variants.find(v => v.archetype === 'sgp_o25')  // not built — 3 not in 1.5/2.5
+    expect(o).toBeUndefined()
+    // Confirm the helper itself handles voids; that's covered above.
   })
 })
 

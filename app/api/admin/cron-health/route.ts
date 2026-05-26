@@ -61,6 +61,7 @@ const EXPECTED_INTERVAL_MS: Record<string, number> = {
   // Premium-only parlay engine (post-2026-05-15 audit of legacy ParlayConsensus).
   'premium-parlay:capture': 2 * HOUR,
   'premium-parlay:settle': 1 * HOUR,
+  'premium-sgp:capture': 2 * HOUR,
 }
 
 /**

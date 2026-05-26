@@ -68,6 +68,7 @@ const cronEndpoints = [
   '/api/cron/team-profile-refresh',
   '/api/cron/premium-parlay-capture',
   '/api/cron/premium-parlay-settle',
+  '/api/cron/premium-sgp-capture',
 ]
 
 // Paths that require admin role

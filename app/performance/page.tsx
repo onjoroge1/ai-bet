@@ -118,34 +118,58 @@ export default async function PerformancePage({ searchParams }: PageProps) {
       select: {
         id: true, legCount: true, combinedOdds: true, stakeDollars: true,
         result: true, netDollars: true, surfacedBy: true,
+        archetype: true,
         publishedAt: true, latestKickoff: true,
       },
       orderBy: { publishedAt: 'desc' },
-      take: 1000,
+      take: 2000,
     }),
   ])
 
   // Roll up parlay numbers by leg count for the new section
   interface ParlayBucket {
-    legCount: number; total: number; wins: number; losses: number;
-    voids: number; pending: number; staked: number; net: number;
+    label: string
+    sortKey: string
+    total: number
+    wins: number
+    losses: number
+    voids: number
+    pending: number
+    staked: number
+    net: number
   }
-  const parlayByLeg = new Map<number, ParlayBucket>()
+  function ensure(buckets: Map<string, ParlayBucket>, key: string, label: string, sortKey: string): ParlayBucket {
+    let b = buckets.get(key)
+    if (!b) { b = { label, sortKey, total: 0, wins: 0, losses: 0, voids: 0, pending: 0, staked: 0, net: 0 }; buckets.set(key, b) }
+    return b
+  }
+
+  // Cross-match: bucket by leg count
+  const crossByLeg = new Map<string, ParlayBucket>()
+  // SGP: bucket by archetype (sgp_o25, sgp_o25_btts, etc.)
+  const sgpByArchetype = new Map<string, ParlayBucket>()
+
   for (const p of parlayRows) {
-    let b = parlayByLeg.get(p.legCount)
-    if (!b) {
-      b = { legCount: p.legCount, total: 0, wins: 0, losses: 0, voids: 0, pending: 0, staked: 0, net: 0 }
-      parlayByLeg.set(p.legCount, b)
-    }
-    b.total++
     const stake = Number(p.stakeDollars)
     const net = p.netDollars !== null ? Number(p.netDollars) : 0
-    if (p.result === 'win') { b.wins++; b.staked += stake; b.net += net }
-    else if (p.result === 'loss') { b.losses++; b.staked += stake; b.net += net }
-    else if (p.result === 'void' || p.result === 'push') b.voids++
-    else b.pending++
+    let bucket: ParlayBucket
+    if (p.archetype === 'sgp_single_match') {
+      // Use rawSnapshot.archetype if available, but we didn't select rawSnapshot.
+      // Fallback to legCount-based label.
+      const key = `sgp-${p.legCount}`
+      bucket = ensure(sgpByArchetype, key, `SGP · ${p.legCount} legs`, String(p.legCount))
+    } else {
+      const key = `cross-${p.legCount}`
+      bucket = ensure(crossByLeg, key, `${p.legCount}-leg cross-match`, String(p.legCount))
+    }
+    bucket.total++
+    if (p.result === 'win') { bucket.wins++; bucket.staked += stake; bucket.net += net }
+    else if (p.result === 'loss') { bucket.losses++; bucket.staked += stake; bucket.net += net }
+    else if (p.result === 'void' || p.result === 'push') bucket.voids++
+    else bucket.pending++
   }
-  const parlayBuckets = [...parlayByLeg.values()].sort((a, b) => a.legCount - b.legCount)
+  const crossBuckets = [...crossByLeg.values()].sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+  const sgpBuckets = [...sgpByArchetype.values()].sort((a, b) => a.sortKey.localeCompare(b.sortKey))
 
   const rows: TrackerPickRow[] = rawRows.map(r => ({
     oddsAtPublish: Number(r.oddsAtPublish),
@@ -347,68 +371,24 @@ export default async function PerformancePage({ searchParams }: PageProps) {
           ))}
         </div>
 
-        {/* ── Parlay performance by leg count ─────────────────────── */}
-        {parlayBuckets.length > 0 && (
-          <Card className="bg-slate-800 border-slate-700">
-            <CardContent className="p-0">
-              <div className="px-6 py-4 border-b border-slate-700">
-                <h2 className="text-lg font-semibold text-white">Premium parlay performance</h2>
-                <p className="text-xs text-slate-400 mt-1">
-                  Multi-leg combinations of premium-qualified picks. Empirically: 2-leg outperforms; 4+ legs lose money.
-                </p>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-900/50 text-xs uppercase tracking-wide text-slate-400">
-                    <tr>
-                      <th className="text-left px-4 py-3">Legs</th>
-                      <th className="text-right px-4 py-3">Total</th>
-                      <th className="text-right px-4 py-3">W–L</th>
-                      <th className="text-right px-4 py-3">Hit rate</th>
-                      <th className="text-right px-4 py-3">Net</th>
-                      <th className="text-right px-4 py-3">ROI</th>
-                      <th className="text-center px-4 py-3">Pending</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {parlayBuckets.map(b => {
-                      const settledN = b.wins + b.losses
-                      const hit = settledN > 0 ? (b.wins / settledN * 100) : 0
-                      const roi = b.staked > 0 ? (b.net / b.staked * 100) : 0
-                      const isWinning = b.net >= 0 && settledN > 0
-                      return (
-                        <tr key={b.legCount} className="border-t border-slate-700/50">
-                          <td className="px-4 py-3 text-white font-semibold">{b.legCount}-leg</td>
-                          <td className="px-4 py-3 text-right text-slate-300 font-mono">{b.total}</td>
-                          <td className="px-4 py-3 text-right text-slate-200 font-mono">
-                            <span className="text-emerald-300">{b.wins}</span>
-                            <span className="text-slate-500">–</span>
-                            <span className="text-red-300">{b.losses}</span>
-                          </td>
-                          <td className="px-4 py-3 text-right text-slate-300 font-mono">
-                            {settledN > 0 ? `${hit.toFixed(1)}%` : '—'}
-                          </td>
-                          <td className={`px-4 py-3 text-right font-mono ${isWinning ? 'text-emerald-300' : settledN > 0 ? 'text-red-300' : 'text-slate-500'}`}>
-                            {settledN > 0 ? `${b.net >= 0 ? '+' : '−'}$${Math.abs(b.net).toFixed(2)}` : '—'}
-                          </td>
-                          <td className={`px-4 py-3 text-right font-mono ${isWinning ? 'text-emerald-300' : settledN > 0 ? 'text-red-300' : 'text-slate-500'}`}>
-                            {b.staked > 0 ? `${roi >= 0 ? '+' : '−'}${Math.abs(roi).toFixed(2)}%` : '—'}
-                          </td>
-                          <td className="px-4 py-3 text-center text-slate-400 text-xs">{b.pending || '—'}</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <div className="px-6 py-3 border-t border-slate-700 bg-slate-900/30 text-[11px] text-slate-500 leading-relaxed">
-                Backfill methodology: every valid combination of historical premium picks within a 7-day kickoff window.
-                Public surface defaults to 2 + 3 leg only (4+ shown here for transparency but withheld from
-                <Link href="/parlays" className="text-blue-300 hover:text-blue-200 underline mx-1">/parlays</Link>
-                since the data shows them as net-losing).
-              </div>
-            </CardContent>
-          </Card>
+        {/* ── Parlay performance — cross-match ─────────────────────── */}
+        {crossBuckets.length > 0 && (
+          <ParlayBucketTable
+            title="Cross-match parlay performance"
+            subtitle="Multi-leg combinations of premium picks across different matches. 2-leg outperforms; 4+ legs lose money."
+            buckets={crossBuckets}
+            footerNote="Backfill: every valid combination of historical premium picks within a 7-day kickoff window. Public surface defaults to 2 + 3 leg only."
+          />
+        )}
+
+        {/* ── Parlay performance — Same Game Parlay ────────────────── */}
+        {sgpBuckets.length > 0 && (
+          <ParlayBucketTable
+            title="Same-Game-Parlay (SGP) performance"
+            subtitle="Premium 1X2 pick + same-match secondary markets (Over/Under, BTTS). Heavy favorites tend to produce 2-3 goals when they win — that's the structural edge."
+            buckets={sgpBuckets}
+            footerNote="Backfill applies consensus-implied odds (1 / consensusProb) to each leg. Sportsbook SGP pricing typically discounts ~10-20% below this naive product to account for within-match correlation. Numbers shown are the NAIVE upper bound."
+          />
         )}
 
         {/* ── Audit table ─────────────────────────────────────────── */}
@@ -544,6 +524,84 @@ export default async function PerformancePage({ searchParams }: PageProps) {
 }
 
 // ─── Subcomponents ───────────────────────────────────────────────────
+
+interface ParlayBucketLike {
+  label: string
+  total: number
+  wins: number
+  losses: number
+  voids: number
+  pending: number
+  staked: number
+  net: number
+}
+
+function ParlayBucketTable({
+  title, subtitle, buckets, footerNote,
+}: {
+  title: string
+  subtitle: string
+  buckets: ParlayBucketLike[]
+  footerNote: string
+}) {
+  return (
+    <Card className="bg-slate-800 border-slate-700">
+      <CardContent className="p-0">
+        <div className="px-6 py-4 border-b border-slate-700">
+          <h2 className="text-lg font-semibold text-white">{title}</h2>
+          <p className="text-xs text-slate-400 mt-1">{subtitle}</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-900/50 text-xs uppercase tracking-wide text-slate-400">
+              <tr>
+                <th className="text-left px-4 py-3">Bucket</th>
+                <th className="text-right px-4 py-3">Total</th>
+                <th className="text-right px-4 py-3">W–L</th>
+                <th className="text-right px-4 py-3">Hit rate</th>
+                <th className="text-right px-4 py-3">Net</th>
+                <th className="text-right px-4 py-3">ROI</th>
+                <th className="text-center px-4 py-3">Pending</th>
+              </tr>
+            </thead>
+            <tbody>
+              {buckets.map(b => {
+                const settledN = b.wins + b.losses
+                const hit = settledN > 0 ? (b.wins / settledN * 100) : 0
+                const roi = b.staked > 0 ? (b.net / b.staked * 100) : 0
+                const isWinning = b.net >= 0 && settledN > 0
+                return (
+                  <tr key={b.label} className="border-t border-slate-700/50">
+                    <td className="px-4 py-3 text-white font-semibold">{b.label}</td>
+                    <td className="px-4 py-3 text-right text-slate-300 font-mono">{b.total}</td>
+                    <td className="px-4 py-3 text-right text-slate-200 font-mono">
+                      <span className="text-emerald-300">{b.wins}</span>
+                      <span className="text-slate-500">–</span>
+                      <span className="text-red-300">{b.losses}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-slate-300 font-mono">
+                      {settledN > 0 ? `${hit.toFixed(1)}%` : '—'}
+                    </td>
+                    <td className={`px-4 py-3 text-right font-mono ${isWinning ? 'text-emerald-300' : settledN > 0 ? 'text-red-300' : 'text-slate-500'}`}>
+                      {settledN > 0 ? `${b.net >= 0 ? '+' : '−'}$${Math.abs(b.net).toFixed(2)}` : '—'}
+                    </td>
+                    <td className={`px-4 py-3 text-right font-mono ${isWinning ? 'text-emerald-300' : settledN > 0 ? 'text-red-300' : 'text-slate-500'}`}>
+                      {b.staked > 0 ? `${roi >= 0 ? '+' : '−'}${Math.abs(roi).toFixed(2)}%` : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-center text-slate-400 text-xs">{b.pending || '—'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="px-6 py-3 border-t border-slate-700 bg-slate-900/30 text-[11px] text-slate-500 leading-relaxed">
+          {footerNote}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
 function Tile({
   icon: Icon,

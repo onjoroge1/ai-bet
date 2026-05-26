@@ -148,6 +148,10 @@
     {
       "path": "/api/cron/premium-parlay-settle",
       "schedule": "30 * * * *"
+    },
+    {
+      "path": "/api/cron/premium-sgp-capture",
+      "schedule": "45 */2 * * *"
     }
   ],
   "env": {
