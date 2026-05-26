@@ -1,374 +1,380 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Lock, Crown, ArrowRight, Zap, TrendingUp, Shield, Eye, Layers, CheckCircle, HelpCircle } from "lucide-react"
-import { useRouter } from "next/navigation"
+import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  Trophy,
+  TrendingUp,
+  Clock,
+  Calendar,
+  CheckCircle2,
+  XCircle,
+  ChevronRight,
+  AlertCircle,
+  Loader2,
+  Layers,
+  ShieldCheck,
+} from "lucide-react"
 
-interface ParayLeg {
-  edge: number
+// ─── Types matching /api/parlays/preview ───────────────────────────
+
+interface Leg {
   outcome: string
-  match_id: number
+  match_id: string | null
   away_team: string
   home_team: string
+  league: string | null
   model_prob: number
   decimal_odds: number
+  kickoff: string
+  leg_type: 'premium_1x2' | 'sgp_overlay'
 }
 
-interface ParayPreview {
+interface Parlay {
   parlay_id: string
-  is_preview: boolean
-  masked?: boolean
+  archetype: string                       // 'cross_match' | 'sgp_single_match'
   leg_count: number
-  legs?: ParayLeg[] // Optional for masked parlays
-  combined_prob?: number // Optional for masked parlays
-  edge_pct?: number // Optional for masked parlays
-  confidence_tier: string
-  parlay_type?: string // Optional for masked parlays
-  earliest_kickoff?: string // Optional for masked parlays
-  latest_kickoff?: string // Optional for masked parlays
-  quality: {
-    score?: number // Optional for masked parlays
-    is_tradable?: boolean // Optional for masked parlays
-    risk_level: string
-  }
+  sgp_leg_count: number
+  legs: Leg[]
+  combined_odds: number
+  combined_prob: number
+  earliest_kickoff: string
+  latest_kickoff: string
+  risk_level: 'low' | 'medium' | 'high'
+  result?: 'pending' | 'win' | 'loss' | 'void'
+  settled_at?: string
+  net_dollars?: number
 }
 
-/**
- * Client Component - Handles interactive functionality
- */
+interface ArchetypeStats {
+  settled: number
+  wins: number
+  losses: number
+  hit_rate_pct: number
+  net_dollars: number
+  roi_pct: number
+}
+
+interface Stats {
+  window_days: number
+  settled: number
+  wins: number
+  losses: number
+  hit_rate_pct: number
+  net_dollars: number
+  total_staked: number
+  roi_pct: number
+  avg_combined_odds: number
+  by_archetype: Record<string, ArchetypeStats>
+}
+
+interface ApiResponse {
+  pending: Parlay[]
+  recent: Parlay[]
+  stats: Stats | null
+  meta?: { source: string; leg_counts_shown: number[]; note?: string }
+}
+
+// ─── Helpers ───────────────────────────────────────────────────────
+
+const fmtUSD = (n: number) => {
+  const sign = n > 0 ? '+' : n < 0 ? '−' : ''
+  return `${sign}$${Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+}
+const fmtPctSigned = (p: number) => {
+  const sign = p > 0 ? '+' : p < 0 ? '−' : ''
+  return `${sign}${Math.abs(p).toFixed(1)}%`
+}
+const fmtDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+const fmtKickoff = (iso: string) =>
+  new Date(iso).toLocaleString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+const dollarTone = (n: number) =>
+  n > 0 ? 'text-emerald-300' : n < 0 ? 'text-red-300' : 'text-slate-200'
+
+const archetypeLabel = (a: string) =>
+  a === 'cross_match' ? 'Cross-match' :
+  a === 'sgp_single_match' ? 'Same-match SGP' :
+  a
+
+// ─── Page ──────────────────────────────────────────────────────────
+
 export default function PublicParlaysClient() {
-  const router = useRouter()
-  const [parlays, setParlays] = useState<ParayPreview[]>([])
-  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState<ApiResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetchParlays()
+    let cancelled = false
+    fetch('/api/parlays/preview')
+      .then(r => r.json())
+      .then((d: ApiResponse) => { if (!cancelled) setData(d) })
+      .catch(e => { if (!cancelled) setError(String(e)) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [])
 
-  const fetchParlays = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const response = await fetch('/api/parlays/preview')
-      if (!response.ok) {
-        throw new Error('Failed to fetch parlays')
-      }
-      const data = await response.json()
-      setParlays(data.parlays || [])
-    } catch (err) {
-      console.error('Error fetching parlays:', err)
-      setError(err instanceof Error ? err.message : 'Failed to load parlays')
-    } finally {
-      setLoading(false)
-    }
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-blue-300 animate-spin" />
+      </div>
+    )
   }
 
-  const normalizeLegEdge = (edge: number): number => {
-    const numEdge = Number(edge)
-    if (isNaN(numEdge)) return 0
-    if (Math.abs(numEdge) > 1) {
-      return numEdge
-    }
-    return numEdge * 100
-  }
-
-  const getOutcomeLabel = (outcome: string): string => {
-    const labels: Record<string, string> = {
-      'H': 'Home Win',
-      'A': 'Away Win',
-      'D': 'Draw',
-      'OVER_2_5': 'Over 2.5 Goals',
-      'UNDER_2_5': 'Under 2.5 Goals',
-      'OVER_3_5': 'Over 3.5 Goals',
-      'UNDER_3_5': 'Under 3.5 Goals',
-      'BTTS_YES': 'Both Teams To Score',
-      'BTTS_NO': 'No Both Teams To Score',
-      'CS_H': 'Clean Sheet Home',
-      'CS_A': 'Clean Sheet Away',
-      'WTN_H': 'Win To Nil Home',
-      'WTN_A': 'Win To Nil Away',
-    }
-    return labels[outcome] || outcome
-  }
-
-  const getRiskColor = (riskLevel: string): string => {
-    switch (riskLevel) {
-      case 'low': return 'border-green-500/30 text-green-400'
-      case 'medium': return 'border-yellow-500/30 text-yellow-400'
-      case 'high': return 'border-orange-500/30 text-orange-400'
-      default: return 'border-red-500/30 text-red-400'
-    }
-  }
-
-  const formatDate = (dateString: string): string => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    })
-  }
-
-  const previewParlays = parlays.filter(p => p.is_preview)
-  const maskedParlays = parlays.filter(p => !p.is_preview && p.masked)
-
-  return (
-    <TooltipProvider>
-      {/* Paray Generator Section */}
-      <section className="mb-12" id="preview">
-        <div className="mb-8">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-            Available Parlays
-          </h2>
-          <p className="text-lg text-slate-300 max-w-3xl">
-            Explore our AI-generated parlays. Preview the top 2 parlays with full details, or upgrade to view all {parlays.length}+ premium parlays.
-          </p>
-        </div>
-
-      {/* Loading State */}
-      {loading && (
-        <div className="flex items-center justify-center min-h-[400px]">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-400 mx-auto mb-4"></div>
-            <p className="text-slate-400">Loading premium parlays...</p>
-          </div>
-        </div>
-      )}
-
-      {/* Error State */}
-      {error && (
-        <Card className="bg-red-900/20 border-red-500/30 max-w-2xl mx-auto">
-          <CardContent className="p-6 text-center">
-            <p className="text-red-400 mb-4">{error}</p>
-            <Button onClick={fetchParlays} variant="outline" className="border-red-500/30 text-red-400">
-              Try Again
-            </Button>
+  if (error || !data) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center px-4">
+        <Card className="bg-red-950/40 border-red-500/40 max-w-md">
+          <CardContent className="p-6 text-red-300">
+            <AlertCircle className="w-6 h-6 mb-2" />
+            <p className="text-sm">Couldn&apos;t load parlays. Try refreshing.</p>
           </CardContent>
         </Card>
-      )}
+      </div>
+    )
+  }
 
-      {/* Paray Cards */}
-      {!loading && !error && (
-        <>
-          {parlays.length > 0 ? (
-            <div className="space-y-6 mb-8">
-              {/* Preview Parlays (First 2 - Full Data) */}
-              {previewParlays.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {previewParlays.map((parlay, index) => (
-                    <Card key={parlay.parlay_id} className="bg-slate-800/60 border-emerald-500/30 border-2">
-                      <CardHeader>
-                        <div className="flex items-start justify-between mb-2">
-                          <CardTitle className="text-white flex items-center gap-2">
-                            <Eye className="h-5 w-5 text-emerald-400" />
-                            Free Preview #{index + 1}
-                          </CardTitle>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="flex items-center gap-1.5 cursor-help">
-                                <Badge className="bg-emerald-600/20 text-emerald-400 border-emerald-500/30">
-                                  ✓ Tradable
-                                </Badge>
-                                <HelpCircle className="h-4 w-4 text-slate-400 hover:text-slate-300" />
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent className="bg-slate-800 border-slate-700 text-slate-200 max-w-xs">
-                              <p className="text-sm">
-                                Tradable = meets minimum edge (≥5%), probability (≥5%), and correlation thresholds.
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <Badge variant="outline" className="border-slate-600 text-slate-300">
-                            {parlay.leg_count} Legs
-                          </Badge>
-                          <Badge variant="outline" className={getRiskColor(parlay.quality.risk_level)}>
-                            Risk: {parlay.quality.risk_level.replace('_', ' ')}
-                          </Badge>
-                          <Badge variant="outline" className="border-slate-600 text-slate-300">
-                            {parlay.confidence_tier.toUpperCase()}
-                          </Badge>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        {/* Key Metrics */}
-                        {parlay.edge_pct !== undefined && parlay.combined_prob !== undefined && (
-                          <div className="grid grid-cols-2 gap-4 p-4 bg-slate-900/50 rounded-lg">
-                            <div>
-                              <div className="text-xs text-slate-400 mb-1">Edge</div>
-                              <div className="text-2xl font-bold text-emerald-400">
-                                +{Number(parlay.edge_pct).toFixed(1)}%
-                              </div>
-                            </div>
-                            <div>
-                              <div className="text-xs text-slate-400 mb-1">Win Probability</div>
-                              <div className="text-2xl font-bold text-white">
-                                {(Number(parlay.combined_prob) * 100).toFixed(1)}%
-                              </div>
-                            </div>
-                          </div>
-                        )}
+  const { pending, recent, stats } = data
 
-                        {/* Legs Preview */}
-                        {parlay.legs && parlay.legs.length > 0 && (
-                          <div className="space-y-2">
-                            <div className="text-sm font-semibold text-slate-300 mb-2">Legs:</div>
-                            {parlay.legs.slice(0, 2).map((leg, legIndex) => (
-                              <div key={legIndex} className="p-3 bg-slate-700/30 rounded-lg border border-slate-600/50">
-                                <div className="flex items-center justify-between mb-2">
-                                  <div className="flex-1">
-                                    <div className="text-sm font-medium text-white">
-                                      {leg.home_team} vs {leg.away_team}
-                                    </div>
-                                    <div className="text-xs text-slate-400 mt-1">
-                                      {getOutcomeLabel(leg.outcome)} • {Number(leg.decimal_odds).toFixed(2)} odds
-                                    </div>
-                                  </div>
-                                  <div className="text-right">
-                                    <div className="text-sm font-semibold text-emerald-400">
-                                      +{normalizeLegEdge(leg.edge).toFixed(2)}%
-                                    </div>
-                                    <div className="text-xs text-slate-400">
-                                      {(Number(leg.model_prob) * 100).toFixed(1)}% prob
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                            {parlay.legs.length > 2 && (
-                              <div className="text-xs text-slate-500 text-center py-2">
-                                +{parlay.legs.length - 2} more leg{parlay.legs.length - 2 > 1 ? 's' : ''}
-                              </div>
-                            )}
-                          </div>
-                        )}
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      <article className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-6">
 
-                        {/* Locked CTA */}
-                        <Button 
-                          disabled 
-                          variant="outline" 
-                          className="w-full border-slate-600 text-slate-400 cursor-not-allowed"
-                        >
-                          <Lock className="h-4 w-4 mr-2" />
-                          View Full AI Analysis (Premium Required)
-                        </Button>
+        {/* ── Hero ───────────────────────────────────────────────── */}
+        <header>
+          <p className="text-xs uppercase tracking-widest text-amber-300 font-semibold flex items-center gap-2">
+            <Trophy className="w-3.5 h-3.5" />
+            Premium-only parlays
+          </p>
+          <h1 className="text-3xl sm:text-5xl font-bold text-white mt-2 leading-tight">
+            AI parlays you can audit.
+          </h1>
+          <p className="text-slate-300 mt-3 text-base sm:text-lg max-w-2xl leading-relaxed">
+            Every leg comes from a premium-qualified AI pick (V3 confidence ≥60%).
+            Cross-match for diversification, same-match SGP for upside. Every
+            historical result is on{' '}
+            <Link href="/performance" className="text-blue-300 hover:text-blue-200 underline">
+              /performance
+            </Link>
+            .
+          </p>
+        </header>
 
-                        {/* Kickoff Times */}
-                        {parlay.earliest_kickoff && (
-                          <div className="text-xs text-slate-500 text-center pt-2 border-t border-slate-700">
-                            Kickoff: {formatDate(parlay.earliest_kickoff)}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
+        {/* ── Tracker headline ───────────────────────────────────── */}
+        {stats && stats.settled > 0 && (
+          <Card className="bg-gradient-to-br from-amber-950/40 via-slate-900 to-slate-900 border-amber-500/30">
+            <CardContent className="p-6 sm:p-8">
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-amber-300 font-semibold flex items-center gap-1.5">
+                    <TrendingUp className="w-3.5 h-3.5" />
+                    Last {stats.window_days}d · {stats.settled} settled
+                  </p>
+                  <p className={`text-4xl sm:text-5xl font-bold mt-2 ${dollarTone(stats.net_dollars)}`}>
+                    {fmtUSD(stats.net_dollars)}
+                  </p>
+                  <p className="text-sm text-slate-300 mt-2">
+                    Record <span className="text-white font-semibold">{stats.wins}–{stats.losses}</span>
+                    {' · '}
+                    Hit rate <span className="text-white font-semibold">{stats.hit_rate_pct.toFixed(1)}%</span>
+                    {' · '}
+                    ROI <span className={dollarTone(stats.roi_pct)}>{fmtPctSigned(stats.roi_pct)}</span>
+                    {' · '}
+                    Avg combined odds <span className="text-white font-semibold">{stats.avg_combined_odds.toFixed(2)}</span>
+                  </p>
+                  <p className="text-xs text-slate-500 mt-2">
+                    Flat $10 stake per parlay. All historical settles shown — wins and losses included.
+                  </p>
+                </div>
+                <Link href="/performance" className="text-sm text-amber-200 hover:text-amber-100 underline underline-offset-2">
+                  Full audit →
+                </Link>
+              </div>
+              {Object.keys(stats.by_archetype).length > 1 && (
+                <div className="mt-4 pt-4 border-t border-slate-700/60 grid sm:grid-cols-2 gap-3">
+                  {Object.entries(stats.by_archetype).map(([a, s]) => (
+                    <div key={a} className="text-xs">
+                      <p className="text-slate-400 uppercase tracking-wide">{archetypeLabel(a)}</p>
+                      <p className="text-slate-200 mt-0.5">
+                        {s.wins}-{s.losses} · hit {s.hit_rate_pct.toFixed(0)}% · ROI{' '}
+                        <span className={dollarTone(s.roi_pct)}>{fmtPctSigned(s.roi_pct)}</span>
+                      </p>
+                    </div>
                   ))}
                 </div>
               )}
+            </CardContent>
+          </Card>
+        )}
 
-              {/* Masked Parlays (Remaining - Partial Data) */}
-              {maskedParlays.length > 0 && (
-                <div className="mt-8">
-                  <div className="mb-4">
-                    <h3 className="text-2xl font-bold text-white mb-2">
-                      More Premium Parlays ({maskedParlays.length}+ available)
-                    </h3>
-                    <p className="text-slate-400 text-sm">
-                      Subscribe to view full details, edge percentages, and AI analysis for all parlays.
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {maskedParlays.map((parlay) => (
-                      <Card key={parlay.parlay_id} className="bg-slate-800/40 border-slate-700/50 relative overflow-hidden">
-                        {/* Lock overlay effect */}
-                        <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[1px] z-10 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                          <Lock className="h-8 w-8 text-yellow-400" />
-                        </div>
-                        <CardHeader className="relative z-0">
-                          <div className="flex items-start justify-between mb-2">
-                            <CardTitle className="text-white text-lg flex items-center gap-2">
-                              <Lock className="h-4 w-4 text-slate-500" />
-                              Premium Paray
-                            </CardTitle>
-                          </div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Badge variant="outline" className="border-slate-600 text-slate-300">
-                              {parlay.leg_count} Legs
-                            </Badge>
-                            <Badge variant="outline" className={getRiskColor(parlay.quality.risk_level)}>
-                              {parlay.quality.risk_level.replace('_', ' ')}
-                            </Badge>
-                            <Badge variant="outline" className="border-slate-600 text-slate-300">
-                              {parlay.confidence_tier.toUpperCase()}
-                            </Badge>
-                          </div>
-                        </CardHeader>
-                        <CardContent className="relative z-0 space-y-4">
-                          {/* Masked Metrics */}
-                          <div className="grid grid-cols-2 gap-4 p-4 bg-slate-900/50 rounded-lg">
-                            <div>
-                              <div className="text-xs text-slate-400 mb-1">Edge</div>
-                              <div className="text-2xl font-bold text-slate-600 flex items-center gap-1">
-                                <Lock className="h-4 w-4" />
-                                <span className="text-lg">Locked</span>
-                              </div>
-                            </div>
-                            <div>
-                              <div className="text-xs text-slate-400 mb-1">Win Probability</div>
-                              <div className="text-2xl font-bold text-slate-600 flex items-center gap-1">
-                                <Lock className="h-4 w-4" />
-                                <span className="text-lg">Locked</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Locked CTA */}
-                          <Link href="/dashboard/parlays">
-                            <Button 
-                              variant="outline" 
-                              className="w-full border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10"
-                            >
-                              <Lock className="h-4 w-4 mr-2" />
-                              Unlock to View Details
-                            </Button>
-                          </Link>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* View All CTA */}
-              <div className="mt-8 text-center">
-                <Link href="/dashboard/parlays">
-                  <Button size="lg" className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white">
-                    <Layers className="h-5 w-5 mr-2" />
-                    View All Parlays in Premium Dashboard
-                    <ArrowRight className="h-5 w-5 ml-2" />
+        {/* ── Pending parlays ─────────────────────────────────────── */}
+        <section>
+          <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-3 border-b border-slate-700/60 pb-2">
+            <Clock className="w-5 h-5 text-blue-300" />
+            Today&apos;s parlays ({pending.length})
+          </h2>
+          {pending.length === 0 ? (
+            <Card className="bg-slate-800 border-slate-700">
+              <CardContent className="p-6 sm:p-8 text-center space-y-3">
+                <Calendar className="w-10 h-10 text-slate-500 mx-auto" />
+                <p className="text-sm text-slate-300">
+                  No live parlays right now. Premium-qualified picks are rare —
+                  the model only surfaces them on matches it has high conviction on.
+                </p>
+                <p className="text-xs text-slate-500">
+                  {data.meta?.note ?? 'Check back in a few hours.'}
+                </p>
+                <div className="flex flex-wrap gap-3 justify-center pt-2">
+                  <Button asChild variant="outline" className="border-slate-700 text-slate-200 hover:bg-slate-700">
+                    <Link href="/premium">See today&apos;s premium picks →</Link>
                   </Button>
-                </Link>
-              </div>
-            </div>
-          ) : (
-            <Card className="bg-slate-800/60 border-slate-700 max-w-2xl mx-auto mb-12">
-              <CardContent className="p-12 text-center">
-                <p className="text-slate-400 mb-4">No premium parlays available at the moment.</p>
-                <p className="text-slate-500 text-sm">Check back soon for new parlay recommendations.</p>
+                  <Button asChild variant="outline" className="border-slate-700 text-slate-200 hover:bg-slate-700">
+                    <Link href="/performance">Full audit →</Link>
+                  </Button>
+                </div>
               </CardContent>
             </Card>
+          ) : (
+            <div className="grid md:grid-cols-2 gap-4">
+              {pending.map(p => <ParlayCard key={p.parlay_id} p={p} />)}
+            </div>
           )}
-        </>
-      )}
-      </section>
-    </TooltipProvider>
+        </section>
+
+        {/* ── Recent settled results ─────────────────────────────── */}
+        {recent.length > 0 && (
+          <section>
+            <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-3 border-b border-slate-700/60 pb-2">
+              <ShieldCheck className="w-5 h-5 text-emerald-300" />
+              Recent results
+            </h2>
+            <Card className="bg-slate-800 border-slate-700">
+              <CardContent className="p-0">
+                <div className="divide-y divide-slate-700/60">
+                  {recent.map(p => <RecentRow key={p.parlay_id} p={p} />)}
+                </div>
+              </CardContent>
+            </Card>
+            <p className="text-xs text-slate-500 mt-3">
+              Showing the most recent {recent.length} settled parlays — wins and losses interleaved.
+              {' '}<Link href="/performance" className="text-blue-300 hover:text-blue-200 underline">Full audit table →</Link>
+            </p>
+          </section>
+        )}
+
+        {/* ── Disclaimer ─────────────────────────────────────────── */}
+        <Card className="bg-slate-900/60 border-slate-700">
+          <CardContent className="p-5 text-xs text-slate-400 leading-relaxed flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-slate-500 flex-shrink-0 mt-0.5" />
+            <span>
+              AI-generated picks for informational use only. Combined odds use consensus
+              market prices at the time each leg was surfaced. Past performance does not
+              guarantee future results. Sample sizes are small — interpret accordingly.{' '}
+              <Link href="/methodology" className="text-blue-300 hover:text-blue-200 underline">Methodology</Link>
+              {' · '}
+              <Link href="/responsible-betting" className="text-blue-300 hover:text-blue-200 underline">Bet responsibly</Link>
+            </span>
+          </CardContent>
+        </Card>
+      </article>
+    </div>
   )
 }
 
+// ─── Subcomponents ─────────────────────────────────────────────────
+
+function ParlayCard({ p }: { p: Parlay }) {
+  const isCross = p.archetype === 'cross_match'
+  return (
+    <Card className="bg-slate-800 border-slate-700 hover:border-blue-500/40 transition-colors">
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between mb-3">
+          <Badge className={
+            isCross
+              ? 'bg-blue-500/20 text-blue-300 border-blue-500/40 text-[10px] uppercase'
+              : 'bg-purple-500/20 text-purple-300 border-purple-500/40 text-[10px] uppercase'
+          }>
+            <Layers className="w-3 h-3 mr-1" />
+            {archetypeLabel(p.archetype)}
+          </Badge>
+          <Badge className="bg-slate-700/50 text-slate-300 border-slate-600 text-[10px] uppercase">
+            {p.leg_count} legs
+          </Badge>
+        </div>
+        <div className="space-y-2 mb-4">
+          {p.legs.map((leg, i) => (
+            <div key={i} className="flex items-start gap-2 text-sm">
+              <span className="text-slate-500 mt-0.5">{i + 1}.</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-white truncate">
+                  {leg.home_team} <span className="text-slate-500">vs</span> {leg.away_team}
+                </p>
+                <p className="text-xs text-slate-400">
+                  {leg.leg_type === 'sgp_overlay' ? leg.outcome : 'Pick'} · {leg.decimal_odds.toFixed(2)}
+                  {leg.league && <> · {leg.league}</>}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="flex items-end justify-between pt-3 border-t border-slate-700/60">
+          <div>
+            <p className="text-[10px] text-slate-400 uppercase tracking-wide">Combined odds</p>
+            <p className="text-2xl font-bold text-amber-300">{p.combined_odds.toFixed(2)}x</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] text-slate-400 uppercase tracking-wide">$10 returns</p>
+            <p className="text-lg font-semibold text-white">
+              ${(10 * (p.combined_odds - 1)).toFixed(0)} profit
+            </p>
+            <p className="text-[10px] text-slate-500 mt-0.5">
+              {fmtKickoff(p.earliest_kickoff)}
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function RecentRow({ p }: { p: Parlay }) {
+  const isWin = p.result === 'win'
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+      <div className="flex items-center gap-3 min-w-0 flex-1">
+        <span className="text-[10px] text-slate-500 w-12 flex-shrink-0">
+          {p.settled_at ? fmtDate(p.settled_at) : '—'}
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm text-white truncate">
+            {p.legs.slice(0, 2).map(l => `${l.home_team} vs ${l.away_team}`).join(' · ')}
+            {p.legs.length > 2 && ` +${p.legs.length - 2}`}
+          </p>
+          <p className="text-[10px] text-slate-500 mt-0.5">
+            {archetypeLabel(p.archetype)} · {p.leg_count} legs · odds {p.combined_odds.toFixed(2)}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <Badge className={isWin
+          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 text-[10px]'
+          : 'bg-red-500/20 text-red-300 border-red-500/40 text-[10px]'
+        }>
+          {isWin ? <CheckCircle2 className="w-3 h-3 mr-1" /> : <XCircle className="w-3 h-3 mr-1" />}
+          {isWin ? 'Win' : 'Loss'}
+        </Badge>
+        <span className={`text-sm font-mono font-semibold ${dollarTone(p.net_dollars ?? 0)} w-16 text-right`}>
+          {fmtUSD(p.net_dollars ?? 0)}
+        </span>
+        <ChevronRight className="w-4 h-4 text-slate-500 hidden sm:block" />
+      </div>
+    </div>
+  )
+}
