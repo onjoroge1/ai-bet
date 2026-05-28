@@ -21,7 +21,7 @@ export function WeeklySpecialsHeader() {
             <Crown className="w-4 h-4 mr-2" />
             VIP Exclusive
           </Badge>
-          <Link href="/signup">
+          <Link href="/signup?source=weekly_specials_header_v2&callbackUrl=/dashboard/vip">
             <Button className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-white">
               <Gift className="w-4 h-4 mr-2" />
               Upgrade to VIP

@@ -361,7 +361,7 @@ export default async function CountryFAQPage({ params }: CountryFAQPageProps) {
                 Blog
               </Button>
             </Link>
-            <Link href="/signup">
+            <Link href="/signup?source=faq_country">
               <Button variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700">
                 Sign Up
               </Button>

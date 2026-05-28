@@ -12,7 +12,7 @@ export function Footer() {
           <h3 className="text-xl font-bold text-white mb-2">Ready to bet smarter?</h3>
           <p className="text-slate-400 text-sm mb-4">Join thousands of bettors using AI-powered predictions across 4 sports.</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <a href="/signup" className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold text-sm transition-colors">
+            <a href="/signup?source=footer_cta" className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold text-sm transition-colors">
               Get Started Free
             </a>
             <a href="/pricing" className="px-6 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-semibold text-sm transition-colors">

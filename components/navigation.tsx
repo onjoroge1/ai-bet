@@ -232,18 +232,18 @@ export function Navigation() {
                 </>
               ) : (
                 <>
-                  <Button 
-                    variant="ghost" 
+                  <Button
+                    variant="ghost"
                     size="sm"
                     className="text-slate-300 hover:text-white hover:bg-slate-800/50"
                   >
                     <Link href="/signin">Login</Link>
                   </Button>
-                  <Button 
+                  <Button
                     size="sm"
                     className="bg-emerald-600 hover:bg-emerald-700 text-white"
                   >
-                    <Link href="/signup">Sign Up</Link>
+                    <Link href="/signup?source=nav_desktop">Sign Up</Link>
                   </Button>
                 </>
               )}
@@ -352,11 +352,11 @@ export function Navigation() {
                       >
                         <Link href="/signin">Login</Link>
                       </Button>
-                      <Button 
+                      <Button
                         className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                         onClick={() => setIsOpen(false)}
                       >
-                        <Link href="/signup">Sign Up</Link>
+                        <Link href="/signup?source=nav_mobile">Sign Up</Link>
                       </Button>
                     </>
                   )}

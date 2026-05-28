@@ -38,7 +38,7 @@ export function DailyTipsHeader() {
               Get Alerts
             </Button>
           ) : (
-            <Link href="/signup">
+            <Link href="/signup?source=daily_tips_header_v2">
               <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
                 <Bell className="w-4 h-4 mr-2" />
                 Get Alerts

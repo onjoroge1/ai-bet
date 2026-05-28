@@ -432,7 +432,7 @@ export default function FAQPage() {
               <Zap className="w-12 h-12 text-emerald-400 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-white mb-2">Get Started</h3>
               <p className="text-slate-300 mb-4">Ready to start winning? Join thousands of successful bettors.</p>
-              <Link href="/signup">
+              <Link href="/signup?source=faq_cta">
                 <Button className="bg-emerald-600 hover:bg-emerald-700">
                   Start Now
                 </Button>

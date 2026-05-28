@@ -203,13 +203,13 @@ export default async function PremiumPage() {
               </div>
               <div className="flex gap-3">
                 <Button asChild size="lg" className="bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-semibold">
-                  <Link href="/signup">
+                  <Link href="/signup?source=premium_top_cta&callbackUrl=/premium">
                     Get free access
                     <ArrowRight className="w-4 h-4 ml-1.5" />
                   </Link>
                 </Button>
                 <Button asChild size="lg" variant="outline" className="border-slate-600 text-slate-200 hover:bg-slate-800">
-                  <Link href="/signin">Sign in</Link>
+                  <Link href="/signin?callbackUrl=/premium">Sign in</Link>
                 </Button>
               </div>
             </div>
@@ -308,7 +308,7 @@ export default async function PremiumPage() {
             </p>
             <div className="flex flex-wrap gap-3 justify-center mt-6">
               <Button asChild size="lg" className="bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-semibold">
-                <Link href="/signup">
+                <Link href="/signup?source=premium_bottom_cta&callbackUrl=/premium">
                   Create free account
                   <ArrowRight className="w-4 h-4 ml-1.5" />
                 </Link>
@@ -418,7 +418,7 @@ function LockedPickCard({ pick }: { pick: PickRow }) {
           {/* Lock overlay */}
           <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-slate-900/40 to-slate-900/80 rounded-lg">
             <Link
-              href="/signup"
+              href="/signup?source=premium_locked_pick&callbackUrl=/premium"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-500/90 hover:bg-emerald-400 text-slate-900 text-xs font-semibold transition-colors"
             >
               <Lock className="w-3 h-3" />

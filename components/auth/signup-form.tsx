@@ -3,6 +3,7 @@
 import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { signIn } from "next-auth/react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -152,10 +153,25 @@ export function SignUpForm() {
 
     try {
       // Forward the ?source= query param from the page URL so the API can
-      // attribute this signup for the admin /admin/users dashboard.
-      const sourceParam = typeof window !== 'undefined'
-        ? new URLSearchParams(window.location.search).get('source')
+      // attribute this signup for the admin /admin/users dashboard. Also
+      // forward callbackUrl so the auto-sign-in step can land users back
+      // on the page they came from (e.g. /premium with picks unlocked)
+      // rather than the default /dashboard paywall view.
+      const urlParams = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search)
         : null
+      const sourceParam = urlParams?.get('source') ?? null
+      const callbackUrlRaw = urlParams?.get('callbackUrl') ?? null
+      // Sanitise: only relative internal paths, never /api/* or external
+      const callbackUrl = (() => {
+        if (!callbackUrlRaw) return null
+        if (!callbackUrlRaw.startsWith('/')) return null
+        if (callbackUrlRaw.startsWith('//')) return null
+        if (callbackUrlRaw.startsWith('/api/')) return null
+        if (callbackUrlRaw.length > 512) return null
+        return callbackUrlRaw
+      })()
+
       const apiUrl = sourceParam
         ? `/api/auth/signup?source=${encodeURIComponent(sourceParam)}`
         : '/api/auth/signup'
@@ -179,7 +195,22 @@ export function SignUpForm() {
         throw new Error(data.error || 'Something went wrong')
       }
 
-      router.push('/dashboard')
+      // After successful signup, auto-sign-in immediately so the user lands
+      // on callbackUrl as an authenticated session — otherwise the page they
+      // came from would still show the locked/anonymous state.
+      try {
+        const signinResult = await signIn('credentials', {
+          email: formData.email,
+          password: formData.password,
+          redirect: false,
+          callbackUrl: callbackUrl ?? '/dashboard',
+        })
+        // Even if the signin call doesn't return a URL we still navigate.
+        const dest = callbackUrl ?? signinResult?.url ?? '/dashboard'
+        router.push(dest)
+      } catch {
+        router.push(callbackUrl ?? '/dashboard')
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally {

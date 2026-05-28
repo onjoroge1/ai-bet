@@ -45,7 +45,7 @@ export function LivePredictionsHeader() {
               Enable Alerts
             </Button>
           ) : (
-            <Link href="/signup">
+            <Link href="/signup?source=live_predictions_header_v2">
               <Button className="bg-red-600 hover:bg-red-700 text-white">
                 <Zap className="w-4 h-4 mr-2" />
                 Enable Alerts
