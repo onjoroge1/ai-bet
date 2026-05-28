@@ -520,7 +520,13 @@ export async function POST(request: Request) {
         valueRating,
         analysisSummary,
         isPredictionActive: true,
-        updatedAt: new Date()
+        updatedAt: new Date(),
+        // Mark when we last refreshed from the backend model. The admin
+        // /matches "stale" indicator uses this with a 6h TTL (see
+        // app/api/admin/matches/upcoming/route.ts:185). Without this set,
+        // matches stay flagged as stale forever even after a successful
+        // /predict refresh.
+        lastEnrichmentAt: new Date(),
       }
       
       // Only set marketMatchId if we have one and QuickPurchase doesn't already have it
