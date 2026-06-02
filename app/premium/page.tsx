@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button'
 import {
   Trophy,
   Lock,
-  TrendingUp,
   Target,
   CheckCircle,
   ArrowRight,
@@ -84,10 +83,14 @@ export default async function PremiumPage() {
       orderBy: { publishedAt: 'desc' },
       take: 500,
     }),
-    // Today's live (pending) premium picks
+    // Today's live (pending) premium picks. Strong-tier hidden from this
+    // public surface per the 2026-05-15 audit (strong tier is -5.3% ROI;
+    // shouldn't be promoted as a product). Audit at /performance still
+    // shows all tiers for transparency.
     prisma.premiumPickHistory.findMany({
       where: {
         result: 'pending',
+        tier: 'premium',
         kickoffDate: { gte: now, lte: next72h },
       },
       orderBy: [{ kickoffDate: 'asc' }],
@@ -100,9 +103,11 @@ export default async function PremiumPage() {
       take: 12,
     }),
     // Recent settled picks for credibility (wins AND losses included)
+    // Recent settled — premium-tier only (strong tier excluded per audit).
     prisma.premiumPickHistory.findMany({
       where: {
         result: { in: ['win', 'loss'] },
+        tier: 'premium',
       },
       orderBy: { settledAt: 'desc' },
       take: 8,
@@ -128,14 +133,13 @@ export default async function PremiumPage() {
     settledAt: r.settledAt,
     market: r.market,
   }))
-  const premiumStats = aggregateStats(filterRowsByTier(trackerInput, 'premium'))
-  const allStats = aggregateStats(trackerInput)
-  // Headline: premium tier when meaningful sample, else all-tier
-  const headline = premiumStats.settledCount >= 5 ? premiumStats : allStats
-  const headlineLabel = premiumStats.settledCount >= 5 ? 'Premium tier · 30d' : 'All tracked · 30d'
+  // Headline is always premium-tier only — strong tier is -5.3% ROI per
+  // the 2026-05-15 audit and shouldn't be marketed. Audit at /performance
+  // remains transparent about all tiers.
+  const headline = aggregateStats(filterRowsByTier(trackerInput, 'premium'))
+  const headlineLabel = 'Premium tier · 30d'
 
   const premiumPicks = livePicks.filter(p => p.tier === 'premium')
-  const strongPicks = livePicks.filter(p => p.tier === 'strong')
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
@@ -225,12 +229,9 @@ export default async function PremiumPage() {
                 <Clock className="w-8 h-8 text-slate-500 mx-auto mb-2" />
                 <p className="text-sm text-slate-300">
                   No matches currently meet the premium tier criteria in the next 72 hours.
-                  {strongPicks.length > 0 && (
-                    <> See {strongPicks.length} strong-tier pick{strongPicks.length === 1 ? '' : 's'} below.</>
-                  )}
                 </p>
                 <p className="text-xs text-slate-500 mt-2">
-                  Premium criteria: V3 confidence ≥60%. Checks every 2 hours.
+                  Premium criteria: V3 confidence ≥55–60% in qualifying leagues. Checks every 2 hours.
                 </p>
               </CardContent>
             </Card>
@@ -242,18 +243,6 @@ export default async function PremiumPage() {
             </div>
           )}
         </section>
-
-        {/* ── Strong-tier picks ─────────────────────────────────── */}
-        {strongPicks.length > 0 && (
-          <section>
-            <SectionHeading icon={TrendingUp} label={`Strong-tier picks (${strongPicks.length})`} />
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {strongPicks.map(p => (
-                <LockedPickCard key={p.id} pick={p} />
-              ))}
-            </div>
-          </section>
-        )}
 
         {/* ── Recent settled picks (proof) ───────────────────────── */}
         {recentSettled.length > 0 && (

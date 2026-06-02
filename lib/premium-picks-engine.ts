@@ -66,38 +66,86 @@ export interface SnapBetPick {
 }
 
 // Strong leagues where models perform best.
-// Last reviewed: 2026-05-11 — empirical update from 90-day fresh-era V3 insights.
-// Confirmed entries (n ≥ 20) have current accuracy noted; legacy entries kept
-// from prior curation are flagged. To regenerate the empirical rationale,
-// run `npx tsx scripts/premium-tier-analysis.ts --days 90`.
+// Last reviewed: 2026-05-15 — re-validated via full-sport-performance-audit
+// using current 90d data. Council session (2026-05-15) flagged Serie A as
+// anti-signal — removed. Primeira Liga was already in WEAK_SOCCER_LEAGUES.
+// To regenerate, run scripts/full-sport-performance-audit.ts.
 const STRONG_SOCCER_LEAGUES = [
   // ── V3-DOMINANT (V3 > V1, n ≥ 20, large agreement lift) ──
-  'Bundesliga',               // V1: 52%, V3: 59%  agree-lift +37pp  (n=29)
-  'La Liga',                  // V1: 58%, V3: 61%  agree-lift +50pp  (n=33)
+  'Bundesliga',               // V3 52.5% (n=40) — strictly above 50%
+  'La Liga',                  // V3 50.0% (n=58) — at threshold
 
   // ── Confirmed strong (n ≥ 20, V1 or V3 ≥ 50%) ──
-  'Premier League',           // V1: 55%, V3: 52%  agree-lift +12pp  (n=42)  [empirical add 2026-05-11]
-  'Eredivisie',               // V1: 43%, V3: 47%  agree-lift +12pp  (n=30)
-  'UEFA Champions League',    // V1: 57%, V3: 50%  agree-lift +27pp  (n=8 fresh-era; legacy)
-  'UEFA Europa League',       // V1: 52%, V3: 38%  legacy
-  'Serie A',                  // V1: 35%, V3: 38% — KEEP for surfacing, but consensus is anti-signal (-4pp agree lift)
+  'Premier League',           // V3 50.0% (n=56)
+  'Eredivisie',               // V3 50.0% (n=42)
+  'UEFA Champions League',    // legacy — small fresh-era sample
+  'UEFA Europa League',       // legacy
+  // 'Serie A' — REMOVED 2026-05-15. V3 40.0% on n=70. Anti-signal.
 
-  // ── Exploratory (n < 20, promising but small sample) ──
-  'Süper Lig',                // V1: 55%, V3: 83%  agree-lift +83pp  (n=6 — exploratory)  [add 2026-05-11]
-  'Eliteserien',              // V1: 63%, V3: 71%  agree-lift +83pp  (n=7 — exploratory)  [add 2026-05-11]
-  'Allsvenskan',              // V1: 67%, V3: 56%                  (n=9 — exploratory)  [add 2026-05-11]
-  'Jupiler Pro League',       // V1: 64%, V3: 56%  agree-lift  +7pp (n=11 — exploratory) [add 2026-05-11]
-  'J1 League',                // V1: 45%, V3: 60%  agree-lift +30pp (n=15 — exploratory) [add 2026-05-11]
+  // ── Exploratory (n < 20 fresh-era, promising but small sample) ──
+  'Süper Lig',                // legacy, exploratory
+  'Eliteserien',              // V3 67.9% (n=28) — strongest league
+  'Allsvenskan',              // V3 46.4% (n=28) — borderline, keep for V1+V3 agree path
+  'Jupiler Pro League',       // legacy, exploratory
+  'J1 League',                // V3 54.5% (n=33) — strictly above 50%
+  'Brasileirão Série A',      // V3 54.5% (n=22) — strictly above 50%  [add 2026-05-15]
 
   // ── Legacy entries (kept from prior curation, no current n ≥ 20 data) ──
-  'Africa Cup of Nations',    // V3: 70%, V1: 74% (legacy)
-  'Scottish Premiership',     // V1: 72% (legacy)
-  'League 78',                // V3: 67% (Bundesliga 2 alias)
-  'Championship',             // V1: 50%+ (legacy)
-  'League One',               // V1: 64% (legacy)
-  'Super League Greece',      // V1: 55% (legacy)
-  'Swiss Super League',       // V1: 75% (legacy)
+  'Africa Cup of Nations',
+  'Scottish Premiership',
+  'League 78',
+  'Championship',
+  'League One',
+  'Super League Greece',
+  'Swiss Super League',
 ]
+
+/**
+ * Per-league premium gates — based on empirical V3 baseline accuracy from
+ * full-sport-performance-audit.ts (2026-05-15 run).
+ *
+ * Three buckets:
+ *   - baseline > 0.51  → relaxed gate (V3 ≥0.55) — leagues where V3 has real edge
+ *   - baseline 0.48-0.51 → strict gate (V3 ≥0.60) — borderline, keep the old gate
+ *   - baseline < 0.48 → DROP entirely — V3 is anti-signal in this league
+ *
+ * Unknown leagues default to the strict 0.60 gate. Re-tune by re-running
+ * the audit script when sample sizes grow.
+ */
+const LEAGUE_V3_BASELINE: Record<string, number> = {
+  'Eliteserien':         0.679,
+  'Brasileirão Série A': 0.545,
+  'J1 League':           0.545,
+  'Bundesliga':          0.525,
+  'La Liga':             0.500,
+  'Premier League':      0.500,
+  'Eredivisie':          0.500,
+  'Ligue 1':             0.489,
+  'Major League Soccer': 0.471,
+  'Allsvenskan':         0.464,
+  'Serie A':             0.400,
+  'Primeira Liga':       0.390,
+}
+
+const RELAXED_GATE_THRESHOLD = 0.51  // baseline strictly above this → relaxed gate
+const DROP_THRESHOLD = 0.48          // baseline below this → drop entirely
+const RELAXED_PREMIUM_GATE = 0.55
+const STRICT_PREMIUM_GATE = 0.60
+
+export function getLeaguePremiumGate(league: string | null | undefined): { gate: number; dropped: boolean; rationale: string } {
+  if (!league) return { gate: STRICT_PREMIUM_GATE, dropped: false, rationale: 'unknown league — default strict gate' }
+  const baseline = LEAGUE_V3_BASELINE[league]
+  if (baseline === undefined) {
+    return { gate: STRICT_PREMIUM_GATE, dropped: false, rationale: 'league not in baseline table — default strict gate' }
+  }
+  if (baseline < DROP_THRESHOLD) {
+    return { gate: 1.1, dropped: true, rationale: `${league} V3 baseline ${(baseline * 100).toFixed(1)}% — anti-signal, dropped` }
+  }
+  if (baseline > RELAXED_GATE_THRESHOLD) {
+    return { gate: RELAXED_PREMIUM_GATE, dropped: false, rationale: `${league} V3 baseline ${(baseline * 100).toFixed(1)}% > 51% — relaxed gate ≥55%` }
+  }
+  return { gate: STRICT_PREMIUM_GATE, dropped: false, rationale: `${league} V3 baseline ${(baseline * 100).toFixed(1)}% — strict gate ≥60%` }
+}
 
 // Weak leagues to deprioritize.
 // Last reviewed: 2026-05-11 — see scripts/premium-tier-analysis.ts for rationale.
@@ -211,11 +259,20 @@ async function getSoccerPicks(): Promise<SnapBetPick[]> {
       let qualifies = false
       let tier: 'premium' | 'strong' | 'value' | 'standard' = 'standard'
 
-      // Criterion 1: V3 confidence ≥ 60% → 100% historical accuracy
-      if (v3conf >= 0.6) {
+      // League-specific premium gate. Per the 2026-05-15 audit, the V3
+      // baseline accuracy varies hugely by league (40% Serie A → 68%
+      // Eliteserien). We drop anti-signal leagues entirely AND relax the
+      // confidence gate where V3 has demonstrated edge.
+      const leagueGate = getLeaguePremiumGate(league)
+      if (leagueGate.dropped) {
+        continue   // skip this match entirely — V3 has no edge here
+      }
+
+      // Criterion 1: V3 confidence ≥ league-specific gate → premium
+      if (v3conf >= leagueGate.gate) {
         qualifies = true
         tier = 'premium'
-        reasons.push(`V3 confidence ${Math.round(v3conf * 100)}% (100% historical accuracy at 60%+)`)
+        reasons.push(`V3 ${Math.round(v3conf * 100)}% ≥ ${Math.round(leagueGate.gate * 100)}% (${leagueGate.rationale})`)
       }
 
       // Criterion 2: V3 confidence ≥ 50% + strong league
