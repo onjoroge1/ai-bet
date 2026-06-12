@@ -6,6 +6,10 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Trophy, TrendingUp, Target, Shield, Brain, ChevronDown, ChevronUp, Lock, Unlock, ExternalLink, CheckCircle, X } from "lucide-react"
+import { isEdgePivotEnabled } from "@/lib/feature-flags"
+import { edgeFromPredictionData } from "@/lib/edge/extract"
+import type { EdgeView } from "@/lib/edge/types"
+import { ValueBadge, EdgeMeter, PriceGuard, StakeSuggester, NoValueState, TrackRecordNote } from "@/components/edge"
 
 interface PredictionCardProps {
   mode: 'preview' | 'compact' | 'full'
@@ -41,6 +45,12 @@ export function PredictionCard({
 }: PredictionCardProps) {
   const [isExpanded, setIsExpanded] = useState(isPurchased) // Auto-expand if purchased
 
+  // Edge pivot: lead with edge/EV when the payload carries the edge blocks
+  // and the flag is on. Falls back to the legacy confidence UI otherwise
+  // (nullability case (a) — no market collected).
+  const edge: EdgeView | null = isEdgePivotEnabled() ? edgeFromPredictionData(prediction) : null
+  const edgeActive = !!edge?.market
+
   // Preview mode: Show limited info + purchase CTA
   if (mode === 'preview') {
     return (
@@ -56,7 +66,15 @@ export function PredictionCard({
 
           {/* Preview Info */}
           <div className="space-y-4 mb-6">
-            {quickPurchaseInfo?.confidenceScore && (
+            {edgeActive && edge && (
+              <div className="space-y-2">
+                {edge.actionable && edge.value
+                  ? <ValueBadge value={edge.value} />
+                  : <NoValueState unvalidated={!edge.edgeValidated} />}
+                <TrackRecordNote track={edge.trackRecord} />
+              </div>
+            )}
+            {!edgeActive && quickPurchaseInfo?.confidenceScore && (
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <div className="text-slate-400 text-sm mb-1">Confidence</div>
@@ -145,7 +163,12 @@ export function PredictionCard({
           
           {!isExpanded && (
             <div className="flex items-center gap-4 text-sm">
-              {quickPurchaseInfo?.confidenceScore && (
+              {edgeActive && edge && (
+                edge.actionable && edge.value
+                  ? <ValueBadge value={edge.value} />
+                  : <span className="text-slate-400 text-xs">No value at current prices</span>
+              )}
+              {!edgeActive && quickPurchaseInfo?.confidenceScore && (
                 <div className="text-emerald-400">
                   {quickPurchaseInfo.confidenceScore}% Confidence
                 </div>
@@ -174,8 +197,37 @@ export function PredictionCard({
   // Full mode: Complete analysis display
   return (
     <div className="space-y-6">
-      {/* Hero Section - Recommended Bet (only for non-finished matches) */}
-      {prediction.predictions?.recommended_bet && (
+      {/* Edge pivot hero — market vs model, value bet or no-value state */}
+      {edgeActive && edge && (
+        <Card className="bg-slate-800/60 border-slate-700">
+          <div className="p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-white flex items-center">
+                <Target className="w-5 h-5 mr-2 text-emerald-400" />
+                Market vs Model
+              </h3>
+              {edge.actionable && <ValueBadge value={edge.value} />}
+            </div>
+            <EdgeMeter
+              market={edge.market!}
+              modelProbs={modelProbsFrom(prediction)}
+              value={edge.value}
+            />
+            {edge.actionable && edge.value?.value_bet ? (
+              <>
+                <PriceGuard valueBet={edge.value.value_bet} />
+                <StakeSuggester valueBet={edge.value.value_bet} />
+              </>
+            ) : (
+              <NoValueState unvalidated={!edge.edgeValidated} />
+            )}
+            <TrackRecordNote track={edge.trackRecord} />
+          </div>
+        </Card>
+      )}
+
+      {/* Hero Section - Recommended Bet (legacy; demoted when edge UI active) */}
+      {!edgeActive && prediction.predictions?.recommended_bet && (
         <Card className="bg-gradient-to-r from-emerald-800/30 to-blue-800/30 border-emerald-500/30">
           <div className="p-6">
             <div className="text-center">
@@ -604,3 +656,17 @@ function AdditionalMarketsDisplay({ markets, matchData }: { markets: any; matchD
   )
 }
 
+
+/**
+ * Model probabilities for the Edge Meter, normalized to 0..1. The backend
+ * serves predictions.home_win/draw/away_win — historically either fractions
+ * or percentages depending on the endpoint, so normalize defensively.
+ */
+function modelProbsFrom(prediction: any): { home: number; draw: number; away: number } {
+  const p = prediction?.predictions ?? prediction?.prediction?.predictions ?? {}
+  const norm = (v: unknown): number => {
+    const n = typeof v === 'number' ? v : 0
+    return n > 1 ? n / 100 : n
+  }
+  return { home: norm(p.home_win), draw: norm(p.draw), away: norm(p.away_win) }
+}

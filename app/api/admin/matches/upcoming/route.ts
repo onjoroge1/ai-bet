@@ -3,6 +3,7 @@ import prisma from '@/lib/db'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { Prisma } from '@prisma/client'
+import { edgeSummaryFromPredictionData } from '@/lib/edge/extract'
 
 /**
  * GET /api/admin/matches/upcoming
@@ -194,6 +195,14 @@ export async function GET(request: NextRequest) {
         newestEnrichmentAt === null || (now - newestEnrichmentAt) > PREDICTION_TTL_MS
       )
 
+      // Edge-payload v1 summary (ungated for admin) — first QuickPurchase
+      // whose predictionData carries the edge blocks wins.
+      let edgeSummary: ReturnType<typeof edgeSummaryFromPredictionData> | null = null
+      for (const qp of allQuickPurchases) {
+        const s = edgeSummaryFromPredictionData(qp.predictionData)
+        if (s.rating !== null || s.validated) { edgeSummary = s; break }
+      }
+
       return {
         id: match.id,
         matchId: match.matchId,
@@ -213,7 +222,9 @@ export async function GET(request: NextRequest) {
         quickPurchaseCount: allQuickPurchases.length,
         blogCount: match.blogPosts.length,
         blogSlug: hasBlog ? match.blogPosts[0]?.slug : null,
-        socialMediaPostCount: match.socialMediaPosts.length
+        socialMediaPostCount: match.socialMediaPosts.length,
+        // Edge-payload v1 (additive)
+        edge: edgeSummary
       }
     })
 

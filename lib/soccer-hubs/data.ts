@@ -10,6 +10,7 @@
 import prisma from '@/lib/db'
 import { generateMatchSlug } from '@/lib/match-slug'
 import { makeTeamSlug } from '@/lib/team-stats/slug'
+import { edgeSummaryFromV3Model, type EdgeSummary } from '@/lib/edge/extract'
 
 /** UTC day-start at midnight for a given Date. */
 export function dayStartUTC(d: Date): Date {
@@ -62,6 +63,9 @@ export interface HubFixture {
   pick: 'home' | 'away' | 'draw' | null
   v3Confidence: number | null
   v1Confidence: number | null
+  /** Edge-payload v1 summary read off v3Model's additive keys; null for
+   * pre-pivot rows. */
+  edge: EdgeSummary | null
 }
 
 export interface HubData {
@@ -202,6 +206,7 @@ export async function getHubData(opts: {
       pick,
       v3Confidence,
       v1Confidence,
+      edge: edgeSummaryFromV3Model(r.v3Model),
     }
   })
 

@@ -41,6 +41,8 @@ export interface Match {
   discountPercentage?: number
   tipCount?: number
   predictionData?: unknown
+  /** Edge-payload v1 compact summary (additive; served by /api/quick-purchases). */
+  edge?: import('@/lib/edge/extract').EdgeSummary | null
 }
 
 export interface MatchFilters {

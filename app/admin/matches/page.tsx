@@ -29,6 +29,7 @@ import {
   Trophy
 } from 'lucide-react'
 import { SportSelector } from '@/components/multisport/SportSelector'
+import { EdgeChip } from '@/components/edge'
 import { toast } from 'sonner'
 import {
   Table,
@@ -62,6 +63,8 @@ interface MatchWithStatus {
   quickPurchaseCount: number
   blogCount: number
   socialMediaPostCount: number
+  /** Edge-payload v1 summary (additive; null until /predict stores edge blocks). */
+  edge?: import('@/lib/edge/extract').EdgeSummary | null
 }
 
 interface MultisportAdminMatch {
@@ -1211,6 +1214,7 @@ export default function AdminMatchesPage() {
                       <TableHead className="text-slate-300 text-center px-2 sm:px-4 w-16 sm:w-20">Blog</TableHead>
                       <TableHead className="text-slate-300 text-center px-2 sm:px-4 w-16 sm:w-20">Social</TableHead>
                       <TableHead className="text-slate-300 text-center px-2 sm:px-4 w-16 sm:w-20">Pred</TableHead>
+                      <TableHead className="text-slate-300 text-center px-2 sm:px-4 hidden lg:table-cell">Edge</TableHead>
                       <TableHead className="text-slate-300 text-center px-2 sm:px-4 hidden lg:table-cell">Needs /predict</TableHead>
                       <TableHead className="text-slate-300 text-center px-2 sm:px-4 w-20 sm:w-24">Actions</TableHead>
                     </TableRow>
@@ -1218,7 +1222,7 @@ export default function AdminMatchesPage() {
                   <TableBody>
                     {filteredMatches.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center text-slate-400 py-8">
+                        <TableCell colSpan={10} className="text-center text-slate-400 py-8">
                           No matches found
                         </TableCell>
                       </TableRow>
@@ -1284,6 +1288,18 @@ export default function AdminMatchesPage() {
                               <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-500 mx-auto" />
                             ) : (
                               <XCircle className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600 mx-auto" />
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center px-2 sm:px-4 hidden lg:table-cell">
+                            {match.edge ? (
+                              <div className="flex flex-col items-center gap-0.5">
+                                <EdgeChip summary={match.edge} />
+                                <span className={`text-[10px] ${match.edge.validated ? 'text-emerald-400' : 'text-slate-500'}`}>
+                                  {match.edge.validated ? 'validated' : 'unvalidated'}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-600 text-xs">—</span>
                             )}
                           </TableCell>
                           <TableCell className="text-center px-2 sm:px-4 hidden lg:table-cell">

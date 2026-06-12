@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import prisma from '@/lib/db'
 import { Prisma } from '@prisma/client'
+import { edgeSummaryFromPredictionData, type EdgeSummary } from '@/lib/edge/extract'
 
 /**
  * Quick Purchases API
@@ -51,6 +52,8 @@ interface QuickPurchaseResponse {
   updatedAt?: Date
   predictionData?: Record<string, unknown> | null
   tipCount?: number
+  /** Edge-payload v1 compact summary — additive, null for pre-pivot rows. */
+  edge?: EdgeSummary | null
 }
 
 /** Maps QuickPurchase types to PackageCountryPrice packageTypes */
@@ -221,6 +224,9 @@ export async function GET(request: NextRequest) {
       countryId: true,
       isPredictionActive: true,
       displayOrder: true,
+      // Needed in every view to compute the compact `edge` summary; the raw
+      // blob is still only SHIPPED in the full view.
+      predictionData: true,
       // Only include heavyweight fields when NOT in matches view
       ...(!isMatchesView && {
         description: true,
@@ -234,7 +240,6 @@ export async function GET(request: NextRequest) {
         discountPercentage: true,
         targetLink: true,
         updatedAt: true,
-        predictionData: true,
       }),
     }
 
@@ -297,6 +302,9 @@ export async function GET(request: NextRequest) {
             currencyCode: userCountry.currencyCode || 'USD',
             currencySymbol: userCountry.currencySymbol || '$',
           },
+          // Compact edge summary (edge-payload v1) for list chips — computed
+          // server-side so the matches view stays lightweight.
+          edge: edgeSummaryFromPredictionData((purchase as { predictionData?: unknown }).predictionData),
         }
 
         // Attach extra fields for full view

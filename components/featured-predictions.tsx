@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Clock, Star, TrendingUp, Lock, Brain, Loader2 } from "lucide-react"
 import Link from "next/link"
+import { isEdgePivotEnabled } from "@/lib/feature-flags"
 
 // Type for the prediction data
 type Prediction = {
@@ -136,8 +137,19 @@ export function FeaturedPredictions() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-2xl font-bold text-emerald-400">{prediction.confidence}%</div>
-                  <div className="text-slate-400 text-sm">Confidence</div>
+                  {/* Edge pivot copy rule: probability is information, not a
+                      reason to bet — neutral label + styling when flag is on. */}
+                  {isEdgePivotEnabled() ? (
+                    <>
+                      <div className="text-2xl font-bold text-slate-200">{prediction.confidence}%</div>
+                      <div className="text-slate-400 text-sm">Model probability</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-2xl font-bold text-emerald-400">{prediction.confidence}%</div>
+                      <div className="text-slate-400 text-sm">Confidence</div>
+                    </>
+                  )}
                 </div>
               </div>
 

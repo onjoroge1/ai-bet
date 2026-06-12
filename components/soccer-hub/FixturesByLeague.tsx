@@ -7,6 +7,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Calendar, ChevronRight } from 'lucide-react'
 import type { HubFixture } from '@/lib/soccer-hubs/data'
+import { isEdgePivotEnabled } from '@/lib/feature-flags'
+import { EdgeChip } from '@/components/edge'
 
 interface FixturesByLeagueProps {
   byLeague: Array<{ league: string; flagEmoji: string | null; fixtures: HubFixture[] }>
@@ -80,7 +82,8 @@ export function FixturesByLeague({ byLeague, hideLeagueHeaders, emptyMessage }: 
                     </span>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    {f.confidence >= 0.5 && f.pick !== null && (
+                    {isEdgePivotEnabled() && <EdgeChip summary={f.edge} />}
+                    {!(isEdgePivotEnabled() && f.edge) && f.confidence >= 0.5 && f.pick !== null && (
                       <Badge className={`${confidenceBadgeClass(f.confidence)} text-[10px]`}>
                         {pickLabel(f.pick, f.homeTeam, f.awayTeam)} · {(f.confidence * 100).toFixed(0)}%
                       </Badge>

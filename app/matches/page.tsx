@@ -13,6 +13,9 @@ import {
 import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
 import { generateMatchSlug } from "@/lib/match-slug"
+import { isEdgePivotEnabled } from "@/lib/feature-flags"
+import { edgeSummaryFromPredictionData, hasActionableValue, type EdgeSummary } from "@/lib/edge/extract"
+import { EdgeChip } from "@/components/edge"
 import {
   ConfidenceRing,
   SkeletonCard,
@@ -40,10 +43,32 @@ export default function PublicMatchesPage() {
     valueRating: "all",
     sortBy: "date"
   })
+  // Edge pivot: "value only" is the default list view when the flag is on (§4.6)
+  const edgeOn = isEdgePivotEnabled()
+  const [valueOnly, setValueOnly] = useState(edgeOn)
+
+  // Compact edge summary per match, extracted client-side from the
+  // predictionData blob the API already ships. Null-safe for pre-pivot rows.
+  const edgeById = useMemo(() => {
+    const map = new Map<string, EdgeSummary>()
+    for (const m of matches) {
+      map.set(m.id, edgeSummaryFromPredictionData(m.predictionData))
+    }
+    return map
+  }, [matches])
 
   // ─── Filtering ─────────────────────────────────────────────────────────
   const filteredMatches = useMemo(() => {
     let filtered = [...matches]
+
+    if (edgeOn && valueOnly) {
+      // Keep only actionable value bets… unless NONE have edge data yet
+      // (pre-pivot DB) — then the filter would blank the page, so skip it.
+      const anyValue = matches.some(m => hasActionableValue(edgeById.get(m.id)!))
+      if (anyValue) {
+        filtered = filtered.filter(m => hasActionableValue(edgeById.get(m.id)!))
+      }
+    }
 
     if (filters.search) {
       const q = filters.search.toLowerCase()
@@ -77,6 +102,7 @@ export default function PublicMatchesPage() {
 
     filtered.sort((a, b) => {
       switch (filters.sortBy) {
+        case "ev": return (edgeById.get(b.id)?.ev ?? -Infinity) - (edgeById.get(a.id)?.ev ?? -Infinity)
         case "confidence": return (b.confidenceScore || 0) - (a.confidenceScore || 0)
         case "price": return a.price - b.price
         case "name": {
@@ -94,7 +120,7 @@ export default function PublicMatchesPage() {
     })
 
     return filtered
-  }, [matches, filters])
+  }, [matches, filters, edgeOn, valueOnly, edgeById])
 
   // ─── Stats ─────────────────────────────────────────────────────────────
   const stats = useMemo(() => ({
@@ -102,7 +128,10 @@ export default function PublicMatchesPage() {
     highConfidence: filteredMatches.filter(m => (m.confidenceScore || 0) >= 80).length,
     upcoming: filteredMatches.filter(m => getMatchStatus(m) === "upcoming").length,
     veryHighValue: filteredMatches.filter(m => m.valueRating?.toLowerCase() === "very high").length,
-  }), [filteredMatches])
+    // Edge pivot: honest count — value bets found across ALL scanned matches
+    valueBets: matches.filter(m => hasActionableValue(edgeById.get(m.id)!)).length,
+    scanned: matches.length,
+  }), [filteredMatches, matches, edgeById])
 
   // ─── Data fetching ─────────────────────────────────────────────────────
   const fetchMatches = useCallback(async () => {
@@ -133,8 +162,10 @@ export default function PublicMatchesPage() {
   const handleLoginClick = () => router.push('/signin?callbackUrl=/dashboard/matches')
   const handleSignUpClick = () => router.push('/signup?callbackUrl=/dashboard/matches')
 
-  const clearFilters = () =>
+  const clearFilters = () => {
     setFilters({ search: "", status: "all", confidence: "all", valueRating: "all", sortBy: "date" })
+    setValueOnly(edgeOn)
+  }
 
   // ─── Render ────────────────────────────────────────────────────────────
   return (
@@ -185,7 +216,9 @@ export default function PublicMatchesPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
             { label: "Total Matches", value: stats.total, icon: BarChart3, color: "text-white", iconBg: "bg-slate-700/60" },
-            { label: "High Confidence", value: stats.highConfidence, icon: Zap, color: "text-emerald-400", iconBg: "bg-emerald-500/15" },
+            edgeOn
+              ? { label: `Value Bets (${stats.scanned} scanned)`, value: stats.valueBets, icon: TrendingUp, color: "text-emerald-400", iconBg: "bg-emerald-500/15" }
+              : { label: "High Confidence", value: stats.highConfidence, icon: Zap, color: "text-emerald-400", iconBg: "bg-emerald-500/15" },
             { label: "Starting Soon", value: stats.upcoming, icon: Timer, color: "text-orange-400", iconBg: "bg-orange-500/15" },
             { label: "Very High Value", value: stats.veryHighValue, icon: Star, color: "text-purple-400", iconBg: "bg-purple-500/15" },
           ].map((stat) => (
@@ -259,20 +292,35 @@ export default function PublicMatchesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="date">Date</SelectItem>
+                  {edgeOn && <SelectItem value="ev">Expected Value</SelectItem>}
                   <SelectItem value="confidence">Confidence</SelectItem>
                   <SelectItem value="price">Price</SelectItem>
                   <SelectItem value="name">Name</SelectItem>
                 </SelectContent>
               </Select>
 
-              <Button
-                variant="outline"
-                className="border-slate-700/60 hover:bg-slate-700/40"
-                onClick={clearFilters}
-              >
-                <Filter className="h-4 w-4 mr-2" />
-                Clear
-              </Button>
+              <div className="flex items-center gap-2">
+                {edgeOn && (
+                  <Button
+                    variant={valueOnly ? "default" : "outline"}
+                    className={valueOnly
+                      ? "bg-emerald-600 hover:bg-emerald-500 text-white"
+                      : "border-slate-700/60 hover:bg-slate-700/40"}
+                    onClick={() => setValueOnly(v => !v)}
+                  >
+                    <TrendingUp className="h-4 w-4 mr-2" />
+                    Value only
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  className="border-slate-700/60 hover:bg-slate-700/40"
+                  onClick={clearFilters}
+                >
+                  <Filter className="h-4 w-4 mr-2" />
+                  Clear
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -374,7 +422,8 @@ export default function PublicMatchesPage() {
                             Scheduled
                           </Badge>
                         )}
-                        {match.valueRating && (
+                        {edgeOn && <EdgeChip summary={edgeById.get(match.id) ?? null} />}
+                        {!edgeOn && match.valueRating && (
                           <Badge className={`text-[10px] px-2 py-0 ${
                             match.valueRating.toLowerCase() === "very high" ? "bg-purple-500/20 text-purple-400 border-purple-500/30" :
                             match.valueRating.toLowerCase() === "high" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :

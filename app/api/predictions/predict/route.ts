@@ -595,6 +595,14 @@ export async function POST(request: Request) {
           } : null
 
           if (v3Data) {
+            // Edge-payload v1: merge additive edge keys (edge_validated,
+            // value_rating, value_ev, …) so MarketMatch-driven surfaces
+            // (soccer hubs, world-cup) render value chips without loading
+            // QuickPurchase. No-op for pre-pivot backend responses.
+            const { v3ModelEdgeFields } = await import('@/lib/edge/extract')
+            const edgeFields = v3ModelEdgeFields(predictionData)
+            if (edgeFields) Object.assign(v3Data, edgeFields)
+
             await prisma.marketMatch.update({
               where: { id: marketMatch.id },
               data: { v3Model: v3Data as any },

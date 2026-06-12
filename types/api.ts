@@ -6,15 +6,31 @@ export interface ApiResponse<T = unknown> {
   message?: string
 }
 
+// Edge-payload v1 blocks (additive, every block nullable).
+// Canonical types live in lib/edge/types.ts — re-exported here so existing
+// imports of types/api keep working.
+import type { MarketBlock, ValueBlock, ClvBlock, ModelTrackRecord } from '@/lib/edge/types'
+export type { MarketBlock, ValueBlock, ClvBlock, ModelTrackRecord } from '@/lib/edge/types'
+
 // Prediction Data Types
 export interface PredictionPayload {
   prediction?: {
     match_info?: MatchInfo
     comprehensive_analysis?: ComprehensiveAnalysis
     additional_markets?: AdditionalMarkets
+    // Edge-payload v1 (2026-06-12) — nullable, render gracefully when null
+    market?: MarketBlock | null
+    value?: ValueBlock | null
+    clv?: ClvBlock | null
+    model_track_record?: ModelTrackRecord | null
   }
   comprehensive_analysis?: ComprehensiveAnalysis
   additional_markets?: AdditionalMarkets
+  // Edge-payload v1 — also present at top level on the raw /predict response
+  market?: MarketBlock | null
+  value?: ValueBlock | null
+  clv?: ClvBlock | null
+  model_track_record?: ModelTrackRecord | null
   analysis_metadata?: Record<string, unknown>
   processing_time?: number
   timestamp?: string

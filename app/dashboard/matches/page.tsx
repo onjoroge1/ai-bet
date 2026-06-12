@@ -13,6 +13,9 @@ import {
 import { useRouter } from "next/navigation"
 import { QuickPurchaseModal } from "@/components/quick-purchase-modal"
 import { generateMatchSlug } from "@/lib/match-slug"
+import { isEdgePivotEnabled } from "@/lib/feature-flags"
+import { hasActionableValue } from "@/lib/edge/extract"
+import { EdgeChip } from "@/components/edge"
 import { SportSelector } from "@/components/multisport/SportSelector"
 import { MultisportMatchTable } from "@/components/multisport/MultisportMatchTable"
 import {
@@ -140,9 +143,22 @@ export default function MatchesPage() {
     }
   }
 
+  // Edge pivot: "value only" default list view when the flag is on (§4.6)
+  const edgeOn = isEdgePivotEnabled()
+  const [valueOnly, setValueOnly] = useState(edgeOn)
+
   /** Apply client-side filters */
   const filteredMatches = useMemo(() => {
     let filtered = [...matches]
+
+    if (edgeOn && valueOnly) {
+      // Skip the filter when no row carries edge data yet (pre-pivot DB) so
+      // the page doesn't blank out.
+      const anyValue = matches.some(m => m.edge && hasActionableValue(m.edge))
+      if (anyValue) {
+        filtered = filtered.filter(m => m.edge && hasActionableValue(m.edge))
+      }
+    }
 
     if (filters.search) {
       const q = filters.search.toLowerCase()
@@ -184,6 +200,7 @@ export default function MatchesPage() {
 
     filtered.sort((a, b) => {
       switch (filters.sortBy) {
+        case "ev": return (b.edge?.ev ?? -Infinity) - (a.edge?.ev ?? -Infinity)
         case "confidence": return (b.confidenceScore || 0) - (a.confidenceScore || 0)
         case "date": {
           const dA = a.matchData?.date ? new Date(a.matchData.date).getTime() : 0
@@ -196,7 +213,7 @@ export default function MatchesPage() {
       }
     })
     return filtered
-  }, [matches, filters])
+  }, [matches, filters, edgeOn, valueOnly])
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -360,16 +377,29 @@ export default function MatchesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="date">Kick-off Time</SelectItem>
+                  {edgeOn && <SelectItem value="ev">Expected Value</SelectItem>}
                   <SelectItem value="confidence">Confidence</SelectItem>
                   <SelectItem value="price">Price</SelectItem>
                   <SelectItem value="name">Name</SelectItem>
                 </SelectContent>
               </Select>
 
+              {edgeOn && (
+                <Button
+                  variant={valueOnly ? "default" : "outline"}
+                  className={valueOnly
+                    ? "bg-emerald-600 hover:bg-emerald-500 text-white text-sm"
+                    : "border-slate-700/60 text-slate-400 hover:text-white text-sm"}
+                  onClick={() => setValueOnly(v => !v)}
+                >
+                  <TrendingUp className="h-3.5 w-3.5 mr-1.5" />
+                  Value only
+                </Button>
+              )}
               <Button
                 variant="outline"
                 className="border-slate-700/60 text-slate-400 hover:text-white text-sm"
-                onClick={() => setFilters({ search: "", status: "all", confidence: "all", valueRating: "all", sortBy: "date" })}
+                onClick={() => { setFilters({ search: "", status: "all", confidence: "all", valueRating: "all", sortBy: "date" }); setValueOnly(edgeOn) }}
               >
                 <Filter className="h-3.5 w-3.5 mr-1.5" />
                 Reset
@@ -511,7 +541,8 @@ export default function MatchesPage() {
                             Scheduled
                           </Badge>
                         )}
-                        {match.valueRating && (
+                        {edgeOn && <EdgeChip summary={match.edge ?? null} />}
+                        {!edgeOn && match.valueRating && (
                           <Badge className={`text-[10px] px-2 py-0 ${
                             match.valueRating.toLowerCase() === "very high" ? "bg-purple-500/20 text-purple-400 border-purple-500/30" :
                             match.valueRating.toLowerCase() === "high" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :
