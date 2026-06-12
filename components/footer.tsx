@@ -65,6 +65,11 @@ export function Footer() {
                 </Link>
               </li>
               <li>
+                <Link href="/world-cup" className="text-slate-400 hover:text-white text-sm">
+                  World Cup 2026
+                </Link>
+              </li>
+              <li>
                 <Link href="/nba" className="text-slate-400 hover:text-white text-sm">
                   NBA Predictions
                 </Link>

@@ -2,6 +2,7 @@ import { normalizeBaseUrl, buildSitemapUrl } from '@/lib/sitemap-helpers'
 import { LEAGUES } from '@/lib/soccer-hubs/leagues'
 import { SPORTS as MULTISPORTS } from '@/lib/multisport-hubs/data'
 import { GUIDES } from '@/lib/guides/registry'
+import { GROUPS, ALL_TEAMS } from '@/lib/world-cup/tournament'
 
 export const dynamic = 'force-dynamic'
 
@@ -59,6 +60,25 @@ export async function GET() {
   // /premium product/teaser page + /team index
   entries.push({ url: buildSitemapUrl(baseUrl, '/premium'), lastmod: now, changefreq: 'daily', priority: 0.85 })
   entries.push({ url: buildSitemapUrl(baseUrl, '/team'), lastmod: now, changefreq: 'daily', priority: 0.7 })
+
+  // World Cup 2026 hub family
+  entries.push({ url: buildSitemapUrl(baseUrl, '/world-cup'), lastmod: now, changefreq: 'daily', priority: 0.85 })
+  for (const g of GROUPS) {
+    entries.push({
+      url: buildSitemapUrl(baseUrl, `/world-cup/group/${g.letter.toLowerCase()}`),
+      lastmod: now,
+      changefreq: 'weekly',
+      priority: 0.7,
+    })
+  }
+  for (const t of ALL_TEAMS) {
+    entries.push({
+      url: buildSitemapUrl(baseUrl, `/world-cup/team/${t.slug}`),
+      lastmod: now,
+      changefreq: 'weekly',
+      priority: 0.6,
+    })
+  }
 
   // Multisport hubs (Phase 2)
   for (const sport of MULTISPORTS) {
