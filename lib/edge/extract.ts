@@ -80,9 +80,20 @@ export function edgeSummaryFromPredictionData(raw: unknown): EdgeSummary {
   return summarizeEdge(edgeFromPredictionData(raw))
 }
 
+// Stale-price outlier guard. The value bet is computed against the BEST
+// price across ~75 books; a single stale/trap quote at an obscure book
+// produces absurd EV (observed: 63.0 odds → "+1353% EV"). Such prices are
+// rarely actually obtainable, so we refuse to surface them as actionable.
+// Tunable — revisit once the CLV ledger shows what realized prices look like.
+const SUSPECT_EV_CEILING = 2.5      // > +250% EV → stale-price artifact
+const SUSPECT_PRICE_CEILING = 25    // decimal odds above this → trap quote
+
 /** True when a summary represents a renderable value bet (the chip test). */
 export function hasActionableValue(s: EdgeSummary): boolean {
-  return s.actionable && s.ev !== null && s.ev > 0
+  if (!s.actionable || s.ev === null || s.ev <= 0) return false
+  if (s.ev > SUSPECT_EV_CEILING) return false
+  if (s.price !== null && s.price > SUSPECT_PRICE_CEILING) return false
+  return true
 }
 
 // ─── Additive keys for the MarketMatch.v3Model write ─────────────────────

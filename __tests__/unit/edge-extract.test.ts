@@ -134,6 +134,31 @@ describe('summarizeEdge / hasActionableValue', () => {
     expect(s.rating).toBeNull()
     expect(hasActionableValue(s)).toBe(false)
   })
+
+  it('stale-price outliers are NOT actionable (suspect guard)', () => {
+    // Observed in production: 63.0 odds at an obscure book → "+1353% EV".
+    const outlierEv = {
+      ...blocks,
+      value: {
+        ...blocks.value!,
+        value_bet: { ...blocks.value!.value_bet!, ev: 13.53, price: 63, book: 'mybookieag' },
+      },
+    }
+    expect(hasActionableValue(edgeSummaryFromPredictionData(outlierEv))).toBe(false)
+
+    // Absurd price alone also trips the guard even with moderate EV
+    const outlierPrice = {
+      ...blocks,
+      value: {
+        ...blocks.value!,
+        value_bet: { ...blocks.value!.value_bet!, ev: 0.9, price: 40, book: 'smarkets' },
+      },
+    }
+    expect(hasActionableValue(edgeSummaryFromPredictionData(outlierPrice))).toBe(false)
+
+    // The manual's worked example (+51.6% at 4.50) stays actionable
+    expect(hasActionableValue(edgeSummaryFromPredictionData(blocks))).toBe(true)
+  })
 })
 
 describe('v3ModelEdgeFields — additive persistence keys', () => {

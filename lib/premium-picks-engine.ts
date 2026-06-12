@@ -26,6 +26,7 @@
 import prisma from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { deriveSurfaceFromPrediction } from '@/lib/predictions/should-surface'
+import { edgeSummaryFromV3Model, edgeSummaryFromPredictionData, hasActionableValue } from '@/lib/edge/extract'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -209,7 +210,12 @@ async function getSoccerPicks(): Promise<SnapBetPick[]> {
       where: {
         status: 'UPCOMING',
         kickoffDate: { gte: new Date() },
-        v1Model: { not: Prisma.JsonNull },
+        // v1Model OR v3Model — World Cup / international fixtures arrive with
+        // only a v3Model (wc_elo) and would otherwise never enter the pool.
+        OR: [
+          { v1Model: { not: Prisma.JsonNull } },
+          { v3Model: { not: Prisma.JsonNull } },
+        ],
       },
       orderBy: { kickoffDate: 'asc' },
       take: 100,
@@ -228,27 +234,44 @@ async function getSoccerPicks(): Promise<SnapBetPick[]> {
 
     for (const m of matches) {
       const v1 = m.v1Model as any
-      if (!v1?.pick) continue
+      const v3m = m.v3Model as any
 
-      const v1pick = v1.pick.toLowerCase()
-      const v1conf = v1.confidence || 0
+      const v1pick = (v1?.pick || '').toLowerCase()
+      const v1conf = v1?.confidence || 0
       const league = m.league || ''
       const reasons: string[] = []
 
-      // Get V3 data from QuickPurchase
+      // Get V3 data from QuickPurchase, falling back to MarketMatch.v3Model
+      // (v3-only fixtures — e.g. World Cup — may not have a QuickPurchase yet)
       const qp = qpByMatchId.get(m.matchId)
       const pd = qp?.predictionData as any
+
+      // Edge-payload v1 summary. Two sources: the additive keys the (new)
+      // predict route merges into v3Model, or the raw blocks inside the
+      // stored predictionData (full backend response — works for rows
+      // written before the v3Model merge shipped). edge_validated models
+      // with a +EV value bet are the only picks mathematically connected
+      // to bankroll (docs/EDGE_PIVOT_FRONTEND.md).
+      let edgeSummary = edgeSummaryFromV3Model(m.v3Model)
+      if (!edgeSummary || !hasActionableValue(edgeSummary)) {
+        const fromPd = pd ? edgeSummaryFromPredictionData(pd) : null
+        if (fromPd && (fromPd.rating !== null || fromPd.validated)) edgeSummary = fromPd
+      }
+      const edgeActionable = edgeSummary !== null && hasActionableValue(edgeSummary)
+
+      if (!v1pick && !v3m?.pick && !edgeActionable) continue
       const v3preds = pd?.predictions || {}
-      const v3hw = v3preds.home_win || 0
-      const v3dw = v3preds.draw || 0
-      const v3aw = v3preds.away_win || 0
-      const v3conf = v3preds.confidence || 0
+      const v3hw = v3preds.home_win || v3m?.probs?.home || 0
+      const v3dw = v3preds.draw || v3m?.probs?.draw || 0
+      const v3aw = v3preds.away_win || v3m?.probs?.away || 0
+      const v3conf = v3preds.confidence || v3m?.confidence || 0
       let v3pick = ''
       if (v3hw > 0 || v3aw > 0) {
         if (v3hw >= v3dw && v3hw >= v3aw) v3pick = 'home'
         else if (v3aw >= v3dw && v3aw >= v3hw) v3pick = 'away'
         else v3pick = 'draw'
       }
+      if (!v3pick && typeof v3m?.pick === 'string') v3pick = v3m.pick.toLowerCase()
 
       // Premium score from QuickPurchase
       const premiumScore = qp?.premiumScore ? Number(qp.premiumScore) : 0
@@ -259,24 +282,42 @@ async function getSoccerPicks(): Promise<SnapBetPick[]> {
       let qualifies = false
       let tier: 'premium' | 'strong' | 'value' | 'standard' = 'standard'
 
+      // Criterion 0 (edge pivot): backend-validated value bet. The model
+      // passed a temporal holdout (model_track_record.edge_validated) AND
+      // prices this outcome above the market price. This is the only
+      // criterion mathematically connected to bankroll, so it supersedes
+      // the confidence-era gates and league drops below.
+      if (edgeActionable && edgeSummary) {
+        qualifies = true
+        tier = edgeSummary.rating === 'strong_value' ? 'premium' : 'strong'
+        const evPct = ((edgeSummary.ev ?? 0) * 100).toFixed(1)
+        reasons.push(
+          `Edge-validated value bet: +${evPct}% EV` +
+          (edgeSummary.price && edgeSummary.book ? ` at ${edgeSummary.price} (${edgeSummary.book})` : '') +
+          (edgeSummary.minAcceptableOdds ? ` · value at ≥${edgeSummary.minAcceptableOdds.toFixed(2)}` : '')
+        )
+      }
+
       // League-specific premium gate. Per the 2026-05-15 audit, the V3
       // baseline accuracy varies hugely by league (40% Serie A → 68%
       // Eliteserien). We drop anti-signal leagues entirely AND relax the
-      // confidence gate where V3 has demonstrated edge.
+      // confidence gate where V3 has demonstrated edge. The drop applies to
+      // V3-confidence signals only — a Criterion-0 edge pick is a different,
+      // holdout-validated signal and passes through.
       const leagueGate = getLeaguePremiumGate(league)
-      if (leagueGate.dropped) {
-        continue   // skip this match entirely — V3 has no edge here
+      if (leagueGate.dropped && !edgeActionable) {
+        continue   // skip this match entirely — V3 confidence has no edge here
       }
 
       // Criterion 1: V3 confidence ≥ league-specific gate → premium
-      if (v3conf >= leagueGate.gate) {
+      if (!leagueGate.dropped && v3conf >= leagueGate.gate) {
         qualifies = true
         tier = 'premium'
         reasons.push(`V3 ${Math.round(v3conf * 100)}% ≥ ${Math.round(leagueGate.gate * 100)}% (${leagueGate.rationale})`)
       }
 
       // Criterion 2: V3 confidence ≥ 50% + strong league
-      if (v3conf >= 0.5 && isStrongLeague(league)) {
+      if (!leagueGate.dropped && v3conf >= 0.5 && isStrongLeague(league)) {
         qualifies = true
         if (tier !== 'premium') tier = 'strong'
         reasons.push(`V3 ${Math.round(v3conf * 100)}% + strong league (${league})`)
@@ -343,8 +384,9 @@ async function getSoccerPicks(): Promise<SnapBetPick[]> {
         reasons.push(`V3 high-conf draw call (${Math.round(v3conf * 100)}%) — market under-prices draws`)
       }
 
-      // Skip weak leagues unless very high confidence
-      if (isWeakLeague(league) && v3conf < 0.6 && v1conf < 0.75) {
+      // Skip weak leagues unless very high confidence. Edge-validated value
+      // bets are exempt — the holdout validation is the stronger signal.
+      if (isWeakLeague(league) && v3conf < 0.6 && v1conf < 0.75 && !edgeActionable) {
         qualifies = false
       }
 
@@ -353,14 +395,19 @@ async function getSoccerPicks(): Promise<SnapBetPick[]> {
       // tagged it "Lean: ..." or "No bet" we don't show it. Single source of
       // truth — when backend exposes explicit `should_surface`, swap the
       // helper's body to read it directly; this call site stays the same.
+      // Edge-validated value bets bypass: the edge blocks ARE the backend's
+      // surface decision for those (value_bet non-null = bet).
       const surface = deriveSurfaceFromPrediction(pd)
-      if (!surface.shouldSurface) {
+      if (!surface.shouldSurface && !edgeActionable) {
         qualifies = false
       }
 
       if (!qualifies) continue
 
-      const pickSide = v3pick || v1pick
+      // The actionable side: for edge picks it's the VALUE BET outcome (which
+      // can differ from the model's argmax — a priced-wrong underdog beats a
+      // well-priced favorite); otherwise the model pick as before.
+      const pickSide = (edgeActionable && edgeSummary?.outcome) ? edgeSummary.outcome : (v3pick || v1pick)
       const pickTeam = pickSide === 'home' ? m.homeTeam : pickSide === 'away' ? m.awayTeam : 'Draw'
       // Display V3's calibrated confidence (the V2 single source) so the number
       // shown on this card matches what users see on the match detail page.
