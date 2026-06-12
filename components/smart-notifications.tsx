@@ -32,7 +32,7 @@ export function SmartNotifications() {
       id: 3,
       type: "streak_alert",
       title: "🎯 Streak Alert",
-      message: "You're on a 5-win streak! Consider our premium accumulator",
+      message: "5 wins in a row — nice! Remember: streaks don't change edge. Check your CLV trend for the real signal.",
       confidence: null,
       timeLeft: null,
       isEnabled: false,

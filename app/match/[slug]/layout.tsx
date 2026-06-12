@@ -241,7 +241,7 @@ export async function generateMetadata({ params }: MatchLayoutProps): Promise<Me
       title = `${homeTeam} vs ${awayTeam} | AI Prediction & Analysis`
       const summarySnippet = data.aiSummary
         ? data.aiSummary.replace(/🎯.*?\n\n/s, '').substring(0, 140) + '...'
-        : 'Expert analysis, betting recommendations, and confidence scores.'
+        : 'Expert analysis, model probabilities, and market-vs-model edge breakdowns.'
       description = `Get AI-powered predictions for ${homeTeam} vs ${awayTeam}. ${summarySnippet}`
     }
 
@@ -351,8 +351,8 @@ function buildFaqSchema(data: MatchCoreData) {
   // Confidence
   if (confidenceScore) {
     faqs.push({
-      question: `How confident is the AI prediction for ${matchTitle}?`,
-      answer: `The AI model has a confidence score of ${confidenceScore}% for this match. ${riskAssessment ? `The risk assessment is rated as "${riskAssessment}".` : ''}`,
+      question: `What probability does the AI model give for ${matchTitle}?`,
+      answer: `The AI model prices its pick at ${confidenceScore}% probability for this match. Probability alone is not a betting recommendation — value depends on the market price. ${riskAssessment ? `The risk assessment is rated as "${riskAssessment}".` : ''}`,
     })
   }
 

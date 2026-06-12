@@ -1,5 +1,6 @@
 "use client"
 
+import { isEdgePivotEnabled } from "@/lib/feature-flags"
 import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -159,7 +160,7 @@ export default function VIPIntelligencePage() {
     return (
       <PremiumGate
         title="VIP Intelligence Feed"
-        description="Access our premium AI Intelligence Feed — hand-picked high-confidence matches, curated parlays, and real-time CLV edge opportunities updated hourly."
+        description={isEdgePivotEnabled() ? "Access our premium AI Intelligence Feed — model-vs-market edge opportunities, curated parlays, and real-time CLV signals updated hourly." : "Access our premium AI Intelligence Feed — hand-picked high-confidence matches, curated parlays, and real-time CLV edge opportunities updated hourly."}
         featureName="VIP Intelligence"
       />
     )
@@ -191,7 +192,7 @@ export default function VIPIntelligencePage() {
               <div>
                 <h1 className="text-2xl font-bold text-white">VIP Intelligence Feed</h1>
                 <p className="text-slate-400 text-sm mt-0.5">
-                  AI-curated high-confidence picks · Updated hourly
+                  {isEdgePivotEnabled() ? "AI-curated edge opportunities · Updated hourly" : "AI-curated high-confidence picks · Updated hourly"}
                 </p>
               </div>
             </div>
@@ -308,7 +309,7 @@ export default function VIPIntelligencePage() {
                     <div className="w-7 h-7 bg-emerald-500/15 rounded-lg flex items-center justify-center">
                       <Target className="w-4 h-4 text-emerald-400" />
                     </div>
-                    <h2 className="text-lg font-semibold text-white">High-Confidence Matches</h2>
+                    <h2 className="text-lg font-semibold text-white">{isEdgePivotEnabled() ? "Top Model Probabilities" : "High-Confidence Matches"}</h2>
                     <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">
                       ≥70% confidence
                     </Badge>
@@ -324,7 +325,7 @@ export default function VIPIntelligencePage() {
                 {matches.length === 0 ? (
                   <Card className="bg-slate-800/30 border-slate-700/50">
                     <CardContent className="py-10 text-center text-slate-500 text-sm">
-                      No high-confidence matches available right now. Check back soon.
+                      {isEdgePivotEnabled() ? "No qualifying matches right now — not betting is the +EV move today." : "No high-confidence matches available right now. Check back soon."}
                     </CardContent>
                   </Card>
                 ) : (

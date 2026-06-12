@@ -24,7 +24,7 @@ export function dailyHubFAQ(dayName: 'today' | 'tomorrow'): FAQEntry[] {
     {
       question: `What is the model's recent hit rate?`,
       answer:
-        `Over the last 30 days of premium-qualified picks, the V3 model has hit roughly 82% (14 of 17). Live audited results, including every win and loss, are at /performance — that's our flat-$100 simulation tracker. Past performance does not guarantee future results.`,
+        `We publish live audited results — every win and loss — at /performance, our flat-$100 simulation tracker. We don't bake hit-rate claims into static copy; check the tracker for the current numbers. Past performance does not guarantee future results.`,
     },
     {
       question: `What does "high-confidence pick" mean here?`,

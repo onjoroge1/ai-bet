@@ -1,6 +1,7 @@
 "use client"
 
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { isEdgePivotEnabled } from "@/lib/feature-flags"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -92,11 +93,22 @@ export function getUrgency(dateString?: string): "hot" | "warm" | "cool" {
 
 /** Confidence level color */
 export function getConfidenceColor(score: number): { ring: string; text: string; bg: string; glow: string } {
+  // Edge pivot: probability is information, not a reason to bet — a high
+  // probability must not be color-endorsed as "good" (a 65% favorite can be
+  // a terrible bet; edge is what colors value, via EdgeChip/ValueBadge).
+  if (isEdgePivotEnabled()) {
+    return { ring: "stroke-slate-400", text: "text-slate-300", bg: "bg-slate-500/10", glow: "shadow-slate-500/10" }
+  }
   if (score >= 80) return { ring: "stroke-emerald-400", text: "text-emerald-400", bg: "bg-emerald-500/10", glow: "shadow-emerald-500/20" }
   if (score >= 60) return { ring: "stroke-yellow-400", text: "text-yellow-400", bg: "bg-yellow-500/10", glow: "shadow-yellow-500/20" }
   if (score >= 40) return { ring: "stroke-orange-400", text: "text-orange-400", bg: "bg-orange-500/10", glow: "shadow-orange-500/20" }
   return { ring: "stroke-red-400", text: "text-red-400", bg: "bg-red-500/10", glow: "shadow-red-500/20" }
 }
+
+// Re-exported for the many client callers that already import match/shared.
+// Canonical definition lives in lib/feature-flags (isomorphic) so server
+// components can import it directly from there.
+export { probabilityLabel } from "@/lib/feature-flags"
 
 /** Format prediction type for display */
 export function formatPrediction(type: string): string {

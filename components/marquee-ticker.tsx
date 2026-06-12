@@ -21,12 +21,14 @@ interface MarketMatch {
   }
 }
 
+// Default items shown before live data loads. No invented results or
+// accuracy/streak claims — only statements true by construction.
 const defaultTickerItems: TickerItem[] = [
-  { id: "1", text: "🔥 Arsenal vs Manchester City - Live predictions available", icon: "🎯" },
-  { id: "2", text: "⚡ Barcelona wins 3-1 - Prediction accuracy: 92%", icon: "✅" },
-  { id: "3", text: "💎 Real Madrid upcoming match - Premium tips ready", icon: "⭐" },
-  { id: "4", text: "📊 Liverpool vs Chelsea - AI prediction: Over 2.5 goals", icon: "🤖" },
-  { id: "5", text: "🏆 Current win streak: 15/18 successful predictions", icon: "📈" },
+  { id: "1", text: "🔥 AI predictions updated in real time across today's fixtures", icon: "🎯" },
+  { id: "2", text: "⚡ Every pick logged to our public tracker — wins and losses included", icon: "✅" },
+  { id: "3", text: "💎 Premium tips ready for today's top matches", icon: "⭐" },
+  { id: "4", text: "📊 Odds aggregated across dozens of bookmakers per prediction", icon: "🤖" },
+  { id: "5", text: "🏆 Audited flat-stake results — see /performance", icon: "📈" },
 ]
 
 export function MarqueeTicker() {

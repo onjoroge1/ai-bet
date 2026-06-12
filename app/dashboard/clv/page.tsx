@@ -1,5 +1,6 @@
 'use client'
 
+import { probabilityLabel } from "@/components/match/shared"
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -239,8 +240,8 @@ function CLVStatsBar({ opportunities }: { opportunities: CLVOpportunity[] }) {
     <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
       {[
         { label: 'Opportunities', value: stats.total, icon: Activity, color: 'text-white' },
-        { label: 'Avg Confidence', value: `${stats.avgConfidence}/100`, icon: Target, color: 'text-emerald-400' },
-        { label: 'High Confidence', value: stats.highConfidence, icon: TrendingUp, color: 'text-yellow-400' },
+        { label: `Avg ${probabilityLabel()}`, value: `${stats.avgConfidence}/100`, icon: Target, color: 'text-emerald-400' },
+        { label: `High ${probabilityLabel()}`, value: stats.highConfidence, icon: TrendingUp, color: 'text-yellow-400' },
         { label: 'Total EV', value: formatPercent(stats.totalEV, 1), icon: DollarSign, color: stats.totalEV > 0 ? 'text-emerald-400' : 'text-red-400' },
         { label: 'Avg CLV', value: `${stats.avgCLV > 0 ? '+' : ''}${stats.avgCLV.toFixed(1)}%`, icon: BarChart3, color: stats.avgCLV > 0 ? 'text-emerald-400' : 'text-red-400' },
       ].map((stat) => (
@@ -367,7 +368,7 @@ function CLVDetailModal({
                 <p className="text-xl font-bold text-white">{formatStake(calc.kellyFraction)}</p>
               </div>
               <div>
-                <p className="text-xs text-slate-400 mb-1">Confidence</p>
+                <p className="text-xs text-slate-400 mb-1">{probabilityLabel()}</p>
                 <p className="text-xl font-bold text-blue-400">{calc.confidence}/100</p>
               </div>
             </div>
@@ -661,7 +662,7 @@ export default function CLVDashboard() {
         </div>
         <div className="flex gap-2">
           {[
-            { id: 'confidence', label: 'Confidence' },
+            { id: 'confidence', label: probabilityLabel() },
             { id: 'ev', label: 'EV %' },
             { id: 'clv', label: 'CLV %' },
             { id: 'expiry', label: 'Expiring Soon' },

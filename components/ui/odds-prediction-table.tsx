@@ -656,11 +656,11 @@ export function OddsPredictionTable({
                         sideOffset={8}
                       >
                         <div className="space-y-2">
-                          <p className="font-semibold">AI Prediction Confidence</p>
+                          <p className="font-semibold">Model Probability</p>
                           <div className="text-xs space-y-1">
-                            <p><span className="text-emerald-400 font-semibold">80-100%:</span> Very high confidence</p>
-                            <p><span className="text-yellow-400 font-semibold">60-79%:</span> High confidence</p>
-                            <p><span className="text-red-400 font-semibold">&lt;60%:</span> Lower confidence</p>
+                            <p><span className="text-emerald-400 font-semibold">80-100%:</span> Very likely per model</p>
+                            <p><span className="text-yellow-400 font-semibold">60-79%:</span> Likely per model</p>
+                            <p><span className="text-red-400 font-semibold">&lt;60%:</span> Less likely per model — probability alone is not a reason to bet</p>
                           </div>
                         </div>
                       </TooltipContent>

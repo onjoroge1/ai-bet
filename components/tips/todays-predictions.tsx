@@ -1,4 +1,5 @@
 "use client"
+import { probabilityLabel } from "@/components/match/shared"
 import { useQuery } from "@tanstack/react-query"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -149,7 +150,7 @@ export function TodaysPredictions() {
         </h2>
         <Button variant="ghost" size="sm" className="text-slate-300 hover:text-white">
           <TrendingUp className="w-4 h-4 mr-2" />
-          Sort by Confidence
+          Sort by {probabilityLabel(true)}
         </Button>
       </div>
       <div className="space-y-4">
@@ -209,7 +210,7 @@ export function TodaysPredictions() {
               </div>
               <div className="text-right ml-4">
                 <div className="text-2xl font-bold text-white mb-1">{prediction.confidence}%</div>
-                <div className="text-slate-400 text-sm mb-2">Confidence</div>
+                <div className="text-slate-400 text-sm mb-2">{probabilityLabel(true)}</div>
                 <div className="flex items-center space-x-1">
                   {[...Array(5)].map((_, i) => (
                     <Star

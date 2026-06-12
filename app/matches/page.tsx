@@ -26,6 +26,7 @@ import {
   getMatchStatus,
   type Match,
   type MatchFilters,
+  probabilityLabel,
 } from "@/components/match/shared"
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -266,10 +267,10 @@ export default function PublicMatchesPage() {
                   <SelectValue placeholder="Confidence" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Confidence</SelectItem>
-                  <SelectItem value="high">80%+ Confidence</SelectItem>
-                  <SelectItem value="medium">60-79% Confidence</SelectItem>
-                  <SelectItem value="low">&lt;60% Confidence</SelectItem>
+                  <SelectItem value="all">All {probabilityLabel()}</SelectItem>
+                  <SelectItem value="high">80%+ {probabilityLabel()}</SelectItem>
+                  <SelectItem value="medium">60-79% {probabilityLabel()}</SelectItem>
+                  <SelectItem value="low">&lt;60% {probabilityLabel()}</SelectItem>
                 </SelectContent>
               </Select>
 
@@ -293,7 +294,7 @@ export default function PublicMatchesPage() {
                 <SelectContent>
                   <SelectItem value="date">Date</SelectItem>
                   {edgeOn && <SelectItem value="ev">Expected Value</SelectItem>}
-                  <SelectItem value="confidence">Confidence</SelectItem>
+                  <SelectItem value="confidence">{probabilityLabel()}</SelectItem>
                   <SelectItem value="price">Price</SelectItem>
                   <SelectItem value="name">Name</SelectItem>
                 </SelectContent>

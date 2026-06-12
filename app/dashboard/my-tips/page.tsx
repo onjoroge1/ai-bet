@@ -1,5 +1,6 @@
 "use client"
 
+import { probabilityLabel } from "@/components/match/shared"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Card } from "@/components/ui/card"
@@ -540,7 +541,7 @@ export default function MyTipsPage() {
               </div>
                 <div>
                   <div className="text-xl font-bold text-white leading-none">{avgConfidence}%</div>
-                  <div className="text-xs text-slate-400">Avg Confidence</div>
+                  <div className="text-xs text-slate-400">Avg {probabilityLabel()}</div>
             </div>
               </div>
               <div className="flex items-center gap-3">
@@ -549,7 +550,7 @@ export default function MyTipsPage() {
         </div>
                   <div>
                   <div className="text-xl font-bold text-white leading-none">{highConfidence}</div>
-                  <div className="text-xs text-slate-400">High Confidence</div>
+                  <div className="text-xs text-slate-400">High {probabilityLabel()}</div>
                       </div>
                       </div>
                         </div>
@@ -713,7 +714,7 @@ export default function MyTipsPage() {
                     }
                   />
                   <InfoRow
-                    label="Confidence"
+                    label={probabilityLabel(true)}
                     value={selectedTip.confidenceScore ? `${selectedTip.confidenceScore.toFixed(1)}%` : "N/A"}
                   />
                   <InfoRow

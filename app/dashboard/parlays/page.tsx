@@ -18,7 +18,7 @@ import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { PremiumGate } from "@/components/premium-gate"
 import { cn } from "@/lib/utils"
-import { ConfidenceRing, SkeletonCard } from "@/components/match/shared"
+import { ConfidenceRing, SkeletonCard, probabilityLabel } from "@/components/match/shared"
 import { BettingSlip, BetSlipItem } from "@/components/dashboard/betting-slip"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
@@ -381,7 +381,7 @@ function StatsBar({ parlays }: { parlays: Parlay[] }) {
       {[
         { label: 'Total Parlays', value: stats.total, icon: Layers, color: 'text-white' },
         { label: 'Avg Edge', value: `+${stats.avgEdge.toFixed(1)}%`, icon: TrendingUp, color: 'text-emerald-400' },
-        { label: 'High Confidence', value: stats.highConf, icon: Target, color: 'text-yellow-400' },
+        { label: `High ${probabilityLabel()}`, value: stats.highConf, icon: Target, color: 'text-yellow-400' },
         { label: 'Tradable', value: stats.tradable, icon: Shield, color: 'text-emerald-400' },
         { label: 'Avg Odds', value: `${stats.avgOdds.toFixed(2)}x`, icon: BarChart3, color: 'text-blue-400' },
       ].map((stat) => (
@@ -1181,7 +1181,7 @@ export default function ParlaysPage() {
             { id: 'edge', label: 'Edge' },
             { id: 'odds', label: 'Best Odds' },
             { id: 'kickoff', label: 'Soonest' },
-            { id: 'confidence', label: 'Confidence' },
+            { id: 'confidence', label: probabilityLabel() },
           ].map(opt => (
             <Button
               key={opt.id}

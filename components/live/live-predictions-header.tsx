@@ -1,28 +1,19 @@
 "use client"
 
-import { useState, useEffect } from "react"
+/**
+ * Live predictions page header. Previously fabricated social proof —
+ * a randomly-jittered "watching live" counter, hardcoded "8 Live Now",
+ * "23 Live Predictions" and "91% Live Accuracy". Edge pivot P0: no
+ * invented numbers; state what the page does and point at the audited
+ * tracker for performance claims.
+ */
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Radio, Zap } from "lucide-react"
+import { Radio, Zap, ExternalLink } from "lucide-react"
 import Link from "next/link"
 
 export function LivePredictionsHeader() {
-  const [liveCount, setLiveCount] = useState(8)
-  const [activeUsers, setActiveUsers] = useState(1247)
-
-  // For now, we'll assume user is not logged in
-  // This can be replaced with actual auth state later
-  const isLoggedIn = false
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveUsers((prev) => prev + Math.floor(Math.random() * 5 - 2))
-    }, 3000)
-
-    return () => clearInterval(interval)
-  }, [])
-
   return (
     <div className="mb-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
@@ -37,43 +28,31 @@ export function LivePredictionsHeader() {
         <div className="flex items-center space-x-4 mt-4 md:mt-0">
           <Badge className="bg-red-500/20 text-red-400 border-red-500/30 animate-pulse">
             <Radio className="w-4 h-4 mr-2" />
-            {liveCount} Live Now
+            Live
           </Badge>
-          {isLoggedIn ? (
+          <Link href="/signup?source=live_predictions_header_v2">
             <Button className="bg-red-600 hover:bg-red-700 text-white">
               <Zap className="w-4 h-4 mr-2" />
               Enable Alerts
             </Button>
-          ) : (
-            <Link href="/signup?source=live_predictions_header_v2">
-              <Button className="bg-red-600 hover:bg-red-700 text-white">
-                <Zap className="w-4 h-4 mr-2" />
-                Enable Alerts
-              </Button>
-            </Link>
-          )}
+          </Link>
         </div>
       </div>
 
-      {/* Live Overview */}
+      {/* Honest overview — what this page is, where the proof lives */}
       <Card className="bg-slate-800/50 border-slate-700 p-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-red-400 animate-pulse">{liveCount}</div>
-            <div className="text-slate-400 text-sm">Live Matches</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-emerald-400">{activeUsers.toLocaleString()}</div>
-            <div className="text-slate-400 text-sm">Watching Live</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-yellow-400">23</div>
-            <div className="text-slate-400 text-sm">Live Predictions</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-cyan-400">91%</div>
-            <div className="text-slate-400 text-sm">Live Accuracy</div>
-          </div>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <p className="text-slate-300 text-sm leading-relaxed max-w-2xl">
+            Predictions update as matches progress. Every pick we publish — live or
+            pre-match — is logged to a public flat-stake tracker, wins and losses included.
+          </p>
+          <Link
+            href="/performance"
+            className="inline-flex items-center gap-2 text-sm text-blue-300 hover:text-blue-200 flex-shrink-0"
+          >
+            <ExternalLink className="w-4 h-4" />
+            See audited results
+          </Link>
         </div>
       </Card>
     </div>

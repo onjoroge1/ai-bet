@@ -547,7 +547,7 @@ export const DEFAULT_EMAIL_TEMPLATES: CreateTemplateData[] = [
             <p>Ready to smash your bets? Start browsing exclusive predictions and let the wins roll in! ⚽🏀🏈</p>
 
             <h3>🎯 STAY IN THE GAME</h3>
-            <p>Follow us for hot picks, betting tips, and live updates:</p>
+            <p>Follow us for value picks, betting insights, and live updates:</p>
             <div class="social-icons">
               <a href="#"><img src="https://img.icons8.com/ios-filled/50/ffffff/twitter--v1.png"/></a>
               <a href="#"><img src="https://img.icons8.com/ios-filled/50/ffffff/facebook--v1.png"/></a>
@@ -581,7 +581,7 @@ export const DEFAULT_EMAIL_TEMPLATES: CreateTemplateData[] = [
       Ready to smash your bets? Start browsing exclusive predictions and let the wins roll in!
 
       STAY IN THE GAME
-      Follow us for hot picks, betting tips, and live updates:
+      Follow us for value picks, betting insights, and live updates:
       Twitter | Facebook | Instagram
 
       © 2025 SnapBet. All rights reserved.

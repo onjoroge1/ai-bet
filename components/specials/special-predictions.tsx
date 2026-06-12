@@ -1,3 +1,4 @@
+import { probabilityLabel } from "@/lib/feature-flags"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -117,7 +118,7 @@ export function SpecialPredictions() {
 
               <div className="text-right ml-6">
                 <div className="text-3xl font-bold text-yellow-400 mb-1">{special.confidence}%</div>
-                <div className="text-slate-400 text-sm mb-2">Confidence</div>
+                <div className="text-slate-400 text-sm mb-2">{probabilityLabel(true)}</div>
                 <div className="flex items-center justify-end space-x-1">
                   {[...Array(5)].map((_, i) => (
                     <Star

@@ -194,8 +194,8 @@ export function ResponsiveHero() {
               <div className="text-xs text-slate-400">CLV Opportunities</div>
             </div>
             <div>
-              <div className="text-xl md:text-2xl font-bold text-yellow-400">87%</div>
-              <div className="text-xs text-slate-400">AI Accuracy</div>
+              <div className="text-xl md:text-2xl font-bold text-yellow-400">All</div>
+              <div className="text-xs text-slate-400">Picks Audited</div>
             </div>
           </div>
         </div>

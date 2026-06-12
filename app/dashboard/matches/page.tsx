@@ -29,6 +29,7 @@ import {
   type Match,
   type MatchData,
   type MatchFilters,
+  probabilityLabel,
 } from "@/components/match/shared"
 
 // ─── Types (local-only) ──────────────────────────────────────────────────────
@@ -351,7 +352,7 @@ export default function MatchesPage() {
                   <SelectValue placeholder="Confidence" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Confidence</SelectItem>
+                  <SelectItem value="all">All {probabilityLabel()}</SelectItem>
                   <SelectItem value="high">80%+ High</SelectItem>
                   <SelectItem value="medium">60-79% Medium</SelectItem>
                   <SelectItem value="low">&lt;60% Low</SelectItem>
@@ -378,7 +379,7 @@ export default function MatchesPage() {
                 <SelectContent>
                   <SelectItem value="date">Kick-off Time</SelectItem>
                   {edgeOn && <SelectItem value="ev">Expected Value</SelectItem>}
-                  <SelectItem value="confidence">Confidence</SelectItem>
+                  <SelectItem value="confidence">{probabilityLabel()}</SelectItem>
                   <SelectItem value="price">Price</SelectItem>
                   <SelectItem value="name">Name</SelectItem>
                 </SelectContent>

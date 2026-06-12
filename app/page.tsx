@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useCallback, useRef } from "react"
+import { isEdgePivotEnabled } from "@/lib/feature-flags"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -357,9 +358,9 @@ export default function HomePage() {
       icon: <Target className="h-5 w-5 text-emerald-400" />,
     },
     {
-      value: "2.3×",
-      label: "Average ROI Improvement",
-      trend: "+23% this month",
+      value: "Public",
+      label: "Audited Pick Tracker",
+      trend: "Every win & loss logged",
       color: "text-blue-400",
       iconBg: "bg-blue-500/10",
       icon: <TrendingUp className="h-5 w-5 text-blue-400" />,
@@ -437,16 +438,16 @@ export default function HomePage() {
               </h1>
 
               <p className="text-base sm:text-lg text-slate-400 mb-8 max-w-xl leading-relaxed">
-                Our AI analyses thousands of data points per match to surface the bets worth taking, with 
-                confidence scores, Kelly sizing, and real-time CLV tracking.
+                Our AI analyses thousands of data points per match to surface the bets worth taking, with
+                market-vs-model probabilities, Kelly sizing, and real-time CLV tracking.
               </p>
 
               {/* Live stats row */}
               <div className="flex flex-wrap gap-5 mb-8">
                 {[
                   { icon: <Flame className="h-4 w-4" />, value: liveStats.activeOpportunities, label: "Value Bets", color: "text-orange-400", bg: "bg-orange-500/10" },
-                  { icon: <Target className="h-4 w-4" />, value: `${liveStats.avgConfidence}%`, label: "Avg Confidence", color: "text-emerald-400", bg: "bg-emerald-500/10" },
-                  { icon: <TrendingUp className="h-4 w-4" />, value: "2.3×", label: "Avg ROI", color: "text-blue-400", bg: "bg-blue-500/10" },
+                  { icon: <Target className="h-4 w-4" />, value: `${liveStats.avgConfidence}%`, label: isEdgePivotEnabled() ? "Avg Model Prob" : "Avg Confidence", color: isEdgePivotEnabled() ? "text-slate-200" : "text-emerald-400", bg: isEdgePivotEnabled() ? "bg-slate-500/10" : "bg-emerald-500/10" },
+                  { icon: <TrendingUp className="h-4 w-4" />, value: "All", label: "Picks Audited", color: "text-blue-400", bg: "bg-blue-500/10" },
                 ].map((s, i) => (
                   <div key={i} className="flex items-center gap-2.5">
                     <div className={`p-1.5 ${s.bg} rounded-lg`}>

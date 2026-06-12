@@ -1,3 +1,4 @@
+import { probabilityLabel } from "@/lib/feature-flags"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -35,13 +36,13 @@ export function TipsFilters() {
 
         {/* Confidence Filter */}
         <div>
-          <label className="text-slate-300 text-sm mb-2 block">Confidence</label>
+          <label className="text-slate-300 text-sm mb-2 block">{probabilityLabel(true)}</label>
           <Select>
             <SelectTrigger className="bg-slate-900/50 border-slate-600 text-white">
-              <SelectValue placeholder="All Confidence" />
+              <SelectValue placeholder={`All ${probabilityLabel()}`} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Confidence</SelectItem>
+              <SelectItem value="all">All {probabilityLabel()}</SelectItem>
               <SelectItem value="high">90%+ (High)</SelectItem>
               <SelectItem value="medium">80-89% (Medium)</SelectItem>
               <SelectItem value="low">70-79% (Low)</SelectItem>

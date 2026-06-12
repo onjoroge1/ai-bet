@@ -29,6 +29,7 @@ import {
   LineChart
 } from "lucide-react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 
 interface Feature {
   icon: React.ReactElement
@@ -42,14 +43,6 @@ interface Stat {
   label: string
   trend?: string
   color: string
-}
-
-interface Testimonial {
-  name: string
-  role: string
-  content: string
-  rating: number
-  avatar?: string
 }
 
 interface MatchExperience {
@@ -87,12 +80,6 @@ interface ValueStack {
 export default function SalesPage() {
   const router = useRouter()
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false) // Server-side auth state
-  const [liveStats, setLiveStats] = useState({
-    activeOpportunities: 47,
-    avgConfidence: 82,
-    liveMatches: 23
-  })
-
   // 🔥 NEW: Check server-side session on mount (fast, non-blocking)
   useEffect(() => {
     const checkAuth = async () => {
@@ -109,19 +96,6 @@ export default function SalesPage() {
       }
     }
     checkAuth()
-  }, [])
-
-  // Simulate live stats updates
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setLiveStats(prev => ({
-        activeOpportunities: prev.activeOpportunities + Math.floor(Math.random() * 5) - 2,
-        avgConfidence: Math.max(75, Math.min(95, prev.avgConfidence + Math.floor(Math.random() * 3) - 1)),
-        liveMatches: prev.liveMatches + Math.floor(Math.random() * 3) - 1
-      }))
-    }, 3000)
-
-    return () => clearInterval(interval)
   }, [])
 
   const handleCTAClick = async (source: string) => {
@@ -185,31 +159,10 @@ export default function SalesPage() {
   ]
 
   const platformStats: Stat[] = [
-    { value: "87%", label: "Average Prediction Accuracy", color: "text-emerald-400" },
-    { value: "2.3x", label: "Average ROI Improvement", trend: "+23% this month", color: "text-blue-400" },
+    { value: "Public", label: "Audited Pick Tracker", trend: "Every win & loss logged", color: "text-emerald-400" },
+    { value: "Flat", label: "Stake Simulation", trend: "No cherry-picked results", color: "text-blue-400" },
     { value: "1000+", label: "CLV Opportunities", trend: "Value opportunities identified", color: "text-purple-400" },
-    { value: "450", label: "AI Predictions This Week", trend: "Soccer predictions generated", color: "text-orange-400" }
-  ]
-
-  const testimonials: Testimonial[] = [
-    {
-      name: "Marcus Johnson",
-      role: "Professional Bettor",
-      content: "The CLV tracker changed everything for me. I can now identify value bets in real-time and my ROI has increased by 340% since joining.",
-      rating: 5
-    },
-    {
-      name: "Sarah Chen",
-      role: "Sports Analyst",
-      content: "Finally, a platform that combines AI predictions with proper bankroll management. The confidence scores and Kelly staking are game-changers.",
-      rating: 5
-    },
-    {
-      name: "David Rodriguez",
-      role: "Recreational Bettor",
-      content: "I went from losing money to consistent profits. The AI predictions are incredibly accurate and the value ratings help me pick the best bets.",
-      rating: 5
-    }
+    { value: "Daily", label: "AI Predictions", trend: "Soccer predictions generated", color: "text-orange-400" }
   ]
 
   const matchExperiences: MatchExperience[] = [
@@ -341,27 +294,24 @@ export default function SalesPage() {
             and Kelly criterion staking to maximize returns while minimizing risk.
           </p>
 
-          {/* Live Stats Banner */}
+          {/* Honesty banner — previously a simulated "live stats" strip with
+              randomly-jittered numbers. Edge pivot P0: no invented metrics. */}
           <div className="bg-slate-800/60 border border-slate-600/50 rounded-xl p-6 mb-8 backdrop-blur-sm">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="text-center">
                 <div className="text-2xl font-bold text-emerald-400 flex items-center justify-center">
-                  <Activity className="h-5 w-5 mr-2 animate-pulse" />
-                  {liveStats.activeOpportunities}
+                  <Activity className="h-5 w-5 mr-2" />
+                  Public
                 </div>
-                <div className="text-slate-400 text-sm">Live CLV Opportunities</div>
+                <div className="text-slate-400 text-sm">Audited Pick Tracker</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-blue-400">
-                  {liveStats.avgConfidence}%
-                </div>
-                <div className="text-slate-400 text-sm">Average Confidence Score</div>
+                <div className="text-2xl font-bold text-blue-400">All</div>
+                <div className="text-slate-400 text-sm">Wins &amp; Losses Logged</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-purple-400">
-                  {liveStats.liveMatches}
-                </div>
-                <div className="text-slate-400 text-sm">Matches Being Tracked</div>
+                <div className="text-2xl font-bold text-purple-400">Flat</div>
+                <div className="text-slate-400 text-sm">Stake Simulation — No Cherry-Picking</div>
               </div>
             </div>
           </div>
@@ -495,8 +445,8 @@ export default function SalesPage() {
                       <Activity className="h-5 w-5 text-emerald-400 mr-2" />
                       CLV Opportunities
                     </CardTitle>
-                    <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 animate-pulse">
-                      Live
+                    <Badge className="bg-slate-500/20 text-slate-300 border-slate-500/30">
+                      Illustrative example
                     </Badge>
                   </div>
                 </CardHeader>
@@ -567,25 +517,21 @@ export default function SalesPage() {
               </Badge>
               <h2 className="text-3xl sm:text-4xl font-bold text-white flex items-center gap-3">
                 <TrendingUp className="h-7 w-7 text-emerald-400" />
-                Real Bets, Real Value Capture
+                How CLV Value Capture Works
               </h2>
               <p className="text-slate-300 text-base sm:text-lg max-w-3xl mt-3">
-                Sample of the last 24-hour opportunities surfaced by the CLV dashboard. Every entry includes the
-                implied edge, Kelly-ready EV, and actual settlement to prove confidence scores translate to bankroll growth.
+                Illustrative example of how the CLV dashboard surfaces opportunities — implied edge,
+                Kelly-ready EV, and settlement tracking. For real, audited results see the public tracker.
               </p>
             </div>
             <div className="flex flex-col gap-3 text-sm sm:text-base text-slate-200">
               <div className="flex items-center gap-2">
                 <DollarSign className="h-5 w-5 text-emerald-400" />
-                Avg stake suggested: <span className="font-semibold text-white">1.8% Half-Kelly</span>
+                Stake sizing: <span className="font-semibold text-white">fractional Kelly, capped</span>
               </div>
               <div className="flex items-center gap-2">
                 <Trophy className="h-5 w-5 text-yellow-400" />
-                Win rate at ≥80% confidence band: <span className="font-semibold text-white">72%</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5 text-blue-400" />
-                CLV uplift vs. market closing price: <span className="font-semibold text-white">+7.4% avg</span>
+                Real results: <span className="font-semibold text-white"><Link href="/performance" className="underline hover:text-emerald-300">audited tracker — every win & loss</Link></span>
               </div>
             </div>
           </div>
@@ -597,7 +543,7 @@ export default function SalesPage() {
                 24h CLV Performance Table
               </CardTitle>
               <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30">
-                Auto-refreshed every 30s
+                Illustrative sample
               </Badge>
             </CardHeader>
             <CardContent className="p-0 overflow-x-auto">
@@ -795,38 +741,24 @@ export default function SalesPage() {
         </div>
       </section>
 
-      {/* Testimonials */}
+      {/* Proof section — audited tracker instead of testimonials.
+          (Previous fabricated testimonials with invented profit claims
+          removed — edge pivot P0: no invented outcomes.) */}
       <section className="py-12 sm:py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="text-center mb-12 sm:mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4 sm:mb-6">
-              Trusted by Professional Bettors
-            </h2>
-            <p className="text-lg sm:text-xl text-slate-300">
-              See what our users are saying about their results
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
-            {testimonials.map((testimonial, index) => (
-              <Card key={index} className="bg-slate-800/60 border-slate-600/50 p-4 sm:p-6">
-                <CardContent className="space-y-3 sm:space-y-4">
-                  <div className="flex">
-                    {Array.from({ length: testimonial.rating }).map((_, i) => (
-                      <Star key={i} className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400 fill-current" />
-                    ))}
-                  </div>
-                  <p className="text-slate-300 italic leading-relaxed text-sm sm:text-base">
-                    "{testimonial.content}"
-                  </p>
-                  <div className="border-t border-slate-600/30 pt-3 sm:pt-4">
-                    <div className="text-white font-medium text-sm sm:text-base">{testimonial.name}</div>
-                    <div className="text-slate-400 text-xs sm:text-sm">{testimonial.role}</div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center">
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4 sm:mb-6">
+            Don&apos;t Take Our Word For It
+          </h2>
+          <p className="text-lg sm:text-xl text-slate-300 mb-8 max-w-3xl mx-auto">
+            Every pick we publish is logged to a public flat-stake tracker — wins and
+            losses included, odds locked at publish time. Judge the results yourself.
+          </p>
+          <Link href="/performance">
+            <Button size="lg" className="bg-emerald-600 hover:bg-emerald-500 text-white px-8">
+              <BarChart3 className="h-5 w-5 mr-2" />
+              See the audited tracker
+            </Button>
+          </Link>
         </div>
       </section>
 

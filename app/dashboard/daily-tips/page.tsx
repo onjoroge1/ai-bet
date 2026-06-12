@@ -1,5 +1,6 @@
 "use client"
 
+import { probabilityLabel } from "@/components/match/shared"
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -206,8 +207,8 @@ export default function DailyTipsPage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
                   { icon: Target, label: "Available Tips", value: `${tips.length}`, color: "text-emerald-400" },
-                  { icon: TrendingUp, label: "Avg Confidence", value: `${avgConfidence}%`, color: "text-blue-400" },
-                  { icon: Trophy, label: "High Confidence", value: `${highConfidence}`, color: "text-yellow-400" },
+                  { icon: TrendingUp, label: `Avg ${probabilityLabel()}`, value: `${avgConfidence}%`, color: "text-blue-400" },
+                  { icon: Trophy, label: `High ${probabilityLabel()}`, value: `${highConfidence}`, color: "text-yellow-400" },
                   { icon: Star, label: "Avg Odds", value: avgOdds > 0 ? `${avgOdds}` : "—", color: "text-purple-400" },
                 ].map(s => (
                   <Card key={s.label} className="bg-slate-800/50 border-slate-700">
@@ -312,7 +313,7 @@ export default function DailyTipsPage() {
                           <p className="text-white font-semibold text-sm">{tip.prediction}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] text-slate-500 uppercase tracking-wide">Confidence</p>
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wide">{probabilityLabel()}</p>
                           <p className={`text-lg font-bold ${confidenceColor(tip.confidence)}`}>
                             {tip.confidence}%
                           </p>

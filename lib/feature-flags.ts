@@ -16,3 +16,14 @@
 export function isEdgePivotEnabled(): boolean {
   return process.env.NEXT_PUBLIC_EDGE_PIVOT_MODE === 'true'
 }
+
+/**
+ * Label for the model-probability number: "Confidence" pre-pivot,
+ * "Model prob" once the edge pivot is on (copy rule — probability is
+ * information, not a reason to bet). Lives here (not in a "use client"
+ * module) so SERVER components can call it too.
+ */
+export function probabilityLabel(long = false): string {
+  if (isEdgePivotEnabled()) return long ? 'Model probability' : 'Model prob'
+  return 'Confidence'
+}

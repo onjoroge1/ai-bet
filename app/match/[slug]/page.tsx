@@ -34,7 +34,8 @@ import { BetSlip } from "./BetSlip"
 import { PredictedScorersSection } from "@/components/players/PredictedScorersSection"
 import type { BetSlipItem } from "./BetSlip"
 import type { EnhancedMatchData } from "@/types/live-match"
-import { ConfidenceRing, getConfidenceColor, formatPrediction, SkeletonCard } from "@/components/match/shared"
+import { ConfidenceRing, getConfidenceColor, formatPrediction, SkeletonCard, probabilityLabel } from "@/components/match/shared"
+import { isEdgePivotEnabled } from "@/lib/feature-flags"
 
 type MatchData = EnhancedMatchData
 
@@ -911,8 +912,12 @@ export default function MatchDetailPage() {
     return "Draw"
   }
 
+  // Edge pivot: probability is information, not endorsement — neutral tone
+  // when the flag is on (a 65% favorite can still be a terrible bet).
   const getConfidenceColor = (c: number) =>
-    c >= 70 ? "text-emerald-400" : c >= 50 ? "text-yellow-400" : "text-red-400"
+    isEdgePivotEnabled()
+      ? "text-slate-200"
+      : c >= 70 ? "text-emerald-400" : c >= 50 ? "text-yellow-400" : "text-red-400"
 
   const getRiskColor = (risk: string) => {
     const r = risk.toLowerCase()
@@ -1421,7 +1426,7 @@ export default function MatchDetailPage() {
                  effectiveTier === 'strong' ? 'Strong Pick' :
                  surfaceDecision.surfaceReason === 'low_conviction' ? 'Low Conviction' :
                  surfaceDecision.surfaceReason === 'suppressed' ? 'No Strong Signal' :
-                 'AI Confidence'}
+                 probabilityLabel(true)}
               </div>
             </div>
 
@@ -1722,7 +1727,7 @@ export default function MatchDetailPage() {
                       <div className="mt-6 pt-4 border-t border-slate-700">
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-slate-400 text-xs">
-                            Model Confidence
+                            {probabilityLabel(true)}
                           </span>
                           <span
                             className={`text-sm font-bold ${getConfidenceColor(v1Model.confidence * 100)}`}
@@ -1799,7 +1804,7 @@ export default function MatchDetailPage() {
                             %
                           </div>
                           <div className="text-slate-400 text-xs mt-1">
-                            Confidence
+                            {probabilityLabel(true)}
                           </div>
                           {v1FromPrediction.predictions && (
                             <div className="mt-3 space-y-1 text-xs">
@@ -1860,7 +1865,7 @@ export default function MatchDetailPage() {
                             %
                           </div>
                           <div className="text-slate-400 text-xs mt-1">
-                            Confidence
+                            {probabilityLabel(true)}
                           </div>
                           {v2FromPrediction.predictions && (
                             <div className="mt-3 space-y-1 text-xs">
