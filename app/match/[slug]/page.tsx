@@ -1047,7 +1047,7 @@ export default function MatchDetailPage() {
         <div className="relative max-w-6xl mx-auto px-4 py-8 space-y-6">
           {/* ── Breadcrumb (SEO + nav) ───────────────────────────── */}
           <AdvancedBreadcrumb
-            context={{ title: `${matchData.home_team} vs ${matchData.away_team}` }}
+            context={{ title: `${matchData.home?.name || "Home"} vs ${matchData.away?.name || "Away"}` }}
           />
 
           {/* ── Back Button ──────────────────────────────────────── */}
