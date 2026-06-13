@@ -8,7 +8,7 @@
 import { Badge } from '@/components/ui/badge'
 import { TrendingUp } from 'lucide-react'
 import type { ValueBlock } from '@/lib/edge/types'
-import { formatEvPct, ratingLabel } from '@/lib/edge/helpers'
+import { formatEvPct, formatEvDollars, ratingLabel } from '@/lib/edge/helpers'
 
 const TIER_CLASS: Record<string, string> = {
   strong_value: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50',
@@ -22,8 +22,9 @@ export function ValueBadge({ value, className = '' }: { value: ValueBlock | null
   if (!value || !value.value_bet) return null
 
   const tierCls = TIER_CLASS[value.rating] ?? TIER_CLASS.no_value
+  const tooltip = `Expected value: about ${formatEvDollars(value.value_bet.ev)} over the long run at this price. Individual bets lose often — EV is a long-run average.`
   return (
-    <Badge className={`${tierCls} ${className} inline-flex items-center gap-1 font-semibold`}>
+    <Badge title={tooltip} className={`${tierCls} ${className} inline-flex items-center gap-1 font-semibold cursor-help`}>
       <TrendingUp className="w-3 h-3" />
       {ratingLabel(value.rating)} · {formatEvPct(value.value_bet.ev)} EV
     </Badge>

@@ -26,6 +26,8 @@ import {
   formatEdgePoints,
   edgeMeterRows,
   parlayMetrics,
+  formatEvDollars,
+  whyThisBet,
 } from '@/lib/edge/helpers'
 import type { MarketBlock, ValueBlock, ModelTrackRecord, ClvBlock } from '@/lib/edge/types'
 
@@ -299,5 +301,62 @@ describe('clv block passthrough', () => {
     const clv: ClvBlock = { bet_time_odds: 4.5, closing_odds: null, realized_clv: null }
     const v = extractEdge({ market, value: valueWithBet, clv, model_track_record: validated })
     expect(v.clv).toEqual(clv)
+  })
+})
+
+// ─── 2-way sports (no draw key) — QA plan §1/§3 ───────────────────────────
+
+describe('2-way payloads (NBA/NHL — draw key absent)', () => {
+  const market2way: MarketBlock = {
+    implied: { home: 0.587, away: 0.413 },
+    overround: 1.041,
+    n_books: 12,
+    best_price: {
+      home: { odds: 1.78, book: 'fanduel' },
+      away: { odds: 2.46, book: 'draftkings' },
+    },
+  }
+
+  it('edgeMeterRows omits the draw row → 2-outcome grid', () => {
+    const rows = edgeMeterRows(market2way, { home: 0.55, away: 0.45 }, null)
+    expect(rows).toHaveLength(2)
+    expect(rows.map(r => r.outcome)).toEqual(['home', 'away'])
+  })
+
+  it('implied probs sum to 1.0 across 2 outcomes', () => {
+    const sum = (market2way.implied.home ?? 0) + (market2way.implied.draw ?? 0) + (market2way.implied.away ?? 0)
+    expect(sum).toBeCloseTo(1.0, 3)
+  })
+
+  it('extractEdge handles a 2-way payload without throwing', () => {
+    const v = extractEdge({ market: market2way, value: null, clv: null, model_track_record: null })
+    expect(v.market).not.toBeNull()
+    expect(v.actionable).toBe(false)
+    expect(v.noValue).toBe(true)
+  })
+})
+
+// ─── Presentation helpers (WhyThisBet / dollar EV) ─────────────────────────
+
+describe('formatEvDollars + whyThisBet', () => {
+  it('formats EV as dollars per $100 staked', () => {
+    expect(formatEvDollars(0.415)).toBe('+$42 per $100 staked')
+    expect(formatEvDollars(-0.229)).toBe('−$23 per $100 staked')
+    expect(formatEvDollars(0)).toBe('$0 per $100 staked')
+  })
+
+  it('builds the full plain-English sentence when all pieces are present', () => {
+    const s = whyThisBet({
+      sideLabel: 'Paraguay', marketProb: 0.2261, modelProb: 0.337,
+      price: 4.5, book: 'unibet_nl', ev: 0.516,
+    })
+    expect(s).toBe(
+      'The market prices Paraguay at 23% — our model makes it 34%. At 4.50 (unibet_nl), that\'s about +$52 per $100 staked over the long run.'
+    )
+  })
+
+  it('degrades gracefully without market/model probs or price', () => {
+    const s = whyThisBet({ sideLabel: 'the draw', marketProb: null, modelProb: null, price: null, book: null, ev: 0.1 })
+    expect(s).toBe('Our model prices the draw above the market. That\'s about +$10 per $100 staked over the long run.')
   })
 })

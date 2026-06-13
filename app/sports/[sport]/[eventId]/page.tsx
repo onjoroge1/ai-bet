@@ -1,5 +1,6 @@
 "use client"
 
+import { isEdgePivotEnabled } from "@/lib/feature-flags"
 import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -178,7 +179,13 @@ export default function SportPredictionPage() {
     strong: { label: "Strong", color: "bg-blue-500/20 text-blue-400 border-blue-500/30", icon: TrendingUp },
     standard: { label: "Standard", color: "bg-slate-500/20 text-slate-400 border-slate-500/30", icon: Target },
   }
-  const conviction = convictionStyles[pred.conviction_tier || "standard"] || convictionStyles.standard
+  // Edge pivot (§8): conviction tiers are accuracy-era framing. Until the
+  // 2-way multisport edge backend ships (and edge_validated can gate real
+  // value claims), show a neutral "Model pick" label instead of implying
+  // betting conviction.
+  const conviction = isEdgePivotEnabled()
+    ? { label: "Model pick", color: "bg-slate-500/20 text-slate-300 border-slate-500/30", icon: Target }
+    : (convictionStyles[pred.conviction_tier || "standard"] || convictionStyles.standard)
   const ConvictionIcon = conviction.icon
 
   return (

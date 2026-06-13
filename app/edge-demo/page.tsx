@@ -8,7 +8,7 @@
  */
 import { Card, CardContent } from '@/components/ui/card'
 import {
-  ValueBadge, EdgeMeter, PriceGuard, StakeSuggester, NoValueState, TrackRecordNote,
+  ValueBadge, EdgeMeter, PriceGuard, StakeSuggester, NoValueState, TrackRecordNote, WhyThisBet,
   CLVLedgerSummary, CLVLedgerRows,
 } from '@/components/edge'
 import { extractEdge } from '@/lib/edge/helpers'
@@ -69,6 +69,13 @@ export default function EdgeDemoPage() {
             <EdgeMeter market={caseD.market!} modelProbs={modelProbs} value={caseD.value} />
             {caseD.actionable && caseD.value?.value_bet && (
               <>
+                <WhyThisBet
+                  market={caseD.market}
+                  value={caseD.value}
+                  modelProbs={modelProbs}
+                  homeLabel="USA"
+                  awayLabel="Paraguay"
+                />
                 <PriceGuard valueBet={caseD.value.value_bet} livePrice={4.5} />
                 <StakeSuggester valueBet={caseD.value.value_bet} bankroll={1000} />
               </>

@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { TrendingUp } from 'lucide-react'
 import type { EdgeSummary } from '@/lib/edge/extract'
 import { hasActionableValue } from '@/lib/edge/extract'
-import { formatEvPct, ratingLabel } from '@/lib/edge/helpers'
+import { formatEvPct, formatEvDollars, ratingLabel } from '@/lib/edge/helpers'
 
 const TIER_CLASS: Record<string, string> = {
   strong_value: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50',
@@ -19,8 +19,9 @@ const TIER_CLASS: Record<string, string> = {
 export function EdgeChip({ summary, className = '' }: { summary: EdgeSummary | null; className?: string }) {
   if (!summary || !hasActionableValue(summary) || !summary.rating || summary.ev === null) return null
   const tierCls = TIER_CLASS[summary.rating] ?? TIER_CLASS.marginal
+  const tooltip = `Expected value: about ${formatEvDollars(summary.ev)} over the long run at this price. Individual bets lose often — EV is a long-run average.`
   return (
-    <Badge className={`${tierCls} ${className} inline-flex items-center gap-1 text-[10px] font-semibold`}>
+    <Badge title={tooltip} className={`${tierCls} ${className} inline-flex items-center gap-1 text-[10px] font-semibold cursor-help`}>
       <TrendingUp className="w-3 h-3" />
       {ratingLabel(summary.rating)} · {formatEvPct(summary.ev)} EV
     </Badge>

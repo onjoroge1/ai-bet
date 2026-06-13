@@ -149,6 +149,55 @@ export function formatEvPct(fraction: number, digits = 1): string {
   return `${sign}${Math.abs(pct).toFixed(digits)}%`
 }
 
+/**
+ * Concrete dollar framing of EV: "+$42 per $100 staked". Percentages are
+ * abstract to casual bettors; dollars-per-stake is the same number made
+ * tangible. Long-run language is the caller's job (see whyThisBet /
+ * EV_HONESTY_NOTE).
+ */
+export function formatEvDollars(fraction: number, stake = 100): string {
+  const dollars = fraction * stake
+  const sign = dollars > 0 ? '+' : dollars < 0 ? '−' : ''
+  return `${sign}$${Math.abs(dollars).toFixed(0)} per $${stake} staked`
+}
+
+/** The honesty subline that must accompany any EV presentation. */
+export const EV_HONESTY_NOTE =
+  'EV is a long-run average — individual bets lose often.'
+
+/**
+ * Plain-English explainer sentence built from the edge blocks — the bridge
+ * between the math and a casual user. Example output:
+ *   "The market prices Paraguay at 23% — our model makes it 34%. At 4.20
+ *    (betfair_ex_au), that's about +$42 per $100 staked over the long run."
+ * Degrades gracefully when pieces are missing.
+ */
+export function whyThisBet(args: {
+  /** Display label for the value-bet side ("Paraguay", "Draw"). */
+  sideLabel: string
+  /** De-vigged market probability for that side (0..1), if known. */
+  marketProb: number | null
+  /** Model probability for that side (0..1), if known. */
+  modelProb: number | null
+  price: number | null
+  book: string | null
+  /** EV fraction at best price. */
+  ev: number
+}): string {
+  const { sideLabel, marketProb, modelProb, price, book, ev: evFrac } = args
+  const parts: string[] = []
+  if (marketProb !== null && modelProb !== null) {
+    parts.push(
+      `The market prices ${sideLabel} at ${(marketProb * 100).toFixed(0)}% — our model makes it ${(modelProb * 100).toFixed(0)}%.`
+    )
+  } else {
+    parts.push(`Our model prices ${sideLabel} above the market.`)
+  }
+  const priceBit = price !== null ? `At ${price.toFixed(2)}${book ? ` (${book})` : ''}, that's` : `That's`
+  parts.push(`${priceBit} about ${formatEvDollars(evFrac)} over the long run.`)
+  return parts.join(' ')
+}
+
 /** Edge points "+11.1" / "−11.3" from a probability-point fraction. */
 export function formatEdgePoints(fraction: number, digits = 1): string {
   const pts = fraction * 100
@@ -193,29 +242,37 @@ export interface EdgeMeterRow {
 }
 
 /**
- * Build the three H/D/A rows for the Edge Meter from the market block and
- * the model's probabilities. `modelProbs` come from the legacy predictions
+ * Build the H/D/A rows for the Edge Meter from the market block and the
+ * model's probabilities. `modelProbs` come from the legacy predictions
  * block (home_win/draw/away_win) so the meter works even pre-pivot.
+ *
+ * 2-way sports: the `draw` key is absent from both the market block and
+ * the model probs — the row is omitted, yielding a 2-outcome grid
+ * (QA plan §1/§3 "no draw column anywhere").
  */
 export function edgeMeterRows(
   market: MarketBlock,
-  modelProbs: { home: number; draw: number; away: number },
+  modelProbs: { home: number; draw?: number; away: number },
   value: ValueBlock | null,
 ): EdgeMeterRow[] {
   const valueOutcome = value?.value_bet?.outcome ?? null
   const outcomes: Outcome[] = ['home', 'draw', 'away']
-  return outcomes.map(o => {
+  const rows: EdgeMeterRow[] = []
+  for (const o of outcomes) {
     const marketProb = market.implied[o]
     const modelProb = modelProbs[o]
-    return {
+    // Skip the draw row entirely when either side has no draw key (2-way).
+    if (typeof marketProb !== 'number' || typeof modelProb !== 'number') continue
+    rows.push({
       outcome: o,
       label: OUTCOME_LABELS[o],
       marketProb,
       modelProb,
       edge: modelProb - marketProb,
       isValueOutcome: o === valueOutcome,
-    }
-  })
+    })
+  }
+  return rows
 }
 
 // ─── Parlay metrics (§4.7) — mirrors backend utils/edge.parlay_metrics ──────

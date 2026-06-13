@@ -13,10 +13,13 @@ export type CanonicalBet = 'home_win' | 'draw' | 'away_win'
 export type ValueRating = 'no_value' | 'marginal' | 'value' | 'strong_value'
 export type MarketSegment = 'thin_market' | 'efficient_market' | 'unknown'
 
-/** Per-outcome numeric triple (probabilities, edges, EVs, …). */
+/** Per-outcome numeric map (probabilities, edges, EVs, …).
+ *  ⚠ 2-way sports (NBA/NHL/MLB): the `draw` key is ABSENT everywhere —
+ *  it's optional here so the same types serve 3-way soccer and 2-way
+ *  multisport payloads (QA plan §1). */
 export interface OutcomeTriple {
   home: number
-  draw: number
+  draw?: number
   away: number
 }
 
@@ -34,10 +37,11 @@ export interface MarketBlock {
   overround: number
   /** Bookmaker count behind the line. */
   n_books: number
-  /** Best available decimal odds per outcome. Each entry is nullable. */
+  /** Best available decimal odds per outcome. Each entry is nullable;
+   *  `draw` is absent entirely on 2-way sports. */
   best_price: {
     home: BestPriceEntry | null
-    draw: BestPriceEntry | null
+    draw?: BestPriceEntry | null
     away: BestPriceEntry | null
   }
 }

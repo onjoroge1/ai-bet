@@ -9,7 +9,7 @@ import { Trophy, TrendingUp, Target, Shield, Brain, ChevronDown, ChevronUp, Lock
 import { isEdgePivotEnabled, probabilityLabel } from "@/lib/feature-flags"
 import { edgeFromPredictionData } from "@/lib/edge/extract"
 import type { EdgeView } from "@/lib/edge/types"
-import { ValueBadge, EdgeMeter, PriceGuard, StakeSuggester, NoValueState, TrackRecordNote } from "@/components/edge"
+import { ValueBadge, EdgeMeter, PriceGuard, StakeSuggester, NoValueState, TrackRecordNote, WhyThisBet } from "@/components/edge"
 
 interface PredictionCardProps {
   mode: 'preview' | 'compact' | 'full'
@@ -215,6 +215,13 @@ export function PredictionCard({
             />
             {edge.actionable && edge.value?.value_bet ? (
               <>
+                <WhyThisBet
+                  market={edge.market}
+                  value={edge.value}
+                  modelProbs={modelProbsFrom(prediction)}
+                  homeLabel={matchData?.home?.name || matchData?.home_team}
+                  awayLabel={matchData?.away?.name || matchData?.away_team}
+                />
                 <PriceGuard valueBet={edge.value.value_bet} />
                 <StakeSuggester valueBet={edge.value.value_bet} />
               </>
