@@ -33,14 +33,23 @@ function looksLikeEdgeCarrier(obj: unknown): obj is EdgePayload {
 export function edgeFromPredictionData(raw: unknown): EdgeView {
   if (!raw || typeof raw !== 'object') return extractEdge(null)
   const o = raw as Record<string, unknown>
-
-  if (looksLikeEdgeCarrier(o)) return extractEdge(o as EdgePayload)
-  if (looksLikeEdgeCarrier(o.prediction)) return extractEdge(o.prediction as EdgePayload)
-  if (looksLikeEdgeCarrier(o.data)) return extractEdge(o.data as EdgePayload)
-  // One more level: { data: { prediction: {…} } } seen in some mappers.
   const data = o.data as Record<string, unknown> | undefined
-  if (data && looksLikeEdgeCarrier(data.prediction)) return extractEdge(data.prediction as EdgePayload)
 
+  // Collect every known nesting up front as `unknown`, THEN test each. Doing
+  // it this way (rather than sequential `if (guard(o)) ... if (guard(o.x))`)
+  // avoids TS narrowing `o` to `never` after the first type-guard returns —
+  // EdgePayload's all-optional fields make the guard's negative branch `never`
+  // under the worker tsconfig's stricter settings.
+  const candidates: unknown[] = [
+    o,
+    o.prediction,
+    o.data,
+    // One more level: { data: { prediction: {…} } } seen in some mappers.
+    data?.prediction,
+  ]
+  for (const c of candidates) {
+    if (looksLikeEdgeCarrier(c)) return extractEdge(c)
+  }
   return extractEdge(null)
 }
 
