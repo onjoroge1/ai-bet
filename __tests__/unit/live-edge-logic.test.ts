@@ -6,6 +6,7 @@ import {
   isExpired, effectiveStatus, hasLiveOdds, priceGuardOk, canRenderBet,
   secondsAgo, secondsUntilExpiry, sortBoard, edgeMatches, evMatches, minOddsMatches,
 } from '@/lib/live-edge/logic'
+import { liveEdgeDetailUnlocked } from '@/lib/live-edge/access'
 import type { LiveEdgeCard } from '@/lib/live-edge/types'
 
 const NOW = new Date('2026-06-13T20:14:33Z')
@@ -95,6 +96,21 @@ describe('board ordering', () => {
     const order = sortBoard(cards, NOW).map(c => c.match_id)
     expect(order.slice(0, 2)).toEqual([4, 2]) // highest-edge bettables first
     expect(order[order.length - 1]).toBe(5)   // client-expired sinks to bottom
+  })
+})
+
+describe('freemium gate (liveEdgeDetailUnlocked)', () => {
+  it('free / missing → locked', () => {
+    expect(liveEdgeDetailUnlocked(null)).toBe(false)
+    expect(liveEdgeDetailUnlocked(undefined)).toBe(false)
+    expect(liveEdgeDetailUnlocked({})).toBe(false)
+    expect(liveEdgeDetailUnlocked({ tier: 'free' })).toBe(false)
+  })
+  it('any paid tier → unlocked', () => {
+    expect(liveEdgeDetailUnlocked({ tier: 'starter' })).toBe(true)
+    expect(liveEdgeDetailUnlocked({ tier: 'pro' })).toBe(true)
+    expect(liveEdgeDetailUnlocked({ tier: 'vip' })).toBe(true)
+    expect(liveEdgeDetailUnlocked({ tier: 'admin' })).toBe(true)
   })
 })
 

@@ -13,6 +13,7 @@ import { Radio, RefreshCw, Tv } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import type { LiveEdgeBoard as Board } from '@/lib/live-edge/types'
 import { sortBoard, effectiveStatus, secondsAgo } from '@/lib/live-edge/logic'
+import { liveEdgeDetailUnlocked } from '@/lib/live-edge/access'
 import { LiveEdgeCard } from './LiveEdgeCard'
 
 const POLL_MS = 25_000
@@ -22,7 +23,19 @@ export function LiveEdgeBoard() {
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)
   const [now, setNow] = useState<Date>(() => new Date())
   const [error, setError] = useState(false)
+  const [unlocked, setUnlocked] = useState(false)
   const inFlight = useRef(false)
+
+  // Freemium gate — fetch the user's premium status once. Free users see the
+  // board + "value detected" teasers; paid users see the actionable detail.
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/premium/check')
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setUnlocked(liveEdgeDetailUnlocked(d)) })
+      .catch(() => { /* default locked */ })
+    return () => { cancelled = true }
+  }, [])
 
   const load = useCallback(async () => {
     if (inFlight.current) return
@@ -100,7 +113,7 @@ export function LiveEdgeBoard() {
       {visible.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {visible.map(c => (
-            <LiveEdgeCard key={`${c.match_id}-${c.market}`} card={c} now={now} />
+            <LiveEdgeCard key={`${c.match_id}-${c.market}`} card={c} now={now} locked={!unlocked} />
           ))}
         </div>
       )}

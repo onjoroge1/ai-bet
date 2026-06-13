@@ -35,6 +35,8 @@ export default function LiveEdgePage() {
             Live match intelligence paired with odds-value detection. We show where our model&apos;s
             in-play probability disagrees with the live market — and we hold a hard price guard so a
             tip is never shown at a price that&apos;s already moved. Most cards are a watch, not a bet.
+            The live board and match intelligence are free; the actionable price, edge and reasoning
+            behind a value alert are <span className="text-emerald-300">premium</span>.
           </p>
         </header>
 

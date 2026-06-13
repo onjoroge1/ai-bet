@@ -4,9 +4,10 @@ import { use, useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Radio, Lightbulb, Activity, Clock, TrendingDown, TrendingUp } from 'lucide-react'
+import { ArrowLeft, Radio, Lightbulb, Activity, Clock, TrendingDown, TrendingUp, Lock } from 'lucide-react'
 import type { LiveEdgeMatchDetail } from '@/lib/live-edge/types'
 import { effectiveStatus, canRenderBet, secondsUntilExpiry } from '@/lib/live-edge/logic'
+import { liveEdgeDetailUnlocked } from '@/lib/live-edge/access'
 
 const POLL_MS = 25_000
 
@@ -15,6 +16,7 @@ export default function LiveEdgeDetailPage({ params }: { params: Promise<{ match
   const [detail, setDetail] = useState<LiveEdgeMatchDetail | null>(null)
   const [status, setStatus] = useState<'loading' | 'ok' | 'unavailable'>('loading')
   const [now, setNow] = useState(() => new Date())
+  const [unlocked, setUnlocked] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -29,6 +31,13 @@ export default function LiveEdgeDetailPage({ params }: { params: Promise<{ match
 
   useEffect(() => { load(); const id = setInterval(load, POLL_MS); return () => clearInterval(id) }, [load])
   useEffect(() => { const id = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(id) }, [])
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/premium/check').then(r => r.json())
+      .then(d => { if (!cancelled) setUnlocked(liveEdgeDetailUnlocked(d)) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
@@ -52,7 +61,7 @@ export default function LiveEdgeDetailPage({ params }: { params: Promise<{ match
           </Card>
         )}
 
-        {status === 'ok' && detail && <DetailBody detail={detail} now={now} />}
+        {status === 'ok' && detail && <DetailBody detail={detail} now={now} unlocked={unlocked} />}
       </div>
     </div>
   )
@@ -61,9 +70,11 @@ export default function LiveEdgeDetailPage({ params }: { params: Promise<{ match
 function pct(frac: number): string { return `${(frac * 100).toFixed(1)}%` }
 function pctSigned(frac: number): string { const p = frac * 100; return `${p > 0 ? '+' : '−'}${Math.abs(p).toFixed(1)}%` }
 
-function DetailBody({ detail, now }: { detail: LiveEdgeMatchDetail; now: Date }) {
+function DetailBody({ detail, now, unlocked }: { detail: LiveEdgeMatchDetail; now: Date; unlocked: boolean }) {
   const eff = effectiveStatus(detail, now)
-  const showBet = canRenderBet(detail, now)
+  const bettable = canRenderBet(detail, now)
+  const showBet = bettable && unlocked
+  const showLockedTeaser = bettable && !unlocked
   const validated = detail.model_track_record?.edge_validated === true
   const ttl = secondsUntilExpiry(detail, now)
 
@@ -113,25 +124,59 @@ function DetailBody({ detail, now }: { detail: LiveEdgeMatchDetail; now: Date })
               {!validated && <p className="text-[11px] text-amber-400/80">Experimental live model — not yet validated against the closing line.</p>}
             </div>
           )}
+
+          {/* Locked value teaser for free users */}
+          {showLockedTeaser && detail.best_price && (
+            <Link href="/premium?source=live_edge_detail_locked"
+              className="block rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-4 mt-4 hover:border-emerald-400/50 transition-colors">
+              <div className="flex items-center justify-between">
+                <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-300">
+                  <TrendingUp className="w-4 h-4" /> Live value detected on this market
+                </span>
+                <Badge className="bg-slate-700/60 text-slate-300 border-slate-600 text-[10px]"><Lock className="w-3 h-3 mr-1" /> Premium</Badge>
+              </div>
+              <p className="text-xs text-slate-400 mt-2">
+                Unlock the live price, the edge vs the market, the price-guard floor and the full reasoning.
+              </p>
+              <p className="text-[11px] text-emerald-300/90 mt-2">Upgrade to see the bet →</p>
+            </Link>
+          )}
         </CardContent>
       </Card>
 
-      {/* Why bullets — the trust builder */}
+      {/* Why bullets — the trust builder (premium) */}
       {detail.why?.length > 0 && (
-        <Card className="bg-slate-800/60 border-slate-700">
-          <CardContent className="p-5">
-            <h2 className="text-sm font-semibold text-white flex items-center gap-2 mb-3">
-              <Lightbulb className="w-4 h-4 text-amber-300" /> Why this
-            </h2>
-            <ul className="space-y-1.5">
-              {detail.why.map((w, i) => (
-                <li key={i} className="text-sm text-slate-300 flex items-start gap-2">
-                  <span className="text-emerald-400 mt-1">•</span> {w}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
+        unlocked ? (
+          <Card className="bg-slate-800/60 border-slate-700">
+            <CardContent className="p-5">
+              <h2 className="text-sm font-semibold text-white flex items-center gap-2 mb-3">
+                <Lightbulb className="w-4 h-4 text-amber-300" /> Why this
+              </h2>
+              <ul className="space-y-1.5">
+                {detail.why.map((w, i) => (
+                  <li key={i} className="text-sm text-slate-300 flex items-start gap-2">
+                    <span className="text-emerald-400 mt-1">•</span> {w}
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        ) : (
+          <Link href="/premium?source=live_edge_why_locked" className="block">
+            <Card className="bg-slate-800/60 border-slate-700 hover:border-emerald-500/30 transition-colors">
+              <CardContent className="p-5">
+                <h2 className="text-sm font-semibold text-white flex items-center gap-2 mb-2">
+                  <Lightbulb className="w-4 h-4 text-amber-300" /> Why this
+                  <Badge className="bg-slate-700/60 text-slate-300 border-slate-600 text-[10px] ml-auto"><Lock className="w-3 h-3 mr-1" /> Premium</Badge>
+                </h2>
+                <p className="text-sm text-slate-400">
+                  The live reasoning — shots, corners, pressure shifts, stoppage estimate — behind this signal is part of premium.
+                  <span className="text-emerald-300"> Unlock the full breakdown →</span>
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+        )
       )}
 
       {/* Odds movement */}

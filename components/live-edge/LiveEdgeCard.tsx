@@ -10,7 +10,7 @@
 import Link from 'next/link'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Radio, TrendingUp, Clock, ChevronRight, Activity, Ban, AlertTriangle } from 'lucide-react'
+import { Radio, TrendingUp, Clock, ChevronRight, Activity, Ban, AlertTriangle, Lock } from 'lucide-react'
 import type { LiveEdgeCard as Card_ } from '@/lib/live-edge/types'
 import { effectiveStatus, canRenderBet, secondsUntilExpiry } from '@/lib/live-edge/logic'
 
@@ -28,9 +28,12 @@ const CONF_LABEL: Record<string, string> = {
   low: 'Low', medium: 'Medium', medium_high: 'Medium-High', high: 'High',
 }
 
-export function LiveEdgeCard({ card, now }: { card: Card_; now: Date }) {
+export function LiveEdgeCard({ card, now, locked = false }: { card: Card_; now: Date; locked?: boolean }) {
   const status = effectiveStatus(card, now)
-  const showBet = canRenderBet(card, now)
+  const bettable = canRenderBet(card, now)
+  // Free users see that value was detected (the hook) but not the numbers.
+  const showBet = bettable && !locked
+  const showLockedTeaser = bettable && locked
   const validated = card.model_track_record?.edge_validated === true
   const ttl = secondsUntilExpiry(card, now)
 
@@ -102,6 +105,29 @@ export function LiveEdgeCard({ card, now }: { card: Card_; now: Date }) {
               {!validated && <span className="text-amber-400/80"> · experimental model</span>}
             </p>
           </div>
+        )}
+
+        {/* ── Locked teaser — free users on a BETTABLE card ──────── */}
+        {showLockedTeaser && (
+          <Link
+            href="/premium?source=live_edge_locked"
+            className="block rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-3 hover:border-emerald-400/50 transition-colors"
+          >
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-300">
+                <TrendingUp className="w-4 h-4" /> Live value detected
+              </span>
+              <Badge className="bg-slate-700/60 text-slate-300 border-slate-600 text-[10px]">
+                <Lock className="w-3 h-3 mr-1" /> Premium
+              </Badge>
+            </div>
+            {/* Numbers blurred/withheld — show the shape, not the value. */}
+            <div className="flex items-center justify-between mt-2 text-xs select-none">
+              <span className="text-slate-500">Edge <span className="blur-[5px] text-emerald-300">+0.0%</span></span>
+              <span className="text-slate-500">Best <span className="blur-[5px] text-white">0.00</span></span>
+            </div>
+            <p className="text-[11px] text-emerald-300/90 mt-2">Unlock the price, edge &amp; reasoning →</p>
+          </Link>
         )}
 
         {/* ── Non-bettable states ────────────────────────────────── */}
