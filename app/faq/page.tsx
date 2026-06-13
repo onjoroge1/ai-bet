@@ -36,7 +36,7 @@ const faqs = [
       },
       {
         question: 'How accurate are your predictions?',
-        answer: 'Our AI-powered predictions have shown consistent accuracy across different sports and markets. However, sports betting always involves risk, and we recommend responsible gambling. We provide confidence scores to help you assess risk levels and make informed decisions. Past performance doesn\'t guarantee future results.'
+        answer: 'We don\'t make accuracy claims in copy — every pick we publish is logged to a public flat-stake tracker at /performance, wins and losses included, so you can judge the results yourself. Each prediction shows the model\'s probability alongside the market price; the gap between them (the edge) is what matters for betting value. Sports betting always involves risk — past performance doesn\'t guarantee future results.'
       },
       {
         question: 'What sports do you cover?',

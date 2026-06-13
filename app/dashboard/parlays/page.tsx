@@ -1,5 +1,6 @@
 "use client"
 
+import { isEdgePivotEnabled } from "@/lib/feature-flags"
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -1389,6 +1390,7 @@ export default function ParlaysPage() {
                               {match.prediction && (
                                 <Badge className={cn(
                                   "text-[10px]",
+                                  isEdgePivotEnabled() ? 'bg-slate-500/15 text-slate-300 border-slate-500/30' :
                                   match.prediction.confidence >= 70 ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' :
                                   match.prediction.confidence >= 50 ? 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30' :
                                   'bg-slate-500/15 text-slate-400 border-slate-500/30'

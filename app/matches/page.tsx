@@ -363,8 +363,10 @@ export default function PublicMatchesPage() {
                     hover:border-slate-600/70 hover:shadow-lg ${confColors.glow} transition-all duration-300
                     ${urgency === "hot" ? "ring-1 ring-orange-500/30" : ""}`}
                 >
-                  {/* Confidence accent bar */}
+                  {/* Probability accent bar — neutral when edge pivot on
+                      (probability is information, not endorsement) */}
                   <div className={`absolute top-0 left-0 w-1 h-full ${
+                    edgeOn ? 'bg-slate-500' :
                     confidence >= 80 ? 'bg-emerald-500' :
                     confidence >= 60 ? 'bg-yellow-500' :
                     confidence >= 40 ? 'bg-orange-500' : 'bg-red-500'
@@ -442,6 +444,7 @@ export default function PublicMatchesPage() {
                     {/* Prediction & Odds */}
                     {match.predictionType && (
                       <div className={`rounded-lg p-3 ${confColors.bg} border ${
+                        edgeOn ? "border-slate-500/20" :
                         confidence >= 80 ? "border-emerald-500/20" :
                         confidence >= 60 ? "border-yellow-500/20" :
                         confidence >= 40 ? "border-orange-500/20" : "border-red-500/20"

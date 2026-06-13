@@ -38,7 +38,7 @@ export const metadata: Metadata = {
     "sports predictions", "AI betting tips", "football predictions", 
     "basketball tips", "tennis predictions", "sports betting", 
     "AI tipster", "winning predictions", "betting advice",
-    "sports analysis", "prediction accuracy", "betting strategy",
+    "sports analysis", "value betting", "betting strategy",
     "daily football tips", "sports betting predictions", "AI sports analysis",
     "confident betting tips", "professional sports predictions", "winning betting strategy"
   ],

@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Trophy, TrendingUp, Target, Shield, Brain, ChevronDown, ChevronUp, Lock, Unlock, ExternalLink, CheckCircle, X } from "lucide-react"
-import { isEdgePivotEnabled } from "@/lib/feature-flags"
+import { isEdgePivotEnabled, probabilityLabel } from "@/lib/feature-flags"
 import { edgeFromPredictionData } from "@/lib/edge/extract"
 import type { EdgeView } from "@/lib/edge/types"
 import { ValueBadge, EdgeMeter, PriceGuard, StakeSuggester, NoValueState, TrackRecordNote } from "@/components/edge"
@@ -77,8 +77,8 @@ export function PredictionCard({
             {!edgeActive && quickPurchaseInfo?.confidenceScore && (
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <div className="text-slate-400 text-sm mb-1">Confidence</div>
-                  <div className="text-2xl font-bold text-emerald-400">
+                  <div className="text-slate-400 text-sm mb-1">{probabilityLabel(true)}</div>
+                  <div className={`text-2xl font-bold ${isEdgePivotEnabled() ? "text-slate-200" : "text-emerald-400"}`}>
                     {quickPurchaseInfo.confidenceScore}%
                   </div>
                 </div>
@@ -169,8 +169,8 @@ export function PredictionCard({
                   : <span className="text-slate-400 text-xs">No value at current prices</span>
               )}
               {!edgeActive && quickPurchaseInfo?.confidenceScore && (
-                <div className="text-emerald-400">
-                  {quickPurchaseInfo.confidenceScore}% Confidence
+                <div className={isEdgePivotEnabled() ? "text-slate-300" : "text-emerald-400"}>
+                  {quickPurchaseInfo.confidenceScore}% {probabilityLabel()}
                 </div>
               )}
               {quickPurchaseInfo?.valueRating && (
