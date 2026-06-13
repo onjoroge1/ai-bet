@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation'
 import { AdvancedBreadcrumb } from '@/components/advanced-breadcrumb'
 import { NewsArticleSchema, FAQSchema } from '@/components/schema-markup'
 import { Card, CardContent } from '@/components/ui/card'
-import { Calendar, Flag, ChevronRight, AlertCircle } from 'lucide-react'
+import { Calendar, Flag, ChevronRight, AlertCircle, BarChart3 } from 'lucide-react'
 import { GROUPS, getGroup, WC_METADATA } from '@/lib/world-cup/tournament'
 import { wcFixtures, fixturesForGroup } from '@/lib/world-cup/data'
 import { simulateGroup, type GroupSimFixtureInput } from '@/lib/world-cup/metrics'
@@ -50,17 +50,24 @@ export default async function GroupPage({ params }: PageProps) {
   const groupFixtures = fixturesForGroup(allFixtures, group.letter)
   const faqs = groupPageFAQ(group.letter, group.teams.map(t => t.name))
 
-  // Group-advancement simulation — only when every fixture resolves to a
-  // registry team (it does for real group-stage matches).
+  // Group-advancement simulation. We trust probabilities ONLY from fixtures a
+  // real model has run on (modelSource set) — fixtures carrying a generic
+  // fallback prior are passed as probs:null so the sim treats them as neutral
+  // and `coverage` honestly reflects real model penetration. The chart is
+  // gated on meaningful coverage so we never present placeholder priors as a
+  // confident forecast.
   const simInputs: GroupSimFixtureInput[] = groupFixtures
     .filter(f => f.homeWCTeam && f.awayWCTeam)
     .map(f => ({
       homeSlug: f.homeWCTeam!.slug,
       awaySlug: f.awayWCTeam!.slug,
-      probs: f.probs,
+      probs: f.modelSource ? f.probs : null,
       result: f.status === 'FINISHED' ? f.result : null,
     }))
-  const sim = simInputs.length >= 3 ? simulateGroup(group.teams, simInputs) : null
+  const rawSim = simInputs.length >= 3 ? simulateGroup(group.teams, simInputs) : null
+  // Require ≥50% real model coverage (or any settled results) before showing
+  // the forecast; otherwise it would be priors dressed as predictions.
+  const sim = rawSim && rawSim.coverage >= 0.5 ? rawSim : null
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
@@ -134,7 +141,23 @@ export default async function GroupPage({ params }: PageProps) {
         </section>
 
         {/* ── Advancement metrics ──────────────────────────────────── */}
-        {sim && <WCGroupMetrics sim={sim} groupLetter={group.letter} />}
+        {sim
+          ? <WCGroupMetrics sim={sim} groupLetter={group.letter} />
+          : groupFixtures.length > 0 && (
+            <Card className="bg-slate-800 border-slate-700">
+              <CardContent className="p-6 flex items-start gap-3">
+                <BarChart3 className="w-5 h-5 text-slate-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-white">Advancement forecast — coming soon for this group</p>
+                  <p className="text-sm text-slate-400 mt-1 leading-relaxed">
+                    Our model hasn&apos;t run on enough of Group {group.letter}&apos;s fixtures yet, so we&apos;re
+                    holding back the advancement chart rather than show numbers built on placeholder priors.
+                    It appears automatically once the predictions land.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
         {/* ── Fixtures ─────────────────────────────────────────────── */}
         <section>

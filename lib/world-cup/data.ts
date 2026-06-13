@@ -47,6 +47,11 @@ export interface WCFixture {
   /** H/D/A model probabilities (0..1, sum≈1) for the group sim — null when
    *  no model has run for this fixture yet. */
   probs: { home: number; draw: number; away: number } | null
+  /** The model that produced `probs` (e.g. 'v3_sharp', 'wc_elo'), or null
+   *  when the row carries only a generic fallback prior (no real model run).
+   *  The group sim trusts probs ONLY when this is set — otherwise the numbers
+   *  are placeholders, not team-strength signal. */
+  modelSource: string | null
   /** Final result for FINISHED fixtures: 'home' | 'draw' | 'away' | null. */
   result: 'home' | 'away' | 'draw' | null
 }
@@ -71,6 +76,13 @@ function readModel(m: unknown): { confidence: number | null; pick: 'home' | 'awa
 function sharedGroup(home: WCTeam | null, away: WCTeam | null): string | null {
   if (home && away && home.group === away.group) return home.group
   return null
+}
+
+/** Read the model source id from a model JSON (e.g. 'v3_sharp', 'wc_elo'). */
+function readModelSource(m: unknown): string | null {
+  if (!m || typeof m !== 'object') return null
+  const s = (m as { source?: unknown }).source
+  return typeof s === 'string' && s.length > 0 ? s : null
 }
 
 /** Read normalized H/D/A probabilities from a model JSON's `probs` block. */
@@ -182,6 +194,7 @@ export async function wcFixtures(opts?: { take?: number }): Promise<WCFixture[]>
         pick,
         edge: edgeSummaryFromV3Model(r.v3Model),
         probs: readProbs(r.v3Model) ?? readProbs(r.v1Model),
+        modelSource: readModelSource(r.v3Model),
         result: readResult(r.finalResult),
       }
     })

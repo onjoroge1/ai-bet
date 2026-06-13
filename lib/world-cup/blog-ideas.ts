@@ -52,10 +52,16 @@ export function wcBlogIdeas(fixtures: WCFixture[], now: Date): WCBlogIdea[] {
     if (gf.length < 3) continue
     const inputs: GroupSimFixtureInput[] = gf.map(f => ({
       homeSlug: f.homeWCTeam!.slug, awaySlug: f.awayWCTeam!.slug,
-      probs: f.probs, result: f.status === 'FINISHED' ? f.result : null,
+      // Trust probs only from a real model run — fallback priors would
+      // manufacture misleading "favourite" angles (e.g. Jordon > Argentina).
+      probs: f.modelSource ? f.probs : null,
+      result: f.status === 'FINISHED' ? f.result : null,
     }))
     const sim = simulateGroup(group.teams, inputs)
     if (sim.teams.length < 4) continue
+    // Skip group-race angles built mostly on fallback priors — the model
+    // hasn't run on enough of the group to make the "favourite" meaningful.
+    if (sim.coverage < 0.5) continue
     const [first, second, third] = sim.teams
     // Tightness: smaller gap between the 2nd and 3rd advance odds = better race.
     const cutGap = Math.abs(second.advanceProb - third.advanceProb)
@@ -129,7 +135,10 @@ export function wcBlogIdeas(fixtures: WCFixture[], now: Date): WCBlogIdea[] {
     if (gf.length < 3) continue
     const inputs: GroupSimFixtureInput[] = gf.map(f => ({
       homeSlug: f.homeWCTeam!.slug, awaySlug: f.awayWCTeam!.slug,
-      probs: f.probs, result: f.status === 'FINISHED' ? f.result : null,
+      // Trust probs only from a real model run — fallback priors would
+      // manufacture misleading "favourite" angles (e.g. Jordon > Argentina).
+      probs: f.modelSource ? f.probs : null,
+      result: f.status === 'FINISHED' ? f.result : null,
     }))
     const sim = simulateGroup(group.teams, inputs)
     const top = sim.teams[0]
