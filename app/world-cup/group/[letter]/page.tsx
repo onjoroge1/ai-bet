@@ -7,8 +7,10 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Calendar, Flag, ChevronRight, AlertCircle } from 'lucide-react'
 import { GROUPS, getGroup, WC_METADATA } from '@/lib/world-cup/tournament'
 import { wcFixtures, fixturesForGroup } from '@/lib/world-cup/data'
+import { simulateGroup, type GroupSimFixtureInput } from '@/lib/world-cup/metrics'
 import { groupPageFAQ } from '@/lib/world-cup/faq'
 import { WCFixtureRow } from '@/components/world-cup/WCFixtureRow'
+import { WCGroupMetrics } from '@/components/world-cup/WCGroupMetrics'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 300
@@ -47,6 +49,18 @@ export default async function GroupPage({ params }: PageProps) {
   const allFixtures = await wcFixtures()
   const groupFixtures = fixturesForGroup(allFixtures, group.letter)
   const faqs = groupPageFAQ(group.letter, group.teams.map(t => t.name))
+
+  // Group-advancement simulation — only when every fixture resolves to a
+  // registry team (it does for real group-stage matches).
+  const simInputs: GroupSimFixtureInput[] = groupFixtures
+    .filter(f => f.homeWCTeam && f.awayWCTeam)
+    .map(f => ({
+      homeSlug: f.homeWCTeam!.slug,
+      awaySlug: f.awayWCTeam!.slug,
+      probs: f.probs,
+      result: f.status === 'FINISHED' ? f.result : null,
+    }))
+  const sim = simInputs.length >= 3 ? simulateGroup(group.teams, simInputs) : null
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
@@ -119,6 +133,9 @@ export default async function GroupPage({ params }: PageProps) {
           </div>
         </section>
 
+        {/* ── Advancement metrics ──────────────────────────────────── */}
+        {sim && <WCGroupMetrics sim={sim} groupLetter={group.letter} />}
+
         {/* ── Fixtures ─────────────────────────────────────────────── */}
         <section>
           <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-3">
@@ -164,7 +181,7 @@ export default async function GroupPage({ params }: PageProps) {
             <p className="text-xs text-slate-400 leading-relaxed flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-slate-500 flex-shrink-0 mt-0.5" />
               <span>
-                AI-generated predictions for informational purposes only. Group draw provisional until confirmed by FIFA.
+                AI-generated predictions for informational purposes only.
                 {' '}<Link href="/methodology" className="text-blue-300 hover:text-blue-200 underline">Methodology</Link>
                 {' · '}
                 <Link href="/responsible-betting" className="text-blue-300 hover:text-blue-200 underline">Bet responsibly</Link>

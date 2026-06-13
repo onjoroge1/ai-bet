@@ -44,6 +44,11 @@ export interface WCFixture {
   pick: 'home' | 'away' | 'draw' | null
   /** Edge-payload v1 summary off v3Model's additive keys; null pre-pivot. */
   edge: EdgeSummary | null
+  /** H/D/A model probabilities (0..1, sum≈1) for the group sim — null when
+   *  no model has run for this fixture yet. */
+  probs: { home: number; draw: number; away: number } | null
+  /** Final result for FINISHED fixtures: 'home' | 'draw' | 'away' | null. */
+  result: 'home' | 'away' | 'draw' | null
 }
 
 export interface WCGroupView {
@@ -68,6 +73,40 @@ function sharedGroup(home: WCTeam | null, away: WCTeam | null): string | null {
   return null
 }
 
+/** Read normalized H/D/A probabilities from a model JSON's `probs` block. */
+function readProbs(m: unknown): { home: number; draw: number; away: number } | null {
+  if (!m || typeof m !== 'object') return null
+  const p = (m as { probs?: { home?: unknown; draw?: unknown; away?: unknown } }).probs
+  if (!p) return null
+  const h = typeof p.home === 'number' ? p.home : NaN
+  const d = typeof p.draw === 'number' ? p.draw : NaN
+  const a = typeof p.away === 'number' ? p.away : NaN
+  if (!Number.isFinite(h) || !Number.isFinite(a)) return null
+  const draw = Number.isFinite(d) ? d : 0
+  const sum = h + draw + a
+  if (sum <= 0) return null
+  return { home: h / sum, draw: draw / sum, away: a / sum } // normalize defensively
+}
+
+/** Parse a MarketMatch.finalResult into a simple outcome side. */
+function readResult(fr: unknown): 'home' | 'away' | 'draw' | null {
+  if (typeof fr === 'string') {
+    const u = fr.toUpperCase()
+    if (u === 'H') return 'home'; if (u === 'A') return 'away'; if (u === 'D') return 'draw'
+  }
+  const o = fr as { outcome?: string; score?: { home?: number; away?: number } } | null
+  if (o?.outcome) {
+    const u = o.outcome.toLowerCase()
+    if (u === 'home' || u === 'away' || u === 'draw') return u
+  }
+  if (o?.score && typeof o.score.home === 'number' && typeof o.score.away === 'number') {
+    if (o.score.home > o.score.away) return 'home'
+    if (o.score.away > o.score.home) return 'away'
+    return 'draw'
+  }
+  return null
+}
+
 // ─── Core fetch ──────────────────────────────────────────────────────
 
 interface FixtureSourceRow {
@@ -80,6 +119,8 @@ interface FixtureSourceRow {
   status: string
   v3Model: unknown
   v1Model: unknown
+  consensusOdds: unknown
+  finalResult: unknown
 }
 
 /**
@@ -109,6 +150,8 @@ export async function wcFixtures(opts?: { take?: number }): Promise<WCFixture[]>
       status: true,
       v3Model: true,
       v1Model: true,
+      consensusOdds: true,
+      finalResult: true,
     },
     orderBy: { kickoffDate: 'asc' },
     take: opts?.take ?? 200,
@@ -138,6 +181,8 @@ export async function wcFixtures(opts?: { take?: number }): Promise<WCFixture[]>
         confidence,
         pick,
         edge: edgeSummaryFromV3Model(r.v3Model),
+        probs: readProbs(r.v3Model) ?? readProbs(r.v1Model),
+        result: readResult(r.finalResult),
       }
     })
 }

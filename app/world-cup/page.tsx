@@ -263,8 +263,7 @@ export default async function WorldCupHubPage() {
             <p className="text-xs text-slate-400 leading-relaxed flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-slate-500 flex-shrink-0 mt-0.5" />
               <span>
-                Predictions are AI-generated and provided for informational purposes only. Group draw shown is
-                provisional until confirmed by FIFA.
+                Predictions are AI-generated and provided for informational purposes only.
                 {' '}<Link href="/methodology" className="text-blue-300 hover:text-blue-200 underline">Methodology</Link>
                 {' · '}
                 <Link href="/performance" className="text-blue-300 hover:text-blue-200 underline">Performance audit</Link>

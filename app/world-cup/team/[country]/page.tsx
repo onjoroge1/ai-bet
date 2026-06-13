@@ -166,7 +166,7 @@ export default async function WCTeamPage({ params }: PageProps) {
             <p className="text-xs text-slate-400 leading-relaxed flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-slate-500 flex-shrink-0 mt-0.5" />
               <span>
-                AI-generated predictions for informational purposes only. Group draw provisional until confirmed by FIFA.
+                AI-generated predictions for informational purposes only.
                 {' '}<Link href="/methodology" className="text-blue-300 hover:text-blue-200 underline">Methodology</Link>
                 {' · '}
                 <Link href="/responsible-betting" className="text-blue-300 hover:text-blue-200 underline">Bet responsibly</Link>
