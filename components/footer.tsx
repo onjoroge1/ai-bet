@@ -70,6 +70,11 @@ export function Footer() {
                 </Link>
               </li>
               <li>
+                <Link href="/live-edge" className="text-slate-400 hover:text-white text-sm">
+                  Live Edge
+                </Link>
+              </li>
+              <li>
                 <Link href="/nba" className="text-slate-400 hover:text-white text-sm">
                   NBA Predictions
                 </Link>
