@@ -171,6 +171,8 @@ def train_sport(conn, sport_key: str, models_dir: str, force: bool = False) -> D
         "trained_at": datetime.now(timezone.utc).isoformat(),
         "train_reason": reason if ok else "forced",
         "n_samples": int(len(df)),
+        # provenance: games imported from CSV (single closing snapshot, no line movement)
+        "n_samples_from_csv": int(df["event_id"].astype(str).str.startswith("csv-").sum()),
         "date_range": [str(df["match_date"].min()), str(df["match_date"].max())],
         "n_folds": n_splits,
         "final_rounds": final_rounds,

@@ -80,12 +80,25 @@ default sports, homepage tab, WhatsApp commands). NCAAB remains defined but hidd
 - Still to observe: the first real NFL alpha analysis once ≥50 settled NFL games exist; replace the
   provisional gates with measured ones.
 
-### PR-4 — pipeline: cold-start accelerator (data import)
-NFL reaches 120 games in ~9 weeks from zero, which is most of the remaining season. Options, in
-order of preference: (a) The Odds API **historical** endpoint for last season's odds + `/scores`
-(paid add-on, verify on the dashboard); (b) `snapbet-pipeline import-csv` for a public
-odds+results CSV (document provenance; results-only rows still feed ELO/form features).
-Acceptance: `status` shows `training_rows ≥ min` for NFL and NBA; `train --dry-run` says "would train".
+### PR-4 — pipeline: cold-start accelerator (CSV import) ✅ built
+NFL reaches 120 games in ~9 weeks from zero, which is most of the remaining season. Decision
+2026-11-07: build the **CSV path first** (no plan dependency); The Odds API historical endpoint can
+be added later as a second source behind the same tables.
+- `snapbet-pipeline import-csv --sports <key> --file games.csv [--source name] [--team-map map.json] [--dry-run]`
+  writes finished games into `multisport_fixtures` / `multisport_match_results` / `multisport_schedule`
+  and, when the row has a moneyline, ONE consensus snapshot at kickoff − 1h (bookmaker `csv:<source>`).
+  `sync` + `train` then work unchanged.
+- Team labels are normalised to The Odds API names via `snapbet_pipeline/teams.py` (32 NFL, 30 NBA,
+  32 NHL franchises: codes, cities, nicknames, relocations). Unknown labels are refused and listed by
+  `--dry-run`; a `--team-map` JSON fixes them. Nothing is guessed.
+- Provenance: synthetic `event_id`s start with `csv-`; `metadata.json` gains `n_samples_from_csv`.
+  Documented caveat: imported games have a single snapshot (no line movement), ties are skipped,
+  odds-less rows feed ELO/form/H2H but are not training rows.
+- Tests: parsing (aliases, American odds, normalisation, tie/unmapped handling, deterministic ids) and
+  an end-to-end import → sync → train on a 144-game CSV using real NFL names.
+- **Owner action:** source a results+closing-line CSV for NFL 2025 (and NBA/NHL 2025-26 to date), run
+  `--dry-run`, fix any unmapped labels, import, then `train`. Record the CSV's origin in `--source`.
+- Later: `import-odds-api-history` for plans with the historical endpoint (same tables, real snapshots).
 
 ### PR-5 — pipeline: closing line + CLV settlement (edge plan Phase B)
 - At first `results` after a game: store the last pre-game consensus as `closing_odds`; for rows that

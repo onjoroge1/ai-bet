@@ -68,6 +68,30 @@ The Replit database is gone, so training sets are empty. From the first
 | NCAAB (opt-in) | 150 | ~1 week (30+ games/day) |
 | NFL | 120 | ~8–9 weeks (≈14 games/week) — consider importing last season's odds+results |
 
+## Cold-start accelerator: `import-csv`
+
+Import last season's finished games (and closing lines, if you have them) so
+`train` reaches its minimum on day one instead of weeks from now:
+
+```bash
+snapbet-pipeline import-csv --sports americanfootball_nfl --file nfl_2025.csv --source kaggle-nfl-2025 --dry-run
+snapbet-pipeline import-csv --sports americanfootball_nfl --file nfl_2025.csv --source kaggle-nfl-2025
+snapbet-pipeline sync --sports americanfootball_nfl && snapbet-pipeline train --sports americanfootball_nfl
+```
+
+- Columns (case-insensitive, common aliases accepted): `date`, `home_team`, `away_team`, `home_score`,
+  `away_score`; optional `home_odds`, `away_odds` (decimal or American), `home_spread`, `total`,
+  `spread_home_odds`, `spread_away_odds`, `over_odds`, `under_odds`. Template: `samples/results_template.csv`.
+- Team labels are normalised to The Odds API names (`BUF` / `Buffalo` / `Bills` → `Buffalo Bills`) so
+  imported history connects to live rows. Unknown labels are **refused and listed** by `--dry-run`;
+  fix them with `--team-map map.json` (`{"CSV label": "Canonical Name"}`), never guessed.
+- Rows **with** a moneyline become training rows (one consensus snapshot at kickoff − 1h, bookmaker
+  `csv:<source>`). Rows **without** odds still import and feed ELO / form / H2H features but cannot be
+  trained on. Ties are skipped (2-way label undefined).
+- Provenance: synthetic `event_id`s start with `csv-`; `metadata.json` records `n_samples_from_csv`.
+  Imported games carry a single snapshot (opening = closing, no drift), so a model trained mostly on
+  CSV rows has seen less line-movement signal than live-collected data — the gate still applies.
+
 ## Tests
 
 ```bash

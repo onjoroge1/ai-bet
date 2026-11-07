@@ -10,6 +10,8 @@ laptop run exactly the same code:
   snapbet-pipeline settle             # finals -> MultisportMatch.finalResult
   snapbet-pipeline run                # collect + results + sync + predict + settle
   snapbet-pipeline status             # row counts + last runs
+  snapbet-pipeline import-csv --sports americanfootball_nfl --file games.csv [--source name]
+                                      # cold-start: finished games (+closing odds) from a CSV
 """
 from __future__ import annotations
 
@@ -22,6 +24,7 @@ from typing import Dict
 
 from . import db
 from .collect import collect_odds
+from .import_csv import import_csv_file
 from .config import SPORTS, Settings
 from .odds_api import OddsApiClient
 from .predict import Predictor, predict_upcoming
@@ -103,6 +106,19 @@ def cmd_run(conn, s: Settings, args) -> Dict:
     return out
 
 
+def cmd_import_csv(conn, s: Settings, args) -> Dict:
+    if not args.file:
+        raise SystemExit("import-csv needs --file <path.csv>")
+    if len(s.sports) != 1:
+        raise SystemExit("import-csv needs exactly one sport: --sports <sport_key>")
+    team_map = None
+    if args.team_map:
+        with open(args.team_map, "r", encoding="utf-8") as f:
+            team_map = json.load(f)
+    return import_csv_file(conn, s.sports[0], args.file, source=args.source, team_map=team_map,
+                           dry_run=args.dry_run, default_hour_utc=args.default_hour)
+
+
 def cmd_status(conn, s: Settings, args) -> Dict:
     out: Dict = {"sports": {}}
     with conn.cursor() as cur:
@@ -129,7 +145,7 @@ def cmd_status(conn, s: Settings, args) -> Dict:
 
 COMMANDS = {"migrate": cmd_migrate, "collect": cmd_collect, "results": cmd_results, "sync": cmd_sync,
             "train": cmd_train, "predict": cmd_predict, "settle": cmd_settle, "run": cmd_run,
-            "status": cmd_status}
+            "status": cmd_status, "import-csv": cmd_import_csv}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -141,6 +157,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dry-run", action="store_true", help="train: only report the policy decision")
     p.add_argument("--ignore-season", action="store_true", help="collect/results: query off-season sports too")
     p.add_argument("--sports", default=None, help="comma-separated sport keys (overrides PIPELINE_SPORTS)")
+    p.add_argument("--file", default=None, help="import-csv: path to the CSV file")
+    p.add_argument("--source", default=None, help="import-csv: provenance label stored as bookmaker 'csv:<source>'")
+    p.add_argument("--team-map", default=None, help="import-csv: JSON file {\"CSV label\": \"Canonical Team Name\"}")
+    p.add_argument("--default-hour", type=int, default=23, help="import-csv: UTC hour for date-only rows (default 23)")
     p.add_argument("-v", "--verbose", action="store_true")
     return p
 
