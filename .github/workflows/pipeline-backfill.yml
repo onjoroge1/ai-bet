@@ -1,0 +1,44 @@
+name: pipeline-backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Scores lookback in days (steps down to what the Odds API plan allows)"
+        default: "30"
+      sports:
+        description: "Comma-separated sport keys (blank = PIPELINE_SPORTS / default)"
+        default: ""
+
+concurrency:
+  group: snapbet-pipeline-db
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/pyproject.toml
+      - run: pip install -e .
+      - name: results backfill + sync
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          PIPELINE_SPORTS: ${{ vars.PIPELINE_SPORTS }}
+        run: |
+          SPORTS_FLAG=""
+          if [ -n "${{ inputs.sports }}" ]; then SPORTS_FLAG="--sports ${{ inputs.sports }}"; fi
+          snapbet-pipeline results --days ${{ inputs.days }} --ignore-season $SPORTS_FLAG
+          snapbet-pipeline sync $SPORTS_FLAG

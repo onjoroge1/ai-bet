@@ -1,5 +1,11 @@
 # Revival Plan — Pivot to NFL + NBA (2-way markets)
 
+> **Update 2026-11-07 (later the same day):** Replit was shut down for cost, so §3 Steps 0–2
+> ("check/redeploy the backend") no longer apply. The pipeline has been ported into this repo
+> (`pipeline/`) to run on GitHub Actions / locally against the frontend DB. The current,
+> ordered PR list is in **`docs/RETURN_TO_SERVICE_PRS.md`**. §2 (what exists) and §3 Step 3
+> (frontend NFL wiring) remain accurate.
+
 **Date:** 2026-11-07 · **Status:** assessment, nothing deployed yet
 **Scope:** what has to happen before the site serves fresh football (NFL) and basketball (NBA / NCAAB) predictions again, and whether a new odds API is actually needed.
 
