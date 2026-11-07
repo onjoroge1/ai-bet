@@ -13,6 +13,9 @@ laptop run exactly the same code:
   snapbet-pipeline report             # settled track record per sport (hit rate, value-bet ROI, CLV)
   snapbet-pipeline import-csv --sports americanfootball_nfl --file games.csv [--source name]
                                       # cold-start: finished games (+closing odds) from a CSV
+  snapbet-pipeline import-odds-api-history --sports basketball_nba --from 2026-01-01 --to 2026-03-19
+                                      [--offsets 1] [--max-credits N] [--cache-dir D] [--supersede-csv] [--dry-run]
+                                      # past seasons: real Odds API events + every book + ESPN scores
 """
 from __future__ import annotations
 
@@ -140,6 +143,26 @@ def cmd_import_csv(conn, s: Settings, args) -> Dict:
                            dry_run=args.dry_run, default_hour_utc=args.default_hour)
 
 
+def cmd_import_odds_api_history(conn, s: Settings, args) -> Dict:
+    from datetime import date
+    from .history import import_history
+    from .odds_api import OddsApiClient
+    if len(s.sports) != 1:
+        raise SystemExit("import-odds-api-history needs exactly one sport: --sports <sport_key>")
+    if not (args.date_from and args.date_to):
+        raise SystemExit("import-odds-api-history needs --from YYYY-MM-DD --to YYYY-MM-DD")
+    team_map = None
+    if args.team_map:
+        with open(args.team_map, "r", encoding="utf-8") as f:
+            team_map = json.load(f)
+    client = None if args.dry_run else OddsApiClient(s.odds_api_key, base_url=s.odds_api_base_url)
+    offsets = [float(x) for x in (args.offsets or "1").split(",") if x.strip()]
+    return import_history(conn, client, s.sports[0], date.fromisoformat(args.date_from),
+                          date.fromisoformat(args.date_to), offsets_hours=offsets, max_credits=args.max_credits,
+                          cache_dir=args.cache_dir, dry_run=args.dry_run, supersede=args.supersede_csv,
+                          team_map=team_map)
+
+
 def cmd_status(conn, s: Settings, args) -> Dict:
     out: Dict = {"sports": {}}
     with conn.cursor() as cur:
@@ -166,7 +189,8 @@ def cmd_status(conn, s: Settings, args) -> Dict:
 
 COMMANDS = {"migrate": cmd_migrate, "collect": cmd_collect, "results": cmd_results, "sync": cmd_sync,
             "train": cmd_train, "predict": cmd_predict, "settle": cmd_settle, "run": cmd_run,
-            "status": cmd_status, "import-csv": cmd_import_csv, "report": cmd_report}
+            "status": cmd_status, "import-csv": cmd_import_csv, "report": cmd_report,
+            "import-odds-api-history": cmd_import_odds_api_history}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -182,6 +206,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--source", default=None, help="import-csv: provenance label stored as bookmaker 'csv:<source>'")
     p.add_argument("--team-map", default=None, help="import-csv: JSON file {\"CSV label\": \"Canonical Team Name\"}")
     p.add_argument("--default-hour", type=int, default=23, help="import-csv: UTC hour for date-only rows (default 23)")
+    p.add_argument("--from", dest="date_from", default=None, help="import-odds-api-history: first US date (YYYY-MM-DD)")
+    p.add_argument("--to", dest="date_to", default=None, help="import-odds-api-history: last US date (YYYY-MM-DD)")
+    p.add_argument("--offsets", default="1",
+                   help="import-odds-api-history: hours before each day's first kickoff to snapshot, e.g. '24,1'")
+    p.add_argument("--max-credits", type=int, default=None, help="import-odds-api-history: Odds API credit cap")
+    p.add_argument("--cache-dir", default=None, help="import-odds-api-history: reuse/save raw API responses here")
+    p.add_argument("--supersede-csv", action="store_true",
+                   help="import-odds-api-history: delete earlier csv- imports of the same games")
     p.add_argument("-v", "--verbose", action="store_true")
     return p
 

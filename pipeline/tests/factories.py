@@ -25,19 +25,28 @@ class FakeResponse:
     def json(self):
         return self._payload
 
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
 
 class FakeOddsApi:
-    """Routes /sports/{key}/odds and /scores to canned payloads; records calls."""
+    """Routes /sports/{key}/odds, /scores and /historical/... to canned payloads; records calls."""
 
     def __init__(self):
         self.odds: Dict[str, List[Dict]] = {}
         self.scores: Dict[str, List[Dict]] = {}
+        self.historical: Dict[str, List[Dict]] = {}
         self.calls: List[Tuple[str, Dict]] = []
         self.max_days_from = 3   # emulate a plan that rejects larger windows
 
     def fetch(self, url, params=None, timeout=None):
         self.calls.append((url, dict(params or {})))
         sport = url.rsplit("/sports/", 1)[1].split("/")[0]
+        if "/historical/" in url:
+            # snapshot = every canned event for the sport, stamped at the requested time
+            return FakeResponse({"timestamp": params["date"], "previous_timestamp": None, "next_timestamp": None,
+                                 "data": self.historical.get(sport, [])})
         if url.endswith("/odds"):
             return FakeResponse(self.odds.get(sport, []))
         if url.endswith("/scores"):

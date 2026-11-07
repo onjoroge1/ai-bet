@@ -90,18 +90,37 @@ almost always beats the average. The ledger keeps every bet it was given, but
 value-bet ROI and CLV in the track record count only bets placed while the gate
 had passed (`edge_validated_at_bet`), i.e. bets the site actually offered.
 
-## Cold start (right now)
+## Cold start
 
-The Replit database is gone, so training sets are empty. From the first
-`collect` the site shows market odds and de-vigged probabilities with
-`model = null`; models appear automatically once enough games have finished:
+With an empty database the site shows market odds and de-vigged probabilities
+with `model = null`, and models appear once `min_train_samples` games have
+finished. Live collection alone takes ~3 weeks for NBA/NHL and ~9 for NFL, so
+seed history with `import-odds-api-history` (below), or `import-csv` when you
+only have a results file.
 
-| sport | min games | realistic ETA from zero |
-|---|---|---|
-| NBA | 150 | ~3 weeks of nightly collection |
-| NHL | 150 | ~3 weeks |
-| NCAAB (opt-in) | 150 | ~1 week (30+ games/day) |
-| NFL | 120 | ~8–9 weeks (≈14 games/week) — consider importing last season's odds+results |
+## Past seasons: `import-odds-api-history`
+
+Real Odds API events with **every bookmaker**, stored exactly like live
+collection, plus final scores from ESPN's public scoreboard (The Odds API
+`/scores` only reaches back 3 days). Needs a plan with historical access.
+
+```bash
+snapbet-pipeline import-odds-api-history --sports basketball_nba --from 2025-12-01 --to 2026-03-19 \
+    --cache-dir ~/snapbet-history-cache --dry-run            # ESPN only: games found + estimated credits
+snapbet-pipeline import-odds-api-history --sports basketball_nba --from 2025-12-01 --to 2026-03-19 \
+    --cache-dir ~/snapbet-history-cache --max-credits 3300 --supersede-csv
+snapbet-pipeline sync --sports basketball_nba && snapbet-pipeline train --sports basketball_nba --force
+```
+
+- One historical snapshot per `--offsets` hour (default `1`) before each day's **first** kickoff; events
+  already started at the snapshot time are dropped, so no in-play price is ever stored. `--offsets 24,1`
+  adds an earlier snapshot and gives the line-movement features real values (twice the credits).
+- Cost: 10 credits × markets × regions per snapshot = **30 per game day** with the default markets.
+  `--max-credits` stops before the cap; `--cache-dir` keeps every raw response so re-runs cost nothing.
+- `--supersede-csv` deletes `csv-` rows imported earlier for the same games (same teams, kickoff within
+  36h) from every pipeline table, so no game is counted twice.
+- ESPN team labels go through `teams.canonical_team`; unknown labels (all-star teams) are listed in
+  `unmapped_teams` and skipped. ESPN games with no matching Odds API event are counted as `unmatched`.
 
 ## Pick ledger, closing line and CLV
 
