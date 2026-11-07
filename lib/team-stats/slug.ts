@@ -43,6 +43,7 @@ export function makeTeamSlug(name: string, externalTeamId: string, sport?: strin
 export function sportSlugPrefix(sport?: string): string {
   if (!sport || sport === 'soccer') return ''
   if (sport === 'basketball_nba') return 'nba'
+  if (sport === 'americanfootball_nfl') return 'nfl'
   if (sport === 'icehockey_nhl') return 'nhl'
   if (sport === 'basketball_ncaab') return 'ncaab'
   return slugify(sport)

@@ -14,18 +14,15 @@ import {
   ThumbsUp, ThumbsDown, Info, Lightbulb, DollarSign
 } from "lucide-react"
 import Link from "next/link"
+import { MULTISPORT } from "@/lib/multisport/sports"
 
-const SPORT_NAMES: Record<string, string> = {
-  basketball_nba: "NBA",
-  icehockey_nhl: "NHL",
-  basketball_ncaab: "NCAA Basketball",
-}
+const SPORT_NAMES: Record<string, string> = Object.fromEntries(
+  Object.values(MULTISPORT).map(s => [s.key, s.longName])
+)
 
-const SPORT_ACCENT: Record<string, { text: string; bg: string; border: string; borderL: string }> = {
-  basketball_nba: { text: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/30", borderL: "border-l-orange-500" },
-  icehockey_nhl: { text: "text-cyan-400", bg: "bg-cyan-500/10", border: "border-cyan-500/30", borderL: "border-l-cyan-500" },
-  basketball_ncaab: { text: "text-purple-400", bg: "bg-purple-500/10", border: "border-purple-500/30", borderL: "border-l-purple-500" },
-}
+const SPORT_ACCENT: Record<string, { text: string; bg: string; border: string; borderL: string }> = Object.fromEntries(
+  Object.values(MULTISPORT).map(s => [s.key, s.accent])
+)
 
 function extractEventId(slug: string): string {
   if (slug.includes("-vs-")) {
@@ -159,9 +156,16 @@ export default function SportPredictionPage() {
 
   // ── Data extraction ─────────────────────────────────────────────────
   const pred = data.predictions || {}
+  // Cold start: the pipeline publishes the market line before a model exists
+  // for the sport. Then `predictions` is null and we render market probabilities,
+  // never a fabricated pick or confidence.
+  const hasModel = data.predictions != null && data.predictions.home_win != null
+  const trackRecord = data.model_track_record || null
   const matchInfo = data.match_info || {}
   const modelInfo = data.model_info || {}
   const odds = data.odds || {}
+  const shownHomeProb = hasModel ? pred.home_win : odds.home_prob ?? null
+  const shownAwayProb = hasModel ? pred.away_win : odds.away_prob ?? null
   const homeCtx = data.team_context?.home || {}
   const awayCtx = data.team_context?.away || {}
   const rawMarkets = data.markets || data.best_bets || []
@@ -245,16 +249,27 @@ export default function SportPredictionPage() {
                 </div>
               </div>
 
-              <div className="flex flex-col items-center gap-2">
-                <ConfidenceRing score={confScore} size={72} />
-                <Badge variant="outline" className={`text-xs ${conviction.color}`}>
-                  <ConvictionIcon className="w-3 h-3 mr-1" />
-                  {conviction.label}
-                </Badge>
-                {calibratedScore !== null && calibratedScore !== confScore && (
-                  <span className="text-[10px] text-slate-500">Calibrated: {calibratedScore}%</span>
-                )}
-              </div>
+              {hasModel ? (
+                <div className="flex flex-col items-center gap-2">
+                  <ConfidenceRing score={confScore} size={72} />
+                  <Badge variant="outline" className={`text-xs ${conviction.color}`}>
+                    <ConvictionIcon className="w-3 h-3 mr-1" />
+                    {conviction.label}
+                  </Badge>
+                  {calibratedScore !== null && calibratedScore !== confScore && (
+                    <span className="text-[10px] text-slate-500">Calibrated: {calibratedScore}%</span>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2 max-w-[160px] text-center">
+                  <Badge variant="outline" className="text-xs bg-slate-500/20 text-slate-300 border-slate-500/30">
+                    <Info className="w-3 h-3 mr-1" /> Market line only
+                  </Badge>
+                  <span className="text-[10px] text-slate-500">
+                    No trained {SPORT_NAMES[sport] || "model"} yet — probabilities below are the de-vigged bookmaker consensus.
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Recommended bet line */}
@@ -322,18 +337,18 @@ export default function SportPredictionPage() {
           <Card className="bg-slate-800/60 border-slate-700/40">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-slate-300 flex items-center gap-2">
-                <Target className="w-4 h-4" /> V3 Prediction
+                <Target className="w-4 h-4" /> {hasModel ? "V3 Prediction" : "Market Probabilities"}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-slate-400">{matchInfo.home_team}</span>
-                  <span className="text-sm font-bold text-white">{pct(pred.home_win)}</span>
+                  <span className="text-sm font-bold text-white">{pct(shownHomeProb)}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-slate-400">{matchInfo.away_team}</span>
-                  <span className="text-sm font-bold text-white">{pct(pred.away_win)}</span>
+                  <span className="text-sm font-bold text-white">{pct(shownAwayProb)}</span>
                 </div>
               </div>
 
@@ -341,8 +356,8 @@ export default function SportPredictionPage() {
                 consensus={{
                   home_odds: odds.home_odds || null,
                   away_odds: odds.away_odds || null,
-                  home_prob: pred.home_win,
-                  away_prob: pred.away_win,
+                  home_prob: shownHomeProb,
+                  away_prob: shownAwayProb,
                   home_spread: odds.home_spread || null,
                   total_line: odds.total_line || null,
                   over_odds: odds.over_odds || null,
@@ -353,10 +368,12 @@ export default function SportPredictionPage() {
               />
 
               <div className="text-xs space-y-1.5 text-slate-500 border-t border-slate-700/50 pt-2">
-                <div className="flex justify-between">
-                  <span>Pick</span>
-                  <span className="text-emerald-400 font-medium">{pickTeam}</span>
-                </div>
+                {hasModel && (
+                  <div className="flex justify-between">
+                    <span>Pick</span>
+                    <span className="text-emerald-400 font-medium">{pickTeam}</span>
+                  </div>
+                )}
                 {pred.edge_vs_market != null && (
                   <div className="flex justify-between">
                     <span>Edge vs Market</span>
@@ -389,6 +406,17 @@ export default function SportPredictionPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {!hasModel ? (
+                <div className="text-xs space-y-2 text-slate-400">
+                  <p>
+                    No trained model is serving {SPORT_NAMES[sport] || "this sport"} yet. The pipeline trains one
+                    automatically once enough finished games with odds have been collected.
+                  </p>
+                  {trackRecord?.validation && (
+                    <p className="text-slate-500">Status: {trackRecord.validation}</p>
+                  )}
+                </div>
+              ) : (
               <div className="text-xs space-y-2 text-slate-400">
                 <div className="flex justify-between">
                   <span>Model</span>
@@ -410,8 +438,16 @@ export default function SportPredictionPage() {
                 </div>
                 <div className="flex justify-between">
                   <span>Training Samples</span>
-                  <span className="text-white">{modelInfo.n_training_samples?.toLocaleString() || "N/A"}</span>
+                  <span className="text-white">{(modelInfo.n_training_samples ?? modelInfo.n_samples)?.toLocaleString() || "N/A"}</span>
                 </div>
+                {trackRecord && (
+                  <div className="flex justify-between">
+                    <span>Edge validated</span>
+                    <span className={trackRecord.edge_validated ? "text-emerald-400" : "text-slate-400"}>
+                      {trackRecord.edge_validated ? "Yes" : "Not yet"}
+                    </span>
+                  </div>
+                )}
                 {modelInfo.trained_at && (
                   <div className="flex justify-between">
                     <span>Trained</span>
@@ -448,6 +484,7 @@ export default function SportPredictionPage() {
                   </div>
                 )}
               </div>
+              )}
             </CardContent>
           </Card>
         </div>

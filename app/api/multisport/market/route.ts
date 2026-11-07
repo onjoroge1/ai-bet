@@ -1,327 +1,93 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/db'
+import { getMultisportName, isMultisportKey, multisportSeasonStatus } from '@/lib/multisport/sports'
 
-const BASE_URL = process.env.BACKEND_API_URL || process.env.BACKEND_URL
-const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY || "betgenius_secure_key_2024"
-
-// Data freshness thresholds
-const UPCOMING_MAX_AGE = 10 * 60 * 1000 // 10 minutes
-const FINISHED_MAX_AGE = 60 * 60 * 1000 // 1 hour (finished data rarely changes)
-
-export const maxDuration = 30
+/**
+ * GET /api/multisport/market?sport=basketball_nba&status=upcoming|finished&limit=25&event_id=
+ *
+ * Serves MultisportMatch rows written by pipeline/ (collect → predict → publish).
+ * No upstream calls: the pipeline is the only writer, this route only reads.
+ */
 export const runtime = 'nodejs'
+export const maxDuration = 15
+
+const STALE_AFTER_MS = 3 * 60 * 60 * 1000       // flag data older than 3h as stale
+const IN_PROGRESS_GRACE_MS = 6 * 60 * 60 * 1000  // keep games that started <6h ago in "upcoming"
+
+export function toMarketMatch(m: {
+  eventId: string; status: string; commenceTime: Date; league: string; sport: string
+  homeTeam: string; awayTeam: string; homeTeamId: number | null; awayTeamId: number | null
+  odds: unknown; spread: unknown; model: unknown; finalResult: unknown
+}) {
+  return {
+    event_id: m.eventId,
+    status: m.status,
+    commence_time: m.commenceTime.toISOString(),
+    league: { name: m.league, sport_key: m.sport },
+    home: { name: m.homeTeam, team_id: m.homeTeamId },
+    away: { name: m.awayTeam, team_id: m.awayTeamId },
+    odds: m.odds,
+    spread: m.spread,
+    model: m.model,
+    final_result: m.finalResult,
+  }
+}
 
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams
-  const sport = searchParams.get('sport') || 'basketball_nba'
-  const status = searchParams.get('status') || 'upcoming'
-  const limit = parseInt(searchParams.get('limit') || '25', 10)
-  const eventId = searchParams.get('event_id')
+  const sp = request.nextUrl.searchParams
+  const sport = sp.get('sport') || 'basketball_nba'
+  const status = sp.get('status') === 'finished' ? 'finished' : 'upcoming'
+  const limit = Math.min(Math.max(parseInt(sp.get('limit') || '25', 10) || 25, 1), 100)
+  const eventId = sp.get('event_id')
 
+  if (!isMultisportKey(sport)) {
+    return NextResponse.json({ error: `Unknown sport: ${sport}`, matches: [], total_count: 0 }, { status: 400 })
+  }
+
+  const now = new Date()
   try {
-    // Try database first
-    const maxAge = status === 'finished' ? FINISHED_MAX_AGE : UPCOMING_MAX_AGE
-    const freshnessThreshold = new Date(Date.now() - maxAge)
-
-    // Check DB for ANY data (fresh or stale) — serve immediately, refresh in background if stale
-    const dbMatches = await prisma.multisportMatch.findMany({
+    const rows = await prisma.multisportMatch.findMany({
       where: {
         sport,
         status,
         ...(eventId ? { eventId } : {}),
+        ...(status === 'upcoming' && !eventId
+          ? { commenceTime: { gte: new Date(now.getTime() - IN_PROGRESS_GRACE_MS) } }
+          : {}),
       },
       orderBy: { commenceTime: status === 'finished' ? 'desc' : 'asc' },
       take: limit,
     })
 
-    if (dbMatches.length > 0) {
-      const matches = dbMatches.map(m => ({
-        event_id: m.eventId,
-        status: m.status,
-        commence_time: m.commenceTime.toISOString(),
-        league: { name: m.league, sport_key: m.sport },
-        home: { name: m.homeTeam, team_id: m.homeTeamId },
-        away: { name: m.awayTeam, team_id: m.awayTeamId },
-        odds: m.odds,
-        spread: m.spread,
-        model: m.model,
-        final_result: m.finalResult,
-      }))
+    const newestSync = rows.reduce((max, r) => (r.lastSyncedAt > max ? r.lastSyncedAt : max), new Date(0))
+    const stale = rows.length > 0 && now.getTime() - newestSync.getTime() > STALE_AFTER_MS
+    const withModel = rows.filter(r => r.model !== null).length
+    const latestModelInfo = rows.find(r => r.modelInfo)?.modelInfo as { n_samples?: number } | undefined
 
-      // Check if data is stale
-      const newestSync = dbMatches.reduce((max, m) =>
-        m.lastSyncedAt > max ? m.lastSyncedAt : max, new Date(0))
-      const isFresh = newestSync >= freshnessThreshold
-      const source = isFresh ? 'database' : 'database_stale'
-
-      // If stale, trigger background refresh (don't block response)
-      if (!isFresh && BASE_URL && status === 'upcoming') {
-        refreshFromAPIInBackground(sport, limit).catch(err =>
-          console.error('[Multisport] Background refresh failed:', err)
-        )
-      }
-
-      const cacheControl = status === 'finished'
-        ? 'public, s-maxage=3600, stale-while-revalidate=7200'
-        : isFresh
-          ? 'public, s-maxage=60, stale-while-revalidate=120'
-          : 'public, s-maxage=10, stale-while-revalidate=60'
-
-      return NextResponse.json(
-        {
-          sport,
-          sport_name: getSportName(sport),
-          matches,
-          total_count: matches.length,
-          source,
-        },
-        { headers: { 'Cache-Control': cacheControl } }
-      )
-    }
-
-    // Fall back to backend API
-    if (!BASE_URL) {
-      return NextResponse.json(
-        { error: 'Backend API not configured', matches: [], total_count: 0 },
-        { status: 500 }
-      )
-    }
-
-    // Backend uses /predict-multisport/available for fixture listings
-    const url = `${BASE_URL}/predict-multisport/available?sport=${sport}`
-
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 15000)
-
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${API_KEY}` },
-      signal: controller.signal,
-      cache: 'no-store',
-    })
-    clearTimeout(timeoutId)
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => 'Unknown error')
-      throw new Error(`Backend error: ${response.status} - ${text}`)
-    }
-
-    const raw = await response.json()
-
-    // Transform /predict-multisport/available response to match expected format
-    const fixtures = raw.fixtures || []
-    const matches = fixtures
-      .slice(0, limit)
-      .map((f: any) => ({
-        event_id: f.event_id,
-        status: 'upcoming',
-        commence_time: f.commence_time,
-        league: { name: f.league_name || getSportName(sport), sport_key: sport },
-        home: { name: f.home_team, team_id: null },
-        away: { name: f.away_team, team_id: null },
-        odds: {
-          consensus: {
-            home_odds: null,
-            away_odds: null,
-            home_prob: f.home_prob,
-            away_prob: f.away_prob,
-            home_spread: f.spread,
-            total_line: f.total_line,
-            n_bookmakers: null,
-          },
-        },
-        spread: { line: f.spread, total: f.total_line },
-        model: {
-          predictions: {
-            home_win: f.home_prob,
-            away_win: f.away_prob,
-            pick: f.model_pick,
-            confidence: f.model_confidence,
-            conviction_tier: f.model_confidence > 0.75 ? 'premium' : f.model_confidence > 0.6 ? 'strong' : 'standard',
-          },
-          source: 'v3_multisport',
-          no_draw: true,
-        },
-        final_result: null,
-      }))
-
-    // Filter by status — /predict-multisport/available only returns upcoming
-    // For finished, we can only serve from DB
-    if (status === 'finished') {
-      return NextResponse.json(
-        { sport, sport_name: getSportName(sport), matches: [], total_count: 0, source: 'api' },
-        { headers: { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=7200' } }
-      )
-    }
-
-    const data = {
+    const body = {
       sport,
-      sport_name: getSportName(sport),
-      matches,
-      total_count: raw.count || matches.length,
-      source: 'api',
+      sport_name: getMultisportName(sport),
+      season: multisportSeasonStatus(sport, now),
+      matches: rows.map(toMarketMatch),
+      total_count: rows.length,
+      model_info: {
+        training_samples: latestModelInfo?.n_samples ?? 0,
+        confidence_note: rows.length > 0 && withModel === 0 && status === 'upcoming'
+          ? 'Market line only — no trained model yet for this sport'
+          : null,
+      },
+      live_data_available: false,
+      source: rows.length === 0 ? 'database_empty' : stale ? 'database_stale' : 'database',
+      last_synced: rows.length > 0 ? newestSync.toISOString() : null,
     }
 
-    // Store fetched matches in DB asynchronously (don't block response)
-    if (matches.length > 0) {
-      storeMatchesInBackground(matches, sport).catch(err =>
-        console.error('[Multisport] Background store failed:', err)
-      )
-    }
-
-    const cacheControl = 'public, s-maxage=60, stale-while-revalidate=120'
-
-    return NextResponse.json(data, {
-      headers: { 'Cache-Control': cacheControl },
-    })
+    const cacheControl = status === 'finished'
+      ? 'public, s-maxage=600, stale-while-revalidate=3600'
+      : 'public, s-maxage=60, stale-while-revalidate=300'
+    return NextResponse.json(body, { headers: { 'Cache-Control': cacheControl } })
   } catch (error) {
-    // Try stale DB data as last resort
-    try {
-      const staleMatches = await prisma.multisportMatch.findMany({
-        where: { sport, status, ...(eventId ? { eventId } : {}) },
-        orderBy: { commenceTime: status === 'finished' ? 'desc' : 'asc' },
-        take: limit,
-      })
-
-      if (staleMatches.length > 0) {
-        const matches = staleMatches.map(m => ({
-          event_id: m.eventId,
-          status: m.status,
-          commence_time: m.commenceTime.toISOString(),
-          league: { name: m.league, sport_key: m.sport },
-          home: { name: m.homeTeam, team_id: m.homeTeamId },
-          away: { name: m.awayTeam, team_id: m.awayTeamId },
-          odds: m.odds,
-          spread: m.spread,
-          model: m.model,
-          final_result: m.finalResult,
-        }))
-
-        return NextResponse.json(
-          {
-            sport,
-            sport_name: getSportName(sport),
-            matches,
-            total_count: matches.length,
-            source: 'database_stale',
-          },
-          { headers: { 'Cache-Control': 'public, s-maxage=30' } }
-        )
-      }
-    } catch {
-      // DB also failed
-    }
-
     const msg = error instanceof Error ? error.message : 'Unknown error'
     console.error('[Multisport Market API]', msg)
-    return NextResponse.json(
-      { error: msg, matches: [], total_count: 0 },
-      { status: 200, headers: { 'Cache-Control': 'public, s-maxage=60' } }
-    )
+    return NextResponse.json({ error: msg, matches: [], total_count: 0 }, { status: 500 })
   }
-}
-
-function getSportName(sport: string): string {
-  const names: Record<string, string> = {
-    basketball_nba: 'NBA',
-    icehockey_nhl: 'NHL',
-    basketball_ncaab: 'NCAA Basketball',
-  }
-  return names[sport] || sport
-}
-
-/**
- * Background refresh: fetch from API and update DB without blocking the response.
- */
-async function refreshFromAPIInBackground(sport: string, limit: number) {
-  if (!BASE_URL) return
-  try {
-    const url = `${BASE_URL}/predict-multisport/available?sport=${sport}`
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 15000)
-
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${API_KEY}` },
-      signal: controller.signal,
-      cache: 'no-store',
-    })
-    clearTimeout(timeoutId)
-
-    if (!response.ok) return
-
-    const raw = await response.json()
-    const fixtures = raw.fixtures || []
-    if (fixtures.length === 0) return
-
-    const matches = fixtures.slice(0, limit).map((f: any) => ({
-      event_id: f.event_id,
-      status: 'upcoming',
-      commence_time: f.commence_time,
-      league: { name: f.league_name || getSportName(sport), sport_key: sport },
-      home: { name: f.home_team, team_id: null },
-      away: { name: f.away_team, team_id: null },
-      odds: {
-        consensus: {
-          home_odds: null, away_odds: null,
-          home_prob: f.home_prob, away_prob: f.away_prob,
-          home_spread: f.spread, total_line: f.total_line,
-          n_bookmakers: null,
-        },
-      },
-      spread: { line: f.spread, total: f.total_line },
-      model: {
-        predictions: {
-          home_win: f.home_prob, away_win: f.away_prob,
-          pick: f.model_pick, confidence: f.model_confidence,
-          conviction_tier: f.model_confidence > 0.75 ? 'premium' : f.model_confidence > 0.6 ? 'strong' : 'standard',
-        },
-        source: 'v3_multisport',
-        no_draw: true,
-      },
-      final_result: null,
-    }))
-
-    await storeMatchesInBackground(matches, sport)
-    console.log(`[Multisport] Background refresh complete: ${matches.length} ${sport} matches stored`)
-  } catch (err) {
-    console.error('[Multisport] Background refresh error:', err)
-  }
-}
-
-async function storeMatchesInBackground(matches: any[], sport: string) {
-  const toStore = matches
-    .map((m: any) => {
-      const eventId = String(m.event_id || '')
-      if (!eventId) return null
-      return {
-        eventId,
-        sport,
-        status: m.status || 'upcoming',
-        homeTeam: m.home?.name || 'Home',
-        awayTeam: m.away?.name || 'Away',
-        homeTeamId: m.home?.team_id || null,
-        awayTeamId: m.away?.team_id || null,
-        league: m.league?.name || sport,
-        commenceTime: new Date(m.commence_time),
-        odds: m.odds || null,
-        spread: m.spread || null,
-        model: m.model || null,
-        finalResult: m.final_result || null,
-        lastSyncedAt: new Date(),
-      }
-    })
-    .filter((m: any): m is NonNullable<typeof m> => m !== null)
-
-  if (toStore.length === 0) return
-
-  // Batch upsert
-  await prisma.$transaction(
-    toStore.map(m =>
-      prisma.multisportMatch.upsert({
-        where: { eventId_sport: { eventId: m.eventId, sport: m.sport } },
-        update: { ...m, syncCount: { increment: 1 } },
-        create: { ...m, syncCount: 1 },
-      })
-    ),
-    { timeout: 30000 }
-  )
 }

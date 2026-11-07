@@ -41,19 +41,23 @@ Branch `claude/football-basketball-odds-api-cio966`.
 - **Not proven here:** a live call to The Odds API (host blocked in this sandbox) and a write to the
   real Neon DB. First real run = `pipeline-backfill` + `pipeline-hourly` after secrets are set.
 
-### PR-2 — web: DB-only multisport routes + NFL wiring + cold-start rendering
-- `app/api/multisport/{sports,market,predict}/route.ts`: serve from `MultisportMatch` only; delete the
-  `BACKEND_API_URL` proxy/fallback paths (today `predict` returns 500 "Backend not configured" before
-  it even checks the cache). `sports` derives counts from the DB.
-- Add `americanfootball_nfl` everywhere the list is hardcoded (~21 files, listed in
-  `MULTISPORT_REVIVAL_PLAN.md` §3): sport selector, market route names, hubs data, team-stats slug,
-  blog generator, social scheduler, admin leaderboard/training-status.
-- `/nfl` hub page mirroring `/nba`; `/sports` default tab → NBA (NFL on Sat–Mon).
-- Cold-start UI: when `model` is null show de-vigged market probability labelled "market", no pick,
-  no confidence badge. `SportMatchCard` already tolerates `model = null`; the detail page needs the same.
-- Remove the superseded cron `/api/admin/multisport/sync` from `vercel.json` (pipeline owns writes).
-- Acceptance: `tsc --noEmit` clean, jest at baseline, `/sports` shows NFL rows written by PR-1,
-  zero references to the Replit host on multisport paths.
+### PR-2 — web: DB-only multisport routes + NFL wiring + cold-start rendering ✅ built (NBA + NFL only)
+Scope decision 2026-11-07: concentrate on **NBA and NFL**. NCAAB/NHL stay defined in the registry
+(`display: false`) so old rows and links keep working, but are off the selector, homepage and pipeline defaults.
+- New `lib/multisport/sports.ts` registry (keys = The Odds API sport_keys = `pipeline/config.py`);
+  every UI list reads from it.
+- `app/api/multisport/{sports,market,predict}/route.ts`: read `MultisportMatch` only; backend proxy
+  and fallbacks deleted (the old `predict` returned 500 "Backend not configured" before checking its cache).
+- NFL wired: selector, homepage tabs (NBA · NFL · Soccer, default NBA), `/sports` default NBA,
+  `/nfl` + `/nfl/today` + `/nfl/tomorrow` hubs, footer link, team-stats slug prefix, blog generator,
+  social scheduler, admin leaderboard/training-status/matches.
+- Cold-start UI: `SportMatchCard` shows "Market line only" under the odds bar; the event page swaps the
+  confidence ring for a "Market line only" badge, titles the card "Market Probabilities", hides the pick
+  row and shows the honesty status instead of model info. Selector tabs get a "Market only" badge.
+- Removed the superseded `/api/admin/multisport/sync` route and its `vercel.json` cron.
+- Tests: `__tests__/unit/multisport-sports.test.ts`, `__tests__/integration/multisport-api.test.ts`
+  (routes against a mocked Prisma: DB-only, cold-start payloads, 400/404, stale flag).
+- Acceptance still to observe in production: `/sports` shows NFL rows written by PR-1 once secrets are set.
 
 ### PR-3 — picks engine + WhatsApp: NFL branch, model-presence gate
 - `lib/premium-picks-engine.ts` `getMultisportPicks`: skip rows with `model = null`; add `nfl` with a

@@ -40,6 +40,7 @@ const MODEL_LABELS: Record<string, { label: string; colour: string }> = {
   v2_lgbm: { label: 'V2 LightGBM', colour: 'text-purple-400' },
   v3_sharp: { label: 'V3 Sharp', colour: 'text-emerald-400' },
   v3_basketball_nba: { label: 'V3 NBA', colour: 'text-orange-400' },
+  v3_americanfootball_nfl: { label: 'V3 NFL', colour: 'text-amber-400' },
   v3_icehockey_nhl: { label: 'V3 NHL', colour: 'text-cyan-400' },
   v3_basketball_ncaab: { label: 'V3 NCAAB', colour: 'text-yellow-400' },
   v3_americanfootball_nfl: { label: 'V3 NFL', colour: 'text-red-400' },

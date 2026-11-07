@@ -5,6 +5,7 @@ import { SportMatchCard } from "./SportMatchCard"
 import { SkeletonCard } from "@/components/match/shared"
 import { Trophy, ChevronRight } from "lucide-react"
 import Link from "next/link"
+import { ACTIVE_MULTISPORT_KEYS, MULTISPORT } from "@/lib/multisport/sports"
 
 interface SportData {
   sport: string
@@ -13,11 +14,11 @@ interface SportData {
   total_count: number
 }
 
-const SPORTS = [
-  { key: "basketball_nba", name: "NBA", accent: "border-l-orange-500" },
-  { key: "icehockey_nhl", name: "NHL", accent: "border-l-cyan-500" },
-  { key: "basketball_ncaab", name: "NCAAB", accent: "border-l-purple-500" },
-]
+const SPORTS = ACTIVE_MULTISPORT_KEYS.map(k => ({
+  key: k,
+  name: MULTISPORT[k].name,
+  accent: MULTISPORT[k].accent.borderL,
+}))
 
 export function MultisportPreview() {
   const [sportData, setSportData] = useState<Record<string, SportData>>({})

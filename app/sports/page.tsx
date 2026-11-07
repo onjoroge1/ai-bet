@@ -34,7 +34,7 @@ interface MarketResponse {
 }
 
 export default function SportsPage() {
-  const [sport, setSport] = useState("soccer")
+  const [sport, setSport] = useState("basketball_nba")
   const [status, setStatus] = useState<"upcoming" | "finished">("upcoming")
   const [data, setData] = useState<MarketResponse | null>(null)
   const [loading, setLoading] = useState(true)

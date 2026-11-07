@@ -28,6 +28,7 @@ const MODEL_LABELS: Record<string, string> = {
   v2_lgbm: 'V2 LightGBM',
   v3_sharp: 'V3 Sharp',
   v3_basketball_nba: 'V3 NBA',
+  v3_americanfootball_nfl: 'V3 NFL',
   v3_icehockey_nhl: 'V3 NHL',
   v3_basketball_ncaab: 'V3 NCAAB',
   v3_americanfootball_nfl: 'V3 NFL',

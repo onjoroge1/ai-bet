@@ -106,10 +106,6 @@
       "schedule": "*/2 * * * *"
     },
     {
-      "path": "/api/admin/multisport/sync",
-      "schedule": "0 */2 * * *"
-    },
-    {
       "path": "/api/admin/predictions/refresh-progressive",
       "schedule": "*/30 * * * *"
     },

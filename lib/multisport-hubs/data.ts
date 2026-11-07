@@ -300,6 +300,14 @@ export const SPORTS: SportDef[] = [
     flagEmoji: '🏀',
   },
   {
+    slug: 'nfl',
+    sport: 'americanfootball_nfl',
+    displayName: 'NFL',
+    description:
+      'AI predictions for every NFL game. Consensus lines from US books, model accuracy once validated, and team form — updated through the week.',
+    flagEmoji: '🏈',
+  },
+  {
     slug: 'nhl',
     sport: 'icehockey_nhl',
     displayName: 'NHL',

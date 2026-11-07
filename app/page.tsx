@@ -106,7 +106,7 @@ export default function HomePage() {
     avgConfidence: 0,
     liveMatches: 0,
   })
-  const [selectedSport, setSelectedSport] = useState<string>("soccer")
+  const [selectedSport, setSelectedSport] = useState<string>("basketball_nba")
 
   // ── Auth check ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -629,10 +629,9 @@ export default function HomePage() {
           {/* Sport tab bar */}
           <div className="flex items-center gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
             {[
-              { key: "soccer", label: "Soccer", icon: "⚽" },
               { key: "basketball_nba", label: "NBA", icon: "🏀" },
-              { key: "icehockey_nhl", label: "NHL", icon: "🏒" },
-              { key: "basketball_ncaab", label: "NCAAB", icon: "🏀" },
+              { key: "americanfootball_nfl", label: "NFL", icon: "🏈" },
+              { key: "soccer", label: "Soccer", icon: "⚽" },
             ].map((sport) => (
               <button
                 key={sport.key}

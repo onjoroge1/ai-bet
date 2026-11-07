@@ -34,6 +34,7 @@ interface MultisportBlogDraft {
 
 const SPORT_CONFIG: Record<string, { name: string; emoji: string; type: string }> = {
   basketball_nba: { name: 'NBA', emoji: '🏀', type: 'Basketball' },
+  americanfootball_nfl: { name: 'NFL', emoji: '🏈', type: 'Football' },
   icehockey_nhl: { name: 'NHL', emoji: '🏒', type: 'Ice Hockey' },
   basketball_ncaab: { name: 'NCAAB', emoji: '🏀', type: 'College Basketball' },
 }
