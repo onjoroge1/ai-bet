@@ -59,13 +59,26 @@ Scope decision 2026-11-07: concentrate on **NBA and NFL**. NCAAB/NHL stay define
   (routes against a mocked Prisma: DB-only, cold-start payloads, 400/404, stale flag).
 - Acceptance still to observe in production: `/sports` shows NFL rows written by PR-1 once secrets are set.
 
-### PR-3 — picks engine + WhatsApp: NFL branch, model-presence gate
-- `lib/premium-picks-engine.ts` `getMultisportPicks`: skip rows with `model = null`; add `nfl` with a
-  conservative provisional gate; prefer `predictionData.value.value_bet` when
-  `model_track_record.edge_validated` is true (mirrors soccer Criterion 0).
-- `lib/whatsapp-multisport-picks.ts`, `scripts/multisport-alpha-analysis.ts`,
-  `scripts/full-sport-performance-audit.ts`: add NFL.
-- Acceptance: unit tests for the gate; picks page empty (not erroring) during cold start.
+### PR-3 — picks engine + WhatsApp: NFL/NHL, cold-start gate, edge-first value picks ✅ built
+Scope update 2026-11-07: **NHL retained** alongside NBA and NFL (registry `display: true`, pipeline
+default sports, homepage tab, WhatsApp commands). NCAAB remains defined but hidden.
+- `lib/premium-picks-engine.ts`: multisport picks iterate the registry; new pure
+  `evaluateMultisportPick(sport, row)` — (0) no model block → never a pick; (1) an edge-validated
+  `value_bet` in `predictionData` → 'value' pick on the bet outcome at the best price (Criterion 0
+  mirror; only the pipeline's honesty gate can enable it); (2) otherwise the per-sport confidence
+  buckets. NFL gates are **provisional** (≥0.65 standard, ≥0.75 strong favourite, never premium,
+  no underdog calls) and labelled so in the reasons until the alpha analysis covers NFL.
+- `lib/whatsapp-multisport-picks.ts`: `SPORT_CONFIG` from the registry (NBA/NFL/NHL commands),
+  `hasModel` on each pick, cold-start formatting ("Market line only — no NFL model pick yet"),
+  honesty + value-bet lines in VIP analysis. Webhook command parsing is now registry-driven; help
+  text swaps NCAAB for NFL.
+- `components/snapbet-picks/SnapBetPicksSection.tsx` tabs from the registry.
+- `scripts/multisport-alpha-analysis.ts` (`--sport nba|nfl|nhl|ncaab`) and
+  `scripts/full-sport-performance-audit.ts` include NFL.
+- Tests: `__tests__/unit/premium-picks-engine-multisport.test.ts`,
+  `__tests__/unit/whatsapp-multisport-picks.test.ts`.
+- Still to observe: the first real NFL alpha analysis once ≥50 settled NFL games exist; replace the
+  provisional gates with measured ones.
 
 ### PR-4 — pipeline: cold-start accelerator (data import)
 NFL reaches 120 games in ~9 weeks from zero, which is most of the remaining season. Options, in

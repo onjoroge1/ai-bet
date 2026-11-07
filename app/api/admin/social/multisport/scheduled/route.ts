@@ -7,9 +7,9 @@ import { ACTIVE_MULTISPORT_KEYS, MULTISPORT } from '@/lib/multisport/sports'
 
 export const maxDuration = 60
 
-// Minimum model confidence to post. NBA value from the 2026-05 alpha analysis;
-// NFL is provisional until scripts/multisport-alpha-analysis.ts covers it.
-const THRESHOLDS: Record<string, number> = { basketball_nba: 0.80, americanfootball_nfl: 0.75 }
+// Minimum model confidence to post. NBA/NHL values from the 2026-05 alpha
+// analysis; NFL is provisional until scripts/multisport-alpha-analysis.ts covers it.
+const THRESHOLDS: Record<string, number> = { basketball_nba: 0.80, icehockey_nhl: 0.85, americanfootball_nfl: 0.75 }
 
 const SPORTS = ACTIVE_MULTISPORT_KEYS.map(k => ({
   key: k,

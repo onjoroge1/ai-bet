@@ -631,6 +631,7 @@ export default function HomePage() {
             {[
               { key: "basketball_nba", label: "NBA", icon: "🏀" },
               { key: "americanfootball_nfl", label: "NFL", icon: "🏈" },
+              { key: "icehockey_nhl", label: "NHL", icon: "🏒" },
               { key: "soccer", label: "Soccer", icon: "⚽" },
             ].map((sport) => (
               <button

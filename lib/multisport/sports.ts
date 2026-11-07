@@ -3,8 +3,8 @@
  *
  * Keys are The Odds API sport_keys and match `MultisportMatch.sport` rows
  * written by pipeline/ (see pipeline/snapbet_pipeline/config.py — keep the
- * two lists in step). `display: true` sports are the pivot (NBA + NFL);
- * NCAAB / NHL remain defined so historical rows and old links keep working.
+ * two lists in step). `display: true` sports are the ones we serve (NBA, NFL,
+ * NHL); NCAAB remains defined so historical rows and old links keep working.
  */
 
 export type MultisportKey =
@@ -50,7 +50,7 @@ export const MULTISPORT: Record<MultisportKey, MultisportDef> = {
     key: 'icehockey_nhl', name: 'NHL', longName: 'NHL Hockey', slug: 'nhl', emoji: '🏒',
     family: 'hockey', activeMonths: [10, 11, 12, 1, 2, 3, 4, 5, 6],
     accent: { text: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/30', borderL: 'border-l-cyan-500' },
-    display: false,
+    display: true,
   },
 }
 

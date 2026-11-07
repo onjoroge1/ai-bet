@@ -57,9 +57,9 @@ SPORTS: Dict[str, SportConfig] = {
     ),
 }
 
-# Sports enabled by default (the pivot): NFL + NBA. NCAAB and NHL stay
-# configured but off unless PIPELINE_SPORTS lists them.
-DEFAULT_SPORTS: List[str] = ["americanfootball_nfl", "basketball_nba"]
+# Sports enabled by default: NFL + NBA + NHL (must match lib/multisport/sports.ts
+# `display: true`). NCAAB stays configured but off unless PIPELINE_SPORTS lists it.
+DEFAULT_SPORTS: List[str] = ["americanfootball_nfl", "basketball_nba", "icehockey_nhl"]
 
 # ELO parameters (shared with feature builder)
 ELO_K = 20.0

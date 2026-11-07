@@ -24,7 +24,7 @@ pip install -e ".[dev]"
 
 export DATABASE_URL="postgresql://..."        # the Neon URL the Vercel app uses
 export ODDS_API_KEY="..."                      # https://the-odds-api.com
-export PIPELINE_SPORTS="americanfootball_nfl,basketball_nba"   # default; add basketball_ncaab / icehockey_nhl to opt in
+export PIPELINE_SPORTS="americanfootball_nfl,basketball_nba,icehockey_nhl"   # default; add basketball_ncaab to opt in
 
 snapbet-pipeline migrate      # create tables (idempotent; every command also runs it)
 snapbet-pipeline collect      # odds snapshot for in-season sports
@@ -64,7 +64,8 @@ The Replit database is gone, so training sets are empty. From the first
 | sport | min games | realistic ETA from zero |
 |---|---|---|
 | NBA | 150 | ~3 weeks of nightly collection |
-| NCAAB | 150 | ~1 week (30+ games/day) |
+| NHL | 150 | ~3 weeks |
+| NCAAB (opt-in) | 150 | ~1 week (30+ games/day) |
 | NFL | 120 | ~8–9 weeks (≈14 games/week) — consider importing last season's odds+results |
 
 ## Tests

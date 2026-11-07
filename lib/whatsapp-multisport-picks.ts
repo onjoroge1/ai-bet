@@ -1,16 +1,31 @@
 /**
- * WhatsApp Multisport Picks — fetch, format, and display NBA/NHL/NCAAB picks
+ * WhatsApp Multisport Picks — fetch, format, and display NBA/NFL/NHL picks
  * Mirrors lib/whatsapp-picks.ts but for binary-outcome sports (no draw).
+ *
+ * Data comes from MultisportMatch rows written by pipeline/. During the cold
+ * start a row carries market odds but `model` is null — we say so instead of
+ * inventing a pick.
  */
 
 import prisma from '@/lib/db'
+import { ACTIVE_MULTISPORT_KEYS, MULTISPORT, isMultisportKey } from '@/lib/multisport/sports'
 
 // ─── Sport Configuration ────────────────────────────────────────────────────
 
-export const SPORT_CONFIG: Record<string, { key: string; name: string; emoji: string }> = {
-  nba:   { key: 'basketball_nba',   name: 'NBA',   emoji: '🏀' },
-  nhl:   { key: 'icehockey_nhl',    name: 'NHL',   emoji: '🏒' },
-  ncaab: { key: 'basketball_ncaab', name: 'NCAAB', emoji: '🏀' },
+/** short code ('nba' | 'nfl' | 'nhl') → { key, name, emoji }; drives the WhatsApp commands. */
+export const SPORT_CONFIG: Record<string, { key: string; name: string; emoji: string }> = Object.fromEntries(
+  ACTIVE_MULTISPORT_KEYS.map(k => [MULTISPORT[k].slug, { key: k, name: MULTISPORT[k].name, emoji: MULTISPORT[k].emoji }])
+)
+
+const DEFAULT_SHORT = MULTISPORT.basketball_nba.slug
+
+function shortFor(sportKey: string | undefined): string {
+  if (sportKey && isMultisportKey(sportKey)) return MULTISPORT[sportKey].slug
+  return DEFAULT_SHORT
+}
+
+function configFor(sportKey: string | undefined) {
+  return SPORT_CONFIG[shortFor(sportKey)] || SPORT_CONFIG[DEFAULT_SHORT]
 }
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -42,20 +57,20 @@ export interface MultisportWhatsAppPick {
     awayWin?: number | null
     edgeVsMarket?: number | null
   }
+  /** False during the cold start (row published with market data only). */
+  hasModel: boolean
 }
 
 // ─── Data Fetching ──────────────────────────────────────────────────────────
 
 /**
  * Fetch multisport picks from the database (MultisportMatch table).
- * Falls back to the internal API if DB is empty.
  */
 export async function getMultisportPicks(
   sportKey: string,
   limit: number = 20
 ): Promise<MultisportWhatsAppPick[]> {
   try {
-    // Try DB first (faster, no network call)
     const dbMatches = await prisma.multisportMatch.findMany({
       where: {
         sport: sportKey,
@@ -65,27 +80,7 @@ export async function getMultisportPicks(
       orderBy: { commenceTime: 'asc' },
       take: limit,
     })
-
-    if (dbMatches.length > 0) {
-      return dbMatches.map(m => transformDBMatch(m))
-    }
-
-    // Fallback: fetch from internal API
-    const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    const res = await fetch(`${baseUrl}/api/multisport/market?sport=${sportKey}&status=upcoming&limit=${limit}`, {
-      next: { revalidate: 0 },
-      headers: { 'Content-Type': 'application/json' },
-    })
-
-    if (!res.ok) {
-      console.error(`[WhatsApp Multisport] API error: ${res.status}`)
-      return []
-    }
-
-    const data = await res.json() as { matches?: any[] }
-    const matches = data.matches || []
-
-    return matches.map((m: any) => transformAPIMatch(m, sportKey))
+    return dbMatches.map(m => transformDBMatch(m))
   } catch (error) {
     console.error('[WhatsApp Multisport] Error fetching picks:', error)
     return []
@@ -113,18 +108,12 @@ export async function getMultisportPickByEventId(
 
 // ─── Data Transformers ──────────────────────────────────────────────────────
 
-function transformDBMatch(m: any): MultisportWhatsAppPick {
+export function transformDBMatch(m: any): MultisportWhatsAppPick {
   const odds = (m.odds as any) || {}
   const consensus = odds.consensus || odds
-  const model = (m.model as any) || {}
-  const predictions = model.predictions || model
-
-  const sportShort = m.sport?.includes('nba') ? 'nba'
-    : m.sport?.includes('nhl') ? 'nhl'
-    : m.sport?.includes('ncaab') ? 'ncaab'
-    : 'nba'
-
-  const config = SPORT_CONFIG[sportShort] || SPORT_CONFIG.nba
+  const model = (m.model as any) || null
+  const predictions = model ? (model.predictions || model) : {}
+  const config = configFor(m.sport)
 
   return {
     eventId: m.eventId,
@@ -153,45 +142,7 @@ function transformDBMatch(m: any): MultisportWhatsAppPick {
       awayWin: predictions.away_win ?? null,
       edgeVsMarket: predictions.edge_vs_market ?? null,
     },
-  }
-}
-
-function transformAPIMatch(m: any, sportKey: string): MultisportWhatsAppPick {
-  const consensus = m.odds?.consensus || {}
-  const model = m.model?.predictions || m.model || {}
-  const sportShort = sportKey.includes('nba') ? 'nba'
-    : sportKey.includes('nhl') ? 'nhl'
-    : sportKey.includes('ncaab') ? 'ncaab'
-    : 'nba'
-  const config = SPORT_CONFIG[sportShort] || SPORT_CONFIG.nba
-
-  return {
-    eventId: m.event_id,
-    sportKey,
-    sportName: config.name,
-    homeTeam: m.home?.name || 'Home',
-    awayTeam: m.away?.name || 'Away',
-    league: m.league?.name || config.name,
-    commenceTime: m.commence_time,
-    odds: {
-      homeOdds: consensus.home_odds ?? null,
-      awayOdds: consensus.away_odds ?? null,
-      homeProb: consensus.home_prob ?? null,
-      awayProb: consensus.away_prob ?? null,
-      homeSpread: consensus.home_spread ?? null,
-      totalLine: consensus.total_line ?? null,
-      overOdds: consensus.over_odds ?? null,
-      underOdds: consensus.under_odds ?? null,
-      bookCount: consensus.n_bookmakers ?? m.odds?.book_count ?? null,
-    },
-    model: {
-      pick: model.pick ?? null,
-      confidence: model.confidence ?? null,
-      convictionTier: model.conviction_tier ?? null,
-      homeWin: model.home_win ?? null,
-      awayWin: model.away_win ?? null,
-      edgeVsMarket: model.edge_vs_market ?? null,
-    },
+    hasModel: !!model && predictions.pick != null,
   }
 }
 
@@ -201,7 +152,7 @@ function transformAPIMatch(m: any, sportKey: string): MultisportWhatsAppPick {
  * Format a single multisport pick for WhatsApp display.
  */
 export function formatMultisportPick(pick: MultisportWhatsAppPick, index?: number): string {
-  const config = Object.values(SPORT_CONFIG).find(c => c.key === pick.sportKey) || SPORT_CONFIG.nba
+  const config = configFor(pick.sportKey)
   const lines: string[] = []
 
   // Header
@@ -231,8 +182,8 @@ export function formatMultisportPick(pick: MultisportWhatsAppPick, index?: numbe
     }
   }
 
-  // Model pick
-  if (pick.model.pick) {
+  if (pick.hasModel && pick.model.pick) {
+    // Model pick
     const pickTeam = pick.model.pick === 'H' ? pick.homeTeam : pick.awayTeam
     const conf = pick.model.confidence
       ? `${Math.round(pick.model.confidence * 100)}%`
@@ -242,19 +193,28 @@ export function formatMultisportPick(pick: MultisportWhatsAppPick, index?: numbe
       : ''
     lines.push(`📊 Pick: ${pickTeam}`)
     lines.push(`💡 Confidence: ${conf}${tier}`)
+
+    // Model probabilities
+    if (pick.model.homeWin && pick.model.awayWin) {
+      const hPct = Math.round(pick.model.homeWin * 100)
+      const aPct = Math.round(pick.model.awayWin * 100)
+      lines.push(`📈 ${pick.homeTeam}: ${hPct}% | ${pick.awayTeam}: ${aPct}%`)
+    }
+  } else {
+    // Cold start: no trained model for this sport yet — show the market line, no pick.
+    lines.push(`📊 Market line only — no ${config.name} model pick yet`)
+    if (pick.odds.homeProb != null && pick.odds.awayProb != null) {
+      const hPct = Math.round(pick.odds.homeProb * 100)
+      const aPct = Math.round(pick.odds.awayProb * 100)
+      lines.push(`📈 Market: ${pick.homeTeam} ${hPct}% | ${pick.awayTeam} ${aPct}%`)
+    }
   }
 
-  // Probabilities
-  if (pick.model.homeWin && pick.model.awayWin) {
-    const hPct = Math.round(pick.model.homeWin * 100)
-    const aPct = Math.round(pick.model.awayWin * 100)
-    lines.push(`📈 ${pick.homeTeam}: ${hPct}% | ${pick.awayTeam}: ${aPct}%`)
-  }
-
-  // Spread
+  // Spread (relative to the picked side when there is one, else the home team)
   if (pick.odds.homeSpread != null) {
-    const spreadTeam = pick.model.pick === 'H' ? pick.homeTeam : pick.awayTeam
-    const spreadVal = pick.model.pick === 'H' ? pick.odds.homeSpread : -(pick.odds.homeSpread)
+    const homeSide = !pick.hasModel || pick.model.pick !== 'A'
+    const spreadTeam = homeSide ? pick.homeTeam : pick.awayTeam
+    const spreadVal = homeSide ? pick.odds.homeSpread : -(pick.odds.homeSpread)
     const sign = spreadVal > 0 ? '+' : ''
     lines.push(`📏 Spread: ${spreadTeam} ${sign}${spreadVal}`)
   }
@@ -281,7 +241,7 @@ export function formatMultisportPicksList(
   limit?: number,
   isVIP: boolean = false
 ): string {
-  const config = SPORT_CONFIG[sportShortKey] || SPORT_CONFIG.nba
+  const config = SPORT_CONFIG[sportShortKey] || SPORT_CONFIG[DEFAULT_SHORT]
   const displayPicks = limit ? picks.slice(0, limit) : picks
   const separator = '─'.repeat(28)
 
@@ -299,6 +259,11 @@ export function formatMultisportPicksList(
     lines.push('')
     lines.push(`⚽ Soccer picks available! Send PICKS`)
     return lines.join('\n')
+  }
+
+  if (displayPicks.every(p => !p.hasModel)) {
+    lines.push('')
+    lines.push(`ℹ️ Our ${config.name} model is still training — showing market lines, no picks yet.`)
   }
 
   // Picks
@@ -333,10 +298,9 @@ export function formatMultisportPicksList(
   lines.push(`${otherSports.map(s => `Send ${s}`).join(' | ')}`)
 
   // Ensure under 4096 chars
-  let result = lines.join('\n')
-  while (result.length > 4000 && displayPicks.length > 1) {
-    displayPicks.pop()
-    return formatMultisportPicksList(picks.slice(0, displayPicks.length), sportShortKey, displayPicks.length, isVIP)
+  const result = lines.join('\n')
+  if (result.length > 4000 && displayPicks.length > 1) {
+    return formatMultisportPicksList(picks, sportShortKey, displayPicks.length - 1, isVIP)
   }
 
   return result
@@ -349,7 +313,7 @@ export function formatMultisportVIPAnalysis(
   pick: MultisportWhatsAppPick,
   predictionData?: any
 ): string {
-  const config = Object.values(SPORT_CONFIG).find(c => c.key === pick.sportKey) || SPORT_CONFIG.nba
+  const config = configFor(pick.sportKey)
   const separator = '─'.repeat(28)
   const lines: string[] = []
 
@@ -361,7 +325,7 @@ export function formatMultisportVIPAnalysis(
   lines.push(formatMultisportPick(pick))
   lines.push(separator)
 
-  // Prediction data (from /predict-multisport endpoint)
+  // Prediction data (pipeline predictionData payload)
   if (predictionData) {
     // Team context
     const teamCtx = predictionData.team_context
@@ -404,12 +368,30 @@ export function formatMultisportVIPAnalysis(
       if (modelInfo.accuracy) {
         lines.push(`Accuracy: ${Math.round(modelInfo.accuracy * 100)}%`)
       }
-      if (modelInfo.features_used) {
-        lines.push(`Features: ${modelInfo.features_used}`)
+      if (modelInfo.features_used || modelInfo.n_features) {
+        lines.push(`Features: ${modelInfo.features_used || modelInfo.n_features}`)
       }
-      if (modelInfo.n_training_samples) {
-        lines.push(`Training samples: ${modelInfo.n_training_samples.toLocaleString()}`)
+      const samples = modelInfo.n_training_samples ?? modelInfo.n_samples
+      if (samples) {
+        lines.push(`Training samples: ${Number(samples).toLocaleString()}`)
       }
+    }
+
+    // Honesty block
+    const track = predictionData.model_track_record
+    if (track) {
+      lines.push('')
+      lines.push(track.edge_validated
+        ? '✅ Edge validated vs the market on a temporal holdout'
+        : `⚠️ No demonstrated edge yet${track.validation ? ` — ${track.validation}` : ''}`)
+    }
+
+    // Value bet (only when the pipeline's gate allows it)
+    const vb = predictionData.value?.value_bet
+    if (vb && track?.edge_validated) {
+      lines.push('')
+      lines.push(`💎 Value: ${vb.bet === 'home_win' ? pick.homeTeam : pick.awayTeam} at ${vb.price}${vb.book ? ` (${vb.book})` : ''} — EV +${Math.round(vb.ev * 100)}%`)
+      lines.push(`   Min acceptable odds: ${vb.min_acceptable_odds}`)
     }
 
     // Edge vs market

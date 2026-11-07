@@ -155,17 +155,19 @@ describe('POST /api/multisport/predict', () => {
 describe('GET /api/multisport/sports', () => {
   beforeEach(() => jest.clearAllMocks())
 
-  it('reports NBA + NFL only, with model availability from the rows', async () => {
+  it('reports the active sports (NBA, NFL, NHL) with model availability from the rows', async () => {
     // count is called 3x per sport: upcoming, upcoming-with-model, finished
     db.multisportMatch.count
       .mockResolvedValueOnce(12).mockResolvedValueOnce(12).mockResolvedValueOnce(300)   // NBA
       .mockResolvedValueOnce(14).mockResolvedValueOnce(0).mockResolvedValueOnce(40)     // NFL
+      .mockResolvedValueOnce(0).mockResolvedValueOnce(0).mockResolvedValueOnce(0)       // NHL
     db.multisportMatch.findFirst
       .mockResolvedValueOnce({ modelInfo: { n_samples: 180, edge_gate: { validation: 'OOF 61% vs favorite 60%' } } })
       .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
     const { GET } = await import('@/app/api/multisport/sports/route')
     const json = await (await GET()).json()
-    expect(json.sports.map((s: any) => s.sport_key)).toEqual(['basketball_nba', 'americanfootball_nfl'])
+    expect(json.sports.map((s: any) => s.sport_key)).toEqual(['basketball_nba', 'americanfootball_nfl', 'icehockey_nhl'])
     const [nba, nfl] = json.sports
     expect(nba.model).toEqual({ available: true, training_samples: 180, confidence_note: 'OOF 61% vs favorite 60%' })
     expect(nba.fixtures).toEqual({ upcoming: 12, upcoming_with_odds: 12, finished: 300, total: 312 })

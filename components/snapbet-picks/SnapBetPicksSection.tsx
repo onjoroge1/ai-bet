@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Crown, ChevronRight, Zap } from "lucide-react"
 import { SnapBetPickCard } from "./SnapBetPickCard"
 import Link from "next/link"
+import { ACTIVE_MULTISPORT_KEYS, MULTISPORT } from "@/lib/multisport/sports"
 
 interface SnapBetPick {
   id: string
@@ -66,10 +67,8 @@ export function SnapBetPicksSection({ limit = 6, sport, showHeader = true, compa
 
   const sportTabs = [
     { key: '', label: 'All', emoji: '🏆' },
+    ...ACTIVE_MULTISPORT_KEYS.map(k => ({ key: MULTISPORT[k].slug, label: MULTISPORT[k].name, emoji: MULTISPORT[k].emoji })),
     { key: 'soccer', label: 'Soccer', emoji: '⚽' },
-    { key: 'nba', label: 'NBA', emoji: '🏀' },
-    { key: 'nhl', label: 'NHL', emoji: '🏒' },
-    { key: 'ncaab', label: 'NCAAB', emoji: '🏀' },
   ]
 
   return (

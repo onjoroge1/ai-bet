@@ -8,10 +8,9 @@ import {
 } from '@/lib/multisport/sports'
 
 describe('multisport sport registry', () => {
-  it('concentrates on NBA + NFL', () => {
-    expect(ACTIVE_MULTISPORT_KEYS).toEqual(['basketball_nba', 'americanfootball_nfl'])
+  it('serves NBA, NFL and NHL; NCAAB stays defined but hidden', () => {
+    expect(ACTIVE_MULTISPORT_KEYS).toEqual(['basketball_nba', 'americanfootball_nfl', 'icehockey_nhl'])
     expect(MULTISPORT.basketball_ncaab.display).toBe(false)
-    expect(MULTISPORT.icehockey_nhl.display).toBe(false)
   })
 
   it('keys match The Odds API sport_keys used by pipeline/config.py', () => {
