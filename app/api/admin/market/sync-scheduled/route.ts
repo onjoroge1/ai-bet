@@ -5,7 +5,7 @@ import { retryWithBackoff } from '@/lib/retry-utils'
 import { beginCron, endCron } from '@/lib/cron-heartbeat'
 
 const BASE_URL = process.env.BACKEND_API_URL || process.env.BACKEND_URL
-const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY || "betgenius_secure_key_2024"
+const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY
 
 /**
  * Sync frequency constants

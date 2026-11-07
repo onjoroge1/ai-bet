@@ -44,7 +44,7 @@ function loadEnvFile() {
 loadEnvFile()
 
 const BASE_URL = process.env.BACKEND_API_URL || process.env.BACKEND_URL
-const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY || 'betgenius_secure_key_2024'
+const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY
 const BATCH_SIZE = parseInt(process.env.BACKFILL_BATCH || '5', 10)
 const BATCH_DELAY = parseInt(process.env.BACKFILL_DELAY || '1000', 10)
 const API_TIMEOUT = 10_000 // 10s per individual request

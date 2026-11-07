@@ -10,7 +10,7 @@ export const maxDuration = 300 // 5 minutes for Vercel Enterprise (allows proces
 export const runtime = 'nodejs'
 
 const BASE_URL = process.env.BACKEND_API_URL || process.env.BACKEND_URL
-const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY || "betgenius_secure_key_2024"
+const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY
 
 const LIVE_SYNC_INTERVAL = 30 * 1000 // 30 seconds in milliseconds
 const UPCOMING_SYNC_INTERVAL = 10 * 60 * 1000 // 10 minutes in milliseconds

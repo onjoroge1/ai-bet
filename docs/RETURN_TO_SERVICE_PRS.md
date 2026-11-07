@@ -140,12 +140,25 @@ backend off the Vercel schedule. Nothing else about soccer changes yet.
   commands still call `/api/market` → backend and show errors; `/api/predictions/*`, `/api/parlays`,
   `/api/premium/*` CLV calls and Live Edge proxies still point at the dead host (PR-7 removes them).
 
-### PR-7 — repo: unification cleanup
-- Archive `onjoroge1/BetGeniusAI` on GitHub with a README pointer here; copy its still-relevant docs
-  into `docs/legacy-backend/`.
-- Delete or feature-flag frontend routes that only proxied the backend (`/api/predictions/*`,
-  `/api/parlays/*`, `/api/premium/*` CLV calls, live-edge proxies) so the app has no dead upstreams.
-- Remove `BACKEND_API_URL` / `NEXT_PUBLIC_MARKET_KEY` from `env.example` and Vercel.
+### PR-7 — repo: unification cleanup ✅ code side built (archive click is the owner's)
+- `lib/backend-config.ts`: the legacy backend is opt-in only. `BACKEND_URL`/`BACKEND_API_KEY` come from
+  env with **no defaults**; `backendUnavailable()` (503 + `paused: true`) and `backendPausedEmpty()`
+  (200 + empty shape + `paused: true`) for routes that still proxy it.
+- Stripped every hardcoded Replit host (11 routes + `lib/parlays/sync.ts`) and every hardcoded default
+  API key (34 files) from `app/`, `lib/`, `scripts/`. Those routes now fail fast when the env is unset
+  instead of hanging on a dead host for 15–45s.
+- `/api/market` (soccer) returns an empty slate with `paused: true` when no backend is configured, so the
+  soccer tab on `/` and `/sports` shows "no matches" rather than an error.
+- Deleted backend-only debug surfaces: `app/api/predictions/test-backend`, `scripts/test-backend-parlay-api.ts`,
+  `scripts/test-api-response.ts`, `scripts/test-manual-sync.ts`.
+- `env.example` / README: backend variables removed (commented, documented as paused); pipeline secrets
+  live in GitHub Actions, never the web app.
+- `docs/legacy-backend/`: 14 still-relevant backend docs copied verbatim with an index README.
+- Guard: `__tests__/unit/backend-config.test.ts` fails on any hardcoded Replit host / default key in
+  `app|lib|scripts|components|hooks` or in `env.example`.
+- **Owner:** archive `onjoroge1/BetGeniusAI` on GitHub (Settings → Archive) with a README pointer to this repo.
+- Deliberately NOT deleted: the soccer/parlay/player-prop/CLV-club/Live Edge routes and pages. They are
+  paused via env, not removed, so a future soccer upstream can be wired in without resurrecting code.
 
 ### PR-8 — ops: pipeline health on `/admin`
 - Read `multisport_pipeline_runs` into the existing CronHeartbeat panel; alert (email/Twitter summary

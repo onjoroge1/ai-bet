@@ -25,10 +25,10 @@ export async function GET(req: NextRequest) {
 
     // Fetch CLV opportunities
     const response = await fetch(
-      `${process.env.BACKEND_URL || 'https://bet-genius-ai-onjoroge1.replit.app'}/clv/club/opportunities?limit=50`,
+      `${process.env.BACKEND_URL}/clv/club/opportunities?limit=50`,
       {
         headers: {
-          'Authorization': `Bearer ${process.env.BACKEND_API_KEY || 'betgenius_secure_key_2024'}`,
+          'Authorization': `Bearer ${process.env.BACKEND_API_KEY}`,
         },
       }
     )

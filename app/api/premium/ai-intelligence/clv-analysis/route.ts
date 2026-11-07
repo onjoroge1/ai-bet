@@ -35,10 +35,10 @@ export async function POST(request: NextRequest) {
 
     // Fetch CLV opportunity
     const clvResponse = await fetch(
-      `${process.env.BACKEND_URL || 'https://bet-genius-ai-onjoroge1.replit.app'}/clv/club/opportunities`,
+      `${process.env.BACKEND_URL}/clv/club/opportunities`,
       {
         headers: {
-          'Authorization': `Bearer ${process.env.BACKEND_API_KEY || 'betgenius_secure_key_2024'}`,
+          'Authorization': `Bearer ${process.env.BACKEND_API_KEY}`,
         },
       }
     )

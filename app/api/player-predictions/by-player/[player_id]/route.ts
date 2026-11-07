@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const BASE_URL = process.env.BACKEND_API_URL || process.env.BACKEND_URL || 'https://bet-genius-ai-onjoroge1.replit.app'
-const API_KEY = process.env.BACKEND_API_KEY || 'betgenius_secure_key_2024'
+const BASE_URL = process.env.BACKEND_API_URL || process.env.BACKEND_URL
+const API_KEY = process.env.BACKEND_API_KEY
 
 /**
  * GET /api/player-predictions/by-player/[player_id]

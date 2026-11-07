@@ -3,8 +3,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { logger } from '@/lib/logger'
 
-const BACKEND_URL = process.env.BACKEND_URL || 'https://bet-genius-ai-onjoroge1.replit.app'
-const API_KEY = process.env.BACKEND_API_KEY || 'betgenius_secure_key_2024'
+const BACKEND_URL = process.env.BACKEND_URL
+const API_KEY = process.env.BACKEND_API_KEY
 
 /**
  * GET /api/players - Fetch player parlays and stats from backend

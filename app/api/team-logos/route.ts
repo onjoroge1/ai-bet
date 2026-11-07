@@ -32,7 +32,7 @@ export async function GET(request: Request) {
         { status: 500 }
       )
     }
-    const apiKey = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY || 'betgenius_secure_key_2024'
+    const apiKey = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY
 
     const teamLogos = await Promise.all(
       teamNames.map(async (teamName) => {

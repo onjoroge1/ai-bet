@@ -53,8 +53,8 @@ interface BackendParlaysResponse {
  * Sync parlays from a specific API version
  */
 async function syncParlaysFromVersion(version: 'v1' | 'v2'): Promise<{ synced: number; errors: number }> {
-  const backendUrl = process.env.BACKEND_URL || 'https://bet-genius-ai-onjoroge1.replit.app'
-  const apiKey = process.env.BACKEND_API_KEY || 'betgenius_secure_key_2024'
+  const backendUrl = process.env.BACKEND_URL
+  const apiKey = process.env.BACKEND_API_KEY
   
   try {
     logger.info(`Syncing parlays from ${version}`, {

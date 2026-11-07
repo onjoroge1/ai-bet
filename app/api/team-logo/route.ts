@@ -24,7 +24,7 @@ export async function GET(request: Request) {
       )
     }
     const searchParam = encodeURIComponent(teamName)
-    const apiKey = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY || 'betgenius_secure_key_2024'
+    const apiKey = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY
     
     const response = await fetch(`${backendUrl}/teams?search=${searchParam}&has_logo=true&limit=10`, {
       headers: {

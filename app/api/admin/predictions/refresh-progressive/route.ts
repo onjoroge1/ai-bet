@@ -20,7 +20,7 @@ export const maxDuration = 120
 export const runtime = 'nodejs'
 
 const BACKEND_URL = process.env.BACKEND_API_URL || process.env.BACKEND_URL
-const API_KEY = process.env.BACKEND_API_KEY || 'betgenius_secure_key_2024'
+const API_KEY = process.env.BACKEND_API_KEY
 
 // Rate limit: max predictions per cron cycle to avoid overloading backend
 const MAX_PREDICTIONS_PER_CYCLE = 15
