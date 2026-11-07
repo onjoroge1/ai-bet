@@ -122,10 +122,23 @@ on 2025-11-18 with the then-current plan (40 books; snapshots since 2020). It ha
 scoreboard feed. Builds on the same tables as `import-csv`; real multi-snapshot odds instead of a single
 closing line. Needs: confirm the current plan includes historical access and its credit multiplier.
 
-### PR-6 — web: soccer demotion / cron budget (product decision)
-Turn off or slow the per-minute soccer live sync, reorder the homepage, hide soccer from the picks
-engine. Everything soccer still points at the dead Replit backend, so today those crons fail silently;
-at minimum they should be disabled to stop error noise. Needs your call on how far to go.
+### PR-6 — web: soccer demotion / cron budget ✅ step 1 built (dead crons disabled)
+Decision 2026-11-07: minimal safe step only — take every cron that depends on the retired Replit
+backend off the Vercel schedule. Nothing else about soccer changes yet.
+- Removed from `vercel.json` (routes kept on disk so they can be re-enabled against a new upstream):
+  `market/sync-scheduled` ×3 (live every minute, upcoming, completed), `market/zombie-sweep`,
+  `clv/sync-scheduled`, `predictions/refresh-progressive`, `parlays/sync-backend-scheduled`
+  (→ `/api/parlays` → `lib/parlays/sync`), `predictions/sync-from-availability-scheduled`
+  (→ `lib/predictionAvailability` + `/predict`). The multisport sync cron went in PR-2.
+- Kept: the 22 DB-only crons (parlay scoring/generation, additional markets, social, blogs, email,
+  premium trackers, team stats, settle-saved-bets). They run against whatever is in the DB; the soccer
+  ones will simply find nothing new. Worth watching: `social/twitter/*`, `template-blogs`,
+  `nightly-briefing` so they do not post stale soccer content — a follow-up if they do.
+- Guard: `__tests__/unit/vercel-crons.test.ts` fails if a scheduled cron (or a lib it imports)
+  references the backend, or if any of the dead paths is re-added.
+- Still open (needs a product call): the soccer tab on `/`, `/sports` and the WhatsApp soccer
+  commands still call `/api/market` → backend and show errors; `/api/predictions/*`, `/api/parlays`,
+  `/api/premium/*` CLV calls and Live Edge proxies still point at the dead host (PR-7 removes them).
 
 ### PR-7 — repo: unification cleanup
 - Archive `onjoroge1/BetGeniusAI` on GitHub with a README pointer here; copy its still-relevant docs

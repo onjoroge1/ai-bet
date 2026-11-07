@@ -30,10 +30,6 @@
   },
   "crons": [
     {
-      "path": "/api/admin/parlays/sync-backend-scheduled",
-      "schedule": "*/15 * * * *"
-    },
-    {
       "path": "/api/admin/additional-markets/sync-scheduled",
       "schedule": "0 */3 * * *"
     },
@@ -44,26 +40,6 @@
     {
       "path": "/api/admin/parlays/sync-scheduled",
       "schedule": "*/30 * * * *"
-    },
-    {
-      "path": "/api/admin/market/sync-scheduled?type=live",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/admin/market/sync-scheduled?type=upcoming",
-      "schedule": "*/10 * * * *"
-    },
-    {
-      "path": "/api/admin/market/sync-scheduled?type=completed",
-      "schedule": "*/10 * * * *"
-    },
-    {
-      "path": "/api/admin/market/zombie-sweep",
-      "schedule": "0 */2 * * *"
-    },
-    {
-      "path": "/api/admin/predictions/sync-from-availability-scheduled",
-      "schedule": "0 */2 * * *"
     },
     {
       "path": "/api/admin/template-blogs/scheduled",
@@ -79,10 +55,6 @@
     },
     {
       "path": "/api/admin/settle-saved-bets",
-      "schedule": "*/30 * * * *"
-    },
-    {
-      "path": "/api/admin/clv/sync-scheduled",
       "schedule": "*/30 * * * *"
     },
     {
@@ -104,10 +76,6 @@
     {
       "path": "/api/admin/social/live-events",
       "schedule": "*/2 * * * *"
-    },
-    {
-      "path": "/api/admin/predictions/refresh-progressive",
-      "schedule": "*/30 * * * *"
     },
     {
       "path": "/api/admin/multisport/blogs",
@@ -153,4 +121,4 @@
   "env": {
     "PRISMA_GENERATE_DATAPROXY": "true"
   }
-} 
+}
