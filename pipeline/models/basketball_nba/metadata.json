@@ -1,0 +1,53 @@
+{
+  "model_id": "v3_multisport_basketball",
+  "model_type": "V3_Multisport_LightGBM",
+  "model_kind": "market_anchored_lgbm",
+  "anchor_feature": "prob_home",
+  "anchor_rounds": 0,
+  "fold_rounds": [
+    0,
+    0,
+    100,
+    100
+  ],
+  "inner_cv_logloss_sum": {
+    "0": 109.1989,
+    "10": 109.1,
+    "25": 109.2219,
+    "50": 109.4369,
+    "100": 110.1982,
+    "200": 111.3069
+  },
+  "sport_key": "basketball_nba",
+  "features_version": "v3.1",
+  "trained_at": "2026-11-07T21:22:27.641800+00:00",
+  "train_reason": "forced",
+  "n_samples": 293,
+  "n_samples_from_csv": 293,
+  "date_range": [
+    "2026-03-20",
+    "2026-11-03"
+  ],
+  "n_folds": 4,
+  "oof_metrics": {
+    "accuracy": 0.7198,
+    "logloss": 0.5134,
+    "brier": 0.1728,
+    "market_logloss": 0.502
+  },
+  "edge_gate": {
+    "n": 232,
+    "criterion": "logloss_vs_market",
+    "model_logloss": 0.5134,
+    "market_logloss": 0.502,
+    "logloss_gain": -0.0114,
+    "brier_model": 0.1728,
+    "brier_market": 0.1671,
+    "model_acc": 0.7198,
+    "favorite_acc": 0.7328,
+    "delta": -0.0129,
+    "edge_validated": false,
+    "validation": "temporal OOF log loss 0.5134 vs market 0.5020 (-0.0114, n=232) \u2014 no demonstrated edge over the market"
+  },
+  "feature_importance": []
+}

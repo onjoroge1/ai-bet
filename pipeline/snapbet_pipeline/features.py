@@ -43,6 +43,19 @@ ALL_FEATURE_NAMES: List[str] = (ODDS_FEATURE_NAMES + SPREAD_FEATURE_NAMES + REST
                                 SEASON_FEATURE_NAMES)
 assert len(ALL_FEATURE_NAMES) == 46
 
+# Features whose training distribution does not match live inference, so the
+# model must not use them (all 46 are still computed and published for display):
+#   * line movement / snapshot counts: imported games carry one snapshot, live
+#     games ~hourly snapshots, so drift/volatility/n_snapshots are constant in
+#     training and non-zero live; n_bookmakers is 1 for imported rows
+#   * time_to_game_hours: always 0 for finished games, 0-168 live
+TRAIN_SERVE_SKEWED = frozenset({
+    "open_home_prob", "open_away_prob", "home_prob_drift", "away_prob_drift", "home_odds_volatility",
+    "n_bookmakers", "n_snapshots", "spread_drift", "open_spread", "total_drift", "open_total",
+    "time_to_game_hours",
+})
+MODEL_FEATURE_NAMES: List[str] = [f for f in ALL_FEATURE_NAMES if f not in TRAIN_SERVE_SKEWED]
+
 
 def _aware(dt: datetime) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
@@ -68,10 +81,13 @@ class MultisportFeatureBuilder:
     def build_features(self, sport_key: str, event_id: str, home_team: str, away_team: str,
                        game_date, cutoff_dt: Optional[datetime] = None) -> Dict[str, float]:
         cutoff = _to_cutoff(game_date, cutoff_dt)
+        # rest is measured to KICKOFF in training and live alike; only the
+        # history it may look at is bounded by the cutoff
+        kickoff = _to_cutoff(game_date, None)
         with self.conn.cursor() as cur:
             feats: Dict[str, float] = {}
             feats.update(self._odds(cur, sport_key, event_id, cutoff))
-            feats.update(self._rest(cur, sport_key, home_team, away_team, cutoff))
+            feats.update(self._rest(cur, sport_key, home_team, away_team, cutoff, max(kickoff, cutoff)))
             feats.update(self._form(cur, sport_key, home_team, away_team, cutoff.date()))
             feats.update(self._elo(cur, sport_key, home_team, away_team, cutoff.date()))
             feats.update(self._h2h(cur, sport_key, home_team, away_team, cutoff.date()))
@@ -129,15 +145,23 @@ class MultisportFeatureBuilder:
         }
 
     # ---------------------------------------------------------------- group 3
-    def _rest(self, cur, sport_key: str, home: str, away: str, cutoff: datetime) -> Dict[str, float]:
+    def _rest(self, cur, sport_key: str, home: str, away: str, cutoff: datetime,
+              kickoff: Optional[datetime] = None) -> Dict[str, float]:
+        """Rest before KICKOFF. Previous game = last finished game before the cutoff,
+        or a game already scheduled between the cutoff and kickoff (predicting days
+        ahead must see the games a team plays in between). In training cutoff ==
+        kickoff, so this is exactly the old definition."""
+        kickoff = kickoff or cutoff
+
         def last_game(team: str) -> Optional[datetime]:
             cur.execute(
                 """
                 SELECT MAX(commence_time) FROM multisport_fixtures
                  WHERE sport_key = %s AND (home_team = %s OR away_team = %s)
-                   AND status = 'finished' AND commence_time < %s
+                   AND ((status = 'finished' AND commence_time < %s)
+                        OR (status <> 'finished' AND commence_time >= %s AND commence_time < %s))
                 """,
-                (sport_key, team, team, cutoff),
+                (sport_key, team, team, cutoff, cutoff, kickoff),
             )
             r = cur.fetchone()
             return _aware(r[0]) if r and r[0] else None
@@ -145,7 +169,7 @@ class MultisportFeatureBuilder:
         def rest_hours(last: Optional[datetime]) -> float:
             if last is None:
                 return 240.0
-            return max((cutoff - last).total_seconds() / 3600.0, 0.0)
+            return max((kickoff - last).total_seconds() / 3600.0, 0.0)
 
         hh, ah = rest_hours(last_game(home)), rest_hours(last_game(away))
         hd, ad = min(hh / 24.0, 14.0), min(ah / 24.0, 14.0)

@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS "MultisportMatch" (
 """
 
 PIPELINE_TABLES = ["multisport_pick_ledger", "multisport_fixtures", "multisport_odds_snapshots", "multisport_match_results",
-                   "multisport_schedule", "multisport_training", "multisport_pipeline_runs"]
+                   "multisport_schedule", "multisport_training", "multisport_pipeline_runs", "multisport_models"]
 
 
 def _db_available() -> bool:

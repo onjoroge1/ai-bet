@@ -3,7 +3,8 @@
 Produces the `market` / `value` / `clv` / `model_track_record` blocks the
 frontend reads via lib/edge/extract.ts. Contract (docs/MULTISPORT_EDGE_BACKEND_REQUIREMENTS.md):
   * market.implied sums to 1.0 ±0.001 over {home, away}; no `draw` key anywhere
-  * value.value_bet is None unless EV > 0 at the best available price
+  * value.value_bet is None unless the model's gate passed (edge_validated), the model
+    beats the de-vigged consensus by VALUE_MIN_EDGE, and EV > 0 at the consensus price
   * kelly_quarter == kelly_full / 4, both >= 0
   * edge_validated comes from the trained model's holdout gate, never hardcoded true
 """
@@ -11,7 +12,7 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
-from .config import RATING_TIERS
+from .config import RATING_TIERS, VALUE_MIN_EDGE
 
 OUTCOMES = ("home", "away")
 CANONICAL_BET = {"home": "home_win", "away": "away_win"}
@@ -51,7 +52,14 @@ def rating(ev: Optional[float]) -> str:
     return "no_value"
 
 
-def select_value_bet(model_probs: Dict[str, float], best_prices: Dict[str, Dict]) -> Optional[Dict]:
+def select_value_bet(model_probs: Dict[str, float], best_prices: Dict[str, Dict],
+                     fair: Optional[Dict[str, float]] = None,
+                     consensus_odds: Optional[Dict[str, Optional[float]]] = None,
+                     min_edge: float = VALUE_MIN_EDGE) -> Optional[Dict]:
+    """Value bet = the side where the model beats the de-vigged consensus by >= min_edge
+    AND has positive EV at the consensus price. The best single-book price is then
+    reported as where to take it (EV/Kelly at that price). Without `fair` and
+    `consensus_odds` (legacy callers) it falls back to EV > 0 at the best price."""
     best = None
     for k in OUTCOMES:
         entry = best_prices.get(k) or {}
@@ -59,17 +67,32 @@ def select_value_bet(model_probs: Dict[str, float], best_prices: Dict[str, Dict]
         if not odds or odds <= 1.0:
             continue
         ev = ev_at_price(model_probs[k], odds)
+        if fair is not None and consensus_odds is not None:
+            c_odds = consensus_odds.get(k)
+            if not c_odds or c_odds <= 1.0:
+                continue
+            ev_cons = ev_at_price(model_probs[k], c_odds)
+            if model_probs[k] - fair[k] < min_edge or ev_cons <= 0:
+                continue
+        else:
+            ev_cons = None
         if ev > 0 and (best is None or ev > best["ev"]):
             kf = kelly(model_probs[k], odds)
             best = {"outcome": k, "bet": CANONICAL_BET[k], "ev": round(ev, 4), "price": odds,
                     "book": entry.get("book"), "min_acceptable_odds": min_acceptable_odds(model_probs[k]),
                     "kelly_full": kf, "kelly_quarter": round(kf / 4.0, 4)}
+            if ev_cons is not None:
+                best["ev_at_consensus"] = round(ev_cons, 4)
     return best
 
 
 def build_value_payload(model_probs: Optional[Dict[str, float]], market_raw: Optional[Dict[str, float]],
-                        best_prices: Optional[Dict[str, Dict]], n_books: Optional[int]) -> Dict:
-    """market/value/clv blocks. Any missing input degrades to None, never a fake edge."""
+                        best_prices: Optional[Dict[str, Dict]], n_books: Optional[int],
+                        consensus_odds: Optional[Dict[str, Optional[float]]] = None,
+                        edge_validated: bool = False) -> Dict:
+    """market/value/clv blocks. Any missing input degrades to None, never a fake edge.
+    value.value_bet is None unless the model's honesty gate passed (edge_validated):
+    an unvalidated model's disagreement with the market is noise, not value."""
     market_block = value_block = None
     fair = None
     if market_raw:
@@ -90,9 +113,11 @@ def build_value_payload(model_probs: Optional[Dict[str, float]], market_raw: Opt
             for k in OUTCOMES:
                 odds = (best_prices.get(k) or {}).get("odds")
                 ev_best[k] = round(ev_at_price(model_probs[k], odds), 4) if odds and odds > 1.0 else None
-        vb = select_value_bet(model_probs, best_prices) if best_prices else None
-        top_ev = vb["ev"] if vb else max((e for e in ev_best.values() if e is not None), default=None)
+        vb = (select_value_bet(model_probs, best_prices, fair=fair, consensus_odds=consensus_odds or {})
+              if (best_prices and edge_validated) else None)
+        top_ev = vb["ev"] if vb else None
         value_block = {"edge": edge, "ev_at_best": ev_best or None, "value_bet": vb, "rating": rating(top_ev),
+                       "gated": None if edge_validated else "model edge not validated; no value bets",
                        "min_acceptable_odds": {k: min_acceptable_odds(model_probs[k]) for k in OUTCOMES}}
     clv_block = {"bet_time_odds": (value_block or {}).get("value_bet", {}).get("price")
                  if value_block and value_block.get("value_bet") else None,

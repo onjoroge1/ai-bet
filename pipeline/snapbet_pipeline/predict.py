@@ -22,7 +22,8 @@ from .consensus import best_prices
 from .edge import build_value_payload, model_track_record
 from .features import ALL_FEATURE_NAMES, MultisportFeatureBuilder
 from .ledger import clv_vetoes_edge, track_record
-from .train import FEATURES_FILE, META_FILE, MODEL_FILE, model_dir_for
+from . import model_store
+from .train import ANCHOR_FEATURE, FEATURES_FILE, META_FILE, MODEL_FILE, MODEL_KIND, logit, model_dir_for, sigmoid
 
 logger = logging.getLogger(__name__)
 
@@ -30,34 +31,74 @@ PREDICT_HORIZON_DAYS = 8   # NFL games are weekly; predict the whole upcoming sl
 
 
 class Predictor:
-    def __init__(self, sport_key: str, model_dir: str):
+    """A trained model. Market-anchored models predict sigmoid(logit(market) + correction);
+    with no booster (0 correction rounds) that is exactly the market. Legacy unanchored
+    models (no model_kind in metadata) predict the booster's probability directly."""
+
+    def __init__(self, sport_key: str, model_text: Optional[str], feature_names: List[str], metadata: Dict):
         import lightgbm as lgb
         self.sport_key = sport_key
-        self.model = lgb.Booster(model_file=os.path.join(model_dir, MODEL_FILE))
-        with open(os.path.join(model_dir, FEATURES_FILE), "r", encoding="utf-8") as f:
-            self.feature_names: List[str] = json.load(f)
-        with open(os.path.join(model_dir, META_FILE), "r", encoding="utf-8") as f:
-            self.metadata: Dict = json.load(f)
+        self.model = lgb.Booster(model_str=model_text) if model_text else None
+        self.feature_names = list(feature_names)
+        self.metadata = dict(metadata)
+        self.anchored = self.metadata.get("model_kind") == MODEL_KIND
+        if self.model is None and not self.anchored:
+            raise ValueError("legacy model without a booster")
 
     @classmethod
-    def load(cls, models_dir: str, sport_key: str) -> Optional["Predictor"]:
-        d = model_dir_for(models_dir, sport_key)
-        if not os.path.exists(os.path.join(d, MODEL_FILE)):
-            return None
+    def from_dir(cls, sport_key: str, model_dir: str) -> "Predictor":
+        with open(os.path.join(model_dir, FEATURES_FILE), "r", encoding="utf-8") as f:
+            feature_names = json.load(f)
+        with open(os.path.join(model_dir, META_FILE), "r", encoding="utf-8") as f:
+            metadata = json.load(f)
+        text = None
+        if os.path.exists(os.path.join(model_dir, MODEL_FILE)):
+            with open(os.path.join(model_dir, MODEL_FILE), "r", encoding="utf-8") as f:
+                text = f.read()
+        return cls(sport_key, text, feature_names, metadata)
+
+    @classmethod
+    def load(cls, models_dir: str, sport_key: str, conn=None) -> Optional["Predictor"]:
+        """Newest model from the database when a connection is given, else from files."""
         try:
-            return cls(sport_key, d)
+            if conn is not None:
+                stored = model_store.load_latest(conn, sport_key)
+                if stored:
+                    return cls(sport_key, *stored)
+            d = model_dir_for(models_dir, sport_key)
+            if not os.path.exists(os.path.join(d, META_FILE)):
+                return None
+            return cls.from_dir(sport_key, d)
         except Exception as e:
             logger.error("could not load model for %s: %s", sport_key, e)
             return None
 
     def predict_proba_home(self, feats: Dict[str, float]) -> float:
         x = np.array([[float(feats.get(f, 0.0)) for f in self.feature_names]], dtype=float)
-        p = float(self.model.predict(x)[0])
+        if self.anchored:
+            z = float(logit(feats.get(ANCHOR_FEATURE) or 0.5))
+            if self.model is not None:
+                z += float(self.model.predict(x, raw_score=True)[0])
+            p = float(sigmoid(z))
+        else:
+            p = float(self.model.predict(x)[0])
         return min(max(p, 0.01), 0.99)
+
+    @property
+    def is_market_only(self) -> bool:
+        """The trainer chose 0 correction rounds: the 'model' is the market itself.
+        Published like cold start (no model pick) so the market is never relabelled
+        as a model call; model_info / track record still say why."""
+        return self.anchored and self.model is None
+
+    @property
+    def edge_validated(self) -> bool:
+        return bool((self.metadata.get("edge_gate") or {}).get("edge_validated", False))
 
     def info(self) -> Dict:
         m = self.metadata
-        return {"name": m.get("model_id"), "version": m.get("model_type"), "trained_at": m.get("trained_at"),
+        return {"name": m.get("model_id"), "version": m.get("model_type"), "kind": m.get("model_kind"),
+                "anchor_rounds": m.get("anchor_rounds"), "trained_at": m.get("trained_at"),
                 "n_samples": m.get("n_samples"), "accuracy": (m.get("oof_metrics") or {}).get("accuracy"),
                 "logloss": (m.get("oof_metrics") or {}).get("logloss"), "n_features": len(self.feature_names),
                 "edge_gate": m.get("edge_gate"),
@@ -157,7 +198,7 @@ def predict_upcoming(conn, sport_key: str, predictor: Optional[Predictor], now: 
             model_block = None
             model_probs = None
             feature_values: Dict[str, float] = {}
-            if predictor is not None:
+            if predictor is not None and not predictor.is_market_only:
                 feature_values = builder.build_features(sport_key, event_id, home, away, commence, cutoff_dt=now)
                 p_home = predictor.predict_proba_home(feature_values)
                 p_away = 1.0 - p_home
@@ -176,10 +217,13 @@ def predict_upcoming(conn, sport_key: str, predictor: Optional[Predictor], now: 
                     "trained_at": predictor.metadata.get("trained_at"),
                 }
 
-            edge_blocks = build_value_payload(model_probs, market_raw, bp, cons.get("n_bookmakers"))
             track = model_track_record(model_registry_id(sport_key),
                                        predictor.metadata.get("edge_gate") if predictor else None,
                                        record=record, clv_veto=veto)
+            consensus_odds = {"home": cons.get("home_odds"), "away": cons.get("away_odds")}
+            edge_blocks = build_value_payload(model_probs, market_raw, bp, cons.get("n_bookmakers"),
+                                              consensus_odds=consensus_odds,
+                                              edge_validated=bool(track.get("edge_validated")))
             prediction_data = {
                 "source": "snapbet_pipeline",
                 "generated_at": now.isoformat(),

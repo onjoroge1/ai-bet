@@ -85,10 +85,13 @@ def cmd_train(conn, s: Settings, args) -> Dict:
 def cmd_predict(conn, s: Settings, args) -> Dict:
     out = {}
     for k in s.sports:
-        predictor = Predictor.load(s.models_dir, k)
+        predictor = Predictor.load(s.models_dir, k, conn)
         preds = predict_upcoming(conn, k, predictor)
         res = publish_predictions(conn, preds)
-        res.update(mode="model" if predictor else "cold_start_market_only",
+        res.update(mode=("cold_start_market_only" if predictor is None
+                         else "market_only_model_adds_nothing" if predictor.is_market_only else "model"),
+                   edge_validated=bool(predictor and predictor.edge_validated),
+                   anchor_rounds=(predictor.metadata.get("anchor_rounds") if predictor else None),
                    with_value_bet=sum(1 for p in preds if (p.prediction_data.get("value") or {}).get("value_bet")))
         out[k] = res
     return out
@@ -152,7 +155,7 @@ def cmd_status(conn, s: Settings, args) -> Dict:
             ok, reason = should_train(conn, k, s.models_dir)
             out["sports"][k] = {"upcoming": up, "finished": fin, "snapshots": snaps,
                                 "last_snapshot": last.isoformat() if last else None,
-                                "training_rows": train, "model": Predictor.load(s.models_dir, k) is not None,
+                                "training_rows": train, "model": Predictor.load(s.models_dir, k, conn) is not None,
                                 "train_policy": reason}
         cur.execute("""SELECT DISTINCT ON (job) job, status, finished_at, error
                          FROM multisport_pipeline_runs ORDER BY job, finished_at DESC""")

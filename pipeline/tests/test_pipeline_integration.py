@@ -109,6 +109,11 @@ def test_full_pipeline_train_predict_publish_settle(conn, tmp_path):
     meta = json.load(open(tmp_path / NFL / "metadata.json"))
     assert meta["edge_gate"]["n"] > 0 and isinstance(meta["edge_gate"]["edge_validated"], bool)
     assert 0 <= meta["oof_metrics"]["accuracy"] <= 1
+    assert meta["model_kind"] == "market_anchored_lgbm" and meta["anchor_rounds"] in (0, 10, 25, 50, 100, 200)
+    assert meta["edge_gate"]["criterion"] == "logloss_vs_market"
+    # the database is the source of truth: a predictor loads with no files on disk
+    assert _count(conn, "SELECT COUNT(*) FROM multisport_models WHERE sport_key = 'americanfootball_nfl'") == 1
+    assert Predictor.load(str(tmp_path / "no-such-dir"), NFL, conn) is not None
     ok2, reason2 = should_train(conn, NFL, str(tmp_path))
     assert not ok2 and "fresh" in reason2                       # policy: nothing new -> skip
 
@@ -135,6 +140,13 @@ def test_full_pipeline_train_predict_publish_settle(conn, tmp_path):
     if vb:
         assert vb["ev"] > 0 and vb["bet"] in ("home_win", "away_win")
         assert vb["kelly_quarter"] == pytest.approx(vb["kelly_full"] / 4, abs=1e-4)
+
+    # a market-only model (trainer chose 0 rounds) publishes like cold start: no model pick
+    market_only = Predictor(NFL, None, predictor.feature_names, predictor.metadata)
+    mo = predict_upcoming(conn, NFL, market_only, now=now)
+    assert market_only.is_market_only and len(mo) == 10
+    assert all(x.model_block is None and x.prediction_data["value"] is None for x in mo)
+    assert mo[0].prediction_data["model_info"]["kind"] == "market_anchored_lgbm"
 
     r = publish_predictions(conn, preds)
     assert r["published"] == 10

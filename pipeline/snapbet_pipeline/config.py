@@ -85,16 +85,51 @@ LGBM_PARAMS = {
 N_ESTIMATORS = 500
 EARLY_STOPPING = 50
 
+# Market-anchored model (default since 2026-11-07). LightGBM starts every game at
+# logit(consensus home prob) (init_score) and learns only a small, heavily
+# regularised correction. The number of boosting rounds is chosen by an inner
+# temporal CV from ANCHOR_ROUND_CANDIDATES; 0 means "the market is the model".
+# Backtest on 729 imported games: the unanchored model above lost 0.01-0.03 log
+# loss to the market in every sport; the anchored one never strays far from it.
+ANCHOR_PARAMS = {
+    "objective": "binary",
+    "metric": "binary_logloss",
+    "num_leaves": 4,
+    "max_depth": 2,
+    "learning_rate": 0.02,
+    "min_data_in_leaf": 30,
+    "feature_fraction": 0.7,
+    "bagging_fraction": 0.8,
+    "bagging_freq": 1,
+    "lambda_l2": 10.0,
+    "verbose": -1,
+    "n_jobs": -1,
+}
+ANCHOR_ROUND_CANDIDATES = (0, 10, 25, 50, 100, 200)
+# Parsimony: a correction (rounds > 0) is chosen only if it beats "market only" in
+# the inner CV by at least this much log loss per validation game. Without it the
+# selection on small folds is noisy (NBA folds picked 100 rounds and lost 0.011).
+ANCHOR_MIN_INNER_GAIN = 0.002
+
 # Training policy: retrain when >= MIN_NEW_GAMES finished games since last
 # train, or the model is older than MAX_MODEL_AGE_DAYS.
 MIN_NEW_GAMES = 20
 MAX_MODEL_AGE_DAYS = 7
 
-# Honesty gate: a model is "edge_validated" only when, on temporal
-# out-of-fold predictions, it beats "pick the consensus favorite" by at least
-# EDGE_GATE_MIN_DELTA with at least EDGE_GATE_MIN_N games.
+# Honesty gate: a model is "edge_validated" only when, on nested temporal
+# out-of-fold predictions over at least EDGE_GATE_MIN_N games, its log loss beats
+# the de-vigged consensus probability by at least EDGE_GATE_MIN_LOGLOSS_GAIN and
+# its Brier score is no worse. Accuracy vs "pick the favorite" is still reported
+# but decides nothing: value betting depends on probabilities, not on picks.
 EDGE_GATE_MIN_N = 100
-EDGE_GATE_MIN_DELTA = 0.02
+EDGE_GATE_MIN_LOGLOSS_GAIN = 0.005
+EDGE_GATE_MIN_DELTA = 0.02   # legacy accuracy margin, reported only
+
+# Value bets (emitted only when the gate passed): the model must beat the
+# de-vigged consensus by VALUE_MIN_EDGE and show positive EV at the CONSENSUS
+# price. Selecting on the best single-book price made almost every game "value"
+# because the max of ~10 noisy quotes nearly always beats the average.
+VALUE_MIN_EDGE = 0.03
 
 # Edge rating tiers (EV at best price) — mirror utils/edge.py RATING_TIERS
 RATING_TIERS = ((0.08, "strong_value"), (0.03, "value"), (0.0, "marginal"))

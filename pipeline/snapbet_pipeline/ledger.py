@@ -183,14 +183,17 @@ def track_record(conn, sport_key: str, now: Optional[datetime] = None, window_da
                       COUNT(*) FILTER (WHERE pick_won),
                       COUNT(*) FILTER (WHERE model_pick IS NOT NULL AND market_prob_pick IS NOT NULL
                                          AND ((market_prob_pick >= 0.5) = pick_won)),
-                      COUNT(*) FILTER (WHERE value_bet_outcome IS NOT NULL),
-                      COUNT(*) FILTER (WHERE value_bet_won),
-                      COALESCE(SUM(value_bet_pnl_1u) FILTER (WHERE value_bet_outcome IS NOT NULL), 0),
+                      -- value-bet and CLV stats count only bets the site offered, i.e. placed
+                      -- while the model's gate had passed; unvalidated rows stay in the ledger
+                      COUNT(*) FILTER (WHERE value_bet_outcome IS NOT NULL AND edge_validated_at_bet),
+                      COUNT(*) FILTER (WHERE value_bet_won AND edge_validated_at_bet),
+                      COALESCE(SUM(value_bet_pnl_1u) FILTER (WHERE value_bet_outcome IS NOT NULL
+                                                              AND edge_validated_at_bet), 0),
                       PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY realized_clv)
-                          FILTER (WHERE realized_clv IS NOT NULL),
-                      AVG(realized_clv) FILTER (WHERE realized_clv IS NOT NULL),
-                      COUNT(*) FILTER (WHERE realized_clv IS NOT NULL AND realized_clv > 0),
-                      COUNT(*) FILTER (WHERE realized_clv IS NOT NULL)
+                          FILTER (WHERE realized_clv IS NOT NULL AND edge_validated_at_bet),
+                      AVG(realized_clv) FILTER (WHERE realized_clv IS NOT NULL AND edge_validated_at_bet),
+                      COUNT(*) FILTER (WHERE realized_clv IS NOT NULL AND realized_clv > 0 AND edge_validated_at_bet),
+                      COUNT(*) FILTER (WHERE realized_clv IS NOT NULL AND edge_validated_at_bet)
                  FROM multisport_pick_ledger
                 WHERE sport_key = %s AND settled_at IS NOT NULL AND commence_time >= %s""",
             (sport_key, since))

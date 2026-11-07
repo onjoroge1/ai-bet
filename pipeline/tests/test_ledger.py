@@ -53,12 +53,13 @@ def test_ledger_locks_bet_time_then_settles_with_closing_line_and_clv(conn):
         cons_open = _consensus(cur, eid)
     vb = {"outcome": "home", "bet": "home_win", "ev": 0.08, "price": 2.05, "book": "fanduel",
           "min_acceptable_odds": 1.75, "kelly_full": 0.07, "kelly_quarter": 0.0175}
-    p1 = _prediction(eid, home, away, NOW, 0.57, vb, False, cons_open, {"fanduel": {"home_odds": 2.05, "away_odds": 1.9}})
+    # value bets are only ever published by a gate-validated model, so validated=True here
+    p1 = _prediction(eid, home, away, NOW, 0.57, vb, True, cons_open, {"fanduel": {"home_odds": 2.05, "away_odds": 1.9}})
     publish_predictions(conn, [p1])
 
     # second publish 6h later: the model now says 0.60 and the best price has shortened — must NOT overwrite
     p2 = _prediction(eid, home, away, NOW + timedelta(hours=6), 0.60,
-                     dict(vb, price=1.85, ev=0.03), False, cons_open, {"fanduel": {"home_odds": 1.85, "away_odds": 2.0}})
+                     dict(vb, price=1.85, ev=0.03), True, cons_open, {"fanduel": {"home_odds": 1.85, "away_odds": 2.0}})
     publish_predictions(conn, [p2])
 
     with conn.cursor() as cur:
@@ -69,7 +70,7 @@ def test_ledger_locks_bet_time_then_settles_with_closing_line_and_clv(conn):
     assert row[0] == 2 and row[1] == "H" and float(row[2]) == 0.57
     assert float(row[3]) == pytest.approx(cons_open["home_prob"], abs=1e-4)
     assert row[4] == "home" and float(row[5]) == 2.05 and row[6] == "fanduel" and float(row[7]) == 0.08
-    assert row[8] is False and row[9] is None
+    assert row[8] is True and row[9] is None
 
     # market closes at p_home = 0.59 one hour before kickoff; then the game finishes home win 27-20
     api.odds[NFL] = [odds_event(eid, NFL, home, away, KICKOFF, p_home=0.59, spread=-2.5, total=47.5, jitter=0.0)]
@@ -107,6 +108,29 @@ def test_ledger_locks_bet_time_then_settles_with_closing_line_and_clv(conn):
     assert clv_vetoes_edge(rec) is None                       # far below CLV_GATE_MIN_N
     block = model_track_record("v3_multisport_football", {"edge_validated": True, "validation": "gate ok", "n": 150}, rec)
     assert block["edge_validated"] is True and block["n_settled"] == 1 and block["median_clv_90d"] == rec["median_clv_90d"]
+
+
+def test_unvalidated_value_bets_stay_out_of_the_track_record(conn):
+    """A value bet logged while the gate had NOT passed (never offered on the site)
+    stays in the ledger but does not count toward value-bet ROI or CLV."""
+    api = FakeOddsApi()
+    home, away, eid = "Buffalo Bills", "Miami Dolphins", "evt-ledger-unvalidated"
+    api.odds[NFL] = [odds_event(eid, NFL, home, away, KICKOFF, p_home=0.50, spread=-1.5, total=47.5, jitter=0.0)]
+    collect_odds(conn, api.client(), [NFL], now=NOW)
+    with conn.cursor() as cur:
+        cons = _consensus(cur, eid)
+    vb = {"outcome": "home", "bet": "home_win", "ev": 0.08, "price": 2.05, "book": "fanduel",
+          "min_acceptable_odds": 1.75, "kelly_full": 0.07, "kelly_quarter": 0.0175}
+    publish_predictions(conn, [_prediction(eid, home, away, NOW, 0.57, vb, False, cons, {})])
+    api.odds[NFL] = [odds_event(eid, NFL, home, away, KICKOFF, p_home=0.59, spread=-2.5, total=47.5, jitter=0.0)]
+    collect_odds(conn, api.client(), [NFL], now=KICKOFF - timedelta(hours=1))
+    api.scores[NFL] = [score_event(eid, NFL, home, away, KICKOFF, 27, 20)]
+    collect_results(conn, api.client(), [NFL], now=KICKOFF + timedelta(hours=4))
+    assert settle_ledger(conn, NFL)["settled"] == 1
+
+    rec = track_record(conn, NFL, now=KICKOFF + timedelta(days=1))
+    assert rec["n_settled"] == 1 and rec["pick_hit_rate"] == 1.0      # model picks still count
+    assert rec["n_value_bets"] == 0 and rec["n_clv"] == 0 and rec["median_clv_90d"] is None
 
 
 def test_cold_start_publish_creates_ledger_row_without_pick(conn):

@@ -6,7 +6,7 @@ Batch jobs that replace the retired Replit backend for 2-way US sports:
 The Odds API ──collect──▶ multisport_fixtures / multisport_odds_snapshots
              ──results──▶ multisport_match_results (+ fixture scores/outcome)
                  sync  ──▶ multisport_training (label + 46 leak-safe features)
-                 train ──▶ models/<sport_key>/{lgbm_model.txt, features.json, metadata.json}
+                 train ──▶ multisport_models (source of truth) + models/<sport_key>/ (local cache)
                predict ──▶ "MultisportMatch" (the Prisma table the Next.js app reads)
                 settle ──▶ "MultisportMatch".finalResult
 ```
@@ -43,17 +43,52 @@ Add `-v` for debug logging. Each job writes a row to `multisport_pipeline_runs`.
 
 `train` retrains a sport when **either**: at least `MIN_NEW_GAMES` (20) new
 finished games landed since the last train, **or** the model is older than
-`MAX_MODEL_AGE_DAYS` (7). It refuses to train below `min_train_samples`
-(NFL 120, NBA/NCAAB 150). Artifacts are committed back to `pipeline/models/`
-by the nightly workflow so a lost runner never loses a model again.
+`MAX_MODEL_AGE_DAYS` (7), **or** the stored model predates the market-anchored
+trainer. It refuses to train below `min_train_samples` (NFL 120, NBA/NCAAB 150).
+Every trained model is written to the `multisport_models` table (`sql/003`), which
+`predict` and `status` load from; `models/<sport_key>/` is a local cache and the
+fallback when no row exists. The nightly workflow still commits that folder.
+
+### Model: market-anchored LightGBM
+
+Every game starts at `logit(consensus home probability)` (LightGBM `init_score`)
+and the booster learns only a small, heavily regularised correction (4 leaves,
+depth 2, L2 = 10) on the 34 features whose training and live distributions match
+(`features.MODEL_FEATURE_NAMES`; line-movement, snapshot-count and time-to-game
+features are excluded because imported games have one snapshot and finished games
+have no time to kickoff). The number of correction rounds is chosen by an inner
+temporal CV from `ANCHOR_ROUND_CANDIDATES`; a correction is kept only if it beats
+"market only" by ≥ `ANCHOR_MIN_INNER_GAIN` (0.002) log loss per game. With
+**0 rounds the model is the market**, and `predict` publishes such a sport like cold
+start (`model = null`, mode `market_only_model_adds_nothing`) so a favourite is
+never relabelled as a model pick.
+
+Why: a backtest on 729 imported games (Nov 2026) found the previous unanchored
+46-feature model 0.01–0.03 log loss *worse* than the market in every sport while
+flagging a value bet on ~45 of 47 games. Larger corrections made log loss worse
+still: at a few hundred games there is no reliable signal beyond the closing line.
 
 ### Honesty gate
 
-Every trained model carries `metadata.edge_gate`: out-of-fold accuracy versus
-"pick the consensus favorite" on the same games. `edge_validated` becomes true
-only with n ≥ 100 and a ≥ 2pp lead over the favorite. The published
-`model_track_record.edge_validated` is read from this; the frontend hides
-value-bet CTAs while it is false. Nothing in the pipeline can set it by hand.
+Every trained model carries `metadata.edge_gate`, computed on **nested** temporal
+out-of-fold predictions (the round count is chosen inside each outer training
+fold, so the gate never grades its own selection) against the de-vigged market
+probability on the same games. `edge_validated` becomes true only with n ≥ 100,
+a log-loss gain ≥ `EDGE_GATE_MIN_LOGLOSS_GAIN` (0.005) **and** a Brier score no
+worse than the market's. Accuracy vs "pick the favourite" is still reported
+(`model_acc`, `favorite_acc`, `delta`) but decides nothing. The published
+`model_track_record.edge_validated` is read from this; nothing can set it by hand.
+
+### Value bets
+
+`value.value_bet` is emitted **only when `edge_validated` is true** (otherwise
+`value.gated` says why). The model must beat the de-vigged consensus by
+`VALUE_MIN_EDGE` (3pp) and show positive EV at the **consensus** price; the best
+single-book price is then reported as where to take it. Selecting on the best
+book alone made nearly every game "value", because the best of ~10 noisy quotes
+almost always beats the average. The ledger keeps every bet it was given, but
+value-bet ROI and CLV in the track record count only bets placed while the gate
+had passed (`edge_validated_at_bet`), i.e. bets the site actually offered.
 
 ## Cold start (right now)
 

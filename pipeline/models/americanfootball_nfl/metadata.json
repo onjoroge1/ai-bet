@@ -1,0 +1,52 @@
+{
+  "model_id": "v3_multisport_football",
+  "model_type": "V3_Multisport_LightGBM",
+  "model_kind": "market_anchored_lgbm",
+  "anchor_feature": "prob_home",
+  "anchor_rounds": 0,
+  "fold_rounds": [
+    0,
+    0,
+    0
+  ],
+  "inner_cv_logloss_sum": {
+    "0": 101.2595,
+    "10": 101.1443,
+    "25": 101.2499,
+    "50": 101.5017,
+    "100": 101.8445,
+    "200": 102.9124
+  },
+  "sport_key": "americanfootball_nfl",
+  "features_version": "v3.1",
+  "trained_at": "2026-11-07T21:22:26.581993+00:00",
+  "train_reason": "forced",
+  "n_samples": 212,
+  "n_samples_from_csv": 212,
+  "date_range": [
+    "2025-12-02",
+    "2026-11-03"
+  ],
+  "n_folds": 3,
+  "oof_metrics": {
+    "accuracy": 0.6541,
+    "logloss": 0.6369,
+    "brier": 0.223,
+    "market_logloss": 0.6369
+  },
+  "edge_gate": {
+    "n": 159,
+    "criterion": "logloss_vs_market",
+    "model_logloss": 0.6369,
+    "market_logloss": 0.6369,
+    "logloss_gain": 0.0,
+    "brier_model": 0.223,
+    "brier_market": 0.223,
+    "model_acc": 0.6541,
+    "favorite_acc": 0.6541,
+    "delta": 0.0,
+    "edge_validated": false,
+    "validation": "temporal OOF log loss 0.6369 vs market 0.6369 (+0.0000, n=159) \u2014 no demonstrated edge over the market"
+  },
+  "feature_importance": []
+}
