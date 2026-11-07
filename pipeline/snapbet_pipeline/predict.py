@@ -186,7 +186,7 @@ def predict_upcoming(conn, sport_key: str, predictor: Optional[Predictor], now: 
                 "books": books,
                 "model_info": predictor.info() if predictor else None,
                 "feature_values": {k: round(v, 4) for k, v in feature_values.items()} if feature_values else None,
-                "markets": _markets(cons, model_probs),
+                "markets": _markets(cons, model_probs, home, away),
                 **edge_blocks,
                 "model_track_record": track,
             }
@@ -195,17 +195,32 @@ def predict_upcoming(conn, sport_key: str, predictor: Optional[Predictor], now: 
     return out
 
 
-def _markets(cons: Dict, model_probs: Optional[Dict[str, float]]) -> List[Dict]:
-    """Compact market summaries for the match page (moneyline / spread / total)."""
+def _markets(cons: Dict, model_probs: Optional[Dict[str, float]], home: str = "Home",
+             away: str = "Away") -> List[Dict]:
+    """Market summaries in the structured shape the match page renders:
+    {market, options: [{label, model_prob, implied_prob, decimal_odds, edge}]}.
+    Spread/total carry no model probability (the model is moneyline-only)."""
     rows: List[Dict] = []
+
+    def opt(label, implied, odds, model_p=None):
+        edge = round(model_p - implied, 4) if (model_p is not None and implied is not None) else None
+        return {"label": label, "model_prob": model_p, "implied_prob": implied, "decimal_odds": odds, "edge": edge}
+
     if cons.get("home_odds") and cons.get("away_odds"):
-        rows.append({"market": "moneyline", "home_odds": cons["home_odds"], "away_odds": cons["away_odds"],
-                     "home_prob": cons.get("home_prob"), "away_prob": cons.get("away_prob"),
-                     "model_home_prob": round(model_probs["home"], 4) if model_probs else None})
+        rows.append({"market": "Moneyline", "options": [
+            opt(home, cons.get("home_prob"), cons["home_odds"], round(model_probs["home"], 4) if model_probs else None),
+            opt(away, cons.get("away_prob"), cons["away_odds"], round(model_probs["away"], 4) if model_probs else None),
+        ]})
     if cons.get("home_spread") is not None:
-        rows.append({"market": "spread", "home_spread": cons["home_spread"],
-                     "home_odds": cons.get("home_spread_odds"), "away_odds": cons.get("away_spread_odds")})
+        s = cons["home_spread"]
+        rows.append({"market": "Spread", "options": [
+            opt(f"{home} {s:+g}", None, cons.get("home_spread_odds")),
+            opt(f"{away} {-s:+g}", None, cons.get("away_spread_odds")),
+        ]})
     if cons.get("total_line") is not None:
-        rows.append({"market": "total", "line": cons["total_line"],
-                     "over_odds": cons.get("over_odds"), "under_odds": cons.get("under_odds")})
+        t = cons["total_line"]
+        rows.append({"market": "Total", "options": [
+            opt(f"Over {t:g}", None, cons.get("over_odds")),
+            opt(f"Under {t:g}", None, cons.get("under_odds")),
+        ]})
     return rows

@@ -24,7 +24,7 @@ pip install -e ".[dev]"
 
 export DATABASE_URL="postgresql://..."        # the Neon URL the Vercel app uses
 export ODDS_API_KEY="..."                      # https://the-odds-api.com
-export PIPELINE_SPORTS="americanfootball_nfl,basketball_nba,basketball_ncaab"   # default
+export PIPELINE_SPORTS="americanfootball_nfl,basketball_nba"   # default; add basketball_ncaab / icehockey_nhl to opt in
 
 snapbet-pipeline migrate      # create tables (idempotent; every command also runs it)
 snapbet-pipeline collect      # odds snapshot for in-season sports
