@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from typing import Dict, Iterable, List
 
 from .config import SPORTS
+from .ledger import record_publish
 from .predict import Prediction
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,7 @@ def publish_predictions(conn, predictions: Iterable[Prediction]) -> Dict[str, in
     with conn.cursor() as cur:
         for p in predictions:
             upsert_prediction(cur, p)
+            record_publish(cur, p)
             n += 1
     conn.commit()
     return {"published": n}

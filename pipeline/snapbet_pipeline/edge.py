@@ -100,14 +100,28 @@ def build_value_payload(model_probs: Optional[Dict[str, float]], market_raw: Opt
     return {"market": market_block, "value": value_block, "clv": clv_block}
 
 
-def model_track_record(model_id: str, gate: Optional[Dict]) -> Dict:
-    """Honesty block. `gate` is metadata['edge_gate'] from the trained model (or None)."""
+def model_track_record(model_id: str, gate: Optional[Dict], record: Optional[Dict] = None,
+                       clv_veto: Optional[str] = None) -> Dict:
+    """Honesty block.
+    gate   : metadata['edge_gate'] from the trained model (or None)
+    record : ledger.track_record() output for the sport (or None)
+    clv_veto: reason string when settled CLV contradicts the gate (ledger.clv_vetoes_edge)
+    """
     gate = gate or {}
+    record = record or {}
+    validated = bool(gate.get("edge_validated", False))
+    validation = gate.get("validation", "no trained model / not validated")
+    if validated and clv_veto:
+        validated = False
+        validation = f"{validation}; {clv_veto}"
     return {
         "model": model_id,
         "segment": "efficient_market",
-        "edge_validated": bool(gate.get("edge_validated", False)),
-        "validation": gate.get("validation", "no trained model / not validated"),
-        "median_clv_90d": None,
-        "n_settled": gate.get("n"),
+        "edge_validated": validated,
+        "validation": validation,
+        "median_clv_90d": record.get("median_clv_90d"),
+        "n_settled": record.get("n_settled") if record else gate.get("n"),
+        "track_record": {k: record.get(k) for k in ("window_days", "pick_hit_rate", "n_value_bets",
+                                                      "value_bet_hit_rate", "value_bet_roi_1u",
+                                                      "clv_positive_rate", "n_clv")} if record else None,
     }

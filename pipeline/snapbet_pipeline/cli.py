@@ -10,6 +10,7 @@ laptop run exactly the same code:
   snapbet-pipeline settle             # finals -> MultisportMatch.finalResult
   snapbet-pipeline run                # collect + results + sync + predict + settle
   snapbet-pipeline status             # row counts + last runs
+  snapbet-pipeline report             # settled track record per sport (hit rate, value-bet ROI, CLV)
   snapbet-pipeline import-csv --sports americanfootball_nfl --file games.csv [--source name]
                                       # cold-start: finished games (+closing odds) from a CSV
 """
@@ -25,6 +26,7 @@ from typing import Dict
 from . import db
 from .collect import collect_odds
 from .import_csv import import_csv_file
+from .ledger import settle_ledger, track_record
 from .config import SPORTS, Settings
 from .odds_api import OddsApiClient
 from .predict import Predictor, predict_upcoming
@@ -93,7 +95,23 @@ def cmd_predict(conn, s: Settings, args) -> Dict:
 
 
 def cmd_settle(conn, s: Settings, args) -> Dict:
-    return {k: settle_finished(conn, k) for k in s.sports}
+    return {k: {"matches": settle_finished(conn, k), "ledger": settle_ledger(conn, k)} for k in s.sports}
+
+
+def cmd_report(conn, s: Settings, args) -> Dict:
+    """Settled track record per sport (90d) straight from the pick ledger."""
+    out = {}
+    with conn.cursor() as cur:
+        for k in s.sports:
+            rec = track_record(conn, k)
+            cur.execute("""SELECT COUNT(*) FILTER (WHERE settled_at IS NULL),
+                                  COUNT(*) FILTER (WHERE settled_at IS NULL AND value_bet_outcome IS NOT NULL),
+                                  COUNT(*) FILTER (WHERE settled_at IS NOT NULL AND closing_method = 'latest_available')
+                             FROM multisport_pick_ledger WHERE sport_key = %s""", (k,))
+            open_rows, open_vb, no_pre_close = cur.fetchone()
+            rec.update(open_picks=open_rows, open_value_bets=open_vb, settled_without_pre_close_snapshot=no_pre_close)
+            out[k] = rec
+    return out
 
 
 def cmd_run(conn, s: Settings, args) -> Dict:
@@ -145,7 +163,7 @@ def cmd_status(conn, s: Settings, args) -> Dict:
 
 COMMANDS = {"migrate": cmd_migrate, "collect": cmd_collect, "results": cmd_results, "sync": cmd_sync,
             "train": cmd_train, "predict": cmd_predict, "settle": cmd_settle, "run": cmd_run,
-            "status": cmd_status, "import-csv": cmd_import_csv}
+            "status": cmd_status, "import-csv": cmd_import_csv, "report": cmd_report}
 
 
 def build_parser() -> argparse.ArgumentParser:

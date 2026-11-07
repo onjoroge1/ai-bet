@@ -68,6 +68,25 @@ The Replit database is gone, so training sets are empty. From the first
 | NCAAB (opt-in) | 150 | ~1 week (30+ games/day) |
 | NFL | 120 | ~8–9 weeks (≈14 games/week) — consider importing last season's odds+results |
 
+## Pick ledger, closing line and CLV
+
+Every `predict` writes `multisport_pick_ledger`: the model pick at **first** publish and the
+value bet at the **first** publish that carried one, with the best price available at that moment
+(`bet_time_odds`). Later publishes only bump `publish_count`; nothing bet-time is overwritten.
+`settle` then records the closing line (last consensus snapshot at or before kickoff, else the latest
+available and flagged), the result, whether the pick / value bet won, 1u P&L at the bet-time price, and
+
+```
+realized_clv = bet_time_odds × closing_prob_bet − 1
+```
+
+Positive CLV = we beat the close. `snapbet-pipeline report` prints the 90-day settled record per sport
+(hit rate, value-bet ROI, median CLV, CLV-positive rate). The same numbers fill
+`model_track_record.{n_settled, median_clv_90d, track_record}` on every published row, and a sport whose
+median CLV is negative over ≥ 50 settled value bets is published as `edge_validated: false` even if its
+training gate passed (the CLV veto). The realized CLV is also mirrored into the frontend row's
+`predictionData.clv` block.
+
 ## Cold-start accelerator: `import-csv`
 
 Import last season's finished games (and closing lines, if you have them) so

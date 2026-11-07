@@ -100,12 +100,27 @@ be added later as a second source behind the same tables.
   `--dry-run`, fix any unmapped labels, import, then `train`. Record the CSV's origin in `--source`.
 - Later: `import-odds-api-history` for plans with the historical endpoint (same tables, real snapshots).
 
-### PR-5 — pipeline: closing line + CLV settlement (edge plan Phase B)
-- At first `results` after a game: store the last pre-game consensus as `closing_odds`; for rows that
-  had a `value_bet`, compute `realized_clv = bet_odds / closing_odds − 1`; write into
-  `predictionData.clv` and roll `median_clv_90d` / `n_settled` into `model_track_record`.
-- Acceptance: `clv` block non-null on settled rows; CLV history visible in `/predict-multisport/results`
-  equivalents (`/api/admin/multisport/reports`).
+### PR-5 — pipeline: pick ledger, closing line + realized CLV ✅ built
+- `multisport_pick_ledger` (sql/002): per (sport, event) — model pick + market prob at FIRST publish,
+  value bet + `bet_time_odds`/book/EV at the FIRST publish that carried one (never overwritten),
+  `publish_count`; at settlement the closing consensus (last snapshot ≤ kickoff, else latest, flagged),
+  result, pick/value-bet won, 1u P&L, `realized_clv = bet_time_odds × closing_prob − 1`.
+- `publish` writes the ledger; `settle` settles it and mirrors `bet_time_odds / closing_odds /
+  closing_prob / realized_clv` into `MultisportMatch.predictionData.clv` (the block
+  `lib/edge/extract.ts` already reads).
+- `ledger.track_record()` (90d) fills `model_track_record.n_settled`, `median_clv_90d` and a
+  `track_record` sub-block on every published row. **CLV veto:** median CLV < 0 over ≥ 50 settled value
+  bets publishes `edge_validated: false` even when the training gate passed.
+- New `snapbet-pipeline report` command. Tests: bet-time lock across re-publishes, settlement maths,
+  frontend mirror, finality after settlement, cold-start rows, veto thresholds.
+- Not in scope: frontend rendering of `track_record` (PR-8 admin panel) — the data is already in the row.
+
+### PR-4b — pipeline: `import-odds-api-history` (second cold-start source) — proposed
+The Odds API historical endpoint (`/v4/historical/sports/{key}/odds?date=`) was validated by the backend
+on 2025-11-18 with the then-current plan (40 books; snapshots since 2020). It has no historical scores
+(`/scores` is ≤ 3 days), so results would come from API-Sports season endpoints (key existed) or a public
+scoreboard feed. Builds on the same tables as `import-csv`; real multi-snapshot odds instead of a single
+closing line. Needs: confirm the current plan includes historical access and its credit multiplier.
 
 ### PR-6 — web: soccer demotion / cron budget (product decision)
 Turn off or slow the per-minute soccer live sync, reorder the homepage, hide soccer from the picks

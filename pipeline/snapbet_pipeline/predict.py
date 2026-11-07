@@ -21,6 +21,7 @@ from .config import SPORTS, model_registry_id
 from .consensus import best_prices
 from .edge import build_value_payload, model_track_record
 from .features import ALL_FEATURE_NAMES, MultisportFeatureBuilder
+from .ledger import clv_vetoes_edge, track_record
 from .train import FEATURES_FILE, META_FILE, MODEL_FILE, model_dir_for
 
 logger = logging.getLogger(__name__)
@@ -133,6 +134,8 @@ def predict_upcoming(conn, sport_key: str, predictor: Optional[Predictor], now: 
     now = now or datetime.now(timezone.utc)
     cfg = SPORTS[sport_key]
     builder = MultisportFeatureBuilder(conn)
+    record = track_record(conn, sport_key, now=now)        # settled evidence from the pick ledger
+    veto = clv_vetoes_edge(record)
     with conn.cursor() as cur:
         cur.execute(
             """SELECT event_id, home_team, away_team, league_name, commence_time
@@ -175,7 +178,8 @@ def predict_upcoming(conn, sport_key: str, predictor: Optional[Predictor], now: 
 
             edge_blocks = build_value_payload(model_probs, market_raw, bp, cons.get("n_bookmakers"))
             track = model_track_record(model_registry_id(sport_key),
-                                       predictor.metadata.get("edge_gate") if predictor else None)
+                                       predictor.metadata.get("edge_gate") if predictor else None,
+                                       record=record, clv_veto=veto)
             prediction_data = {
                 "source": "snapbet_pipeline",
                 "generated_at": now.isoformat(),
