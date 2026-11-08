@@ -22,8 +22,10 @@ cd pipeline
 python -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
 
-export DATABASE_URL="postgresql://..."        # the Neon URL the Vercel app uses
-export ODDS_API_KEY="..."                      # https://the-odds-api.com
+# Secrets: the process env wins; otherwise pipeline/.env, then the app's ../.env.local and ../.env
+# are read (all gitignored). DATABASE_URL_UNPOOLED is preferred over DATABASE_URL, and Prisma-only
+# query params (pgbouncer=, connection_limit=) are stripped, so the app's Neon URLs work as-is.
+# The app's env files have no ODDS_API_KEY: put it in pipeline/.env (ODDS_API_KEY=...).
 export PIPELINE_SPORTS="americanfootball_nfl,basketball_nba,icehockey_nhl"   # default; add basketball_ncaab to opt in
 
 snapbet-pipeline migrate      # create tables (idempotent; every command also runs it)

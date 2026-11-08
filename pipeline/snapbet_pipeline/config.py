@@ -8,6 +8,59 @@ from typing import Dict, List, Tuple
 ODDS_API_BASE_URL = "https://api.the-odds-api.com/v4"
 
 
+# --------------------------------------------------------------------- env files
+_PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))     # pipeline/
+ENV_FILES = (os.path.join(_PKG_ROOT, ".env"),                               # pipeline/.env
+             os.path.join(os.path.dirname(_PKG_ROOT), ".env.local"),        # the Next.js app's
+             os.path.join(os.path.dirname(_PKG_ROOT), ".env"))
+# Prisma-only query parameters that libpq/psycopg2 rejects ("invalid URI query parameter")
+_PRISMA_PARAMS = {"pgbouncer", "connection_limit", "pool_timeout", "connect_timeout_ms", "schema", "statement_cache_size"}
+
+
+def read_env_files(paths=ENV_FILES) -> Dict[str, str]:
+    """KEY=VALUE pairs from the env files, earlier files winning. Never overrides the process env."""
+    out: Dict[str, str] = {}
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                lines = fh.read().splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            key = key.strip().removeprefix("export ").strip()
+            val = val.strip()
+            if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+                val = val[1:-1]
+            if key and key not in out:
+                out[key] = val
+    return out
+
+
+def libpq_url(url: str) -> str:
+    """Drop Prisma-only query parameters so psycopg2 accepts a Prisma/Neon URL."""
+    if "?" not in url:
+        return url
+    from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+    parts = urlsplit(url)
+    q = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k not in _PRISMA_PARAMS]
+    return urlunsplit(parts._replace(query=urlencode(q)))
+
+
+def env(name: str, files: Dict[str, str], default: str = "") -> str:
+    return os.environ.get(name) or files.get(name) or default
+
+
+def resolve_database_url(files: Dict[str, str]) -> str:
+    """The direct (unpooled) Neon URL when one is available, else DATABASE_URL cleaned for libpq."""
+    url = (os.environ.get("DATABASE_URL_UNPOOLED") or os.environ.get("DATABASE_URL")
+           or files.get("DATABASE_URL_UNPOOLED") or files.get("DATABASE_URL"))
+    return libpq_url(url) if url else ""
+
+
 @dataclass(frozen=True)
 class SportConfig:
     key: str                     # The Odds API sport_key
@@ -145,17 +198,18 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
-        sports_env = os.getenv("PIPELINE_SPORTS", "").strip()
+        files = read_env_files()
+        sports_env = env("PIPELINE_SPORTS", files).strip()
         sports = [s.strip() for s in sports_env.split(",") if s.strip()] or list(DEFAULT_SPORTS)
         unknown = [s for s in sports if s not in SPORTS]
         if unknown:
             raise ValueError(f"Unknown sport keys in PIPELINE_SPORTS: {unknown}. Known: {sorted(SPORTS)}")
         return cls(
-            database_url=os.getenv("DATABASE_URL", ""),
-            odds_api_key=os.getenv("ODDS_API_KEY", ""),
+            database_url=resolve_database_url(files),
+            odds_api_key=env("ODDS_API_KEY", files),
             sports=sports,
-            models_dir=os.getenv("PIPELINE_MODELS_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "models")),
-            odds_api_base_url=os.getenv("ODDS_API_BASE_URL", ODDS_API_BASE_URL),
+            models_dir=env("PIPELINE_MODELS_DIR", files, os.path.join(_PKG_ROOT, "models")),
+            odds_api_base_url=env("ODDS_API_BASE_URL", files, ODDS_API_BASE_URL),
         )
 
 
