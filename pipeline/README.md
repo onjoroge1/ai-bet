@@ -169,6 +169,16 @@ haven't listed yet are stored unlinked and backfilled later. A Kalshi failure ne
 scores and Kalshi prices are collected but which are **never trained, predicted or published**.
 Each costs about 3 Odds API credits per hourly run. An explicit `--sports` list turns research sports off.
 
+## Player props and box scores (research)
+
+* `snapbet-pipeline props` (in `run`): NBA player points, rebounds, assists and threes from every US book via
+  The Odds API event-odds endpoint. Each game is pulled **once**, in the run that falls 30-90 minutes before
+  tip-off (close to the closing line). Cost: 4 credits per game (~30 a night). Over and Under are stored in one
+  row per book x market x player x line (`multisport_player_props`).
+* `snapbet-pipeline boxscores [--from YYYY-MM-DD --to YYYY-MM-DD]` (in `run`, last 2 ET days by default): ESPN
+  player box scores for final NBA games (free): minutes, points, rebounds, assists, 3s, shooting, starter and DNP
+  reason (`multisport_player_boxscores`), linked to `multisport_fixtures` when the books listed the game.
+
 ## Retention: `prune`
 
 `snapbet-pipeline prune [--keep-days 7] [--dry-run]` runs nightly (in the train workflow). For games
@@ -176,7 +186,9 @@ that started more than `--keep-days` ago it thins **per-bookmaker** odds and **K
 the opening capture, the closing capture (last before the start), and the first capture in each
 6-hour window; in-play per-book rows are dropped. **Consensus rows are never deleted** (training,
 features, line-movement and the pick ledger read only those). Pipeline run logs older than 60 days
-are dropped. `--dry-run` reports counts without deleting.
+are dropped. Player props older than 30 days are collapsed into `multisport_player_prop_consensus` (one row per
+game x market x player: median line, no-vig over probability, book count, best prices) and the per-book rows
+deleted. `--dry-run` reports counts without deleting.
 
 ## Cold-start accelerator: `import-csv`
 

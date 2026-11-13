@@ -9,7 +9,9 @@ laptop run exactly the same code:
   snapbet-pipeline predict            # upcoming fixtures -> MultisportMatch
   snapbet-pipeline settle             # finals -> MultisportMatch.finalResult
   snapbet-pipeline kalshi             # Kalshi game-winner prices -> kalshi snapshots (public, no credits)
-  snapbet-pipeline run                # collect + kalshi + results + sync + predict + settle
+  snapbet-pipeline run                # collect + kalshi + props + results + boxscores + sync + predict + settle
+  snapbet-pipeline props              # NBA player props, each game once ~30-90 min before tip (4 credits/game)
+  snapbet-pipeline boxscores [--from D --to D]  # ESPN player box scores (free); default: last 2 ET days
   snapbet-pipeline prune [--keep-days 7] [--dry-run]
                                       # thin per-book/Kalshi snapshots of old games (consensus kept)
   snapbet-pipeline status             # row counts + last runs
@@ -40,6 +42,8 @@ from .predict import Predictor, predict_upcoming
 from .publish import publish_predictions, settle_finished
 from .results import collect_results
 from .retention import prune
+from .props import collect_props
+from .boxscores import collect_boxscores, recent_days
 from .train import should_train, train_sport
 from .training_sync import sync_training
 
@@ -129,6 +133,21 @@ def cmd_report(conn, s: Settings, args) -> Dict:
     return out
 
 
+def cmd_props(conn, s: Settings, args) -> Dict:
+    return collect_props(conn, _client(s), collect_sports(s), max_credits=args.max_credits)
+
+
+def cmd_boxscores(conn, s: Settings, args) -> Dict:
+    from datetime import date, timedelta
+    if args.date_from:
+        start = date.fromisoformat(args.date_from)
+        end = date.fromisoformat(args.date_to) if args.date_to else start
+        days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
+    else:
+        days = recent_days()
+    return collect_boxscores(conn, collect_sports(s), days)
+
+
 def cmd_prune(conn, s: Settings, args) -> Dict:
     return prune(conn, keep_days=args.keep_days, dry_run=args.dry_run)
 
@@ -136,11 +155,17 @@ def cmd_prune(conn, s: Settings, args) -> Dict:
 def cmd_run(conn, s: Settings, args) -> Dict:
     out: Dict = {}
     out["collect"] = _job(conn, "collect", lambda: cmd_collect(conn, s, args))
-    try:  # research capture; never blocks the publishing jobs
-        out["kalshi"] = _job(conn, "kalshi", lambda: cmd_kalshi(conn, s, args))
-    except Exception as e:
-        out["kalshi"] = {"status": "error", "error": str(e)}
+    # research captures; never block the publishing jobs
+    for name, fn in (("kalshi", cmd_kalshi), ("props", cmd_props)):
+        try:
+            out[name] = _job(conn, name, lambda fn=fn: fn(conn, s, args))
+        except Exception as e:
+            out[name] = {"status": "error", "error": str(e)}
     out["results"] = _job(conn, "results", lambda: cmd_results(conn, s, args))
+    try:
+        out["boxscores"] = _job(conn, "boxscores", lambda: cmd_boxscores(conn, s, args))
+    except Exception as e:
+        out["boxscores"] = {"status": "error", "error": str(e)}
     out["sync"] = _job(conn, "sync", lambda: cmd_sync(conn, s, args))
     out["predict"] = _job(conn, "predict", lambda: cmd_predict(conn, s, args))
     out["settle"] = _job(conn, "settle", lambda: cmd_settle(conn, s, args))
@@ -206,7 +231,7 @@ def cmd_status(conn, s: Settings, args) -> Dict:
 
 COMMANDS = {"migrate": cmd_migrate, "collect": cmd_collect, "kalshi": cmd_kalshi, "results": cmd_results, "sync": cmd_sync,
             "train": cmd_train, "predict": cmd_predict, "settle": cmd_settle, "run": cmd_run,
-            "status": cmd_status, "prune": cmd_prune, "import-csv": cmd_import_csv, "report": cmd_report,
+            "status": cmd_status, "prune": cmd_prune, "props": cmd_props, "boxscores": cmd_boxscores, "import-csv": cmd_import_csv, "report": cmd_report,
             "import-odds-api-history": cmd_import_odds_api_history}
 
 
