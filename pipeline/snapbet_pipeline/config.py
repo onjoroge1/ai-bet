@@ -113,6 +113,10 @@ SPORTS: Dict[str, SportConfig] = {
 # Sports enabled by default: NFL + NBA + NHL (must match lib/multisport/sports.ts
 # `display: true`). NCAAB stays configured but off unless PIPELINE_SPORTS lists it.
 DEFAULT_SPORTS: List[str] = ["americanfootball_nfl", "basketball_nba", "icehockey_nhl"]
+# Research-only sports: odds, scores and Kalshi prices are collected, but they are
+# never trained, predicted or published to the site. Override with PIPELINE_RESEARCH_SPORTS
+# (comma-separated; "none" disables).
+DEFAULT_RESEARCH_SPORTS: List[str] = ["basketball_ncaab"]
 
 # ELO parameters (shared with feature builder)
 ELO_K = 20.0
@@ -193,6 +197,7 @@ class Settings:
     database_url: str
     odds_api_key: str
     sports: List[str] = field(default_factory=lambda: list(DEFAULT_SPORTS))
+    research_sports: List[str] = field(default_factory=list)
     models_dir: str = "models"
     odds_api_base_url: str = ODDS_API_BASE_URL
 
@@ -204,13 +209,26 @@ class Settings:
         unknown = [s for s in sports if s not in SPORTS]
         if unknown:
             raise ValueError(f"Unknown sport keys in PIPELINE_SPORTS: {unknown}. Known: {sorted(SPORTS)}")
+        research_env = env("PIPELINE_RESEARCH_SPORTS", files).strip()
+        research = (list(DEFAULT_RESEARCH_SPORTS) if not research_env else
+                    [] if research_env.lower() == "none" else
+                    [s.strip() for s in research_env.split(",") if s.strip()])
+        unknown = [s for s in research if s not in SPORTS]
+        if unknown:
+            raise ValueError(f"Unknown sport keys in PIPELINE_RESEARCH_SPORTS: {unknown}. Known: {sorted(SPORTS)}")
         return cls(
             database_url=resolve_database_url(files),
             odds_api_key=env("ODDS_API_KEY", files),
             sports=sports,
+            research_sports=[r for r in research if r not in sports],
             models_dir=env("PIPELINE_MODELS_DIR", files, os.path.join(_PKG_ROOT, "models")),
             odds_api_base_url=env("ODDS_API_BASE_URL", files, ODDS_API_BASE_URL),
         )
+
+
+def collect_sports(s: "Settings") -> List[str]:
+    """Sports whose odds, scores and Kalshi prices are collected (published + research)."""
+    return list(s.sports) + [r for r in s.research_sports if r not in s.sports]
 
 
 def model_registry_id(sport_key: str) -> str:

@@ -146,12 +146,37 @@ training gate passed (the CLV veto). The realized CLV is also mirrored into the 
 
 ## Kalshi prices (research)
 
-`snapbet-pipeline kalshi` (also part of `run`, right after `collect`) stores the bid/ask/last price,
-volume and open interest of every open Kalshi game-winner market (KXNFLGAME, KXNBAGAME, KXNHLGAME)
-in `multisport_kalshi_snapshots`. Each Kalshi game is linked to its `multisport_fixtures` row by team
-codes and time; games the books haven't listed yet are stored unlinked and backfilled on a later run.
-It only reads public market data (no account, no trading), and a Kalshi failure never stops `run`.
-Purpose: compare Kalshi with the no-vig book consensus at the same moment, across many games.
+`snapbet-pipeline kalshi` (also part of `run`, right after `collect`) reads Kalshi's public market
+data (no account, no trading, no credits) and stores it in `multisport_kalshi_snapshots`:
+
+| Sport | Kalshi series |
+|---|---|
+| NFL | game winner, spread, total, team total, 1st half, 1st quarter |
+| NBA | game winner, spread, total, team total, 1st half, 1st quarter |
+| NHL | game winner, spread (puck line), total, team total, 1st period |
+| NCAAB (research) | game winner, spread, total |
+
+To keep storage small it captures only **pre-game** prices for games starting within **24 hours**.
+Winner-type markets are captured every run. Spread/total/team-total ladders keep only the
+**3 traded lines nearest 50/50** per ladder, every 3 hours, plus every run in the last 2 hours before
+the start (the closing price). Each game is linked to its `multisport_fixtures` row (pro teams by
+Kalshi code; college teams by name, accepted only when it fits exactly one game); games the books
+haven't listed yet are stored unlinked and backfilled later. A Kalshi failure never stops `run`.
+
+## Research sports (collect-only)
+
+`PIPELINE_RESEARCH_SPORTS` (default `basketball_ncaab`; `none` disables) lists sports whose odds,
+scores and Kalshi prices are collected but which are **never trained, predicted or published**.
+Each costs about 3 Odds API credits per hourly run. An explicit `--sports` list turns research sports off.
+
+## Retention: `prune`
+
+`snapbet-pipeline prune [--keep-days 7] [--dry-run]` runs nightly (in the train workflow). For games
+that started more than `--keep-days` ago it thins **per-bookmaker** odds and **Kalshi** snapshots to:
+the opening capture, the closing capture (last before the start), and the first capture in each
+6-hour window; in-play per-book rows are dropped. **Consensus rows are never deleted** (training,
+features, line-movement and the pick ledger read only those). Pipeline run logs older than 60 days
+are dropped. `--dry-run` reports counts without deleting.
 
 ## Cold-start accelerator: `import-csv`
 

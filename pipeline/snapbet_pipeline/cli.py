@@ -10,6 +10,8 @@ laptop run exactly the same code:
   snapbet-pipeline settle             # finals -> MultisportMatch.finalResult
   snapbet-pipeline kalshi             # Kalshi game-winner prices -> kalshi snapshots (public, no credits)
   snapbet-pipeline run                # collect + kalshi + results + sync + predict + settle
+  snapbet-pipeline prune [--keep-days 7] [--dry-run]
+                                      # thin per-book/Kalshi snapshots of old games (consensus kept)
   snapbet-pipeline status             # row counts + last runs
   snapbet-pipeline report             # settled track record per sport (hit rate, value-bet ROI, CLV)
   snapbet-pipeline import-csv --sports americanfootball_nfl --file games.csv [--source name]
@@ -32,11 +34,12 @@ from .collect import collect_odds
 from .import_csv import import_csv_file
 from .kalshi import collect_kalshi
 from .ledger import settle_ledger, track_record
-from .config import SPORTS, Settings
+from .config import SPORTS, Settings, collect_sports
 from .odds_api import OddsApiClient
 from .predict import Predictor, predict_upcoming
 from .publish import publish_predictions, settle_finished
 from .results import collect_results
+from .retention import prune
 from .train import should_train, train_sport
 from .training_sync import sync_training
 
@@ -64,15 +67,15 @@ def cmd_migrate(conn, s: Settings, args) -> Dict:
 
 
 def cmd_collect(conn, s: Settings, args) -> Dict:
-    return collect_odds(conn, _client(s), s.sports, respect_season=not args.ignore_season)
+    return collect_odds(conn, _client(s), collect_sports(s), respect_season=not args.ignore_season)
 
 
 def cmd_kalshi(conn, s: Settings, args) -> Dict:
-    return collect_kalshi(conn, s.sports)
+    return collect_kalshi(conn, collect_sports(s))
 
 
 def cmd_results(conn, s: Settings, args) -> Dict:
-    return collect_results(conn, _client(s), s.sports, days_from=args.days,
+    return collect_results(conn, _client(s), collect_sports(s), days_from=args.days,
                            respect_season=not args.ignore_season)
 
 
@@ -124,6 +127,10 @@ def cmd_report(conn, s: Settings, args) -> Dict:
             rec.update(open_picks=open_rows, open_value_bets=open_vb, settled_without_pre_close_snapshot=no_pre_close)
             out[k] = rec
     return out
+
+
+def cmd_prune(conn, s: Settings, args) -> Dict:
+    return prune(conn, keep_days=args.keep_days, dry_run=args.dry_run)
 
 
 def cmd_run(conn, s: Settings, args) -> Dict:
@@ -199,7 +206,7 @@ def cmd_status(conn, s: Settings, args) -> Dict:
 
 COMMANDS = {"migrate": cmd_migrate, "collect": cmd_collect, "kalshi": cmd_kalshi, "results": cmd_results, "sync": cmd_sync,
             "train": cmd_train, "predict": cmd_predict, "settle": cmd_settle, "run": cmd_run,
-            "status": cmd_status, "import-csv": cmd_import_csv, "report": cmd_report,
+            "status": cmd_status, "prune": cmd_prune, "import-csv": cmd_import_csv, "report": cmd_report,
             "import-odds-api-history": cmd_import_odds_api_history}
 
 
@@ -224,6 +231,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--cache-dir", default=None, help="import-odds-api-history: reuse/save raw API responses here")
     p.add_argument("--supersede-csv", action="store_true",
                    help="import-odds-api-history: delete earlier csv- imports of the same games")
+    p.add_argument("--keep-days", type=int, default=7,
+                   help="prune: keep every snapshot of games that started within this many days")
     p.add_argument("-v", "--verbose", action="store_true")
     return p
 
@@ -235,6 +244,7 @@ def main(argv=None) -> int:
     s = Settings.from_env()
     if args.sports:
         s.sports = [x.strip() for x in args.sports.split(",") if x.strip()]
+        s.research_sports = []  # an explicit --sports list is exactly what runs
         bad = [x for x in s.sports if x not in SPORTS]
         if bad:
             print(f"unknown sports: {bad}", file=sys.stderr)

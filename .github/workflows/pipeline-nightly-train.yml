@@ -40,6 +40,11 @@ jobs:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           PIPELINE_SPORTS: ${{ vars.PIPELINE_SPORTS }}
         run: snapbet-pipeline sync
+      - name: prune old per-book and Kalshi snapshots (consensus kept)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: snapbet-pipeline prune --keep-days 7
       - name: train (policy-gated)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
