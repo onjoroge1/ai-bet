@@ -9,7 +9,7 @@ import { resolveSlugToMatchId } from '@/lib/match-slug-server'
 
 // Use BACKEND_API_URL from environment (no hardcoded fallback)
 const BASE_URL = process.env.BACKEND_API_URL || process.env.BACKEND_URL
-const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY || "betgenius_secure_key_2024"
+const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY
 
 if (!BASE_URL) {
   console.error('[Match API] BACKEND_API_URL or BACKEND_URL environment variable is not set')

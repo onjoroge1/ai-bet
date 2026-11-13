@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { backendPausedEmpty } from '@/lib/backend-config'
 import prisma from '@/lib/db'
 import { isMarketMatchTooOld, transformMarketMatchesToApiResponse } from '@/lib/market-match-helpers'
 import { retryWithBackoff } from '@/lib/retry-utils'
@@ -10,7 +11,7 @@ import {
 
 // Use BACKEND_API_URL from environment (no hardcoded fallback)
 const BASE_URL = process.env.BACKEND_API_URL || process.env.BACKEND_URL
-const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY || "betgenius_secure_key_2024"
+const API_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY
 
 // API route timeout configuration
 export const maxDuration = 30 // 30 seconds for Vercel Pro/Enterprise
@@ -75,16 +76,9 @@ async function fetchFromExternalAPI(url: string, cacheConfig: any, isLive: boole
 
 export async function GET(request: NextRequest) {
   if (!BASE_URL) {
-    console.error('[Market API] BACKEND_API_URL or BACKEND_URL not set')
-    return NextResponse.json(
-      { 
-        error: 'Backend API not configured',
-        message: 'Please set BACKEND_API_URL or BACKEND_URL environment variable',
-        matches: [],
-        total_count: 0
-      },
-      { status: 500 }
-    )
+    // Soccer is paused (retired backend): answer with an empty slate so the
+    // homepage / /sports soccer tab renders "no matches", not an error.
+    return backendPausedEmpty({ matches: [], total_count: 0, source: 'paused' })
   }
   
   try {

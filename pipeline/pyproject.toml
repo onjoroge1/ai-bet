@@ -1,0 +1,29 @@
+[project]
+name = "snapbet-pipeline"
+version = "0.1.0"
+description = "Snapbet multisport (NFL/NBA/NCAAB) odds collection, training and prediction pipeline"
+requires-python = ">=3.11"
+dependencies = [
+    "psycopg2-binary>=2.9.9",
+    "requests>=2.32",
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "lightgbm>=4.3",
+    "scikit-learn>=1.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+snapbet-pipeline = "snapbet_pipeline.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["snapbet_pipeline*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

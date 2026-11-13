@@ -21,18 +21,26 @@
  *
  * NHL:
  *   - Model confidence ≥ 85% (conservative — weakest sport)
+ *
+ * NFL:
+ *   - PROVISIONAL gates (no NFL track record yet) — see MULTISPORT_CONF_GATES
+ *
+ * All US sports: an edge-validated value bet in predictionData (pipeline's
+ * honesty gate) takes precedence over the confidence buckets (Criterion 0),
+ * and a row with no model block (cold start) is never a pick.
  */
 
 import prisma from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { deriveSurfaceFromPrediction } from '@/lib/predictions/should-surface'
 import { edgeSummaryFromV3Model, edgeSummaryFromPredictionData, hasActionableValue } from '@/lib/edge/extract'
+import { ACTIVE_MULTISPORT_KEYS, MULTISPORT, isMultisportKey } from '@/lib/multisport/sports'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface SnapBetPick {
   id: string
-  sport: 'soccer' | 'nba' | 'nhl' | 'ncaab'
+  sport: 'soccer' | 'nba' | 'nhl' | 'ncaab' | 'nfl'
   sportEmoji: string
   matchId: string
   homeTeam: string
@@ -176,15 +184,13 @@ const NEGATIVE_CONSENSUS_LEAGUES = [
 export async function getSnapBetPicks(limit: number = 10): Promise<SnapBetPick[]> {
   const allPicks: SnapBetPick[] = []
 
-  // Fetch all sports in parallel
-  const [soccerPicks, nbaPicks, ncaabPicks, nhlPicks] = await Promise.all([
+  // Fetch all sports in parallel: soccer + every active US sport in the registry
+  const [soccerPicks, ...multisportPicks] = await Promise.all([
     getSoccerPicks(),
-    getMultisportPicks('basketball_nba', 'nba'),
-    getMultisportPicks('basketball_ncaab', 'ncaab'),
-    getMultisportPicks('icehockey_nhl', 'nhl'),
+    ...ACTIVE_MULTISPORT_KEYS.map(key => getMultisportPicks(key)),
   ])
 
-  allPicks.push(...soccerPicks, ...nbaPicks, ...ncaabPicks, ...nhlPicks)
+  allPicks.push(...soccerPicks, ...multisportPicks.flat())
 
   // Sort by tier (premium first), then confidence, then kickoff
   allPicks.sort((a, b) => {
@@ -462,28 +468,149 @@ async function getSoccerPicks(): Promise<SnapBetPick[]> {
 
 // ─── Multisport Picks ───────────────────────────────────────────────────────
 
-async function getMultisportPicks(
-  sportKey: string,
-  sport: 'nba' | 'nhl' | 'ncaab'
-): Promise<SnapBetPick[]> {
+export type MultisportShort = 'nba' | 'nhl' | 'ncaab' | 'nfl'
+
+/** Per-sport entry gates (minimum model confidence). Derived from EV analysis
+ *  (scripts/multisport-alpha-analysis.ts, last 90d of the pre-pivot data):
+ *    - NBA was 0.80; lowered to 0.75 because the 0.75-0.85 bucket is the
+ *      actual value lane (+0.19 EV).
+ *    - NHL was 0.85; the model is systematically under-confident in NHL —
+ *      the 0.65-0.75 bucket has +0.31 EV. Lowered to 0.55 to capture it.
+ *    - NCAAB unchanged (small sample, deferred).
+ *    - NFL: PROVISIONAL. No NFL alpha analysis exists yet (first NFL model
+ *      trains in pipeline/ once ≥120 games are collected). Gate 0.65 and a
+ *      'strong' ceiling until scripts/multisport-alpha-analysis.ts covers it. */
+export const MULTISPORT_CONF_GATES: Record<MultisportShort, number> = {
+  nba: 0.75,
+  nhl: 0.55,
+  ncaab: 0.75,
+  nfl: 0.65,
+}
+
+export function multisportShort(sportKey: string): MultisportShort {
+  if (isMultisportKey(sportKey)) return MULTISPORT[sportKey].slug as MultisportShort
+  return 'nba'
+}
+
+/**
+ * Pure tier/eligibility decision for one multisport row. Exported so it can
+ * be unit-tested without Prisma.
+ *
+ * Order of precedence (mirrors soccer's Criterion 0):
+ *   0. Cold start: no model block → never a pick (the pipeline publishes
+ *      market lines before a model exists; we show no pick, not a guess).
+ *   1. Edge-validated value bet in predictionData → 'value' pick on the
+ *      value-bet outcome at the best price. The honesty gate in the pipeline
+ *      (model_track_record.edge_validated) is the only thing that can turn
+ *      this on.
+ *   2. Otherwise the per-sport confidence buckets below.
+ */
+export function evaluateMultisportPick(
+  sport: MultisportShort,
+  row: { model: unknown; predictionData: unknown },
+): {
+  qualifies: boolean
+  tier: 'premium' | 'strong' | 'value' | 'standard'
+  pick: 'H' | 'A' | null
+  pickedProb: number
+  confidence: number
+  reasons: string[]
+  edgeActionable: boolean
+  edgePrice: number | null
+  edgeEv: number | null
+} {
+  const model = (row.model as any) || null
+  const preds = model ? (model.predictions || model) : null
+  const confidence: number = preds?.confidence || 0
+  const modelPick: 'H' | 'A' | null = preds?.pick === 'H' || preds?.pick === 'A' ? preds.pick : null
+  const reasons: string[] = []
+  const none = { qualifies: false, tier: 'standard' as const, pick: null, pickedProb: 0, confidence,
+                 reasons, edgeActionable: false, edgePrice: null, edgeEv: null }
+
+  if (!preds || !modelPick) return none  // cold start: market line only
+
+  // Criterion 0 — edge-validated value bet beats every confidence rule.
+  const edgeSummary = edgeSummaryFromPredictionData(row.predictionData)
+  const edgeActionable = hasActionableValue(edgeSummary)
+  if (edgeActionable && (edgeSummary.outcome === 'home' || edgeSummary.outcome === 'away')) {
+    const pick: 'H' | 'A' = edgeSummary.outcome === 'home' ? 'H' : 'A'
+    const pickedProb = pick === 'H' ? (preds.home_win || 0) : (preds.away_win || 0)
+    reasons.push(
+      `Edge-validated value bet: +${Math.round((edgeSummary.ev ?? 0) * 100)}% EV at ${edgeSummary.price}` +
+      (edgeSummary.book ? ` (${edgeSummary.book})` : '') +
+      (edgeSummary.rating ? ` — ${edgeSummary.rating.replace('_', ' ')}` : ''),
+    )
+    return { qualifies: true, tier: 'value', pick, pickedProb, confidence: Math.max(confidence, pickedProb),
+             reasons, edgeActionable: true, edgePrice: edgeSummary.price, edgeEv: edgeSummary.ev }
+  }
+
+  if (confidence < MULTISPORT_CONF_GATES[sport]) return none
+  const pick = modelPick
+  const pickedProb = pick === 'H' ? (preds.home_win || 0) : (preds.away_win || 0)
+  let tier: 'premium' | 'strong' | 'value' | 'standard' = 'standard'
+  let qualifies = true
+
+  if (sport === 'nba') {
+    // Premium: premium conviction + home pick OR conviction + favorite
+    //   (93% acc, +0.13 EV n=14)  /  (91% acc, +0.12 EV n=23)
+    if (preds.conviction_tier === 'premium' && (pick === 'H' || pickedProb >= 0.65)) {
+      tier = 'premium'
+      reasons.push(`NBA premium ${pick === 'H' ? 'home' : 'favorite'} (93%/91% historical accuracy)`)
+    } else if (confidence >= 0.85) {
+      tier = 'strong'
+      reasons.push(`NBA strong: ${Math.round(confidence * 100)}% confidence (79%+ accuracy)`)
+    } else if (confidence >= 0.75 && confidence < 0.85) {
+      tier = 'value'
+      reasons.push(`NBA value bucket: 75-85% confidence historically +19% EV at avg 1.67x odds`)
+    }
+    // Skip: underdog picks (model fades favorite → negative EV in NBA, -0.08 historically)
+    if (pickedProb < 0.45) qualifies = false
+  } else if (sport === 'nhl') {
+    // Premium doesn't exist in NHL (n=5, -0.07 EV). The ≥0.85 gate is harmful (-0.09 EV).
+    if (confidence >= 0.85) {
+      qualifies = false
+    } else if (confidence >= 0.75 && confidence < 0.85) {
+      tier = 'strong'
+      reasons.push(`NHL strong: 75-85% confidence (+12% EV historically)`)
+    } else if (confidence >= 0.65 && confidence < 0.75) {
+      tier = 'value'
+      reasons.push(`NHL sweet spot: 65-75% confidence historically +31% EV at avg 2.18x odds`)
+    } else if (pickedProb < 0.50 && confidence >= 0.55) {
+      tier = 'value'
+      reasons.push(`NHL underdog: model fades the favorite (+15% EV historically)`)
+    }
+  } else if (sport === 'nfl') {
+    // PROVISIONAL — no NFL track record yet. Never 'premium' until the alpha
+    // analysis covers NFL; 'strong' only for high-confidence favourites.
+    if (confidence >= 0.75 && pickedProb >= 0.5) {
+      tier = 'strong'
+      reasons.push(`NFL strong (provisional): ${Math.round(confidence * 100)}% confidence — no NFL track record yet`)
+    } else {
+      reasons.push(`NFL standard (provisional): ${Math.round(confidence * 100)}% confidence — no NFL track record yet`)
+    }
+    if (pickedProb < 0.45) qualifies = false  // no underdog calls without evidence
+  } else {
+    // NCAAB (unchanged, small sample)
+    if (confidence >= 0.90) {
+      tier = 'premium'
+      reasons.push(`NCAAB model ${Math.round(confidence * 100)}% confidence (elite tier)`)
+    } else if (confidence >= 0.75) {
+      tier = 'strong'
+      reasons.push(`NCAAB model ${Math.round(confidence * 100)}% (above 75% threshold)`)
+    }
+    if (preds.conviction_tier === 'premium' && tier !== 'premium') {
+      tier = 'premium'
+      reasons.push('Premium conviction tier')
+    }
+  }
+
+  return { qualifies, tier, pick, pickedProb, confidence, reasons, edgeActionable: false, edgePrice: null, edgeEv: null }
+}
+
+async function getMultisportPicks(sportKey: string): Promise<SnapBetPick[]> {
   const picks: SnapBetPick[] = []
-
-  // Per-sport entry gates (minimum confidence). Derived from EV analysis
-  // (scripts/multisport-alpha-analysis.ts, last 90d).
-  //   - NBA was 0.80; lowered to 0.75 because the 0.75-0.85 bucket is the
-  //     actual value lane (+0.19 EV).
-  //   - NHL was 0.85; the model is systematically under-confident in NHL —
-  //     the 0.65-0.75 bucket has +0.31 EV. Lowered to 0.55 to capture it.
-  //   - NCAAB unchanged (small sample, deferred).
-  const gates = {
-    nba: 0.75,
-    nhl: 0.55,
-    ncaab: 0.75,
-  } as const
-
-  const sportEmojis = { nba: '🏀', nhl: '🏒', ncaab: '🏀' }
-  const sportNames = { nba: 'NBA', nhl: 'NHL', ncaab: 'NCAAB' }
-  const minConf = gates[sport]
+  const sport = multisportShort(sportKey)
+  const def = isMultisportKey(sportKey) ? MULTISPORT[sportKey] : MULTISPORT.basketball_nba
 
   try {
     const matches = await prisma.multisportMatch.findMany({
@@ -497,119 +624,46 @@ async function getMultisportPicks(
     })
 
     for (const m of matches) {
-      const model = (m.model as any) || {}
-      const preds = model.predictions || model
-      const confidence = preds.confidence || 0
-      const pick = preds.pick || ''
+      const ev = evaluateMultisportPick(sport, { model: m.model, predictionData: m.predictionData })
+      if (!ev.qualifies || !ev.pick) continue
 
-      if (!pick || confidence < minConf) continue
-
-      // pickedProb = the model's claimed probability for the SIDE it picked
-      const pickedProb = pick === 'H' ? (preds.home_win || 0) : (preds.away_win || 0)
-
+      const pick = ev.pick
       const pickTeam = pick === 'H' ? m.homeTeam : m.awayTeam
       const pickSide = pick === 'H' ? 'Home' : 'Away'
-      const reasons: string[] = []
-
-      let tier: 'premium' | 'strong' | 'value' | 'standard' = 'standard'
-      let qualifies = true
-
-      if (sport === 'nba') {
-        // ── NBA tier logic ──
-        // Premium: premium conviction + home pick OR conviction + favorite
-        //   (93% acc, +0.13 EV n=14)  /  (91% acc, +0.12 EV n=23)
-        if (preds.conviction_tier === 'premium' && (pick === 'H' || pickedProb >= 0.65)) {
-          tier = 'premium'
-          reasons.push(`NBA premium ${pick === 'H' ? 'home' : 'favorite'} (93%/91% historical accuracy)`)
-        }
-        // Strong: conf ≥ 0.85 (79%+ accurate baseline)
-        else if (confidence >= 0.85) {
-          tier = 'strong'
-          reasons.push(`NBA strong: ${Math.round(confidence * 100)}% confidence (79%+ accuracy)`)
-        }
-        // Value: conf 0.75-0.85 bucket — +0.19 EV at higher odds
-        else if (confidence >= 0.75 && confidence < 0.85) {
-          tier = 'value'
-          reasons.push(`NBA value bucket: 75-85% confidence historically +19% EV at avg 1.67x odds`)
-        }
-        // Skip: underdog picks (model fades favorite → negative EV in NBA, -0.08 historically)
-        if (pickedProb < 0.45) {
-          qualifies = false
-        }
-      } else if (sport === 'nhl') {
-        // ── NHL tier logic ──
-        // Premium: doesn't exist in NHL (only n=5 with -0.07 EV, sample too thin).
-        // The current ≥0.85 gate is actively harmful (-0.09 EV); suppress.
-        if (confidence >= 0.85) {
-          qualifies = false  // counterintuitive but the data shows this
-        }
-        // Strong: conf 75-85% bucket — +0.12 EV
-        else if (confidence >= 0.75 && confidence < 0.85) {
-          tier = 'strong'
-          reasons.push(`NHL strong: 75-85% confidence (+12% EV historically)`)
-        }
-        // Value: conf 65-75% sweet spot — +0.31 EV (highest pattern across all sports)
-        else if (confidence >= 0.65 && confidence < 0.75) {
-          tier = 'value'
-          reasons.push(`NHL sweet spot: 65-75% confidence historically +31% EV at avg 2.18x odds`)
-        }
-        // Value: any underdog pick — +0.15 EV in NHL (across n=164 last 90d)
-        else if (pickedProb < 0.50 && confidence >= 0.55) {
-          tier = 'value'
-          reasons.push(`NHL underdog: model fades the favorite (+15% EV historically)`)
-        }
-      } else {
-        // ── NCAAB tier logic (unchanged, small sample) ──
-        if (confidence >= 0.90) {
-          tier = 'premium'
-          reasons.push(`NCAAB model ${Math.round(confidence * 100)}% confidence (elite tier)`)
-        } else if (confidence >= 0.75) {
-          tier = 'strong'
-          reasons.push(`NCAAB model ${Math.round(confidence * 100)}% (above 75% threshold)`)
-        }
-        if (preds.conviction_tier === 'premium' && tier !== 'premium') {
-          tier = 'premium'
-          reasons.push('Premium conviction tier')
-        }
-      }
-
-      if (!qualifies) continue
+      const preds = ((m.model as any)?.predictions || m.model || {}) as any
 
       const odds = (m.odds as any) || {}
       const consensus = odds.consensus || {}
-      const spreadData = m.spread as any || {}
 
       // Per-pick EV inputs: model's prob for the picked side + decimal odds.
-      // multisport `consensus` holds home_prob/away_prob (no-vig probs).
+      // For edge picks use the best available price (that is the bet); else
+      // the consensus no-vig probability → decimal odds.
       const consensusProbForSide = pick === 'H' ? consensus.home_prob : consensus.away_prob
-      const pickOddsDecimal = typeof consensusProbForSide === 'number'
+      const consensusOdds = typeof consensusProbForSide === 'number'
         && consensusProbForSide > 0 && consensusProbForSide < 1
           ? 1 / consensusProbForSide
           : undefined
-
-      // Build slug
-      const slugHome = m.homeTeam.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-      const slugAway = m.awayTeam.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+      const pickOddsDecimal = ev.edgeActionable && ev.edgePrice ? ev.edgePrice : consensusOdds
 
       picks.push({
         id: m.id,
         sport,
-        sportEmoji: sportEmojis[sport],
+        sportEmoji: def.emoji,
         matchId: m.eventId,
         homeTeam: m.homeTeam,
         awayTeam: m.awayTeam,
-        league: m.league || sportNames[sport],
+        league: m.league || def.name,
         kickoff: m.commenceTime.toISOString(),
         pick: pickSide,
         pickTeam,
-        confidence: Math.round(confidence * 100),
-        tier,
-        starRating: tier === 'premium' ? 5 : tier === 'strong' ? 4 : tier === 'value' ? 4 : 3,
-        reasons,
-        edge: preds.edge_vs_market || undefined,
-        spread: consensus.home_spread || undefined,
-        totalLine: consensus.total_line || undefined,
-        pickProb: pickedProb > 0 ? pickedProb : undefined,
+        confidence: Math.round(ev.confidence * 100),
+        tier: ev.tier,
+        starRating: ev.tier === 'premium' ? 5 : ev.tier === 'strong' ? 4 : ev.tier === 'value' ? 4 : 3,
+        reasons: ev.reasons,
+        edge: ev.edgeActionable ? (ev.edgeEv ?? undefined) : (preds.edge_vs_market || undefined),
+        spread: consensus.home_spread ?? undefined,
+        totalLine: consensus.total_line ?? undefined,
+        pickProb: ev.pickedProb > 0 ? ev.pickedProb : undefined,
         pickOdds: pickOddsDecimal,
         slug: `/sports/${sportKey}/${m.eventId}`,
       })

@@ -1,0 +1,54 @@
+{
+  "model_id": "v3_multisport_football",
+  "model_type": "V3_Multisport_LightGBM",
+  "model_kind": "market_anchored_lgbm",
+  "anchor_feature": "prob_home",
+  "anchor_rounds": 0,
+  "fold_rounds": [
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "inner_cv_logloss_sum": {
+    "0": 188.909,
+    "10": 189.346,
+    "25": 189.7033,
+    "50": 189.7562,
+    "100": 190.4844,
+    "200": 193.0283
+  },
+  "sport_key": "americanfootball_nfl",
+  "features_version": "v3.1",
+  "trained_at": "2026-11-07T23:43:29.389979+00:00",
+  "train_reason": "404 new finished games since last train",
+  "n_samples": 404,
+  "n_samples_from_csv": 0,
+  "date_range": [
+    "2025-09-05",
+    "2026-11-03"
+  ],
+  "n_folds": 5,
+  "oof_metrics": {
+    "accuracy": 0.6507,
+    "logloss": 0.6267,
+    "brier": 0.219,
+    "market_logloss": 0.6267
+  },
+  "edge_gate": {
+    "n": 335,
+    "criterion": "logloss_vs_market",
+    "model_logloss": 0.6267,
+    "market_logloss": 0.6267,
+    "logloss_gain": 0.0,
+    "brier_model": 0.219,
+    "brier_market": 0.219,
+    "model_acc": 0.6507,
+    "favorite_acc": 0.6507,
+    "delta": 0.0,
+    "edge_validated": false,
+    "validation": "temporal OOF log loss 0.6267 vs market 0.6267 (+0.0000, n=335) \u2014 no demonstrated edge over the market"
+  },
+  "feature_importance": []
+}

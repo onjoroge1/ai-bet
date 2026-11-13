@@ -1,5 +1,5 @@
 /**
- * Multisport alpha analysis — NBA + NHL.
+ * Multisport alpha analysis — NBA + NFL + NHL (NCAAB via --sport ncaab).
  *
  * Read-only diagnostic. Walks finished MultisportMatch rows in the last
  * 90 days (or --days N) with model + finalResult populated, computes five
@@ -19,13 +19,14 @@
  * Run with:
  *   npx tsx scripts/multisport-alpha-analysis.ts                 # last 90d
  *   npx tsx scripts/multisport-alpha-analysis.ts --days 30
- *   npx tsx scripts/multisport-alpha-analysis.ts --sport nba     # single sport
+ *   npx tsx scripts/multisport-alpha-analysis.ts --sport nba     # single sport (nba|nfl|nhl|ncaab)
  */
 
 import prisma from '../lib/db'
 import { Prisma } from '@prisma/client'
 
-type Sport = 'basketball_nba' | 'icehockey_nhl'
+type Sport = 'basketball_nba' | 'icehockey_nhl' | 'americanfootball_nfl' | 'basketball_ncaab'
+const SPORT_BY_SHORT: Record<string, Sport> = { nba: 'basketball_nba', nhl: 'icehockey_nhl', nfl: 'americanfootball_nfl', ncaab: 'basketball_ncaab' }
 
 const DAYS_ARG = process.argv.indexOf('--days')
 const DAYS = DAYS_ARG !== -1 ? Math.max(1, parseInt(process.argv[DAYS_ARG + 1], 10) || 90) : 90
@@ -217,8 +218,8 @@ async function analyzeSport(sport: Sport) {
 ;(async () => {
   console.log(`\nMULTISPORT ALPHA ANALYSIS — last ${DAYS} days`)
   const sports: Sport[] = SPORT_FILTER
-    ? [SPORT_FILTER === 'nba' ? 'basketball_nba' : 'icehockey_nhl']
-    : ['basketball_nba', 'icehockey_nhl']
+    ? [SPORT_BY_SHORT[SPORT_FILTER] ?? (SPORT_FILTER as Sport)]
+    : ['basketball_nba', 'americanfootball_nfl', 'icehockey_nhl']
   for (const sport of sports) {
     await analyzeSport(sport)
   }

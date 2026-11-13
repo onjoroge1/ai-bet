@@ -144,10 +144,11 @@ function readOutcome(fr: unknown): 'home' | 'away' | 'draw' | null {
   }
 
   // ────────────────────────────────────────────────────────────────────
-  // PART B-D · NBA / NHL / NCAAB
+  // PART B-D · NBA / NFL / NHL / NCAAB
   // ────────────────────────────────────────────────────────────────────
   const sports = [
     { key: 'basketball_nba', label: 'NBA',   gates: [0.60, 0.70, 0.75, 0.80] },
+    { key: 'americanfootball_nfl', label: 'NFL', gates: [0.60, 0.65, 0.70, 0.75] },
     { key: 'icehockey_nhl',  label: 'NHL',   gates: [0.55, 0.65, 0.75, 0.85] },
     { key: 'basketball_ncaab', label: 'NCAAB', gates: [0.60, 0.70, 0.75, 0.80] },
   ]
@@ -246,14 +247,16 @@ function readOutcome(fr: unknown): 'home' | 'away' | 'draw' | null {
   const upcoming = await Promise.all([
     prisma.marketMatch.count({ where: { status: 'UPCOMING', isActive: true, kickoffDate: { gte: now, lte: new Date(now.getTime() + 7 * 86400 * 1000) } } }),
     prisma.multisportMatch.count({ where: { sport: 'basketball_nba', status: 'upcoming', commenceTime: { gte: now, lte: new Date(now.getTime() + 7 * 86400 * 1000) } } }),
+    prisma.multisportMatch.count({ where: { sport: 'americanfootball_nfl', status: 'upcoming', commenceTime: { gte: now, lte: new Date(now.getTime() + 7 * 86400 * 1000) } } }),
     prisma.multisportMatch.count({ where: { sport: 'icehockey_nhl', status: 'upcoming', commenceTime: { gte: now, lte: new Date(now.getTime() + 7 * 86400 * 1000) } } }),
     prisma.multisportMatch.count({ where: { sport: 'basketball_ncaab', status: 'upcoming', commenceTime: { gte: now, lte: new Date(now.getTime() + 7 * 86400 * 1000) } } }),
   ])
   console.log(`  Upcoming fixtures (next 7d):`)
   console.log(`    Soccer:  ${upcoming[0]}`)
   console.log(`    NBA:     ${upcoming[1]}`)
-  console.log(`    NHL:     ${upcoming[2]}`)
-  console.log(`    NCAAB:   ${upcoming[3]}`)
+  console.log(`    NFL:     ${upcoming[2]}`)
+  console.log(`    NHL:     ${upcoming[3]}`)
+  console.log(`    NCAAB:   ${upcoming[4]}`)
 
   // Premium pick rate (soccer) — what fraction of 90d settled hit V3 ≥60%?
   const totalSoccer90d = soccerFinished.length

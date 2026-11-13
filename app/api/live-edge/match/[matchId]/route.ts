@@ -7,7 +7,7 @@ import type { LiveEdgeMatchDetail } from '@/lib/live-edge/types'
  * match isn't live, so the detail page shows a clean "not available" state.
  */
 const BASE_URL = process.env.BACKEND_API_URL || process.env.BACKEND_URL
-const API_KEY = process.env.BACKEND_API_KEY || 'betgenius_secure_key_2024'
+const API_KEY = process.env.BACKEND_API_KEY
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'

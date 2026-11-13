@@ -40,6 +40,7 @@ export interface TeamProfileInputs {
 function sportDisplayName(sport: string): string {
   if (sport === 'soccer') return 'soccer'
   if (sport === 'basketball_nba') return 'NBA'
+  if (sport === 'americanfootball_nfl') return 'NFL'
   if (sport === 'icehockey_nhl') return 'NHL'
   if (sport === 'basketball_ncaab') return 'NCAAB'
   return sport

@@ -272,32 +272,19 @@ async function handleIncomingText(waId: string, text: string) {
 
     // ── MULTISPORT COMMANDS ──────────────────────────────────────────────
 
-    // VIP sport commands (check more specific first)
-    if (lower === "nba vip" || lower === "nba premium") {
-      await sendMultisportVIPPicks(normalizedWaId, "nba");
-      return;
+    // Sport commands are driven by SPORT_CONFIG (NBA, NFL, NHL): "<sport>",
+    // "<sport> vip", "<sport> premium". Check VIP variants first.
+    for (const short of Object.keys(SPORT_CONFIG)) {
+      if (lower === `${short} vip` || lower === `${short} premium`) {
+        await sendMultisportVIPPicks(normalizedWaId, short);
+        return;
+      }
     }
-    if (lower === "nhl vip" || lower === "nhl premium") {
-      await sendMultisportVIPPicks(normalizedWaId, "nhl");
-      return;
-    }
-    if (lower === "ncaab vip" || lower === "ncaab premium") {
-      await sendMultisportVIPPicks(normalizedWaId, "ncaab");
-      return;
-    }
-
-    // Free sport commands
-    if (lower === "nba") {
-      await sendMultisportFreePicks(normalizedWaId, "nba");
-      return;
-    }
-    if (lower === "nhl") {
-      await sendMultisportFreePicks(normalizedWaId, "nhl");
-      return;
-    }
-    if (lower === "ncaab") {
-      await sendMultisportFreePicks(normalizedWaId, "ncaab");
-      return;
+    for (const short of Object.keys(SPORT_CONFIG)) {
+      if (lower === short) {
+        await sendMultisportFreePicks(normalizedWaId, short);
+        return;
+      }
     }
 
     // Scorer predictions
@@ -3739,7 +3726,7 @@ async function sendScorerPicks(to: string) {
     lines.push("🤖 Powered by LightGBM ML (AUC 0.72)");
     lines.push("");
     lines.push("Send PICKS for match predictions");
-    lines.push("Send NBA, NHL, or NCAAB for other sports");
+    lines.push("Send NBA, NFL, or NHL for other sports");
 
     await sendWhatsAppText(to, lines.join("\n"));
   } catch (error) {

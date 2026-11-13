@@ -207,7 +207,7 @@ NEXTAUTH_SECRET="your-secret"
 NEXTAUTH_URL="http://localhost:3000"
 
 # Backend API (external prediction service)
-BACKEND_API_URL="https://your-backend-api.com"
+# BACKEND_API_URL=""   # legacy soccer backend — leave unset (paused); NBA/NFL/NHL come from pipeline/
 
 # Email (Resend)
 RESEND_API_KEY="your-resend-api-key"

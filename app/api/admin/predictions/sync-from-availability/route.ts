@@ -165,7 +165,7 @@ export async function POST(req: NextRequest) {
       const consensusResponse = await fetch(consensusUrl, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${process.env.CONSENSUS_API_KEY || 'betgenius_secure_key_2024'}`,
+          'Authorization': `Bearer ${process.env.CONSENSUS_API_KEY}`,
           'Content-Type': 'application/json',
         },
         signal: AbortSignal.timeout(30000) // 30 second timeout

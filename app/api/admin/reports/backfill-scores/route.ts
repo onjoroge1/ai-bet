@@ -5,7 +5,7 @@ import prisma from '@/lib/db'
 
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY
 const BACKEND_BASE = process.env.BACKEND_API_URL || process.env.BACKEND_URL
-const BACKEND_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY || 'betgenius_secure_key_2024'
+const BACKEND_KEY = process.env.BACKEND_API_KEY || process.env.NEXT_PUBLIC_MARKET_KEY
 
 const API_FOOTBALL_HOST = 'api-football-v1.p.rapidapi.com'
 const API_FOOTBALL_BASE = `https://${API_FOOTBALL_HOST}/v3`

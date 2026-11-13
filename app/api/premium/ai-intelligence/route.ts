@@ -76,9 +76,9 @@ export async function GET() {
         take: 50,
       }),
       // Fetch top CLV opportunities (rolling data)
-      fetch(`${process.env.BACKEND_URL || 'https://bet-genius-ai-onjoroge1.replit.app'}/clv/club/opportunities?limit=5`, {
+      fetch(`${process.env.BACKEND_URL}/clv/club/opportunities?limit=5`, {
         headers: {
-          'Authorization': `Bearer ${process.env.BACKEND_API_KEY || 'betgenius_secure_key_2024'}`,
+          'Authorization': `Bearer ${process.env.BACKEND_API_KEY}`,
         },
       }).then(res => res.ok ? res.json().then(data => data.items || data.opportunities || []).catch(() => []) : []).catch(() => []),
       // Fetch active parlays (rolling data)

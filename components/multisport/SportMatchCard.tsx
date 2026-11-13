@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { ConfidenceRing, getRelativeTime } from "@/components/match/shared"
 import { OddsDisplay } from "./OddsDisplay"
 import { Clock, CheckCircle2, XCircle, Trophy, Timer } from "lucide-react"
+import { MULTISPORT, getMultisportName } from "@/lib/multisport/sports"
 
 interface MatchModel {
   predictions: {
@@ -47,9 +48,7 @@ interface MatchData {
 
 const SPORT_ACCENT: Record<string, string> = {
   soccer: "border-l-emerald-500",
-  basketball_nba: "border-l-orange-500",
-  icehockey_nhl: "border-l-cyan-500",
-  basketball_ncaab: "border-l-purple-500",
+  ...Object.fromEntries(Object.values(MULTISPORT).map(s => [s.key, s.accent.borderL])),
 }
 
 interface Props {
@@ -222,6 +221,13 @@ export function SportMatchCard({ match, sportKey, href }: Props) {
             pick={model?.pick}
             compact={isFinished}
           />
+
+          {/* Cold start: the pipeline has published the market line but no model yet */}
+          {!model && !isFinished && match.odds?.consensus && (
+            <div className="text-[11px] text-slate-500">
+              Market line only — model pick appears once the {getMultisportName(sportKey)} model is trained
+            </div>
+          )}
 
           {/* Model pick summary */}
           {model && !isFinished && (

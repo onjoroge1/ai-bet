@@ -57,8 +57,8 @@ export async function GET(
     }
 
     // Fallback: Fetch from backend API
-    const backendUrl = process.env.BACKEND_URL || 'https://bet-genius-ai-onjoroge1.replit.app'
-    const apiKey = process.env.BACKEND_API_KEY || 'betgenius_secure_key_2024'
+    const backendUrl = process.env.BACKEND_URL
+    const apiKey = process.env.BACKEND_API_KEY
 
     // Try both V1 and V2
     for (const version of ['v2', 'v1']) {

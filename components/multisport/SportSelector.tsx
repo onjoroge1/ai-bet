@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Badge } from "@/components/ui/badge"
+import { ACTIVE_MULTISPORT_KEYS, MULTISPORT } from "@/lib/multisport/sports"
 
 interface SportInfo {
   sport_key: string
@@ -12,14 +13,22 @@ interface SportInfo {
   live_data_available: boolean
 }
 
-const SPORT_CONFIG: Record<string, { icon: string; accent: string; accentBg: string; accentBorder: string; label: string }> = {
-  soccer: { icon: "⚽", accent: "text-emerald-400", accentBg: "bg-emerald-500/10", accentBorder: "border-emerald-500/30", label: "Soccer" },
-  basketball_nba: { icon: "🏀", accent: "text-orange-400", accentBg: "bg-orange-500/10", accentBorder: "border-orange-500/30", label: "NBA" },
-  icehockey_nhl: { icon: "🏒", accent: "text-cyan-400", accentBg: "bg-cyan-500/10", accentBorder: "border-cyan-500/30", label: "NHL" },
-  basketball_ncaab: { icon: "🏀", accent: "text-purple-400", accentBg: "bg-purple-500/10", accentBorder: "border-purple-500/30", label: "NCAAB" },
+interface TabConfig { icon: string; accent: string; accentBg: string; accentBorder: string; label: string }
+
+const SOCCER_TAB: TabConfig = { icon: "⚽", accent: "text-emerald-400", accentBg: "bg-emerald-500/10", accentBorder: "border-emerald-500/30", label: "Soccer" }
+
+const SPORT_CONFIG: Record<string, TabConfig> = {
+  soccer: SOCCER_TAB,
+  ...Object.fromEntries(
+    Object.values(MULTISPORT).map(s => [
+      s.key,
+      { icon: s.emoji, accent: s.accent.text, accentBg: s.accent.bg, accentBorder: s.accent.border, label: s.name },
+    ])
+  ),
 }
 
-const DISPLAY_SPORTS = ["soccer", "basketball_nba", "icehockey_nhl", "basketball_ncaab"]
+/** NBA + NFL first (the pivot), soccer kept as a trailing tab until its pipeline is replaced. */
+export const DISPLAY_SPORTS: string[] = [...ACTIVE_MULTISPORT_KEYS, "soccer"]
 
 interface Props {
   selectedSport: string
@@ -30,34 +39,14 @@ interface Props {
 
 export function SportSelector({ selectedSport, onSelect, allowAll = false }: Props) {
   const [sports, setSports] = useState<SportInfo[]>([])
-  const [dbCounts, setDbCounts] = useState<Record<string, number>>({})
 
   useEffect(() => {
-    // Fetch backend season info
     fetch("/api/multisport/sports")
       .then(res => res.json())
       .then(data => {
-        if (data.sports) {
-          setSports(data.sports.filter((s: SportInfo) => DISPLAY_SPORTS.includes(s.sport_key)))
-        }
+        if (data.sports) setSports(data.sports.filter((s: SportInfo) => DISPLAY_SPORTS.includes(s.sport_key)))
       })
       .catch(() => {})
-
-    // Also check local DB for actual match counts (backend may say off-season but DB has matches)
-    const sportKeys = ["basketball_nba", "icehockey_nhl", "basketball_ncaab"]
-    Promise.allSettled(
-      sportKeys.map(key =>
-        fetch(`/api/multisport/market?sport=${key}&status=upcoming&limit=1`)
-          .then(r => r.json())
-          .then(d => ({ key, count: d.total_count || d.matches?.length || 0 }))
-      )
-    ).then(results => {
-      const counts: Record<string, number> = {}
-      for (const r of results) {
-        if (r.status === "fulfilled") counts[r.value.key] = r.value.count
-      }
-      setDbCounts(counts)
-    })
   }, [])
 
   return (
@@ -66,17 +55,17 @@ export function SportSelector({ selectedSport, onSelect, allowAll = false }: Pro
         const config = SPORT_CONFIG[key]
         const info = sports.find(s => s.sport_key === key)
         const isSelected = selectedSport === key
-        const apiUpcoming = info?.fixtures?.upcoming_with_odds ?? info?.fixtures?.upcoming ?? 0
-        const localUpcoming = dbCounts[key] ?? 0
-        const upcoming = Math.max(apiUpcoming, localUpcoming)
-        // Never disable a sport if it has matches in either API or local DB
-        const isOffSeason = !allowAll && key !== "soccer" && info?.season?.status === "off_season" && upcoming === 0 && localUpcoming === 0
+        const upcoming = info?.fixtures?.upcoming ?? 0
+        // Off-season only disables a tab when the DB also has nothing to show.
+        const isOffSeason = !allowAll && key !== "soccer" && info?.season?.status === "off_season" && upcoming === 0
+        const marketOnly = !!info && upcoming > 0 && info.model?.available === false
 
         return (
           <button
             key={key}
             onClick={() => !isOffSeason && onSelect(key)}
             disabled={isOffSeason}
+            title={marketOnly ? "Market odds only — model pick arrives once the model is trained" : undefined}
             className={`
               flex items-center gap-2 px-4 py-2.5 rounded-lg border transition-all whitespace-nowrap
               ${isSelected
@@ -88,9 +77,7 @@ export function SportSelector({ selectedSport, onSelect, allowAll = false }: Pro
             `}
           >
             <span className="text-lg">{config.icon}</span>
-            <span className="font-medium text-sm">
-              {config.label}
-            </span>
+            <span className="font-medium text-sm">{config.label}</span>
             {isOffSeason ? (
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-slate-600 text-slate-500">
                 Off-season
@@ -100,9 +87,9 @@ export function SportSelector({ selectedSport, onSelect, allowAll = false }: Pro
                 {upcoming}
               </Badge>
             ) : null}
-            {key === "basketball_ncaab" && !isOffSeason && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-yellow-500/30 text-yellow-400">
-                Beta
+            {marketOnly && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-slate-600 text-slate-400">
+                Market only
               </Badge>
             )}
           </button>

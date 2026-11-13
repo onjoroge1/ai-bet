@@ -14,8 +14,8 @@ import prisma from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { randomUUID } from 'crypto'
 
-const BACKEND_URL = process.env.BACKEND_URL || 'https://bet-genius-ai-onjoroge1.replit.app'
-const API_KEY = process.env.BACKEND_API_KEY || 'betgenius_secure_key_2024'
+const BACKEND_URL = process.env.BACKEND_URL
+const API_KEY = process.env.BACKEND_API_KEY
 
 interface SyncResult {
   synced: number

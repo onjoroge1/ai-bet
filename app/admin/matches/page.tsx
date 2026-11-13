@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { AdvancedBreadcrumb } from '@/components/advanced-breadcrumb'
+import { getMultisportName } from '@/lib/multisport/sports'
 import {
   CheckCircle2,
   XCircle,
@@ -152,10 +153,12 @@ export default function AdminMatchesPage() {
     }
   }
 
+  // Checks which selected matches already carry a published model prediction.
+  // Inference itself runs in pipeline/ (`snapbet-pipeline predict`), not in the app.
   const handleMsRunPredict = async (eventIds: string[]) => {
     if (eventIds.length === 0) { toast.error('Select at least one match'); return }
     setMsRunningPredict(true)
-    const toastId = toast.loading(`Running predict on ${eventIds.length} match(es)...`)
+    const toastId = toast.loading(`Checking predictions for ${eventIds.length} match(es)...`)
     let success = 0, fail = 0
     for (const eventId of eventIds) {
       try {
@@ -164,35 +167,24 @@ export default function AdminMatchesPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sport_key: sport, event_id: eventId }),
         })
-        if (res.ok) success++; else fail++
+        const json = res.ok ? await res.json() : null
+        if (json?.predictions) success++; else fail++
       } catch { fail++ }
     }
     toast.dismiss(toastId)
-    if (success > 0) toast.success(`Predicted ${success} match(es)${fail > 0 ? `, ${fail} failed` : ''}`)
-    else toast.error(`All ${fail} predictions failed`)
+    if (success > 0) toast.success(`${success} match(es) have a model prediction${fail > 0 ? `, ${fail} market-only` : ''}`)
+    else toast.error(`None of the ${fail} selected matches has a model prediction yet (market line only)`)
     setMsRunningPredict(false)
     setSelectedMultisport(new Set())
     fetchMultisportMatches(sport)
   }
 
+  // Multisport rows are written by pipeline/ (GitHub Actions "pipeline-hourly").
+  // The old in-app sync proxied the retired Replit backend and is gone; this
+  // button now just refreshes the table from the DB.
   const handleMsSyncAll = async () => {
-    const toastId = toast.loading('Syncing multisport data...')
-    try {
-      const res = await fetch('/api/admin/multisport/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ sports: [sport], predictions: true, force: true }),
-      })
-      if (!res.ok) throw new Error('Sync failed')
-      const data = await res.json()
-      toast.dismiss(toastId)
-      toast.success(`Synced ${data.total?.synced || 0} matches, predicted ${data.total?.predicted || 0}`)
-      fetchMultisportMatches(sport)
-    } catch (err) {
-      toast.dismiss(toastId)
-      toast.error(err instanceof Error ? err.message : 'Sync failed')
-    }
+    toast('Multisport odds and predictions are published by the pipeline job; refreshing from the database.')
+    await fetchMultisportMatches(sport)
   }
 
   useEffect(() => {
@@ -809,7 +801,7 @@ export default function AdminMatchesPage() {
             <Card className="bg-slate-800/50 border-slate-700">
               <CardHeader>
                 <CardTitle className="text-white text-lg sm:text-xl">
-                  {sport === 'basketball_nba' ? 'NBA' : sport === 'icehockey_nhl' ? 'NHL' : 'NCAAB'} Upcoming Matches
+                  {getMultisportName(sport)} Upcoming Matches
                 </CardTitle>
               </CardHeader>
               <CardContent>

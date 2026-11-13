@@ -3,14 +3,20 @@ import { logger } from '@/lib/logger'
 import prisma from '@/lib/db'
 import { TwitterGenerator } from '@/lib/social/twitter-generator'
 import { buildSocialUrl } from '@/lib/social/url-utils'
+import { ACTIVE_MULTISPORT_KEYS, MULTISPORT } from '@/lib/multisport/sports'
 
 export const maxDuration = 60
 
-const SPORTS = [
-  { key: 'basketball_nba', name: 'NBA', emoji: '🏀', threshold: 0.80 },
-  { key: 'icehockey_nhl', name: 'NHL', emoji: '🏒', threshold: 0.85 },
-  { key: 'basketball_ncaab', name: 'NCAAB', emoji: '🏀', threshold: 0.75 },
-]
+// Minimum model confidence to post. NBA/NHL values from the 2026-05 alpha
+// analysis; NFL is provisional until scripts/multisport-alpha-analysis.ts covers it.
+const THRESHOLDS: Record<string, number> = { basketball_nba: 0.80, icehockey_nhl: 0.85, americanfootball_nfl: 0.75 }
+
+const SPORTS = ACTIVE_MULTISPORT_KEYS.map(k => ({
+  key: k,
+  name: MULTISPORT[k].name,
+  emoji: MULTISPORT[k].emoji,
+  threshold: THRESHOLDS[k] ?? 0.80,
+}))
 
 /**
  * GET /api/admin/social/multisport/scheduled

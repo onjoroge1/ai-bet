@@ -3,7 +3,7 @@ import { MarketMatch, MarketResponse } from "./types";
 // Use Next.js API route instead of direct backend call
 // This ensures proper environment variable handling and avoids CORS issues
 const BASE_URL = "/api/market";
-const API_KEY = process.env.NEXT_PUBLIC_MARKET_KEY || "betgenius_secure_key_2024";
+const API_KEY = process.env.NEXT_PUBLIC_MARKET_KEY;
 
 export async function fetchMarket({
   status,
