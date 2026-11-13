@@ -30,6 +30,7 @@ export PIPELINE_SPORTS="americanfootball_nfl,basketball_nba,icehockey_nhl"   # d
 
 snapbet-pipeline migrate      # create tables (idempotent; every command also runs it)
 snapbet-pipeline collect      # odds snapshot for in-season sports
+snapbet-pipeline kalshi       # Kalshi game-winner prices (public API, no key, no credits)
 snapbet-pipeline results      # finished scores (last 3 days; --days N steps down to your plan's max)
 snapbet-pipeline sync         # finished games -> training rows + features
 snapbet-pipeline train        # trains only when the policy says so; --force to override, --dry-run to ask
@@ -142,6 +143,15 @@ Positive CLV = we beat the close. `snapbet-pipeline report` prints the 90-day se
 median CLV is negative over ≥ 50 settled value bets is published as `edge_validated: false` even if its
 training gate passed (the CLV veto). The realized CLV is also mirrored into the frontend row's
 `predictionData.clv` block.
+
+## Kalshi prices (research)
+
+`snapbet-pipeline kalshi` (also part of `run`, right after `collect`) stores the bid/ask/last price,
+volume and open interest of every open Kalshi game-winner market (KXNFLGAME, KXNBAGAME, KXNHLGAME)
+in `multisport_kalshi_snapshots`. Each Kalshi game is linked to its `multisport_fixtures` row by team
+codes and time; games the books haven't listed yet are stored unlinked and backfilled on a later run.
+It only reads public market data (no account, no trading), and a Kalshi failure never stops `run`.
+Purpose: compare Kalshi with the no-vig book consensus at the same moment, across many games.
 
 ## Cold-start accelerator: `import-csv`
 

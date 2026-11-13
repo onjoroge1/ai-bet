@@ -8,7 +8,8 @@ laptop run exactly the same code:
   snapbet-pipeline train [--force]    # policy-gated per-sport LightGBM
   snapbet-pipeline predict            # upcoming fixtures -> MultisportMatch
   snapbet-pipeline settle             # finals -> MultisportMatch.finalResult
-  snapbet-pipeline run                # collect + results + sync + predict + settle
+  snapbet-pipeline kalshi             # Kalshi game-winner prices -> kalshi snapshots (public, no credits)
+  snapbet-pipeline run                # collect + kalshi + results + sync + predict + settle
   snapbet-pipeline status             # row counts + last runs
   snapbet-pipeline report             # settled track record per sport (hit rate, value-bet ROI, CLV)
   snapbet-pipeline import-csv --sports americanfootball_nfl --file games.csv [--source name]
@@ -29,6 +30,7 @@ from typing import Dict
 from . import db
 from .collect import collect_odds
 from .import_csv import import_csv_file
+from .kalshi import collect_kalshi
 from .ledger import settle_ledger, track_record
 from .config import SPORTS, Settings
 from .odds_api import OddsApiClient
@@ -63,6 +65,10 @@ def cmd_migrate(conn, s: Settings, args) -> Dict:
 
 def cmd_collect(conn, s: Settings, args) -> Dict:
     return collect_odds(conn, _client(s), s.sports, respect_season=not args.ignore_season)
+
+
+def cmd_kalshi(conn, s: Settings, args) -> Dict:
+    return collect_kalshi(conn, s.sports)
 
 
 def cmd_results(conn, s: Settings, args) -> Dict:
@@ -123,6 +129,10 @@ def cmd_report(conn, s: Settings, args) -> Dict:
 def cmd_run(conn, s: Settings, args) -> Dict:
     out: Dict = {}
     out["collect"] = _job(conn, "collect", lambda: cmd_collect(conn, s, args))
+    try:  # research capture; never blocks the publishing jobs
+        out["kalshi"] = _job(conn, "kalshi", lambda: cmd_kalshi(conn, s, args))
+    except Exception as e:
+        out["kalshi"] = {"status": "error", "error": str(e)}
     out["results"] = _job(conn, "results", lambda: cmd_results(conn, s, args))
     out["sync"] = _job(conn, "sync", lambda: cmd_sync(conn, s, args))
     out["predict"] = _job(conn, "predict", lambda: cmd_predict(conn, s, args))
@@ -187,7 +197,7 @@ def cmd_status(conn, s: Settings, args) -> Dict:
     return out
 
 
-COMMANDS = {"migrate": cmd_migrate, "collect": cmd_collect, "results": cmd_results, "sync": cmd_sync,
+COMMANDS = {"migrate": cmd_migrate, "collect": cmd_collect, "kalshi": cmd_kalshi, "results": cmd_results, "sync": cmd_sync,
             "train": cmd_train, "predict": cmd_predict, "settle": cmd_settle, "run": cmd_run,
             "status": cmd_status, "import-csv": cmd_import_csv, "report": cmd_report,
             "import-odds-api-history": cmd_import_odds_api_history}
