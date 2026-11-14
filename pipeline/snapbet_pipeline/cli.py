@@ -3,7 +3,7 @@ laptop run exactly the same code:
 
   snapbet-pipeline migrate
   snapbet-pipeline collect            # odds -> fixtures + snapshots (hourly)
-  snapbet-pipeline results [--days N] # scores -> results, fixtures (hourly)
+  snapbet-pipeline results [--days N] # ESPN finals (free); Odds API only as fallback, or with --days / --odds-api-scores
   snapbet-pipeline sync               # finished games -> training rows + features
   snapbet-pipeline train [--force]    # policy-gated per-sport LightGBM
   snapbet-pipeline predict            # upcoming fixtures -> MultisportMatch
@@ -41,6 +41,7 @@ from .odds_api import OddsApiClient
 from .predict import Predictor, predict_upcoming
 from .publish import publish_predictions, settle_finished
 from .results import collect_results
+from .espn_scores import collect_results_espn
 from .retention import prune
 from .props import collect_props
 from .boxscores import collect_boxscores, recent_days
@@ -79,8 +80,10 @@ def cmd_kalshi(conn, s: Settings, args) -> Dict:
 
 
 def cmd_results(conn, s: Settings, args) -> Dict:
-    return collect_results(conn, _client(s), collect_sports(s), days_from=args.days,
-                           respect_season=not args.ignore_season)
+    if args.odds_api_scores or args.days:
+        return collect_results(conn, _client(s), collect_sports(s), days_from=args.days,
+                               respect_season=not args.ignore_season)
+    return collect_results_espn(conn, _client(s), collect_sports(s), respect_season=not args.ignore_season)
 
 
 def cmd_sync(conn, s: Settings, args) -> Dict:
@@ -242,6 +245,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--days", type=int, default=None, help="results: lookback window (steps down to plan limit)")
     p.add_argument("--force", action="store_true", help="train: ignore the retrain policy")
     p.add_argument("--dry-run", action="store_true", help="train: only report the policy decision")
+    p.add_argument("--odds-api-scores", action="store_true", help="results: use paid Odds API /scores instead of ESPN")
     p.add_argument("--ignore-season", action="store_true", help="collect/results: query off-season sports too")
     p.add_argument("--sports", default=None, help="comma-separated sport keys (overrides PIPELINE_SPORTS)")
     p.add_argument("--file", default=None, help="import-csv: path to the CSV file")

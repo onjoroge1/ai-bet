@@ -31,7 +31,7 @@ export PIPELINE_SPORTS="americanfootball_nfl,basketball_nba,icehockey_nhl"   # d
 snapbet-pipeline migrate      # create tables (idempotent; every command also runs it)
 snapbet-pipeline collect      # odds snapshot for in-season sports
 snapbet-pipeline kalshi       # Kalshi game-winner prices (public API, no key, no credits)
-snapbet-pipeline results      # finished scores (last 3 days; --days N steps down to your plan's max)
+snapbet-pipeline results      # finished scores from ESPN (free, last 3 ET days); --days N / --odds-api-scores use the paid /scores
 snapbet-pipeline sync         # finished games -> training rows + features
 snapbet-pipeline train        # trains only when the policy says so; --force to override, --dry-run to ask
 snapbet-pipeline predict      # upcoming slate -> MultisportMatch (cold start = market only, model null)
@@ -242,6 +242,12 @@ public, so the workflows never echo payloads; only the JSON summary is printed.
 
 ## Odds API budget
 
-One `collect` = one request per in-season sport (3 markets, 1 region). Hourly
-for three sports ≈ 2,200 requests/month plus ~2,200 for `results`.
+One `collect` = 3 credits per in-season sport (3 markets, 1 region): hourly for
+NFL/NBA/NHL/NCAAB ≈ 290 credits/day. Player props add ~4 credits per NBA game.
+
+`results` reads finals from ESPN's free scoreboard and matches them to our
+fixtures (accent/punctuation-insensitive names, one-team + start-time fallback
+for odd college names). It only calls the paid Odds API `/scores` (2 credits per
+sport) when a fixture that started 4h-3d ago is still unfinished, and then at
+most every 6th hourly run (UTC hour divisible by 6).
 Check the quota headers in each run's output (`_quota.requests_remaining`).
