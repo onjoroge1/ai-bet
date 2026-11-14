@@ -1,0 +1,45 @@
+name: pipeline-ai-research
+
+# Claude forecast per game 45-180 min before start, logged beside the market price (paper only).
+# Needs the ANTHROPIC_API_KEY secret; without it the job logs "skipped" and spends nothing.
+on:
+  schedule:
+    - cron: "47 * * * *"      # after pipeline-hourly (:17) has refreshed odds, Kalshi and injuries
+  workflow_dispatch:
+    inputs:
+      max_games:
+        description: "Most games to forecast this run"
+        default: "12"
+
+concurrency:
+  group: snapbet-ai-research
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/pyproject.toml
+      - run: pip install -e .
+      - name: forecast due games
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PIPELINE_SPORTS: ${{ vars.PIPELINE_SPORTS }}
+        run: snapbet-pipeline research --max-games ${{ inputs.max_games || '12' }}
+      - name: running score vs market
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: snapbet-pipeline research-score

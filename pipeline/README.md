@@ -179,6 +179,27 @@ Each costs about 3 Odds API credits per hourly run. An explicit `--sports` list 
   player box scores for final NBA games (free): minutes, points, rebounds, assists, 3s, shooting, starter and DNP
   reason (`multisport_player_boxscores`), linked to `multisport_fixtures` when the books listed the game.
 
+## Injury reports (research)
+
+`snapbet-pipeline injuries` (part of `run`) stores ESPN's injury reports for NFL/NBA/NHL in
+`multisport_injuries` as status history: a row per player x report x status, with
+`first_seen`/`last_seen` bumped hourly. A Day-To-Day -> Out change adds a row, so "who was
+listed before tip" can be reconstructed later. Free, no key.
+
+## AI researcher (paper only)
+
+`snapbet-pipeline research` forecasts each game 45-180 minutes before start with Claude Opus 5.5
+(`claude-opus-5-5`, medium effort, server-side refusal fallback). It gets a JSON brief from our
+tables (book consensus and movement, Kalshi, injury report, schedule fatigue, last 10 results,
+head-to-head, NBA rotation averages), up to 4 web searches for late news, and must answer through a
+strict `submit_forecast` tool. Rows land in `multisport_ai_forecasts` with the market price at that
+moment and the exact brief. `research --dry-run` prints the briefs without calling the API;
+`research-score` compares log loss with the market at forecast time and the closing line.
+
+Runs from `.github/workflows/pipeline-ai-research.yml` at :47 each hour and needs the
+`ANTHROPIC_API_KEY` repository secret (without it the job is skipped). Expect roughly
+$0.15-0.30 per game; `--max-games` caps a run. Nothing here bets or publishes picks.
+
 ## Retention: `prune`
 
 `snapbet-pipeline prune [--keep-days 7] [--dry-run]` runs nightly (in the train workflow). For games
@@ -233,11 +254,12 @@ See `.github/workflows/pipeline-*.yml`:
 
 | workflow | schedule | command |
 |---|---|---|
-| `pipeline-hourly` | `17 * * * *` | `run` (collect, results, sync, predict, settle) |
+| `pipeline-hourly` | `17 * * * *` | `run` (collect, kalshi, props, injuries, results, boxscores, sync, predict, settle) |
+| `pipeline-ai-research` | `47 * * * *` | `research` + `research-score` (needs `ANTHROPIC_API_KEY`) |
 | `pipeline-nightly-train` | `23 9 * * *` UTC | `sync` + `train`, commits `pipeline/models/` if changed |
 | `pipeline-backfill` | manual | `results --days N --ignore-season` |
 
-Secrets required on the repo: `DATABASE_URL`, `ODDS_API_KEY`. The repository is
+Secrets required on the repo: `DATABASE_URL`, `ODDS_API_KEY` (and `ANTHROPIC_API_KEY` for the AI researcher). The repository is
 public, so the workflows never echo payloads; only the JSON summary is printed.
 
 ## Odds API budget
