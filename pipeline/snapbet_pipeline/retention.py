@@ -9,6 +9,10 @@ Kalshi market):
   * the last capture before the game started (closing price),
   * the first capture in each `bucket_hours` window (the shape of the move),
 and delete the rest, including per-book rows captured after the start.
+Player props of games older than `props_keep_days` are collapsed into one
+multisport_player_prop_consensus row per game x market x player (median line,
+no-vig over probability of the books at that line, book count, best prices) and
+the per-book rows are deleted.
 Also drops pipeline run logs older than `keep_run_days`.
 """
 from __future__ import annotations
@@ -53,7 +57,28 @@ KALSHI_DOOMED = """
 """
 
 
-def prune(conn, keep_days: int = 7, bucket_hours: int = 6, keep_run_days: int = 60,
+PROPS_CONSOLIDATE = """
+    WITH g AS (
+        SELECT sport_key, event_id, commence_time, market, player_name, ts_recorded,
+               percentile_disc(0.5) WITHIN GROUP (ORDER BY line) AS med
+          FROM multisport_player_props
+         WHERE commence_time < %(pcut)s AND line IS NOT NULL
+         GROUP BY sport_key, event_id, commence_time, market, player_name, ts_recorded)
+    INSERT INTO multisport_player_prop_consensus (sport_key, event_id, commence_time, market, player_name, line,
+                                                  over_prob, n_books, best_over, best_under, ts_recorded)
+    SELECT g.sport_key, g.event_id, g.commence_time, g.market, g.player_name, g.med,
+           AVG((1 / p.over_price) / ((1 / p.over_price) + (1 / p.under_price)))
+               FILTER (WHERE p.over_price > 1 AND p.under_price > 1),
+           COUNT(DISTINCT p.bookmaker), MAX(p.over_price), MAX(p.under_price), g.ts_recorded
+      FROM g JOIN multisport_player_props p
+        ON p.event_id = g.event_id AND p.market = g.market AND p.player_name = g.player_name
+       AND p.ts_recorded = g.ts_recorded AND p.line = g.med
+     GROUP BY g.sport_key, g.event_id, g.commence_time, g.market, g.player_name, g.med, g.ts_recorded
+    ON CONFLICT (event_id, market, player_name, ts_recorded) DO NOTHING
+"""
+
+
+def prune(conn, keep_days: int = 7, bucket_hours: int = 6, keep_run_days: int = 60, props_keep_days: int = 30,
           now: Optional[datetime] = None, dry_run: bool = False) -> Dict:
     if keep_days < 2:
         raise ValueError("keep_days must be at least 2 (unsettled games need their snapshots)")
@@ -68,6 +93,15 @@ def prune(conn, keep_days: int = 7, bucket_hours: int = 6, keep_run_days: int = 
             else:
                 cur.execute(f"DELETE FROM {table} WHERE id IN ({doomed})", params)
             out[name] = cur.fetchone()[0] if dry_run else cur.rowcount
+        pcut = {"pcut": now - timedelta(days=props_keep_days)}
+        if dry_run:
+            cur.execute("SELECT COUNT(*) FROM multisport_player_props WHERE commence_time < %(pcut)s", pcut)
+            out["props_per_book"] = cur.fetchone()[0]
+        else:
+            cur.execute(PROPS_CONSOLIDATE, pcut)
+            out["props_consensus_added"] = cur.rowcount
+            cur.execute("DELETE FROM multisport_player_props WHERE commence_time < %(pcut)s", pcut)
+            out["props_per_book"] = cur.rowcount
         run_cutoff = now - timedelta(days=keep_run_days)
         if dry_run:
             cur.execute("SELECT COUNT(*) FROM multisport_pipeline_runs WHERE started_at < %s", (run_cutoff,))

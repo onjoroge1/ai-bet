@@ -31,7 +31,7 @@ export PIPELINE_SPORTS="americanfootball_nfl,basketball_nba,icehockey_nhl"   # d
 snapbet-pipeline migrate      # create tables (idempotent; every command also runs it)
 snapbet-pipeline collect      # odds snapshot for in-season sports
 snapbet-pipeline kalshi       # Kalshi game-winner prices (public API, no key, no credits)
-snapbet-pipeline results      # finished scores (last 3 days; --days N steps down to your plan's max)
+snapbet-pipeline results      # finished scores from ESPN (free, last 3 ET days); --days N / --odds-api-scores use the paid /scores
 snapbet-pipeline sync         # finished games -> training rows + features
 snapbet-pipeline train        # trains only when the policy says so; --force to override, --dry-run to ask
 snapbet-pipeline predict      # upcoming slate -> MultisportMatch (cold start = market only, model null)
@@ -169,6 +169,16 @@ haven't listed yet are stored unlinked and backfilled later. A Kalshi failure ne
 scores and Kalshi prices are collected but which are **never trained, predicted or published**.
 Each costs about 3 Odds API credits per hourly run. An explicit `--sports` list turns research sports off.
 
+## Player props and box scores (research)
+
+* `snapbet-pipeline props` (in `run`): NBA player points, rebounds, assists and threes from every US book via
+  The Odds API event-odds endpoint. Each game is pulled **once**, in the run that falls 30-90 minutes before
+  tip-off (close to the closing line). Cost: 4 credits per game (~30 a night). Over and Under are stored in one
+  row per book x market x player x line (`multisport_player_props`).
+* `snapbet-pipeline boxscores [--from YYYY-MM-DD --to YYYY-MM-DD]` (in `run`, last 2 ET days by default): ESPN
+  player box scores for final NBA games (free): minutes, points, rebounds, assists, 3s, shooting, starter and DNP
+  reason (`multisport_player_boxscores`), linked to `multisport_fixtures` when the books listed the game.
+
 ## Retention: `prune`
 
 `snapbet-pipeline prune [--keep-days 7] [--dry-run]` runs nightly (in the train workflow). For games
@@ -176,7 +186,9 @@ that started more than `--keep-days` ago it thins **per-bookmaker** odds and **K
 the opening capture, the closing capture (last before the start), and the first capture in each
 6-hour window; in-play per-book rows are dropped. **Consensus rows are never deleted** (training,
 features, line-movement and the pick ledger read only those). Pipeline run logs older than 60 days
-are dropped. `--dry-run` reports counts without deleting.
+are dropped. Player props older than 30 days are collapsed into `multisport_player_prop_consensus` (one row per
+game x market x player: median line, no-vig over probability, book count, best prices) and the per-book rows
+deleted. `--dry-run` reports counts without deleting.
 
 ## Cold-start accelerator: `import-csv`
 
@@ -230,6 +242,12 @@ public, so the workflows never echo payloads; only the JSON summary is printed.
 
 ## Odds API budget
 
-One `collect` = one request per in-season sport (3 markets, 1 region). Hourly
-for three sports ≈ 2,200 requests/month plus ~2,200 for `results`.
+One `collect` = 3 credits per in-season sport (3 markets, 1 region): hourly for
+NFL/NBA/NHL/NCAAB ≈ 290 credits/day. Player props add ~4 credits per NBA game.
+
+`results` reads finals from ESPN's free scoreboard and matches them to our
+fixtures (accent/punctuation-insensitive names, one-team + start-time fallback
+for odd college names). It only calls the paid Odds API `/scores` (2 credits per
+sport) when a fixture that started 4h-3d ago is still unfinished, and then at
+most every 6th hourly run (UTC hour divisible by 6).
 Check the quota headers in each run's output (`_quota.requests_remaining`).

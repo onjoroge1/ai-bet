@@ -3,13 +3,15 @@ laptop run exactly the same code:
 
   snapbet-pipeline migrate
   snapbet-pipeline collect            # odds -> fixtures + snapshots (hourly)
-  snapbet-pipeline results [--days N] # scores -> results, fixtures (hourly)
+  snapbet-pipeline results [--days N] # ESPN finals (free); Odds API only as fallback, or with --days / --odds-api-scores
   snapbet-pipeline sync               # finished games -> training rows + features
   snapbet-pipeline train [--force]    # policy-gated per-sport LightGBM
   snapbet-pipeline predict            # upcoming fixtures -> MultisportMatch
   snapbet-pipeline settle             # finals -> MultisportMatch.finalResult
   snapbet-pipeline kalshi             # Kalshi game-winner prices -> kalshi snapshots (public, no credits)
-  snapbet-pipeline run                # collect + kalshi + results + sync + predict + settle
+  snapbet-pipeline run                # collect + kalshi + props + results + boxscores + sync + predict + settle
+  snapbet-pipeline props              # NBA player props, each game once ~30-90 min before tip (4 credits/game)
+  snapbet-pipeline boxscores [--from D --to D]  # ESPN player box scores (free); default: last 2 ET days
   snapbet-pipeline prune [--keep-days 7] [--dry-run]
                                       # thin per-book/Kalshi snapshots of old games (consensus kept)
   snapbet-pipeline status             # row counts + last runs
@@ -39,7 +41,10 @@ from .odds_api import OddsApiClient
 from .predict import Predictor, predict_upcoming
 from .publish import publish_predictions, settle_finished
 from .results import collect_results
+from .espn_scores import collect_results_espn
 from .retention import prune
+from .props import collect_props
+from .boxscores import collect_boxscores, recent_days
 from .train import should_train, train_sport
 from .training_sync import sync_training
 
@@ -75,8 +80,10 @@ def cmd_kalshi(conn, s: Settings, args) -> Dict:
 
 
 def cmd_results(conn, s: Settings, args) -> Dict:
-    return collect_results(conn, _client(s), collect_sports(s), days_from=args.days,
-                           respect_season=not args.ignore_season)
+    if args.odds_api_scores or args.days:
+        return collect_results(conn, _client(s), collect_sports(s), days_from=args.days,
+                               respect_season=not args.ignore_season)
+    return collect_results_espn(conn, _client(s), collect_sports(s), respect_season=not args.ignore_season)
 
 
 def cmd_sync(conn, s: Settings, args) -> Dict:
@@ -129,6 +136,21 @@ def cmd_report(conn, s: Settings, args) -> Dict:
     return out
 
 
+def cmd_props(conn, s: Settings, args) -> Dict:
+    return collect_props(conn, _client(s), collect_sports(s), max_credits=args.max_credits)
+
+
+def cmd_boxscores(conn, s: Settings, args) -> Dict:
+    from datetime import date, timedelta
+    if args.date_from:
+        start = date.fromisoformat(args.date_from)
+        end = date.fromisoformat(args.date_to) if args.date_to else start
+        days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
+    else:
+        days = recent_days()
+    return collect_boxscores(conn, collect_sports(s), days)
+
+
 def cmd_prune(conn, s: Settings, args) -> Dict:
     return prune(conn, keep_days=args.keep_days, dry_run=args.dry_run)
 
@@ -136,11 +158,17 @@ def cmd_prune(conn, s: Settings, args) -> Dict:
 def cmd_run(conn, s: Settings, args) -> Dict:
     out: Dict = {}
     out["collect"] = _job(conn, "collect", lambda: cmd_collect(conn, s, args))
-    try:  # research capture; never blocks the publishing jobs
-        out["kalshi"] = _job(conn, "kalshi", lambda: cmd_kalshi(conn, s, args))
-    except Exception as e:
-        out["kalshi"] = {"status": "error", "error": str(e)}
+    # research captures; never block the publishing jobs
+    for name, fn in (("kalshi", cmd_kalshi), ("props", cmd_props)):
+        try:
+            out[name] = _job(conn, name, lambda fn=fn: fn(conn, s, args))
+        except Exception as e:
+            out[name] = {"status": "error", "error": str(e)}
     out["results"] = _job(conn, "results", lambda: cmd_results(conn, s, args))
+    try:
+        out["boxscores"] = _job(conn, "boxscores", lambda: cmd_boxscores(conn, s, args))
+    except Exception as e:
+        out["boxscores"] = {"status": "error", "error": str(e)}
     out["sync"] = _job(conn, "sync", lambda: cmd_sync(conn, s, args))
     out["predict"] = _job(conn, "predict", lambda: cmd_predict(conn, s, args))
     out["settle"] = _job(conn, "settle", lambda: cmd_settle(conn, s, args))
@@ -206,7 +234,7 @@ def cmd_status(conn, s: Settings, args) -> Dict:
 
 COMMANDS = {"migrate": cmd_migrate, "collect": cmd_collect, "kalshi": cmd_kalshi, "results": cmd_results, "sync": cmd_sync,
             "train": cmd_train, "predict": cmd_predict, "settle": cmd_settle, "run": cmd_run,
-            "status": cmd_status, "prune": cmd_prune, "import-csv": cmd_import_csv, "report": cmd_report,
+            "status": cmd_status, "prune": cmd_prune, "props": cmd_props, "boxscores": cmd_boxscores, "import-csv": cmd_import_csv, "report": cmd_report,
             "import-odds-api-history": cmd_import_odds_api_history}
 
 
@@ -217,6 +245,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--days", type=int, default=None, help="results: lookback window (steps down to plan limit)")
     p.add_argument("--force", action="store_true", help="train: ignore the retrain policy")
     p.add_argument("--dry-run", action="store_true", help="train: only report the policy decision")
+    p.add_argument("--odds-api-scores", action="store_true", help="results: use paid Odds API /scores instead of ESPN")
     p.add_argument("--ignore-season", action="store_true", help="collect/results: query off-season sports too")
     p.add_argument("--sports", default=None, help="comma-separated sport keys (overrides PIPELINE_SPORTS)")
     p.add_argument("--file", default=None, help="import-csv: path to the CSV file")
