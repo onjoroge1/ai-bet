@@ -9,7 +9,10 @@ laptop run exactly the same code:
   snapbet-pipeline predict            # upcoming fixtures -> MultisportMatch
   snapbet-pipeline settle             # finals -> MultisportMatch.finalResult
   snapbet-pipeline kalshi             # Kalshi game-winner prices -> kalshi snapshots (public, no credits)
-  snapbet-pipeline run                # collect + kalshi + props + results + boxscores + sync + predict + settle
+  snapbet-pipeline research [--dry-run] [--max-games N]  # AI researcher: Claude forecast per game 45-180 min out (paper only)
+  snapbet-pipeline research-score     # AI forecasts vs market log loss on finished games
+  snapbet-pipeline injuries           # ESPN injury reports, status history (free)
+  snapbet-pipeline run                # collect + kalshi + props + injuries + results + boxscores + sync + predict + settle
   snapbet-pipeline props              # NBA player props, each game once ~30-90 min before tip (4 credits/game)
   snapbet-pipeline boxscores [--from D --to D]  # ESPN player box scores (free); default: last 2 ET days
   snapbet-pipeline prune [--keep-days 7] [--dry-run]
@@ -45,6 +48,7 @@ from .espn_scores import collect_results_espn
 from .retention import prune
 from .props import collect_props
 from .boxscores import collect_boxscores, recent_days
+from .injuries import collect_injuries
 from .train import should_train, train_sport
 from .training_sync import sync_training
 
@@ -151,6 +155,23 @@ def cmd_boxscores(conn, s: Settings, args) -> Dict:
     return collect_boxscores(conn, collect_sports(s), days)
 
 
+def cmd_injuries(conn, s: Settings, args) -> Dict:
+    return collect_injuries(conn, s.sports)
+
+
+def cmd_research(conn, s: Settings, args) -> Dict:
+    import os
+    from .ai_research import research
+    if not args.dry_run and not (os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN")):
+        return {"status": "skipped", "reason": "ANTHROPIC_API_KEY not set"}
+    return research(conn, s.sports, max_games=args.max_games, dry_run=args.dry_run)
+
+
+def cmd_research_score(conn, s: Settings, args) -> Dict:
+    from .ai_research import score
+    return score(conn)
+
+
 def cmd_prune(conn, s: Settings, args) -> Dict:
     return prune(conn, keep_days=args.keep_days, dry_run=args.dry_run)
 
@@ -159,7 +180,7 @@ def cmd_run(conn, s: Settings, args) -> Dict:
     out: Dict = {}
     out["collect"] = _job(conn, "collect", lambda: cmd_collect(conn, s, args))
     # research captures; never block the publishing jobs
-    for name, fn in (("kalshi", cmd_kalshi), ("props", cmd_props)):
+    for name, fn in (("kalshi", cmd_kalshi), ("props", cmd_props), ("injuries", cmd_injuries)):
         try:
             out[name] = _job(conn, name, lambda fn=fn: fn(conn, s, args))
         except Exception as e:
@@ -234,7 +255,7 @@ def cmd_status(conn, s: Settings, args) -> Dict:
 
 COMMANDS = {"migrate": cmd_migrate, "collect": cmd_collect, "kalshi": cmd_kalshi, "results": cmd_results, "sync": cmd_sync,
             "train": cmd_train, "predict": cmd_predict, "settle": cmd_settle, "run": cmd_run,
-            "status": cmd_status, "prune": cmd_prune, "props": cmd_props, "boxscores": cmd_boxscores, "import-csv": cmd_import_csv, "report": cmd_report,
+            "status": cmd_status, "prune": cmd_prune, "props": cmd_props, "boxscores": cmd_boxscores, "injuries": cmd_injuries, "research": cmd_research, "research-score": cmd_research_score, "import-csv": cmd_import_csv, "report": cmd_report,
             "import-odds-api-history": cmd_import_odds_api_history}
 
 
@@ -257,6 +278,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--offsets", default="1",
                    help="import-odds-api-history: hours before each day's first kickoff to snapshot, e.g. '24,1'")
     p.add_argument("--max-credits", type=int, default=None, help="import-odds-api-history: Odds API credit cap")
+    p.add_argument("--max-games", type=int, default=12, help="research: most games to forecast per run")
     p.add_argument("--cache-dir", default=None, help="import-odds-api-history: reuse/save raw API responses here")
     p.add_argument("--supersede-csv", action="store_true",
                    help="import-odds-api-history: delete earlier csv- imports of the same games")

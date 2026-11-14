@@ -2,8 +2,9 @@
 
 Each game is pulled ONCE, in the hourly run that falls PULL_WINDOW before tip-off
 (normally 30-90 minutes out), so the stored line is close to the closing line.
-Cost: 1 credit per market per region per game (4 markets x us = 4 credits; an NBA
-night of ~7 games is ~28 credits). The free /events endpoint finds the games.
+Cost: 1 credit per market per region per game (NBA 4 markets = 4 credits a game, ~28
+a night; NFL 5 markets = 5 credits a game, ~70 a week). The free /events endpoint finds
+the games. Yes/No markets (anytime TD) are stored as Over/Under 0.5.
 """
 from __future__ import annotations
 
@@ -19,7 +20,10 @@ logger = logging.getLogger(__name__)
 
 PROP_MARKETS: Dict[str, Tuple[str, ...]] = {
     "basketball_nba": ("player_points", "player_rebounds", "player_assists", "player_threes"),
+    "americanfootball_nfl": ("player_pass_yds", "player_rush_yds", "player_reception_yds", "player_receptions",
+                             "player_anytime_td"),
 }
+YES_NO = {"yes": "over", "no": "under"}  # e.g. anytime TD: "Yes" = over 0.5 touchdowns
 PULL_WINDOW = timedelta(minutes=90)
 
 
@@ -36,10 +40,12 @@ def parse_event_props(event: Dict) -> List[Dict]:
     for bm in event.get("bookmakers", []):
         for mk in bm.get("markets", []):
             for o in mk.get("outcomes", []):
-                player, side = o.get("description"), (o.get("name") or "").lower()
+                player, side, point = o.get("description"), (o.get("name") or "").lower(), o.get("point")
+                if side in YES_NO and point is None:
+                    side, point = YES_NO[side], 0.5
                 if not (player and side in ("over", "under") and o.get("price")):
                     continue
-                k = (bm.get("key"), mk.get("key"), player, o.get("point"))
+                k = (bm.get("key"), mk.get("key"), player, point)
                 r = rows.setdefault(k, {"bookmaker": k[0], "market": k[1], "player_name": player, "line": k[3],
                                         "over_price": None, "under_price": None,
                                         "book_update": _ts(mk.get("last_update") or bm.get("last_update"))})

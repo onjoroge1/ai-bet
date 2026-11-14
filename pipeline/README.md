@@ -171,13 +171,36 @@ Each costs about 3 Odds API credits per hourly run. An explicit `--sports` list 
 
 ## Player props and box scores (research)
 
-* `snapbet-pipeline props` (in `run`): NBA player points, rebounds, assists and threes from every US book via
-  The Odds API event-odds endpoint. Each game is pulled **once**, in the run that falls 30-90 minutes before
-  tip-off (close to the closing line). Cost: 4 credits per game (~30 a night). Over and Under are stored in one
+* `snapbet-pipeline props` (in `run`): NBA player points, rebounds, assists and threes, and NFL passing, rushing
+  and receiving yards, receptions and anytime touchdown, from every US book via The Odds API event-odds endpoint.
+  Each game is pulled **once**, in the run that falls 30-90 minutes before start (close to the closing line).
+  Cost: 4 credits per NBA game (~30 a night), 5 per NFL game (~70 a week). Anytime TD "Yes"/"No" is stored as
+  Over/Under 0.5. Over and Under are stored in one
   row per book x market x player x line (`multisport_player_props`).
 * `snapbet-pipeline boxscores [--from YYYY-MM-DD --to YYYY-MM-DD]` (in `run`, last 2 ET days by default): ESPN
   player box scores for final NBA games (free): minutes, points, rebounds, assists, 3s, shooting, starter and DNP
   reason (`multisport_player_boxscores`), linked to `multisport_fixtures` when the books listed the game.
+
+## Injury reports (research)
+
+`snapbet-pipeline injuries` (part of `run`) stores ESPN's injury reports for NFL/NBA/NHL in
+`multisport_injuries` as status history: a row per player x report x status, with
+`first_seen`/`last_seen` bumped hourly. A Day-To-Day -> Out change adds a row, so "who was
+listed before tip" can be reconstructed later. Free, no key.
+
+## AI researcher (paper only)
+
+`snapbet-pipeline research` forecasts each game 45-180 minutes before start with Claude Opus 5.5
+(`claude-opus-5-5`, medium effort, server-side refusal fallback). It gets a JSON brief from our
+tables (book consensus and movement, Kalshi, injury report, schedule fatigue, last 10 results,
+head-to-head, NBA rotation averages), up to 4 web searches for late news, and must answer through a
+strict `submit_forecast` tool. Rows land in `multisport_ai_forecasts` with the market price at that
+moment and the exact brief. `research --dry-run` prints the briefs without calling the API;
+`research-score` compares log loss with the market at forecast time and the closing line.
+
+Runs from `.github/workflows/pipeline-ai-research.yml` at :47 each hour and needs the
+`ANTHROPIC_API_KEY` repository secret (without it the job is skipped). Expect roughly
+$0.15-0.30 per game; `--max-games` caps a run. Nothing here bets or publishes picks.
 
 ## Retention: `prune`
 
@@ -233,17 +256,18 @@ See `.github/workflows/pipeline-*.yml`:
 
 | workflow | schedule | command |
 |---|---|---|
-| `pipeline-hourly` | `17 * * * *` | `run` (collect, results, sync, predict, settle) |
+| `pipeline-hourly` | `17 * * * *` | `run` (collect, kalshi, props, injuries, results, boxscores, sync, predict, settle) |
+| `pipeline-ai-research` | `47 * * * *` | `research` + `research-score` (needs `ANTHROPIC_API_KEY`) |
 | `pipeline-nightly-train` | `23 9 * * *` UTC | `sync` + `train`, commits `pipeline/models/` if changed |
 | `pipeline-backfill` | manual | `results --days N --ignore-season` |
 
-Secrets required on the repo: `DATABASE_URL`, `ODDS_API_KEY`. The repository is
+Secrets required on the repo: `DATABASE_URL`, `ODDS_API_KEY` (and `ANTHROPIC_API_KEY` for the AI researcher). The repository is
 public, so the workflows never echo payloads; only the JSON summary is printed.
 
 ## Odds API budget
 
 One `collect` = 3 credits per in-season sport (3 markets, 1 region): hourly for
-NFL/NBA/NHL/NCAAB ≈ 290 credits/day. Player props add ~4 credits per NBA game.
+NFL/NBA/NHL/NCAAB ≈ 290 credits/day. Player props add ~4 credits per NBA game and ~5 per NFL game.
 
 `results` reads finals from ESPN's free scoreboard and matches them to our
 fixtures (accent/punctuation-insensitive names, one-team + start-time fallback

@@ -123,7 +123,12 @@ def collect_boxscores(conn, sport_keys: Iterable[str], days: Iterable[date],
                                     (key, str(ev["id"])))
                         if cur.fetchone():
                             continue
-                        summary = _get(fetch, f"{ESPN_BASE}/{path}/summary", {"event": ev["id"]}, sleep=sleep)
+                        try:
+                            summary = _get(fetch, f"{ESPN_BASE}/{path}/summary", {"event": ev["id"]}, sleep=sleep)
+                        except RuntimeError as e:             # one missing summary must not end the run
+                            logger.warning("boxscores %s %s skipped: %s", key, ev["id"], e)
+                            stats["skipped"] = stats.get("skipped", 0) + 1
+                            continue
                         sleep(0.2)
                         players = parse_summary(summary, key)
                         if not players:
