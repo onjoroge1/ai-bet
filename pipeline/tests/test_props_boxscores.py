@@ -28,6 +28,17 @@ def test_parse_event_props_skips_incomplete_outcomes():
     assert rows[1]["over_price"] == 2.14 and rows[1]["under_price"] is None
 
 
+def test_parse_event_props_maps_anytime_td_yes_no_to_over_under_half():
+    ev = {"bookmakers": [{"key": "draftkings", "markets": [{"key": "player_anytime_td", "outcomes": [
+        {"name": "Yes", "description": "Saquon Barkley", "price": 1.8},
+        {"name": "No", "description": "Saquon Barkley", "price": 2.0}]}]},
+        {"key": "fanduel", "markets": [{"key": "player_anytime_td", "outcomes": [
+            {"name": "Yes", "description": "A.J. Brown", "price": 2.4}]}]}]}
+    a, b = parse_event_props(ev)
+    assert (a["line"], a["over_price"], a["under_price"]) == (0.5, 1.8, 2.0)
+    assert (b["player_name"], b["over_price"], b["under_price"]) == ("A.J. Brown", 2.4, None)
+
+
 def test_due_events_window_and_already_pulled():
     evs = [{"id": "a", "commence_time": "2026-11-14T00:10:00Z"},    # 53 min out -> due
            {"id": "b", "commence_time": "2026-11-14T02:40:00Z"},    # too far

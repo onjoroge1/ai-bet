@@ -171,9 +171,11 @@ Each costs about 3 Odds API credits per hourly run. An explicit `--sports` list 
 
 ## Player props and box scores (research)
 
-* `snapbet-pipeline props` (in `run`): NBA player points, rebounds, assists and threes from every US book via
-  The Odds API event-odds endpoint. Each game is pulled **once**, in the run that falls 30-90 minutes before
-  tip-off (close to the closing line). Cost: 4 credits per game (~30 a night). Over and Under are stored in one
+* `snapbet-pipeline props` (in `run`): NBA player points, rebounds, assists and threes, and NFL passing, rushing
+  and receiving yards, receptions and anytime touchdown, from every US book via The Odds API event-odds endpoint.
+  Each game is pulled **once**, in the run that falls 30-90 minutes before start (close to the closing line).
+  Cost: 4 credits per NBA game (~30 a night), 5 per NFL game (~70 a week). Anytime TD "Yes"/"No" is stored as
+  Over/Under 0.5. Over and Under are stored in one
   row per book x market x player x line (`multisport_player_props`).
 * `snapbet-pipeline boxscores [--from YYYY-MM-DD --to YYYY-MM-DD]` (in `run`, last 2 ET days by default): ESPN
   player box scores for final NBA games (free): minutes, points, rebounds, assists, 3s, shooting, starter and DNP
@@ -265,7 +267,7 @@ public, so the workflows never echo payloads; only the JSON summary is printed.
 ## Odds API budget
 
 One `collect` = 3 credits per in-season sport (3 markets, 1 region): hourly for
-NFL/NBA/NHL/NCAAB ≈ 290 credits/day. Player props add ~4 credits per NBA game.
+NFL/NBA/NHL/NCAAB ≈ 290 credits/day. Player props add ~4 credits per NBA game and ~5 per NFL game.
 
 `results` reads finals from ESPN's free scoreboard and matches them to our
 fixtures (accent/punctuation-insensitive names, one-team + start-time fallback
