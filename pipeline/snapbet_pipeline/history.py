@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 ESPN_PATHS = {"americanfootball_nfl": "football/nfl", "basketball_nba": "basketball/nba",
               "icehockey_nhl": "hockey/nhl", "basketball_ncaab": "basketball/mens-college-basketball"}
 ESPN_URL = "https://site.api.espn.com/apis/site/v2/sports/{path}/scoreboard"
+ESPN_EXTRA = {"basketball_ncaab": {"groups": "50"}}   # all of Division I, not just ranked teams
 CREDITS_PER_MARKET = 10
 MATCH_WINDOW = timedelta(hours=12)
 CSV_MATCH_WINDOW = timedelta(hours=36)
@@ -75,7 +76,7 @@ def espn_games(sport_key: str, day: date, fetch: Callable = requests.get, cache:
     data = cache.get(name)
     if data is None:
         resp = fetch(ESPN_URL.format(path=ESPN_PATHS[sport_key]),
-                     params={"dates": f"{day:%Y%m%d}", "limit": 300}, timeout=30)
+                     params={"dates": f"{day:%Y%m%d}", "limit": 300, **ESPN_EXTRA.get(sport_key, {})}, timeout=30)
         resp.raise_for_status()
         data = resp.json()
         cache.put(name, data)

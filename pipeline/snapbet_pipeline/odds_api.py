@@ -81,6 +81,21 @@ class OddsApiClient:
             "oddsFormat": odds_format,
         })
 
+    def get_events(self, sport_key: str) -> List[Dict]:
+        """Upcoming events (ids, teams, start). Free: costs no credits."""
+        return self._get(f"/sports/{sport_key}/events", {})
+
+    def get_event_odds(self, sport_key: str, event_id: str, markets, regions: str = "us",
+                       odds_format: str = "decimal") -> Dict:
+        """One event's odds for any markets (player props etc.).
+        Costs 1 credit per market returned per region."""
+        data = self._request(f"/sports/{sport_key}/events/{event_id}/odds", {
+            "regions": regions, "markets": ",".join(markets), "oddsFormat": odds_format,
+        }, {})
+        if not isinstance(data, dict):
+            raise OddsApiError(f"unexpected event-odds payload for {event_id}: {type(data).__name__}")
+        return data
+
     def get_scores(self, sport_key: str, days_from: int = 3) -> List[Dict]:
         # daysFrom max depends on plan (3 on most tiers). Caller handles step-down.
         return self._get(f"/sports/{sport_key}/scores", {"daysFrom": max(1, int(days_from))})

@@ -75,3 +75,29 @@ def test_prune_is_idempotent_and_guards_short_windows(conn):
     assert again["odds_per_book"] == 0 and again["kalshi"] == 0
     with pytest.raises(ValueError):
         prune(conn, keep_days=1, now=NOW)
+
+
+def test_old_props_collapse_to_consensus(conn):
+    old = NOW - timedelta(days=40)
+    with conn.cursor() as cur:
+        for bm, line, o, u in (("dk", 26.5, 1.87, 1.95), ("fd", 26.5, 1.91, 1.91), ("mgm", 27.5, 2.05, 1.78)):
+            cur.execute("""INSERT INTO multisport_player_props (sport_key, event_id, commence_time, bookmaker, market,
+                               player_name, line, over_price, under_price, ts_recorded)
+                           VALUES ('basketball_nba', 'e-old', %s, %s, 'player_points', 'Jalen Brunson', %s, %s, %s, %s)""",
+                        (old, bm, line, o, u, old - timedelta(hours=1)))
+        cur.execute("""INSERT INTO multisport_player_props (sport_key, event_id, commence_time, bookmaker, market,
+                           player_name, line, over_price, under_price, ts_recorded)
+                       VALUES ('basketball_nba', 'e-new', %s, 'dk', 'player_points', 'X', 10.5, 1.9, 1.9, %s)""",
+                    (NOW - timedelta(days=2), NOW - timedelta(days=2)))
+    conn.commit()
+    res = prune(conn, keep_days=7, now=NOW)
+    assert res["props_consensus_added"] == 1 and res["props_per_book"] == 3
+    with conn.cursor() as cur:
+        cur.execute("SELECT line, over_prob, n_books, best_over, best_under FROM multisport_player_prop_consensus")
+        line, prob, n, bo, bu = cur.fetchone()
+        cur.execute("SELECT event_id FROM multisport_player_props")
+        left = cur.fetchall()
+    assert float(line) == 26.5 and n == 2 and float(bo) == 1.91 and float(bu) == 1.95
+    expected = ((1 / 1.87) / (1 / 1.87 + 1 / 1.95) + 0.5) / 2
+    assert abs(float(prob) - expected) < 1e-3
+    assert left == [("e-new",)]
