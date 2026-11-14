@@ -256,7 +256,7 @@ See `.github/workflows/pipeline-*.yml`:
 
 | workflow | schedule | command |
 |---|---|---|
-| `pipeline-hourly` | `17 * * * *` | `run` (collect, kalshi, props, injuries, results, boxscores, sync, predict, settle) |
+| `pipeline-hourly` | `17,37,57 * * * *` | `run` (collect, kalshi, props, injuries, results, boxscores, sync, predict, settle). GitHub drops many scheduled runs, so there are 3 slots; odds are pulled only if the last pull is 50+ min old (`--min-collect-gap`) |
 | `pipeline-ai-research` | `47 * * * *` | `research` + `research-score` (needs `ANTHROPIC_API_KEY`) |
 | `pipeline-nightly-train` | `23 9 * * *` UTC | `sync` + `train`, commits `pipeline/models/` if changed |
 | `pipeline-backfill` | manual | `results --days N --ignore-season` |
