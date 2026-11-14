@@ -32,7 +32,7 @@ import json
 import logging
 import sys
 from datetime import datetime, timezone
-from typing import Dict
+from typing import Dict, Optional
 
 from . import db
 from .collect import collect_odds
@@ -176,9 +176,22 @@ def cmd_prune(conn, s: Settings, args) -> Dict:
     return prune(conn, keep_days=args.keep_days, dry_run=args.dry_run)
 
 
+def minutes_since_last_odds(conn) -> Optional[float]:
+    with conn.cursor() as cur:
+        cur.execute("SELECT EXTRACT(EPOCH FROM now() - MAX(ts_recorded)) / 60 FROM multisport_odds_snapshots")
+        v = cur.fetchone()[0]
+    return float(v) if v is not None else None
+
+
 def cmd_run(conn, s: Settings, args) -> Dict:
     out: Dict = {}
-    out["collect"] = _job(conn, "collect", lambda: cmd_collect(conn, s, args))
+    # Several triggers may fire in one hour (three cron slots an hour because GitHub drops many scheduled runs);
+    # only the first one spends Odds API credits on odds.
+    age = minutes_since_last_odds(conn)
+    if age is not None and age < args.min_collect_gap:
+        out["collect"] = {"status": "skipped", "reason": f"odds collected {age:.0f} min ago"}
+    else:
+        out["collect"] = _job(conn, "collect", lambda: cmd_collect(conn, s, args))
     # research captures; never block the publishing jobs
     for name, fn in (("kalshi", cmd_kalshi), ("props", cmd_props), ("injuries", cmd_injuries)):
         try:
@@ -278,6 +291,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--offsets", default="1",
                    help="import-odds-api-history: hours before each day's first kickoff to snapshot, e.g. '24,1'")
     p.add_argument("--max-credits", type=int, default=None, help="import-odds-api-history: Odds API credit cap")
+    p.add_argument("--min-collect-gap", type=float, default=50,
+                   help="run: skip odds collection if odds were stored less than this many minutes ago")
     p.add_argument("--max-games", type=int, default=12, help="research: most games to forecast per run")
     p.add_argument("--cache-dir", default=None, help="import-odds-api-history: reuse/save raw API responses here")
     p.add_argument("--supersede-csv", action="store_true",
