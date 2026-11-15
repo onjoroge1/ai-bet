@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS "MultisportMatch" (
 
 PIPELINE_TABLES = ["multisport_pick_ledger", "multisport_fixtures", "multisport_odds_snapshots", "multisport_match_results",
                    "multisport_schedule", "multisport_training", "multisport_pipeline_runs", "multisport_models",
-                   "multisport_kalshi_snapshots", "multisport_player_props", "multisport_player_boxscores",
+                   "multisport_kalshi_snapshots", "multisport_player_props", "multisport_prop_flags", "multisport_player_boxscores",
                    "multisport_player_prop_consensus"]
 
 
