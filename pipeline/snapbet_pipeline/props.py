@@ -15,6 +15,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 from psycopg2.extras import execute_values
 
 from .odds_api import OddsApiClient
+from .prop_shop import find_flags, store_flags
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +72,7 @@ def collect_props(conn, client: OddsApiClient, sport_keys: Iterable[str], now: O
         markets = PROP_MARKETS.get(key)
         if not markets:
             continue
-        stats = {"due": 0, "pulled": 0, "rows": 0, "status": "ok"}
+        stats = {"due": 0, "pulled": 0, "rows": 0, "flags": 0, "status": "ok"}
         try:
             events = client.get_events(key)
             with conn.cursor() as cur:
@@ -94,6 +95,9 @@ def collect_props(conn, client: OddsApiClient, sport_keys: Iterable[str], now: O
                             [(key, ev["id"], _ts(ev.get("commence_time")), ev.get("home_team"), ev.get("away_team"),
                               r["bookmaker"], r["market"], r["player_name"], r["line"], r["over_price"],
                               r["under_price"], r["book_update"], now) for r in rows])
+                        stats["flags"] += store_flags(cur, key, {
+                            "event_id": ev["id"], "commence_time": _ts(ev.get("commence_time")),
+                            "home_team": ev.get("home_team"), "away_team": ev.get("away_team")}, find_flags(rows), now)
                     conn.commit()
                     stats["pulled"] += 1
                     stats["rows"] += len(rows)

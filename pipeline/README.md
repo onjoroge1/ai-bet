@@ -177,6 +177,13 @@ Each costs about 3 Odds API credits per hourly run. An explicit `--sports` list 
   Cost: 4 credits per NBA game (~30 a night), 5 per NFL game (~70 a week). Anytime TD "Yes"/"No" is stored as
   Over/Under 0.5. Over and Under are stored in one
   row per book x market x player x line (`multisport_player_props`).
+* `snapbet-pipeline prop-flags` (line shopping, paper only): when props are pulled, any book whose price on a
+  prop side beats the no-vig **median of the other books at the same line** by 3-25% is stored in
+  `multisport_prop_flags` (needs 3+ other books; bigger gaps are treated as wrong lines). The hourly run grades
+  NBA flags against box scores; the command lists open flags and the running record (win rate vs expected, ROI).
+  This is price comparison, not prediction, and the record is too small to mean anything for weeks.
+* `python research/line_move_check.py` (free, read-only): tests whether the Kalshi-vs-book gap, the move so far or
+  the single-book lean predicts where the moneyline closes, per look-ahead bucket.
 * `snapbet-pipeline boxscores [--from YYYY-MM-DD --to YYYY-MM-DD]` (in `run`, last 2 ET days by default): ESPN
   player box scores for final NBA games (free): minutes, points, rebounds, assists, 3s, shooting, starter and DNP
   reason (`multisport_player_boxscores`), linked to `multisport_fixtures` when the books listed the game.

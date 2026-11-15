@@ -67,7 +67,7 @@ class _Client:
 def test_collect_props_pulls_each_game_once_within_credit_cap(conn):
     client = _Client()
     res = collect_props(conn, client, ["basketball_nba", "icehockey_nhl"], now=NOW, max_credits=4)
-    assert res["basketball_nba"] == {"due": 2, "pulled": 1, "rows": 2, "status": "credit_cap"}
+    assert res["basketball_nba"] == {"due": 2, "pulled": 1, "rows": 2, "flags": 0, "status": "credit_cap"}
     assert "icehockey_nhl" not in res                       # no prop markets configured
     again = collect_props(conn, client, ["basketball_nba"], now=NOW + timedelta(minutes=5))
     assert again["basketball_nba"]["pulled"] == 1 and client.odds_calls == ["ev1", "ev2"]
