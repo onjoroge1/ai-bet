@@ -121,7 +121,7 @@ DEFAULT_RESEARCH_SPORTS: List[str] = ["basketball_ncaab"]
 # ELO parameters (shared with feature builder)
 ELO_K = 20.0
 ELO_START = 1500.0
-B2B_HOURS = 26.0
+B2B_HOURS = 32.0  # catches afternoon-then-evening back-to-backs (26-31h gaps)
 
 # LightGBM parameters per sport family (ported from train_multisport_v3.py)
 LGBM_PARAMS = {

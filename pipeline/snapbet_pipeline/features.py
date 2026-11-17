@@ -18,7 +18,7 @@ from .config import B2B_HOURS, ELO_K, ELO_START, SPORTS
 
 logger = logging.getLogger(__name__)
 
-FEATURES_VERSION = "v3.1"
+FEATURES_VERSION = "v3.2"  # v3.2: back-to-back = previous game within 32h (was 26h)
 
 ODDS_FEATURE_NAMES = [
     "prob_home", "prob_away", "open_home_prob", "open_away_prob",
