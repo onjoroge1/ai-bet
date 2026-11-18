@@ -195,6 +195,23 @@ Each costs about 3 Odds API credits per hourly run. An explicit `--sports` list 
 `first_seen`/`last_seen` bumped hourly. A Day-To-Day -> Out change adds a row, so "who was
 listed before tip" can be reconstructed later. Free, no key.
 
+## Closing odds and NHL regulation prices
+
+* Closing price: between hourly pulls, `run` re-pulls a published sport on its own when one of its games
+  starts within 45 minutes and that game's consensus is 20+ minutes old (`closing.sports_needing_close`,
+  logged as job `collect_close`). The last snapshot before the start is then a real closing price
+  instead of one taken hours early.
+* `snapbet-pipeline regulation` (in `run`): NHL regulation-time 3-way moneyline (home / draw / away after
+  60 minutes, Odds API `h2h_3_way`) for each game once, in the run that falls within 60 minutes of puck drop,
+  per book plus a de-vigged consensus -> `multisport_regulation_odds`.
+
+## Paper picks: `picks`
+
+`snapbet-pipeline picks [--date YYYY-MM-DD] [--min-prob 0.70] [--max-picks 5] [--out FILE]` ranks every
+published sport's favourites on one scale (latest de-vigged consensus, US/Eastern day) and keeps those at
+or above `--min-prob`. It never fills slots with weaker games, so NHL appears only when a favourite clears
+the same bar. The JSON matches the tracking grader (`picks`, `tickets`, plus `next_best`). Tracking only.
+
 ## AI researcher (paper only)
 
 `snapbet-pipeline research` forecasts each game 45-180 minutes before start with Claude Opus 5.5
@@ -263,7 +280,7 @@ See `.github/workflows/pipeline-*.yml`:
 
 | workflow | schedule | command |
 |---|---|---|
-| `pipeline-hourly` | `17,37,57 * * * *` | `run` (collect, kalshi, props, injuries, results, boxscores, sync, predict, settle). GitHub drops many scheduled runs, so there are 3 slots; odds are pulled only if the last pull is 50+ min old (`--min-collect-gap`) |
+| `pipeline-hourly` | `17,37,57 * * * *` | `run` (collect, kalshi, props, regulation, injuries, results, boxscores, sync, predict, settle). GitHub drops many scheduled runs, so there are 3 slots; odds are pulled only if the last pull is 50+ min old (`--min-collect-gap`), except a near-close re-pull for sports with a game starting within 45 min |
 | `pipeline-ai-research` | `47 * * * *` | `research` + `research-score` (needs `ANTHROPIC_API_KEY`) |
 | `pipeline-nightly-train` | `23 9 * * *` UTC | `sync` + `train`, commits `pipeline/models/` if changed |
 | `pipeline-backfill` | manual | `results --days N --ignore-season` |
@@ -275,6 +292,8 @@ public, so the workflows never echo payloads; only the JSON summary is printed.
 
 One `collect` = 3 credits per in-season sport (3 markets, 1 region): hourly for
 NFL/NBA/NHL/NCAAB ≈ 290 credits/day. Player props add ~4 credits per NBA game and ~5 per NFL game.
+Near-close re-pulls add 3 credits per sport per start-time cluster (roughly 25-35 a day), and NHL
+regulation odds 1 credit per game (~8 a day).
 
 `results` reads finals from ESPN's free scoreboard and matches them to our
 fixtures (accent/punctuation-insensitive names, one-team + start-time fallback

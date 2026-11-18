@@ -12,7 +12,11 @@ laptop run exactly the same code:
   snapbet-pipeline research [--dry-run] [--max-games N]  # AI researcher: Claude forecast per game 45-180 min out (paper only)
   snapbet-pipeline research-score     # AI forecasts vs market log loss on finished games
   snapbet-pipeline injuries           # ESPN injury reports, status history (free)
-  snapbet-pipeline run                # collect + kalshi + props + injuries + results + boxscores + sync + predict + settle
+  snapbet-pipeline run                # collect (or a near-close re-pull) + kalshi + props + regulation + injuries
+                                      #   + results + boxscores + sync + predict + settle
+  snapbet-pipeline regulation         # NHL regulation-time 3-way odds, each game once <60 min before puck drop (1 credit/game)
+  snapbet-pipeline picks [--date D] [--min-prob 0.70] [--max-picks 5] [--out FILE]
+                                      # paper picks: strongest favourites >= min-prob, every sport on one scale
   snapbet-pipeline props              # NBA player props, each game once ~30-90 min before tip (4 credits/game)
   snapbet-pipeline prop-flags         # line shopping: props where one book beats the others' fair price; graded record
   snapbet-pipeline boxscores [--from D --to D]  # ESPN player box scores (free); default: last 2 ET days
@@ -37,6 +41,8 @@ from typing import Dict, Optional
 
 from . import db
 from .collect import collect_odds
+from .closing import collect_regulation, sports_needing_close
+from . import picks as picks_mod
 from .import_csv import import_csv_file
 from .kalshi import collect_kalshi
 from .ledger import settle_ledger, track_record
@@ -146,6 +152,20 @@ def cmd_props(conn, s: Settings, args) -> Dict:
     return collect_props(conn, _client(s), collect_sports(s), max_credits=args.max_credits)
 
 
+def cmd_regulation(conn, s: Settings, args) -> Dict:
+    return collect_regulation(conn, _client(s), s.sports)
+
+
+def cmd_picks(conn, s: Settings, args) -> Dict:
+    day = picks_mod.parse_day(args.date)
+    out = picks_mod.build_picks(conn, s.sports, day, n=args.max_picks, min_prob=args.min_prob)
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as f:
+            json.dump(out, f, indent=2)
+            f.write("\n")
+    return out
+
+
 def cmd_prop_flags(conn, s: Settings, args) -> Dict:
     return prop_shop.report(conn)
 
@@ -193,13 +213,22 @@ def cmd_run(conn, s: Settings, args) -> Dict:
     out: Dict = {}
     # Several triggers may fire in one hour (three cron slots an hour because GitHub drops many scheduled runs);
     # only the first one spends Odds API credits on odds.
+    # Between hourly pulls, a sport with a game starting within 45 minutes whose odds are 20+ minutes old is
+    # re-pulled on its own, so the last pre-game snapshot is a real closing price.
     age = minutes_since_last_odds(conn)
     if age is not None and age < args.min_collect_gap:
-        out["collect"] = {"status": "skipped", "reason": f"odds collected {age:.0f} min ago"}
+        close = sports_needing_close(conn, s.sports)
+        if close:
+            out["collect"] = _job(conn, "collect_close",
+                                  lambda: collect_odds(conn, _client(s), close, respect_season=not args.ignore_season))
+            out["collect"]["mode"] = "close"
+        else:
+            out["collect"] = {"status": "skipped", "reason": f"odds collected {age:.0f} min ago"}
     else:
         out["collect"] = _job(conn, "collect", lambda: cmd_collect(conn, s, args))
     # research captures; never block the publishing jobs
-    for name, fn in (("kalshi", cmd_kalshi), ("props", cmd_props), ("injuries", cmd_injuries)):
+    for name, fn in (("kalshi", cmd_kalshi), ("props", cmd_props), ("regulation", cmd_regulation),
+                     ("injuries", cmd_injuries)):
         try:
             out[name] = _job(conn, name, lambda fn=fn: fn(conn, s, args))
         except Exception as e:
@@ -278,7 +307,7 @@ def cmd_status(conn, s: Settings, args) -> Dict:
 
 COMMANDS = {"migrate": cmd_migrate, "collect": cmd_collect, "kalshi": cmd_kalshi, "results": cmd_results, "sync": cmd_sync,
             "train": cmd_train, "predict": cmd_predict, "settle": cmd_settle, "run": cmd_run,
-            "status": cmd_status, "prune": cmd_prune, "props": cmd_props, "prop-flags": cmd_prop_flags, "boxscores": cmd_boxscores, "injuries": cmd_injuries, "research": cmd_research, "research-score": cmd_research_score, "import-csv": cmd_import_csv, "report": cmd_report,
+            "status": cmd_status, "prune": cmd_prune, "props": cmd_props, "prop-flags": cmd_prop_flags, "boxscores": cmd_boxscores, "injuries": cmd_injuries, "research": cmd_research, "regulation": cmd_regulation, "picks": cmd_picks, "research-score": cmd_research_score, "import-csv": cmd_import_csv, "report": cmd_report,
             "import-odds-api-history": cmd_import_odds_api_history}
 
 
@@ -309,6 +338,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="import-odds-api-history: delete earlier csv- imports of the same games")
     p.add_argument("--keep-days", type=int, default=7,
                    help="prune: keep every snapshot of games that started within this many days")
+    p.add_argument("--date", default=None, help="picks: US/Eastern date YYYY-MM-DD (default today)")
+    p.add_argument("--min-prob", type=float, default=picks_mod.MIN_PROB, help="picks: lowest win probability kept")
+    p.add_argument("--max-picks", type=int, default=5, help="picks: most picks kept")
+    p.add_argument("--out", default=None, help="picks: also write the picks JSON to this file")
     p.add_argument("-v", "--verbose", action="store_true")
     return p
 
