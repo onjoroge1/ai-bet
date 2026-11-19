@@ -30,6 +30,14 @@ def _novig_over(r: Dict) -> Optional[float]:
     return (1 / float(o)) / (1 / float(o) + 1 / float(u))
 
 
+def best_opposite(rows: Iterable[Dict], flagged_book: str, side: str):
+    """(book, price) of the best price on the OTHER side at any book except the flagged one."""
+    opp = "under" if side == "over" else "over"
+    prices = [(r["bookmaker"], float(r[f"{opp}_price"])) for r in rows
+              if r["bookmaker"] != flagged_book and r.get(f"{opp}_price") and float(r[f"{opp}_price"]) > 1]
+    return max(prices, key=lambda bp: bp[1]) if prices else (None, None)
+
+
 def find_flags(rows: Iterable[Dict], min_edge: float = MIN_EDGE, min_other: int = MIN_OTHER_BOOKS,
                max_edge: float = MAX_EDGE) -> List[Dict]:
     """rows: bookmaker, market, player_name, line, over_price, under_price (one pull of one game)."""
@@ -51,9 +59,11 @@ def find_flags(rows: Iterable[Dict], min_edge: float = MIN_EDGE, min_other: int 
                     continue
                 edge = p * float(price) - 1
                 if min_edge <= edge <= max_edge:
+                    fade_book, fade_price = best_opposite(rs, r["bookmaker"], side)
                     flags.append({"bookmaker": r["bookmaker"], "market": market, "player_name": player, "line": line,
                                   "side": side, "price": float(price), "fair_prob": round(p, 4),
-                                  "edge": round(edge, 4), "n_books": len(others)})
+                                  "edge": round(edge, 4), "n_books": len(others),
+                                  "fade_book": fade_book, "fade_price": fade_price})
     return sorted(flags, key=lambda f: -f["edge"])
 
 
@@ -62,12 +72,32 @@ def store_flags(cur, sport_key: str, ev: Dict, flags: List[Dict], now: datetime)
         return 0
     execute_values(cur, """
         INSERT INTO multisport_prop_flags (sport_key, event_id, commence_time, home_team, away_team, bookmaker,
-            market, player_name, line, side, price, fair_prob, edge, n_books, ts_recorded)
+            market, player_name, line, side, price, fair_prob, edge, n_books, ts_recorded, fade_book, fade_price)
         VALUES %s ON CONFLICT DO NOTHING""",
         [(sport_key, ev["event_id"], ev.get("commence_time"), ev.get("home_team"), ev.get("away_team"),
           f["bookmaker"], f["market"], f["player_name"], f["line"], f["side"], f["price"], f["fair_prob"],
-          f["edge"], f["n_books"], now) for f in flags])
+          f["edge"], f["n_books"], now, f.get("fade_book"), f.get("fade_price")) for f in flags])
     return cur.rowcount
+
+
+def backfill_fades(conn) -> int:
+    """Fill fade_book/fade_price for flags stored before 011 from the same pull's stored prices."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            UPDATE multisport_prop_flags f SET fade_book = b.bookmaker, fade_price = b.price
+              FROM (SELECT DISTINCT ON (f2.id) f2.id, p.bookmaker,
+                           (CASE WHEN f2.side = 'over' THEN p.under_price ELSE p.over_price END) AS price
+                      FROM multisport_prop_flags f2
+                      JOIN multisport_player_props p
+                        ON p.event_id = f2.event_id AND p.market = f2.market AND p.player_name = f2.player_name
+                       AND p.line = f2.line AND p.ts_recorded = f2.ts_recorded AND p.bookmaker <> f2.bookmaker
+                     WHERE f2.fade_price IS NULL
+                       AND (CASE WHEN f2.side = 'over' THEN p.under_price ELSE p.over_price END) > 1
+                     ORDER BY f2.id, price DESC) b
+             WHERE f.id = b.id""")
+        n = cur.rowcount
+    conn.commit()
+    return n
 
 
 def backfill(conn, now: Optional[datetime] = None) -> int:
@@ -134,7 +164,7 @@ def grade(conn, now: Optional[datetime] = None) -> Dict:
 def report(conn, now: Optional[datetime] = None, top: int = 15) -> Dict:
     """Backfill + grade, then: open flags for games not started, and the running record."""
     now = now or datetime.now(timezone.utc)
-    out: Dict = {"backfilled": backfill(conn, now), **grade(conn, now)}
+    out: Dict = {"backfilled": backfill(conn, now), "fades_backfilled": backfill_fades(conn), **grade(conn, now)}
     with conn.cursor() as cur:
         cur.execute("""SELECT away_team || ' at ' || home_team, bookmaker, player_name, market, side, line, price,
                               fair_prob, edge, n_books
@@ -152,4 +182,15 @@ def report(conn, now: Optional[datetime] = None, top: int = 15) -> Dict:
                          "expected_win_rate": round(float(exp), 3) if exp is not None else None,
                          "roi_per_unit": round(float(roi), 3) if roi is not None else None,
                          "expected_roi": round(float(edge), 3) if edge is not None else None}
+        # Paper fade: the opposite side at the best other book; it wins exactly when the flag loses.
+        cur.execute("""SELECT COUNT(*), COALESCE(SUM((NOT won)::int), 0), AVG(1 - fair_prob),
+                              AVG(CASE WHEN NOT won THEN fade_price - 1 ELSE -1 END), AVG(fade_price)
+                         FROM multisport_prop_flags WHERE won IS NOT NULL AND fade_price IS NOT NULL""")
+        n, wins, exp, roi, avg_price = cur.fetchone()
+        out["fade_record"] = {"graded": n, "won": int(wins),
+                              "win_rate": round(wins / n, 3) if n else None,
+                              "expected_win_rate": round(float(exp), 3) if exp is not None else None,
+                              "roi_per_unit": round(float(roi), 3) if roi is not None else None,
+                              "avg_price": round(float(avg_price), 3) if avg_price is not None else None,
+                              "note": "paper only; review at ~200 graded"}
     return out

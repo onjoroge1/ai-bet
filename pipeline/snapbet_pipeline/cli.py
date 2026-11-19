@@ -19,6 +19,7 @@ laptop run exactly the same code:
                                       # paper picks: strongest favourites >= min-prob, every sport on one scale
   snapbet-pipeline props              # NBA player props, each game once ~30-90 min before tip (4 credits/game)
   snapbet-pipeline prop-flags         # line shopping: props where one book beats the others' fair price; graded record
+  snapbet-pipeline prop-results       # every prop line graded (no-vig over/under, best prices, result) + calibration
   snapbet-pipeline boxscores [--from D --to D]  # ESPN player box scores (free); default: last 2 ET days
   snapbet-pipeline prune [--keep-days 7] [--dry-run]
                                       # thin per-book/Kalshi snapshots of old games (consensus kept)
@@ -55,6 +56,7 @@ from .espn_scores import collect_results_espn
 from .retention import prune
 from .props import collect_props
 from . import prop_shop
+from . import prop_results
 from .boxscores import collect_boxscores, recent_days
 from .injuries import collect_injuries
 from .train import should_train, train_sport
@@ -170,6 +172,10 @@ def cmd_prop_flags(conn, s: Settings, args) -> Dict:
     return prop_shop.report(conn)
 
 
+def cmd_prop_results(conn, s: Settings, args) -> Dict:
+    return prop_results.report(conn)
+
+
 def cmd_boxscores(conn, s: Settings, args) -> Dict:
     from datetime import date, timedelta
     if args.date_from:
@@ -242,6 +248,10 @@ def cmd_run(conn, s: Settings, args) -> Dict:
         out["prop_flags"] = _job(conn, "prop_flags", lambda: prop_shop.grade(conn))
     except Exception as e:
         out["prop_flags"] = {"status": "error", "error": str(e)}
+    try:
+        out["prop_results"] = _job(conn, "prop_results", lambda: prop_results.refresh(conn))
+    except Exception as e:
+        out["prop_results"] = {"status": "error", "error": str(e)}
     out["sync"] = _job(conn, "sync", lambda: cmd_sync(conn, s, args))
     out["predict"] = _job(conn, "predict", lambda: cmd_predict(conn, s, args))
     out["settle"] = _job(conn, "settle", lambda: cmd_settle(conn, s, args))
@@ -307,7 +317,7 @@ def cmd_status(conn, s: Settings, args) -> Dict:
 
 COMMANDS = {"migrate": cmd_migrate, "collect": cmd_collect, "kalshi": cmd_kalshi, "results": cmd_results, "sync": cmd_sync,
             "train": cmd_train, "predict": cmd_predict, "settle": cmd_settle, "run": cmd_run,
-            "status": cmd_status, "prune": cmd_prune, "props": cmd_props, "prop-flags": cmd_prop_flags, "boxscores": cmd_boxscores, "injuries": cmd_injuries, "research": cmd_research, "regulation": cmd_regulation, "picks": cmd_picks, "research-score": cmd_research_score, "import-csv": cmd_import_csv, "report": cmd_report,
+            "status": cmd_status, "prune": cmd_prune, "props": cmd_props, "prop-flags": cmd_prop_flags, "prop-results": cmd_prop_results, "boxscores": cmd_boxscores, "injuries": cmd_injuries, "research": cmd_research, "regulation": cmd_regulation, "picks": cmd_picks, "research-score": cmd_research_score, "import-csv": cmd_import_csv, "report": cmd_report,
             "import-odds-api-history": cmd_import_odds_api_history}
 
 

@@ -182,6 +182,18 @@ Each costs about 3 Odds API credits per hourly run. An explicit `--sports` list 
   `multisport_prop_flags` (needs 3+ other books; bigger gaps are treated as wrong lines). The hourly run grades
   NBA flags against box scores; the command lists open flags and the running record (win rate vs expected, ROI).
   This is price comparison, not prediction, and the record is too small to mean anything for weeks.
+  Each flag also stores the **fade**: the best opposite-side price at another book in the same pull
+  (`fade_book`, `fade_price`, sql/011). The fade wins exactly when the flag loses, and `prop-flags` reports its
+  record as `fade_record`. Added 2026-11-18 because the first 65 graded flags won 28% vs 45% fair (fade +25%/bet);
+  that sample covered only 30 games, so it is paper-tracked until ~200 graded flags.
+* `snapbet-pipeline prop-results` (free, in `run`): every stored prop line, not just flags, summarised per
+  game x market x player x line (`multisport_prop_results`, sql/012): no-vig over/under probability across the
+  books that priced both sides, best price and book on each side, main-line marker, and the box-score result
+  (NBA; NFL ungraded). The command prints calibration by market and probability bucket. Per-book prop rows are
+  now kept 400 days before `prune` collapses them (was 30), so a season of book-level prices is available.
+* `python research/prop_patterns.py` (free, read-only): fixed questions on graded props - calibration, props in
+  winning games (hindsight) vs pregame favourites (bettable), and game-to-game carry-over, with game-clustered
+  intervals and an earlier/later date split. Box-score-only carry-over uses the whole season.
 * `python research/line_move_check.py` (free, read-only): tests whether the Kalshi-vs-book gap, the move so far or
   the single-book lean predicts where the moneyline closes, per look-ahead bucket.
 * `snapbet-pipeline boxscores [--from YYYY-MM-DD --to YYYY-MM-DD]` (in `run`, last 2 ET days by default): ESPN
