@@ -29,3 +29,10 @@ def test_one_sided_book_can_be_flagged_but_never_sets_the_fair_price():
 def test_name_matching_ignores_accents_suffixes_and_punctuation():
     assert _name("Nikola Jokić") == _name("Nikola Jokic")
     assert _name("Jaren Jackson Jr.") == _name("Jaren Jackson") and _name("P.J. Washington") == _name("PJ Washington")
+
+
+def test_flag_records_best_opposite_price_at_another_book():
+    rows = [_row("a", 1.91, 1.95), _row("b", 1.91, 1.91), _row("c", 1.91, 1.88), _row("d", 2.10, 1.70)]
+    [f] = find_flags(rows)
+    assert (f["bookmaker"], f["side"]) == ("d", "over")
+    assert (f["fade_book"], f["fade_price"]) == ("a", 1.95)      # best of the other books, never the flagged one
