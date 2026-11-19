@@ -9,7 +9,8 @@ Kalshi market):
   * the last capture before the game started (closing price),
   * the first capture in each `bucket_hours` window (the shape of the move),
 and delete the rest, including per-book rows captured after the start.
-Player props of games older than `props_keep_days` are collapsed into one
+Player props of games older than `props_keep_days` (default 400: a full season of per-book
+prices for prop research) are collapsed into one
 multisport_player_prop_consensus row per game x market x player (median line,
 no-vig over probability of the books at that line, book count, best prices) and
 the per-book rows are deleted.
@@ -78,7 +79,7 @@ PROPS_CONSOLIDATE = """
 """
 
 
-def prune(conn, keep_days: int = 7, bucket_hours: int = 6, keep_run_days: int = 60, props_keep_days: int = 30,
+def prune(conn, keep_days: int = 7, bucket_hours: int = 6, keep_run_days: int = 60, props_keep_days: int = 400,
           now: Optional[datetime] = None, dry_run: bool = False) -> Dict:
     if keep_days < 2:
         raise ValueError("keep_days must be at least 2 (unsettled games need their snapshots)")
