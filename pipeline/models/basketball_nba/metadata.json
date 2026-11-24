@@ -12,43 +12,43 @@
     0
   ],
   "inner_cv_logloss_sum": {
-    "0": 452.2675,
-    "10": 453.4951,
-    "25": 454.6818,
-    "50": 456.6261,
-    "100": 460.4195,
-    "200": 467.0424
+    "0": 465.1489,
+    "10": 466.4388,
+    "25": 468.4217,
+    "50": 471.895,
+    "100": 476.6778,
+    "200": 485.3514
   },
   "sport_key": "basketball_nba",
   "features_version": "v3.2",
-  "trained_at": "2026-11-21T16:52:41.070764+00:00",
-  "train_reason": "25 new finished games since last train",
-  "n_samples": 1105,
+  "trained_at": "2026-11-24T20:16:40.374312+00:00",
+  "train_reason": "23 new finished games since last train",
+  "n_samples": 1128,
   "n_samples_from_csv": 0,
   "date_range": [
     "2025-12-02",
-    "2026-11-21"
+    "2026-11-24"
   ],
   "n_folds": 5,
   "oof_metrics": {
-    "accuracy": 0.6967,
-    "logloss": 0.557,
-    "brier": 0.1888,
-    "market_logloss": 0.5554
+    "accuracy": 0.6947,
+    "logloss": 0.5589,
+    "brier": 0.1897,
+    "market_logloss": 0.5579
   },
   "edge_gate": {
-    "n": 920,
+    "n": 940,
     "criterion": "logloss_vs_market",
-    "model_logloss": 0.557,
-    "market_logloss": 0.5554,
-    "logloss_gain": -0.0015,
-    "brier_model": 0.1888,
-    "brier_market": 0.188,
-    "model_acc": 0.6967,
-    "favorite_acc": 0.7,
-    "delta": -0.0033,
+    "model_logloss": 0.5589,
+    "market_logloss": 0.5579,
+    "logloss_gain": -0.001,
+    "brier_model": 0.1897,
+    "brier_market": 0.1891,
+    "model_acc": 0.6947,
+    "favorite_acc": 0.6979,
+    "delta": -0.0032,
     "edge_validated": false,
-    "validation": "temporal OOF log loss 0.5570 vs market 0.5554 (-0.0015, n=920) \u2014 no demonstrated edge over the market"
+    "validation": "temporal OOF log loss 0.5589 vs market 0.5579 (-0.0010, n=940) \u2014 no demonstrated edge over the market"
   },
   "feature_importance": []
 }
