@@ -3,7 +3,7 @@
 A flag = one book's price on a prop side beats the no-vig median of the OTHER books at the
 same line by MIN_EDGE or more. This is price comparison, not prediction: it assumes the other
 books' median is the fair price. Flags are stored when props are pulled and graded later
-against ESPN box scores (NBA only for now; NFL flags stay ungraded).
+against ESPN box scores (NBA and NFL).
 """
 from __future__ import annotations
 
@@ -21,6 +21,9 @@ MIN_OTHER_BOOKS = 3   # books (with both sides priced) behind the fair price
 MAX_EDGE = 0.25       # bigger gaps are almost always a wrong line or stale feed, not value
 STAT = {"player_points": "points", "player_rebounds": "rebounds", "player_assists": "assists",
         "player_threes": "threes_made"}
+NFL_STAT = {"player_pass_yds": "pass_yds", "player_rush_yds": "rush_yds", "player_reception_yds": "rec_yds",
+            "player_receptions": "receptions", "player_anytime_td": "scoring_td"}
+ALL_STAT = {**STAT, **NFL_STAT}
 
 
 def _novig_over(r: Dict) -> Optional[float]:
@@ -125,31 +128,46 @@ def _name(n: str) -> str:
     return "".join(toks)
 
 
+def box_lookup(cur, event_id: str) -> Dict[str, Optional[Dict]]:
+    """Normalised player name -> {stat column: value} for one game (NBA or NFL), None if he did not play.
+    Empty dict = no box score stored for the game yet."""
+    cur.execute("""SELECT player_name, did_not_play, points, rebounds, assists, threes_made
+                     FROM multisport_player_boxscores WHERE event_id = %s""", (event_id,))
+    out: Dict[str, Optional[Dict]] = {}
+    for name, dnp, *vals in cur.fetchall():
+        out[_name(name)] = None if dnp else dict(zip(("points", "rebounds", "assists", "threes_made"), vals))
+    if out:
+        return out
+    cols = tuple(NFL_STAT.values())
+    cur.execute(f"SELECT player_name, {', '.join(cols)} FROM multisport_nfl_player_stats WHERE event_id = %s",
+                (event_id,))
+    return {_name(name): dict(zip(cols, vals)) for name, *vals in cur.fetchall()}
+
+
 def grade(conn, now: Optional[datetime] = None) -> Dict:
-    """Fill actual/won from box scores for flags of finished games. Equal to the line = push (won NULL)."""
+    """Fill actual/won from box scores for flags of finished games. Equal to the line = push (won NULL).
+    Not in the box score or did not play -> void (graded_at set, won NULL)."""
     now = now or datetime.now(timezone.utc)
     out = {"graded": 0, "no_boxscore": 0}
     with conn.cursor() as cur:
         cur.execute("""SELECT id, event_id, market, player_name, line, side FROM multisport_prop_flags
                         WHERE graded_at IS NULL AND commence_time < %s""", (now,))
         todo = cur.fetchall()
-        box: Dict[str, Dict[str, tuple]] = {}
+        box: Dict[str, Dict] = {}
         for fid, eid, market, player, line, side in todo:
-            stat = STAT.get(market)
+            stat = ALL_STAT.get(market)
             if not stat:
                 continue
             if eid not in box:
-                cur.execute("""SELECT player_name, did_not_play, points, rebounds, assists, threes_made
-                                 FROM multisport_player_boxscores WHERE event_id = %s""", (eid,))
-                box[eid] = {_name(r[0]): r for r in cur.fetchall()}
+                box[eid] = box_lookup(cur, eid)
             if not box[eid]:
                 out["no_boxscore"] += 1
                 continue
             r = box[eid].get(_name(player))
-            if r is None or r[1]:          # not in the box score / did not play -> void
+            if r is None:          # not in the box score / did not play -> void
                 cur.execute("UPDATE multisport_prop_flags SET graded_at = %s WHERE id = %s", (now, fid))
                 continue
-            actual = r[2 + ("points", "rebounds", "assists", "threes_made").index(stat)]
+            actual = r.get(stat)
             if actual is None:
                 continue
             diff = float(actual) - float(line)

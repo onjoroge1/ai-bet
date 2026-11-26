@@ -3,7 +3,9 @@
 `build` summarises each stored pull of multisport_player_props into one row per game x market x
 player x line (books that priced both sides): the no-vig over/under probabilities, the best price
 on each side and which book had it, and whether it is the main (median) line. `grade` fills the
-result from ESPN box scores (NBA only; NFL box scores have no prop stats yet). `report` shows
+result from ESPN box scores (NBA and NFL).
+NFL anytime-TD props are mostly posted Yes-only; those get a row with under_prob NULL whose over_prob
+is the raw implied probability (book margin included), so calibration reports them separately. `report` shows
 calibration: for each market and probability bucket, how often the over actually happened.
 Costs no API credits. The point is a large, honest dataset to look for patterns in later; pick the
 questions before looking, and test any pattern on later dates than it was found on.
@@ -15,7 +17,7 @@ from typing import Dict, Optional
 
 from psycopg2.extras import execute_values
 
-from .prop_shop import STAT, _name
+from .prop_shop import ALL_STAT, _name, box_lookup
 
 GRADE_AFTER = timedelta(hours=4)   # game should be over and the box score posted
 
@@ -50,10 +52,29 @@ BUILD = """
 """
 
 
+# Yes-only anytime TD: no under price, so no no-vig probability. Runs after BUILD; a two-sided row for the
+# same game/player/pull wins the unique key.
+BUILD_YES_ONLY = """
+    INSERT INTO multisport_prop_results (sport_key, event_id, commence_time, home_team, away_team, market,
+        player_name, line, is_main_line, n_books, over_prob, under_prob, avg_overround, best_over, best_over_book,
+        best_under, best_under_book, ts_recorded)
+    SELECT sport_key, event_id, commence_time, home_team, away_team, market, player_name, line, TRUE,
+           COUNT(DISTINCT bookmaker), ROUND(AVG(1 / over_price::float)::numeric, 4), NULL, NULL,
+           MAX(over_price), (ARRAY_AGG(bookmaker ORDER BY over_price DESC))[1], NULL, NULL, ts_recorded
+      FROM multisport_player_props
+     WHERE market = 'player_anytime_td' AND line = 0.5 AND over_price > 1 AND under_price IS NULL
+       AND (%(since)s::timestamptz IS NULL OR ts_recorded >= %(since)s)
+     GROUP BY sport_key, event_id, commence_time, home_team, away_team, market, player_name, line, ts_recorded
+    ON CONFLICT (event_id, market, player_name, line, ts_recorded) DO NOTHING
+"""
+
+
 def build(conn, since: Optional[datetime] = None) -> int:
     with conn.cursor() as cur:
         cur.execute(BUILD, {"since": since})
         n = cur.rowcount
+        cur.execute(BUILD_YES_ONLY, {"since": since})
+        n += cur.rowcount
     conn.commit()
     return n
 
@@ -63,30 +84,29 @@ def outcome(actual: float, line: float) -> str:
 
 
 def grade(conn, now: Optional[datetime] = None) -> Dict:
-    """Fill actual/result for finished NBA games. Not in the box score or did not play = void."""
+    """Fill actual/result for finished NBA and NFL games. Not in the box score or did not play = void."""
     now = now or datetime.now(timezone.utc)
     out = {"graded": 0, "void": 0, "no_boxscore": 0}
+    markets = list(ALL_STAT)
     with conn.cursor() as cur:
         cur.execute("""SELECT DISTINCT event_id FROM multisport_prop_results
                         WHERE graded_at IS NULL AND commence_time < %s AND market = ANY(%s)""",
-                    (now - GRADE_AFTER, list(STAT)))
+                    (now - GRADE_AFTER, markets))
         for (eid,) in cur.fetchall():
-            cur.execute("""SELECT player_name, did_not_play, points, rebounds, assists, threes_made
-                             FROM multisport_player_boxscores WHERE event_id = %s""", (eid,))
-            box = {_name(r[0]): r for r in cur.fetchall()}
+            box = box_lookup(cur, eid)
             if not box:
                 out["no_boxscore"] += 1
                 continue
             cur.execute("""SELECT id, market, player_name, line FROM multisport_prop_results
-                            WHERE event_id = %s AND graded_at IS NULL AND market = ANY(%s)""", (eid, list(STAT)))
+                            WHERE event_id = %s AND graded_at IS NULL AND market = ANY(%s)""", (eid, markets))
             updates = []
             for rid, market, player, line in cur.fetchall():
                 r = box.get(_name(player))
-                if r is None or r[1]:
+                if r is None:
                     updates.append((None, "void", rid))
                     out["void"] += 1
                     continue
-                actual = r[2 + ("points", "rebounds", "assists", "threes_made").index(STAT[market])]
+                actual = r.get(ALL_STAT[market])
                 if actual is None:
                     continue
                 updates.append((actual, outcome(float(actual), float(line)), rid))
@@ -113,7 +133,8 @@ def report(conn, now: Optional[datetime] = None) -> Dict:
                          FROM multisport_prop_results""")
         n, graded, games = cur.fetchone()
         out["total_rows"], out["total_graded"], out["total_graded_games"] = n, graded, games
-        cur.execute("""SELECT market, width_bucket(over_prob, 0, 1, 10) AS b, COUNT(*),
+        cur.execute("""SELECT market || CASE WHEN under_prob IS NULL THEN ' (yes-only, margin included)' ELSE '' END,
+                              width_bucket(over_prob, 0, 1, 10) AS b, COUNT(*),
                               AVG(over_prob)::float, AVG((result = 'over')::int)::float
                          FROM multisport_prop_results
                         WHERE is_main_line AND result IN ('over', 'under')

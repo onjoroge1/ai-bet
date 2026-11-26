@@ -90,7 +90,7 @@ def test_old_props_collapse_to_consensus(conn):
                        VALUES ('basketball_nba', 'e-new', %s, 'dk', 'player_points', 'X', 10.5, 1.9, 1.9, %s)""",
                     (NOW - timedelta(days=2), NOW - timedelta(days=2)))
     conn.commit()
-    res = prune(conn, keep_days=7, now=NOW)
+    res = prune(conn, keep_days=7, props_keep_days=30, now=NOW)   # default keeps props 400 days
     assert res["props_consensus_added"] == 1 and res["props_per_book"] == 3
     with conn.cursor() as cur:
         cur.execute("SELECT line, over_prob, n_books, best_over, best_under FROM multisport_player_prop_consensus")

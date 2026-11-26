@@ -2,6 +2,7 @@
 
   GET site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=YYYYMMDD
   GET site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event={id}
+  (NFL: football/nfl, stored in multisport_nfl_player_stats; ESPN lists only players with a stat.)
 
 Only final games are stored, once each (a game already in the table is skipped).
 Each game is linked to its multisport_fixtures row (canonical team names, start
@@ -23,7 +24,22 @@ from .teams import canonical_team
 logger = logging.getLogger(__name__)
 
 ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"
-ESPN_PATHS: Dict[str, str] = {"basketball_nba": "basketball/nba"}
+ESPN_PATHS: Dict[str, str] = {"basketball_nba": "basketball/nba", "americanfootball_nfl": "football/nfl"}
+NFL = "americanfootball_nfl"
+# ESPN NFL block name -> {ESPN key: our column}
+_NFL_KEYS = {
+    "passing": {"completions/passingAttempts": "cmp_att", "passingYards": "pass_yds", "passingTouchdowns": "pass_td",
+                "interceptions": "interceptions"},
+    "rushing": {"rushingAttempts": "rush_att", "rushingYards": "rush_yds", "rushingTouchdowns": "rush_td"},
+    "receiving": {"receptions": "receptions", "receivingYards": "rec_yds", "receivingTouchdowns": "rec_td",
+                  "receivingTargets": "targets"},
+    "kickReturns": {"kickReturnTouchdowns": "kr_td"},
+    "puntReturns": {"puntReturnTouchdowns": "pr_td"},
+    "defensive": {"defensiveTouchdowns": "def_td_a"},
+    "interceptions": {"interceptionTouchdowns": "def_td_b"},
+}
+NFL_COLS = ("pass_cmp", "pass_att", "pass_yds", "pass_td", "interceptions", "rush_att", "rush_yds", "rush_td",
+            "receptions", "targets", "rec_yds", "rec_td", "return_td", "def_td", "scoring_td")
 ET = ZoneInfo("America/New_York")
 LINK_WINDOW = timedelta(hours=12)
 _KEY_MAP = {"minutes": "minutes", "points": "points", "rebounds": "rebounds", "assists": "assists",
@@ -81,6 +97,79 @@ def parse_summary(summary: Dict, sport_key: str) -> List[Dict]:
     return out
 
 
+def parse_nfl_summary(summary: Dict, sport_key: str = NFL) -> List[Dict]:
+    """ESPN NFL summary JSON -> one dict per player who appears in any stat block.
+    Stats a player has no block for are 0 (he played but, say, had no catches)."""
+    comp = ((summary.get("header") or {}).get("competitions") or [{}])[0]
+    sides = {c.get("team", {}).get("id"): c for c in comp.get("competitors", [])}
+    teams = (summary.get("boxscore") or {}).get("players") or []
+    names = {t["team"]["id"]: t["team"].get("displayName") for t in teams if t.get("team")}
+    out: List[Dict] = []
+    for t in teams:
+        tid = t["team"]["id"]
+        team = canonical_team(sport_key, names[tid]) or names[tid]
+        opp_raw = next((n for i, n in names.items() if i != tid), "")
+        opp = canonical_team(sport_key, opp_raw) or opp_raw
+        players: Dict[str, Dict] = {}
+        for block in t.get("statistics", []):
+            want = _NFL_KEYS.get(block.get("name"), {})
+            keys = block.get("keys", [])
+            for a in block.get("athletes", []):
+                ath = a.get("athlete") or {}
+                pid, name = str(ath.get("id") or ""), ath.get("displayName")
+                if not pid or not name:
+                    continue
+                row = players.setdefault(pid, {"team": team, "opponent": opp, "game_time": comp.get("date"),
+                                               "is_home": (sides.get(tid) or {}).get("homeAway") == "home",
+                                               "player_id": pid, "player_name": name})
+                for k, v in zip(keys, a.get("stats") or []):
+                    col = want.get(k)
+                    if col == "cmp_att":
+                        c, att = (str(v).split("/", 1) + [None])[:2] if v and "/" in str(v) else (None, None)
+                        row["pass_cmp"], row["pass_att"] = _int(c), _int(att)
+                    elif col:
+                        row[col] = _int(v)
+        for row in players.values():
+            for col in ("pass_yds", "pass_td", "interceptions", "rush_att", "rush_yds", "rush_td", "receptions",
+                        "targets", "rec_yds", "rec_td"):
+                row[col] = row.get(col) or 0
+            row.setdefault("pass_cmp", 0), row.setdefault("pass_att", 0)
+            row["return_td"] = (row.pop("kr_td", 0) or 0) + (row.pop("pr_td", 0) or 0)
+            # ESPN's defensiveTouchdowns normally already includes interception returns: take the larger
+            row["def_td"] = max(row.pop("def_td_a", 0) or 0, row.pop("def_td_b", 0) or 0)
+            row["scoring_td"] = row["rush_td"] + row["rec_td"] + row["return_td"] + row["def_td"]
+            out.append(row)
+    return out
+
+
+def _insert_nba(cur, key, espn_id, event_id, when, players):
+    execute_values(cur, """
+        INSERT INTO multisport_player_boxscores (sport_key, espn_event_id, event_id, game_time, team,
+            opponent, is_home, player_id, player_name, starter, did_not_play, dnp_reason, minutes,
+            points, rebounds, assists, threes_made, threes_att, fg_made, fg_att, ft_made, ft_att,
+            off_rebounds, def_rebounds, steals, blocks, turnovers, fouls, plus_minus)
+        VALUES %s ON CONFLICT (sport_key, espn_event_id, player_id) DO NOTHING""",
+        [(key, espn_id, event_id, when, p["team"], p["opponent"], p["is_home"], p["player_id"],
+          p["player_name"], p["starter"], p["did_not_play"], p["dnp_reason"], p["minutes"],
+          p["points"], p["rebounds"], p["assists"], p["threes_made"], p["threes_att"], p["fg_made"],
+          p["fg_att"], p["ft_made"], p["ft_att"], p["off_rebounds"], p["def_rebounds"], p["steals"],
+          p["blocks"], p["turnovers"], p["fouls"], p["plus_minus"]) for p in players])
+
+
+def _insert_nfl(cur, key, espn_id, event_id, when, players):
+    execute_values(cur, f"""
+        INSERT INTO multisport_nfl_player_stats (sport_key, espn_event_id, event_id, game_time, team, opponent,
+            is_home, player_id, player_name, {", ".join(NFL_COLS)})
+        VALUES %s ON CONFLICT (espn_event_id, player_id) DO NOTHING""",
+        [(key, espn_id, event_id, when, p["team"], p["opponent"], p["is_home"], p["player_id"], p["player_name"],
+          *[p[c] for c in NFL_COLS]) for p in players])
+
+
+# sport -> (parser, table that marks a game as stored, insert)
+_SPORT = {"basketball_nba": (parse_summary, "multisport_player_boxscores", _insert_nba),
+          NFL: (parse_nfl_summary, "multisport_nfl_player_stats", _insert_nfl)}
+
+
 def _get(fetch, url, params=None, timeout=30, sleep=time.sleep):
     for attempt in range(3):
         resp = fetch(url, params=params or {}, timeout=timeout)
@@ -108,8 +197,9 @@ def collect_boxscores(conn, sport_keys: Iterable[str], days: Iterable[date],
     days = list(days)
     for key in sport_keys:
         path = ESPN_PATHS.get(key)
-        if not path:
+        if not path or key not in _SPORT:
             continue
+        parse, table, insert = _SPORT[key]
         stats = {"final_games": 0, "new_games": 0, "linked": 0, "players": 0, "status": "ok"}
         try:
             with conn.cursor() as cur:
@@ -119,7 +209,7 @@ def collect_boxscores(conn, sport_keys: Iterable[str], days: Iterable[date],
                         if ((ev.get("status") or {}).get("type") or {}).get("name") != "STATUS_FINAL":
                             continue
                         stats["final_games"] += 1
-                        cur.execute("SELECT 1 FROM multisport_player_boxscores WHERE sport_key=%s AND espn_event_id=%s LIMIT 1",
+                        cur.execute(f"SELECT 1 FROM {table} WHERE sport_key=%s AND espn_event_id=%s LIMIT 1",
                                     (key, str(ev["id"])))
                         if cur.fetchone():
                             continue
@@ -130,24 +220,14 @@ def collect_boxscores(conn, sport_keys: Iterable[str], days: Iterable[date],
                             stats["skipped"] = stats.get("skipped", 0) + 1
                             continue
                         sleep(0.2)
-                        players = parse_summary(summary, key)
+                        players = parse(summary, key)
                         if not players:
                             continue
                         when = datetime.fromisoformat((players[0]["game_time"] or ev["date"]).replace("Z", "+00:00"))
                         home = next((p["team"] for p in players if p["is_home"]), None)
                         away = next((p["team"] for p in players if not p["is_home"]), None)
                         event_id = _link(cur, key, home, away, when) if home and away else None
-                        execute_values(cur, """
-                            INSERT INTO multisport_player_boxscores (sport_key, espn_event_id, event_id, game_time, team,
-                                opponent, is_home, player_id, player_name, starter, did_not_play, dnp_reason, minutes,
-                                points, rebounds, assists, threes_made, threes_att, fg_made, fg_att, ft_made, ft_att,
-                                off_rebounds, def_rebounds, steals, blocks, turnovers, fouls, plus_minus)
-                            VALUES %s ON CONFLICT (sport_key, espn_event_id, player_id) DO NOTHING""",
-                            [(key, str(ev["id"]), event_id, when, p["team"], p["opponent"], p["is_home"], p["player_id"],
-                              p["player_name"], p["starter"], p["did_not_play"], p["dnp_reason"], p["minutes"],
-                              p["points"], p["rebounds"], p["assists"], p["threes_made"], p["threes_att"], p["fg_made"],
-                              p["fg_att"], p["ft_made"], p["ft_att"], p["off_rebounds"], p["def_rebounds"], p["steals"],
-                              p["blocks"], p["turnovers"], p["fouls"], p["plus_minus"]) for p in players])
+                        insert(cur, key, str(ev["id"]), event_id, when, players)
                         conn.commit()
                         stats["new_games"] += 1
                         stats["linked"] += bool(event_id)

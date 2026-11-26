@@ -189,7 +189,9 @@ Each costs about 3 Odds API credits per hourly run. An explicit `--sports` list 
 * `snapbet-pipeline prop-results` (free, in `run`): every stored prop line, not just flags, summarised per
   game x market x player x line (`multisport_prop_results`, sql/012): no-vig over/under probability across the
   books that priced both sides, best price and book on each side, main-line marker, and the box-score result
-  (NBA; NFL ungraded). The command prints calibration by market and probability bucket. Per-book prop rows are
+  (NBA and NFL). NFL anytime-TD lines are mostly posted Yes-only; those rows have `under_prob` NULL and an
+  `over_prob` that is the raw implied probability (book margin included), and calibration lists them separately.
+  The command prints calibration by market and probability bucket. Per-book prop rows are
   now kept 400 days before `prune` collapses them (was 30), so a season of book-level prices is available.
 * `python research/prop_patterns.py` (free, read-only): fixed questions on graded props - calibration, props in
   winning games (hindsight) vs pregame favourites (bettable), and game-to-game carry-over, with game-clustered
@@ -199,6 +201,9 @@ Each costs about 3 Odds API credits per hourly run. An explicit `--sports` list 
 * `snapbet-pipeline boxscores [--from YYYY-MM-DD --to YYYY-MM-DD]` (in `run`, last 2 ET days by default): ESPN
   player box scores for final NBA games (free): minutes, points, rebounds, assists, 3s, shooting, starter and DNP
   reason (`multisport_player_boxscores`), linked to `multisport_fixtures` when the books listed the game.
+  NFL games go to `multisport_nfl_player_stats` (sql/013): passing, rushing and receiving lines, targets, and
+  scoring TDs (rush + receiving + return + defensive; passing TDs excluded) for anytime-TD props. ESPN lists only
+  players who recorded a stat, so a prop on a player missing from the box score is graded void, not 0.
 
 ## Injury reports (research)
 
