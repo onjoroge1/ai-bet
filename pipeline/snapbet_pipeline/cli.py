@@ -21,6 +21,10 @@ laptop run exactly the same code:
   snapbet-pipeline prop-flags         # line shopping: props where one book beats the others' fair price; graded record
   snapbet-pipeline prop-results       # every prop line graded (no-vig over/under, best prices, result) + calibration
   snapbet-pipeline boxscores [--from D --to D]  # ESPN player box scores (free); default: last 2 ET days
+  snapbet-pipeline kalshi-props [--from D]    # Kalshi player props (public, free); --from: backfill settled ones + hourly candles
+  snapbet-pipeline prop-analysis [--backtest] [--from D] [--to D]
+                                      # prop estimates + priced lines (live); --backtest: walk-forward past games,
+                                      #   then evaluation, market timing and injury event study (paper only)
   snapbet-pipeline prune [--keep-days 7] [--dry-run]
                                       # thin per-book/Kalshi snapshots of old games (consensus kept)
   snapbet-pipeline status             # row counts + last runs
@@ -57,6 +61,7 @@ from .retention import prune
 from .props import collect_props
 from . import prop_shop
 from . import prop_results
+from .prop_analysis import kalshi_props, records as prop_records, run as prop_analysis
 from .boxscores import collect_boxscores, recent_days
 from .injuries import collect_injuries
 from .train import should_train, train_sport
@@ -172,6 +177,32 @@ def cmd_prop_flags(conn, s: Settings, args) -> Dict:
     return prop_shop.report(conn)
 
 
+def cmd_kalshi_props(conn, s: Settings, args) -> Dict:
+    if args.date_from:
+        since = datetime.fromisoformat(args.date_from).replace(tzinfo=timezone.utc)
+        out = {"backfill": kalshi_props.backfill(conn, collect_sports(s), since)}
+    else:
+        out = {"collect": kalshi_props.collect_player_props(conn, collect_sports(s))}
+    out["settle"] = kalshi_props.settle(conn)
+    return out
+
+
+def cmd_prop_analysis(conn, s: Settings, args) -> Dict:
+    out: Dict = {"actuals": prop_records.refresh_actuals(conn)}
+    if args.backtest:
+        start = (datetime.fromisoformat(args.date_from).replace(tzinfo=timezone.utc) if args.date_from
+                 else prop_analysis.BACKTEST_START)
+        end = datetime.fromisoformat(args.date_to).replace(tzinfo=timezone.utc) if args.date_to else None
+        out["backtest"] = prop_analysis.backtest(conn, start, end)
+        rep = prop_analysis.report(conn)
+        out["report"] = {k: rep.get(k) for k in ("report_id", "period", "estimates", "games", "settled_main_lines",
+                                                 "survivors")}
+    else:
+        out["live"] = prop_analysis.live(conn)
+        out["settle_live"] = prop_analysis.settle_live(conn)
+    return out
+
+
 def cmd_prop_results(conn, s: Settings, args) -> Dict:
     return prop_results.report(conn)
 
@@ -233,7 +264,8 @@ def cmd_run(conn, s: Settings, args) -> Dict:
     else:
         out["collect"] = _job(conn, "collect", lambda: cmd_collect(conn, s, args))
     # research captures; never block the publishing jobs
-    for name, fn in (("kalshi", cmd_kalshi), ("props", cmd_props), ("regulation", cmd_regulation),
+    for name, fn in (("kalshi", cmd_kalshi), ("kalshi_props", lambda c, s_, a: kalshi_props.collect_player_props(
+                         c, collect_sports(s_))), ("props", cmd_props), ("regulation", cmd_regulation),
                      ("injuries", cmd_injuries)):
         try:
             out[name] = _job(conn, name, lambda fn=fn: fn(conn, s, args))
@@ -252,6 +284,21 @@ def cmd_run(conn, s: Settings, args) -> Dict:
         out["prop_results"] = _job(conn, "prop_results", lambda: prop_results.refresh(conn))
     except Exception as e:
         out["prop_results"] = {"status": "error", "error": str(e)}
+    # prop analysis (research): Kalshi settlements, prop settlement, live estimates; once a day the
+    # walk-forward backtest and evaluation report
+    for name, fn in (("kalshi_settle", lambda: kalshi_props.settle(conn)),
+                     ("prop_actuals", lambda: prop_records.refresh_actuals(conn)),
+                     ("prop_analysis", lambda: {**prop_analysis.live(conn), **prop_analysis.settle_live(conn)})):
+        try:
+            out[name] = _job(conn, name, fn)
+        except Exception as e:
+            out[name] = {"status": "error", "error": str(e)}
+    if datetime.now(timezone.utc).hour == 10:
+        try:
+            out["prop_backtest"] = _job(conn, "prop_backtest", lambda: {
+                **prop_analysis.backtest(conn), "report_id": prop_analysis.report(conn).get("report_id")})
+        except Exception as e:
+            out["prop_backtest"] = {"status": "error", "error": str(e)}
     out["sync"] = _job(conn, "sync", lambda: cmd_sync(conn, s, args))
     out["predict"] = _job(conn, "predict", lambda: cmd_predict(conn, s, args))
     out["settle"] = _job(conn, "settle", lambda: cmd_settle(conn, s, args))
@@ -317,7 +364,7 @@ def cmd_status(conn, s: Settings, args) -> Dict:
 
 COMMANDS = {"migrate": cmd_migrate, "collect": cmd_collect, "kalshi": cmd_kalshi, "results": cmd_results, "sync": cmd_sync,
             "train": cmd_train, "predict": cmd_predict, "settle": cmd_settle, "run": cmd_run,
-            "status": cmd_status, "prune": cmd_prune, "props": cmd_props, "prop-flags": cmd_prop_flags, "prop-results": cmd_prop_results, "boxscores": cmd_boxscores, "injuries": cmd_injuries, "research": cmd_research, "regulation": cmd_regulation, "picks": cmd_picks, "research-score": cmd_research_score, "import-csv": cmd_import_csv, "report": cmd_report,
+            "status": cmd_status, "prune": cmd_prune, "props": cmd_props, "prop-flags": cmd_prop_flags, "prop-results": cmd_prop_results, "kalshi-props": cmd_kalshi_props, "prop-analysis": cmd_prop_analysis, "boxscores": cmd_boxscores, "injuries": cmd_injuries, "research": cmd_research, "regulation": cmd_regulation, "picks": cmd_picks, "research-score": cmd_research_score, "import-csv": cmd_import_csv, "report": cmd_report,
             "import-odds-api-history": cmd_import_odds_api_history}
 
 
@@ -327,6 +374,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("command", choices=sorted(COMMANDS))
     p.add_argument("--days", type=int, default=None, help="results: lookback window (steps down to plan limit)")
     p.add_argument("--force", action="store_true", help="train: ignore the retrain policy")
+    p.add_argument("--backtest", action="store_true", help="prop-analysis: walk-forward past games + evaluation")
     p.add_argument("--dry-run", action="store_true", help="train: only report the policy decision")
     p.add_argument("--odds-api-scores", action="store_true", help="results: use paid Odds API /scores instead of ESPN")
     p.add_argument("--ignore-season", action="store_true", help="collect/results: query off-season sports too")
