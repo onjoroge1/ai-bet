@@ -12,43 +12,43 @@
     0
   ],
   "inner_cv_logloss_sum": {
-    "0": 475.9456,
-    "10": 475.7376,
-    "25": 475.7438,
-    "50": 475.6542,
-    "100": 476.7025,
-    "200": 480.5221
+    "0": 494.0343,
+    "10": 493.9739,
+    "25": 494.0032,
+    "50": 494.6513,
+    "100": 495.3863,
+    "200": 499.0216
   },
   "sport_key": "icehockey_nhl",
   "features_version": "v3.2",
-  "trained_at": "2026-11-24T20:16:40.889308+00:00",
-  "train_reason": "26 new finished games since last train",
-  "n_samples": 955,
+  "trained_at": "2026-11-28T17:41:35.859104+00:00",
+  "train_reason": "30 new finished games since last train",
+  "n_samples": 985,
   "n_samples_from_csv": 0,
   "date_range": [
     "2026-01-01",
-    "2026-11-24"
+    "2026-11-28"
   ],
   "n_folds": 5,
   "oof_metrics": {
-    "accuracy": 0.5862,
-    "logloss": 0.6653,
-    "brier": 0.2364,
-    "market_logloss": 0.6653
+    "accuracy": 0.5817,
+    "logloss": 0.6671,
+    "brier": 0.2373,
+    "market_logloss": 0.6671
   },
   "edge_gate": {
-    "n": 795,
+    "n": 820,
     "criterion": "logloss_vs_market",
-    "model_logloss": 0.6653,
-    "market_logloss": 0.6653,
+    "model_logloss": 0.6671,
+    "market_logloss": 0.6671,
     "logloss_gain": 0.0,
-    "brier_model": 0.2364,
-    "brier_market": 0.2364,
-    "model_acc": 0.5862,
-    "favorite_acc": 0.5862,
+    "brier_model": 0.2373,
+    "brier_market": 0.2373,
+    "model_acc": 0.5817,
+    "favorite_acc": 0.5817,
     "delta": 0.0,
     "edge_validated": false,
-    "validation": "temporal OOF log loss 0.6653 vs market 0.6653 (+0.0000, n=795) \u2014 no demonstrated edge over the market"
+    "validation": "temporal OOF log loss 0.6671 vs market 0.6671 (+0.0000, n=820) \u2014 no demonstrated edge over the market"
   },
   "feature_importance": []
 }
