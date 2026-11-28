@@ -205,6 +205,48 @@ Each costs about 3 Odds API credits per hourly run. An explicit `--sports` list 
   scoring TDs (rush + receiving + return + defensive; passing TDs excluded) for anytime-TD props. ESPN lists only
   players who recorded a stat, so a prop on a player missing from the box score is graded void, not 0.
 
+## Prop analysis (research, paper only)
+
+`snapbet_pipeline/prop_analysis/` answers four questions for every collected prop: how often has this line hit,
+under which conditions, what probability do we estimate today, and is the available price favourable after fees.
+Admin pages: `/admin/props` (sortable list of every priced line, plus the latest evaluation) and
+`/admin/props/<id>` (threshold-vs-probability chart, every quote, hit rates by condition, factors, combos).
+
+* **Sources.** Sportsbook player props (`multisport_player_props`), sportsbook moneyline/spread/total
+  (`multisport_odds_snapshots`), and Kalshi game, spread, total, team-total and **player-prop** markets.
+  `kalshi-props` collects open Kalshi player props each run (NBA points/rebounds/assists/threes, NFL passing,
+  rushing and receiving yards and receptions, NHL goals/points/assists; public API, no credits) and, with
+  `--from D`, backfills settled ones plus Kalshi's hourly candles (`quote_source = 'candle_1h'`, the bid/ask at the
+  end of each hour, kept for the 12 h before each market closes). Every Kalshi market's ticker, rules text and
+  Kalshi's own settlement (including fair-price settlements) are stored in `multisport_kalshi_markets` (sql/014).
+* **Common record.** The view `multisport_prop_records` gives one row per quote: sport, game, player or team,
+  statistic, threshold, direction (Yes = over), source and book, original market id and rules, quote time,
+  Yes and No prices (decimal odds, or Kalshi dollars: Yes = ask, No = 1 - bid), displayed probability, result and
+  settlement status (settled / void / fair_price / pending). Player stats come from `multisport_prop_actuals`
+  (box scores; not in the box score = void). NHL player props settle only through Kalshi (no NHL box scores).
+* **Models** (`model.py`). One ridge regression per prop family on what was known before the game (recent and
+  season averages, recent minutes or volume, home, rest, opponent allowance, NBA rotation teammates out), turned
+  into a full distribution (negative binomial for counts, Poisson for anytime TD, empirical misses for yards) so
+  every threshold of a player-game comes from one estimate. Team markets: ridge on both teams' scoring form, with
+  normal margin/total/team-points distributions. The uncertainty range is the 5th-95th percentile across 20
+  bootstrap refits; it understates real uncertainty.
+* **Pricing** (`pricing.py`). EV per $1 at the executable price: books' decimal odds (margin included); Kalshi ask
+  plus the taker fee `ceil(0.07 x C x P x (1-P))` per order, spread over a 100-contract order. Break-even
+  probability and the worst price that still breaks even are shown next to the displayed probability.
+* **Walk-forward** (`prop-analysis --backtest`, also daily at 10 UTC in `run`). Games on date D are predicted by
+  models fit only on games before D; player props at the sportsbook pull time (or 60 min before tip), team
+  markets 60 min before tip; quotes recorded at or before that time; teammates out from injury reports seen
+  before it. `evaluate.py` reports, per sport and family, log loss/Brier against the market's displayed
+  probability at the main line (one row per player-game), error of our mean vs the market line, calibration,
+  and returns after fees for fixed strategies (one bet per prop, game-clustered intervals). A strategy counts as
+  holding only if it made money in the earlier half of the dates AND the later half's 90% interval is above 0.
+  It also checks Kalshi accuracy by time before tip and an NBA injury event study (team price before, 1 h after,
+  and at close of a rotation player's Out/Doubtful listing; and teammates' Kalshi points markets).
+* **Combos.** Joint probabilities for a player's lines use a Gaussian copula on the model's misses (estimated on
+  training games), compared with multiplying the marginals; no combo prices are collected, so no combo EV.
+* **Live** (`prop-analysis`, in every `run`): estimates and priced lines for games in the next 36 h, keeping a
+  history of each estimate and the market's main-line price per run; lines settle after the game.
+
 ## Injury reports (research)
 
 `snapbet-pipeline injuries` (part of `run`) stores ESPN's injury reports for NFL/NBA/NHL in
